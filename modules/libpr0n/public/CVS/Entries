@@ -1,0 +1,13 @@
+/.cvsignore/1.2/Tue Feb 20 22:43:42 2001//TMOZILLA_1_5_BRANCH
+/ImageErrors.h/1.3/Wed May 14 05:42:03 2003//TMOZILLA_1_5_BRANCH
+/ImageLogging.h/1.5/Sat Mar 23 21:20:46 2002//TMOZILLA_1_5_BRANCH
+/Makefile.in/1.13/Sat Dec 28 01:13:59 2002//TMOZILLA_1_5_BRANCH
+/imgICache.idl/1.2/Mon Jun 18 06:36:35 2001//TMOZILLA_1_5_BRANCH
+/imgIContainer.idl/1.5/Thu Nov 21 09:06:11 2002//TMOZILLA_1_5_BRANCH
+/imgIContainerObserver.idl/1.3/Wed Feb 26 05:51:02 2003//TMOZILLA_1_5_BRANCH
+/imgIDecoder.idl/1.4/Tue Oct 23 08:06:39 2001//TMOZILLA_1_5_BRANCH
+/imgIDecoderObserver.idl/1.3/Wed Feb 26 05:51:02 2003//TMOZILLA_1_5_BRANCH
+/imgILoad.idl/1.2/Wed Feb 27 00:32:17 2002//TMOZILLA_1_5_BRANCH
+/imgILoader.idl/1.10/Mon Mar 17 16:08:46 2003//TMOZILLA_1_5_BRANCH
+/imgIRequest.idl/1.12/Sat Mar 23 04:33:33 2002//TMOZILLA_1_5_BRANCH
+D

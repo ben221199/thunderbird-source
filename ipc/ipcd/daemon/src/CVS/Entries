@@ -1,0 +1,14 @@
+/.cvsignore/1.1.2.2/Thu May 15 21:57:18 2003//TMOZILLA_1_5_BRANCH
+/Makefile.in/1.1.2.2/Fri May  2 23:48:20 2003//TMOZILLA_1_5_BRANCH
+/ipcClient.cpp/1.1.2.1/Wed Mar  5 03:45:29 2003//TMOZILLA_1_5_BRANCH
+/ipcClient.h/1.1.2.1/Wed Mar  5 03:45:29 2003//TMOZILLA_1_5_BRANCH
+/ipcCommandModule.cpp/1.1.2.2/Wed Mar 12 02:07:06 2003//TMOZILLA_1_5_BRANCH
+/ipcCommandModule.h/1.1.2.1/Wed Mar  5 03:45:30 2003//TMOZILLA_1_5_BRANCH
+/ipcModuleReg.cpp/1.1.2.2/Fri May  2 17:43:59 2003//TMOZILLA_1_5_BRANCH
+/ipcModuleReg.h/1.1.2.1/Wed Mar  5 03:45:31 2003//TMOZILLA_1_5_BRANCH
+/ipcd.cpp/1.1.2.1/Wed Mar  5 03:45:31 2003//TMOZILLA_1_5_BRANCH
+/ipcd.h/1.1.2.1/Wed Mar  5 03:45:32 2003//TMOZILLA_1_5_BRANCH
+/ipcdPrivate.h/1.1.2.1/Wed Mar  5 03:45:34 2003//TMOZILLA_1_5_BRANCH
+/ipcdUnix.cpp/1.1.2.3/Mon May 12 14:56:33 2003//TMOZILLA_1_5_BRANCH
+/ipcdWin.cpp/1.1.2.2/Mon Jun 23 22:51:34 2003//TMOZILLA_1_5_BRANCH
+D

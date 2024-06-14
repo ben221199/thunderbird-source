@@ -1,0 +1,8 @@
+/.cvsignore/1.1/Sun Jul 27 07:05:22 2003//TTHUNDERBIRD_0_3_BRANCH
+/Makefile.in/1.4/Thu Aug 28 05:22:22 2003//TTHUNDERBIRD_0_3_BRANCH
+/nsIPassword.idl/1.1/Sun Jul 27 07:05:24 2003//TTHUNDERBIRD_0_3_BRANCH
+/nsPasswordManager.cpp/1.26/Mon Sep  1 21:11:30 2003//TTHUNDERBIRD_0_3_BRANCH
+/nsPasswordManager.h/1.10/Sat Aug 30 05:06:30 2003//TTHUNDERBIRD_0_3_BRANCH
+/nsSingleSignonPrompt.cpp/1.4/Mon Sep  8 03:17:42 2003//TTHUNDERBIRD_0_3_BRANCH
+/nsSingleSignonPrompt.h/1.2/Thu Sep  4 03:02:33 2003//TTHUNDERBIRD_0_3_BRANCH
+D

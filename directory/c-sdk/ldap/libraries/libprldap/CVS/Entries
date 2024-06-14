@@ -1,0 +1,11 @@
+/.cvsignore/5.0/Tue Mar 26 21:54:02 2002//TMOZILLA_1_5_BRANCH
+/Makefile.client/5.0/Tue Mar 26 21:54:03 2002//TMOZILLA_1_5_BRANCH
+/Makefile.in/5.0.2.15/Tue Mar 18 22:12:59 2003//TMOZILLA_1_5_BRANCH
+/ldappr-dns.c/5.0/Tue Mar 26 21:54:03 2002//TMOZILLA_1_5_BRANCH
+/ldappr-error.c/5.0.2.9/Tue Mar 25 13:57:38 2003//TMOZILLA_1_5_BRANCH
+/ldappr-int.h/5.0/Tue Mar 26 21:54:03 2002//TMOZILLA_1_5_BRANCH
+/ldappr-io.c/5.0/Tue Mar 26 21:54:03 2002//TMOZILLA_1_5_BRANCH
+/ldappr-public.c/5.0/Tue Mar 26 21:54:04 2002//TMOZILLA_1_5_BRANCH
+/ldappr-threads.c/5.0/Tue Mar 26 21:54:05 2002//TMOZILLA_1_5_BRANCH
+/libprldap.ex/5.0/Tue Mar 26 21:54:07 2002//TMOZILLA_1_5_BRANCH
+D

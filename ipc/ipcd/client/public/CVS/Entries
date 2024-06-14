@@ -1,0 +1,8 @@
+/.cvsignore/1.1.2.1/Tue Apr 15 06:40:06 2003//TMOZILLA_1_5_BRANCH
+/Makefile.in/1.1.2.2/Wed May 21 19:20:05 2003//TMOZILLA_1_5_BRANCH
+/ipcCID.h/1.1.2.1/Wed Mar  5 03:45:10 2003//TMOZILLA_1_5_BRANCH
+/ipcIClientObserver.idl/1.1.2.1/Wed May 21 19:14:45 2003//TMOZILLA_1_5_BRANCH
+/ipcIClientQueryHandler.idl/1.1.2.1/Wed May 21 19:14:45 2003//TMOZILLA_1_5_BRANCH
+/ipcIMessageObserver.idl/1.1.2.1/Wed May 21 19:14:46 2003//TMOZILLA_1_5_BRANCH
+/ipcIService.idl/1.1.2.2/Wed May 21 19:20:05 2003//TMOZILLA_1_5_BRANCH
+D
