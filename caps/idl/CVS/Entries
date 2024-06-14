@@ -1,0 +1,10 @@
+/.cvsignore/1.1/Sun Jul 18 00:26:01 1999//TTHUNDERBIRD_0_2_BRANCH
+/Makefile.in/1.15/Fri Aug 22 03:05:47 2003//TTHUNDERBIRD_0_2_BRANCH
+/nsIAggregatePrincipal.idl/1.12/Fri Aug 22 03:04:12 2003//TTHUNDERBIRD_0_2_BRANCH
+/nsICertificatePrincipal.idl/1.19/Fri Aug 22 03:04:11 2003//TTHUNDERBIRD_0_2_BRANCH
+/nsICodebasePrincipal.idl/1.15/Fri Aug 22 03:04:08 2003//TTHUNDERBIRD_0_2_BRANCH
+/nsIPrincipal.idl/1.27/Fri Aug 22 03:05:48 2003//TTHUNDERBIRD_0_2_BRANCH
+/nsIScriptSecurityManager.idl/1.58/Fri Aug 22 03:05:48 2003//TTHUNDERBIRD_0_2_BRANCH
+/nsISecurityCheckedComponent.idl/1.5/Tue Sep 25 01:03:51 2001//TTHUNDERBIRD_0_2_BRANCH
+/nsISignatureVerifier.idl/1.6/Tue Sep 25 01:03:51 2001//TTHUNDERBIRD_0_2_BRANCH
+D
