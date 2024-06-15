@@ -368,18 +368,10 @@ NS_IMETHODIMP nsDocShell::GetInterface(const nsIID & aIID, void **aSink)
             return NS_NOINTERFACE;
     }
     else if (aIID.Equals(NS_GET_IID(nsIAuthPrompt))) {
-        // if auth is not allowed, bail out
-        if (!mAllowAuth)
-          return NS_NOINTERFACE;
-
-        nsCOMPtr<nsIAuthPrompt> authPrompter(do_GetInterface(mTreeOwner));
-        if (authPrompter) {
-            *aSink = authPrompter;
-            NS_ADDREF((nsISupports *) * aSink);
-            return NS_OK;
-        }
-        else
-            return NS_NOINTERFACE;
+        return NS_SUCCEEDED(
+                GetAuthPrompt(PROMPT_NORMAL, (nsIAuthPrompt **) aSink)) ?
+                NS_OK : NS_NOINTERFACE;
+              
     }
     else if (aIID.Equals(NS_GET_IID(nsIProgressEventSink))
              || aIID.Equals(NS_GET_IID(nsIHttpEventSink))
@@ -1769,6 +1761,9 @@ nsDocShell::SetItemType(PRInt32 aItemType)
     NS_ENSURE_STATE(!mParent);
 
     mItemType = aItemType;
+
+    // disable auth prompting for anything but content
+    mAllowAuth = mItemType == typeContent; 
 
     return NS_OK;
 }
@@ -3172,7 +3167,6 @@ nsDocShell::Destroy()
 
     mDocLoader = nsnull;
     mParentWidget = nsnull;
-    mPrefs = nsnull;
     mCurrentURI = nsnull;
 
     if (mScriptGlobal) {
@@ -3374,6 +3368,13 @@ nsDocShell::GetVisibility(PRBool * aVisibility)
         nsCOMPtr<nsIDocShell> parentDS = do_QueryInterface(parentItem);
         nsCOMPtr<nsIPresShell> pPresShell;
         parentDS->GetPresShell(getter_AddRefs(pPresShell));
+
+        // Null-check for crash in bug 267804
+        if (!pPresShell) {
+            NS_NOTREACHED("docshell has null pres shell");
+            *aVisibility = PR_FALSE;
+            return NS_OK;
+        }
 
         nsCOMPtr<nsIDocument> pDoc;
         pPresShell->GetDocument(getter_AddRefs(pDoc));
@@ -7314,15 +7315,6 @@ nsDocShell::SetBaseUrlForWyciwyg(nsIContentViewer * aContentViewer)
 nsresult
 nsDocShell::GetAuthPrompt(PRUint32 aPromptReason, nsIAuthPrompt **aResult)
 {
-    // if this docshell is of type chrome and has a chrome URI, then do not
-    // give out an auth prompt.  NOTE: it is possible to load a non-chrome
-    // URI into a chrome docshell, so this check is important.
-    if (mCurrentURI && mItemType == typeChrome) {
-        PRBool chrome;
-        if (NS_SUCCEEDED(mCurrentURI->SchemeIs("chrome", &chrome)) && chrome)
-            return NS_ERROR_NOT_AVAILABLE;
-    }
-
     // a priority prompt request will override a false mAllowAuth setting
     PRBool priorityPrompt = (aPromptReason == PROMPT_PROXY);
 

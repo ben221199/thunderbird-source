@@ -71,7 +71,7 @@ const MESSAGE_TEMPLATE = "\n\
 ";
 
 const REMOTE_CONTENT_TEMPLATE = "\n\
-    <iframe src=\"%URL%\">\n\
+    <iframe id =\"_mailrssiframe\" src=\"%URL%\">\n\
       %DESCRIPTION%\n\
     </iframe>\n\
 ";
@@ -109,10 +109,26 @@ const LOCAL_CONTENT_TEMPLATE = "\n\
 const LOCAL_STYLE = "\n";
 
 FeedItem.prototype.store = function() {
+    FeedItem.unicodeConverter.charset = this.characterSet;
+
+    try {
+      if (this.title)
+        this.title = FeedItem.unicodeConverter.ConvertToUnicode(this.title);
+    } catch (ex) {}
+
+    try {
+      if (this.description)
+        this.description =  FeedItem.unicodeConverter.ConvertToUnicode(this.description);
+    } catch (ex) {}
+
     if (this.isStored()) {
       debug(this.identity + " already stored; ignoring");
     }
     else if (this.content) {
+     try {
+        this.content = FeedItem.unicodeConverter.ConvertToUnicode(this.content);
+      } catch (ex) {}
+
       debug(this.identity + " has content; storing");
       var content = MESSAGE_TEMPLATE;
       content = content.replace(/%CONTENT_TEMPLATE%/, LOCAL_CONTENT_TEMPLATE);
@@ -125,7 +141,9 @@ FeedItem.prototype.store = function() {
     }
     else if (this.feed.quickMode) {
       debug(this.identity + " in quick mode; storing");
+
       this.content = this.description || this.title;
+
       var content = MESSAGE_TEMPLATE;
       content = content.replace(/%CONTENT_TEMPLATE%/, LOCAL_CONTENT_TEMPLATE);
       content = content.replace(/%STYLE%/, LOCAL_STYLE);
@@ -145,7 +163,6 @@ FeedItem.prototype.store = function() {
       content = content.replace(/%DESCRIPTION%/, this.description || this.title);
       this.content = content; // XXX store it elsewhere, f.e. this.page
       this.writeToFolder();
-      //this.download();
     }
 }
 
@@ -173,10 +190,29 @@ FeedItem.prototype.isStored = function() {
   }
 
   var ds = getItemsDS(server);
-  var itemResource = rdf.GetResource(this.url || ("urn:" + this.id));
+  var itemURI = this.url || ("urn:" + this.id);
+  var itemResource = rdf.GetResource(itemURI);
+
   var downloaded = ds.GetTarget(itemResource, FZ_STORED, true);
   if (!downloaded || downloaded.QueryInterface(Components.interfaces.nsIRDFLiteral).Value == "false") 
   {
+    // HACK ALERT: before we give up, try to work around an entity escaping bug in RDF
+    // See Bug #258465 for more details
+    itemURI = itemURI.replace(/&lt;/g, '<');
+    itemURI = itemURI.replace(/&gt;/g, '>');
+    itemURI = itemURI.replace(/&amp;/g, '&');
+    itemURI = itemURI.replace(/&quot;/g, '"');
+
+    debug('Failed to find item, trying entity replacement version: '  + itemURI);
+    itemResource = rdf.GetResource(itemURI);
+    downloaded = ds.GetTarget(itemResource, FZ_STORED, true);
+
+    if (downloaded)
+    { 
+      debug(this.identity + " not stored");
+      return true;
+    }
+
     debug(this.identity + " not stored");
     return false;
   }
@@ -210,7 +246,7 @@ FeedItem.prototype.markValid = function() {
 FeedItem.prototype.markStored = function() {
     var ds = getItemsDS(this.feed.server);
     var resource = rdf.GetResource(this.url || ("urn:" + this.id));
-    
+   
     if (!ds.HasAssertion(resource, FZ_FEED, rdf.GetResource(this.feed.url), true))
       ds.Assert(resource, FZ_FEED, rdf.GetResource(this.feed.url), true);
     
@@ -219,9 +255,8 @@ FeedItem.prototype.markStored = function() {
       currentValue = ds.GetTarget(resource, FZ_STORED, true);
       ds.Change(resource, FZ_STORED, currentValue, RDF_LITERAL_TRUE);
     }
-    else {
+    else 
       ds.Assert(resource, FZ_STORED, RDF_LITERAL_TRUE, true);
-    }
 }
 
 FeedItem.prototype.download = function() {
@@ -303,9 +338,21 @@ FeedItem.prototype.writeToFolder = function() {
   if (this.author && this.author.indexOf('@') == -1)
     this.author = '<' + this.author + '>';
 
+  // Convert the title to UTF-16 before performing our HTML entity replacement
+  // reg expressions.
+  var title = this.title; 
+
+  // the subject may contain HTML entities.
+  // Convert these to their unencoded state. i.e. &amp; becomes '&'
+  title = title.replace(/&lt;/g, '<');
+  title = title.replace(/&gt;/g, '>');
+  title = title.replace(/&amp;/g, '&');
+  title = title.replace(/&quot;/g, '"');
+  
   // Compress white space in the subject to make it look better.
-  this.title = this.title.replace(/[\t\r\n]+/g, " ");
-  this.title = this.mimeEncodeSubject(this.title, this.characterSet);
+  title = title.replace(/[\t\r\n]+/g, " ");
+
+  this.title = this.mimeEncodeSubject(title, this.characterSet);
 
   // If the date looks like it's in W3C-DTF format, convert it into
   // an IETF standard date.  Otherwise assume it's in IETF format.
@@ -346,7 +393,6 @@ FeedItem.prototype.writeToFolder = function() {
   folder = folder.QueryInterface(Components.interfaces.nsIMsgLocalMailFolder);
 
   // source is a unicode string, we want to save a char * string in the original charset. So convert back
-
   folder.addMessage(FeedItem.unicodeConverter.ConvertFromUnicode(source));
   this.markStored();
 }

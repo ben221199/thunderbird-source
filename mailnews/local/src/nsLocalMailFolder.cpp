@@ -122,6 +122,7 @@ nsLocalMailCopyState::nsLocalMailCopyState() :
   m_isMove(PR_FALSE), m_dummyEnvelopeNeeded(PR_FALSE), m_fromLineSeen(PR_FALSE), m_writeFailed(PR_FALSE),
   m_notifyFolderLoaded(PR_FALSE)
 {
+  LL_I2L(m_lastProgressTime, PR_IntervalToMilliseconds(PR_IntervalNow()));
 }
 
 nsLocalMailCopyState::~nsLocalMailCopyState()
@@ -331,7 +332,10 @@ NS_IMETHODIMP nsMsgLocalMailFolder::ParseFolder(nsIMsgWindow *aMsgWindow, nsIUrl
     return NS_MSG_FOLDER_BUSY;
   }
   
-  rv = mailboxService->ParseMailbox(aMsgWindow, path, parser, listener, nsnull);
+  if (listener != this)
+    mReparseListener = listener;
+
+  rv = mailboxService->ParseMailbox(aMsgWindow, path, parser, this, nsnull);
   if (NS_SUCCEEDED(rv))
     m_parsingFolder = PR_TRUE;
   return rv;
@@ -574,7 +578,7 @@ NS_IMETHODIMP nsMsgLocalMailFolder::GetDatabaseWithReparse(nsIUrlListener *aRepa
       if(folderOpen == NS_MSG_ERROR_FOLDER_SUMMARY_MISSING ||
         folderOpen == NS_MSG_ERROR_FOLDER_SUMMARY_OUT_OF_DATE)
       {
-        if(NS_FAILED(rv = ParseFolder(aMsgWindow, (aReparseUrlListener) ? aReparseUrlListener : this)))
+        if(NS_FAILED(rv = ParseFolder(aMsgWindow, aReparseUrlListener)))
         {
           if (rv == NS_MSG_FOLDER_BUSY)
           {
@@ -662,8 +666,10 @@ nsMsgLocalMailFolder::UpdateFolder(nsIMsgWindow *aWindow)
       NotifyFolderEvent(mFolderLoadedAtom);
   }
   PRBool filtersRun;
+  PRBool hasNewMessages;
+  GetHasNewMessages(&hasNewMessages);
   // if we have new messages, try the filter plugins.
-  if (NS_SUCCEEDED(rv) && (mFlags & MSG_FOLDER_FLAG_GOT_NEW))
+  if (NS_SUCCEEDED(rv) && hasNewMessages)
     (void) CallFilterPlugins(aWindow, &filtersRun);
   return rv;
 }
@@ -3219,9 +3225,9 @@ nsMsgLocalMailFolder::OnStopRunningUrl(nsIURI * aUrl, nsresult aExitCode)
     mDownloadWindow = nsnull;
     return nsMsgDBFolder::OnStopRunningUrl(aUrl, aExitCode);
   }
+  nsresult rv;
   if (NS_SUCCEEDED(aExitCode))
   {
-    nsresult rv;
     nsCOMPtr<nsIMsgMailSession> mailSession = do_GetService(NS_MSGMAILSESSION_CONTRACTID, &rv);
     if (NS_FAILED(rv)) return rv;	
     nsCOMPtr<nsIMsgWindow> msgWindow;
@@ -3265,16 +3271,6 @@ nsMsgLocalMailFolder::OnStopRunningUrl(nsIURI * aUrl, nsresult aExitCode)
     
     if (mFlags & MSG_FOLDER_FLAG_INBOX)
     {
-      // if we are the inbox and running pop url 
-      nsCOMPtr<nsIPop3URL> popurl = do_QueryInterface(aUrl, &rv);
-      if (NS_SUCCEEDED(rv))
-      {
-        nsCOMPtr<nsIMsgIncomingServer> server;
-        GetServer(getter_AddRefs(server));
-        // this is the deferred to account, in the global inbox case
-        if (server)
-          server->SetPerformingBiff(PR_FALSE);  //biff is over
-      }
       if (mDatabase)
       {
         if (mCheckForNewMessagesAfterParsing)
@@ -3296,6 +3292,19 @@ nsMsgLocalMailFolder::OnStopRunningUrl(nsIURI * aUrl, nsresult aExitCode)
   {
     mReparseListener->OnStopRunningUrl(aUrl, aExitCode);
     mReparseListener = nsnull;
+  }
+  if (mFlags & MSG_FOLDER_FLAG_INBOX)
+  {
+    // if we are the inbox and running pop url 
+    nsCOMPtr<nsIPop3URL> popurl = do_QueryInterface(aUrl, &rv);
+    if (NS_SUCCEEDED(rv))
+    {
+      nsCOMPtr<nsIMsgIncomingServer> server;
+      GetServer(getter_AddRefs(server));
+      // this is the deferred to account, in the global inbox case
+      if (server)
+        server->SetPerformingBiff(PR_FALSE);  //biff is over
+    }
   }
   m_parsingFolder = PR_FALSE;
   return nsMsgDBFolder::OnStopRunningUrl(aUrl, aExitCode);
@@ -3440,6 +3449,8 @@ nsMsgLocalMailFolder::SetCheckForNewMessagesAfterParsing(PRBool aCheckForNewMess
 NS_IMETHODIMP
 nsMsgLocalMailFolder::NotifyCompactCompleted()
 {
+  mExpungedBytes = 0;
+  m_newMsgs.RemoveAll(); // if compacted, m_newMsgs probably aren't valid.
   (void) RefreshSizeOnDisk();
   (void) CloseDBIfFolderNotOpen();
   nsCOMPtr <nsIAtom> compactCompletedAtom;
@@ -3464,7 +3475,8 @@ nsMsgLocalMailFolder::SpamFilterClassifyMessage(const char *aURI, nsIMsgWindow *
 nsresult
 nsMsgLocalMailFolder::SpamFilterClassifyMessages(const char **aURIArray, PRUint32 aURICount, nsIMsgWindow *aMsgWindow, nsIJunkMailPlugin *aJunkMailPlugin)
 {
-  mNumFilterClassifyRequests += aURICount;
+  NS_ASSERTION(!mNumFilterClassifyRequests, "shouldn't call this when already classifying messages");
+  mNumFilterClassifyRequests = aURICount;
   return aJunkMailPlugin->ClassifyMessages(aURICount, aURIArray, aMsgWindow, this);   
 }
 
@@ -3472,6 +3484,9 @@ nsMsgLocalMailFolder::SpamFilterClassifyMessages(const char **aURIArray, PRUint3
 NS_IMETHODIMP
 nsMsgLocalMailFolder::OnMessageClassified(const char *aMsgURI, nsMsgJunkStatus aClassification)
 {
+  if (mNumFilterClassifyRequests > 0)
+    --mNumFilterClassifyRequests;
+
   nsCOMPtr<nsIMsgIncomingServer> server;
   nsresult rv = GetServer(getter_AddRefs(server));
   NS_ENSURE_SUCCESS(rv, rv);
@@ -3540,7 +3555,7 @@ nsMsgLocalMailFolder::OnMessageClassified(const char *aMsgURI, nsMsgJunkStatus a
     NS_ENSURE_SUCCESS(rv,rv);
   }
 
-  if (--mNumFilterClassifyRequests == 0)
+  if (mNumFilterClassifyRequests == 0)
   {
     if (mSpamKeysToMove.GetSize() > 0)
     {
@@ -3568,6 +3583,12 @@ nsMsgLocalMailFolder::OnMessageClassified(const char *aMsgURI, nsMsgJunkStatus a
           rv = copySvc->CopyMessages(this, messages, folder, PR_TRUE,
             /*nsIMsgCopyServiceListener* listener*/ nsnull, nsnull, PR_FALSE /*allowUndo*/);
           NS_ASSERTION(NS_SUCCEEDED(rv), "CopyMessages failed");
+          if (NS_FAILED(rv))
+          {
+            nsCAutoString logMsg("failed to copy junk messages to junk folder rv = ");
+            logMsg.AppendInt(rv, 16);
+            spamSettings->LogJunkString(logMsg.get());
+          }
         }
       }
     }

@@ -352,7 +352,12 @@ NS_IMETHODIMP nsImapMailFolder::AddSubfolder(const nsAString &aName,
   nsCOMPtr<nsIMsgFolder> folder(do_QueryInterface(res, &rv));
   if (NS_FAILED(rv))
     return rv;
-  
+
+  nsFileSpec path;
+  nsMsgDBFolder *dbFolder = NS_STATIC_CAST(nsMsgDBFolder *, NS_STATIC_CAST(nsIMsgFolder *, folder.get()));
+  rv = dbFolder->CreateDirectoryForFolder(path);
+  NS_ENSURE_SUCCESS(rv, rv);
+
   folder->GetFlags((PRUint32 *)&flags);
   
   flags |= MSG_FOLDER_FLAG_MAIL;
@@ -535,7 +540,10 @@ nsresult nsImapMailFolder::CreateSubFolders(nsFileSpec &path)
         PRInt32 hierarchyDelimiter;
         rv = cacheElement->GetInt32Property("hierDelim", &hierarchyDelimiter);
         if (NS_SUCCEEDED(rv) && hierarchyDelimiter == kOnlineHierarchySeparatorUnknown)
-          continue; // ignore .msf files for folders with unknown delimiter.
+        {
+          currentFolderPath.Delete(PR_FALSE);
+          continue; // blow away .msf files for folders with unknown delimiter.
+        }
         rv = cacheElement->GetStringProperty("onlineName", getter_Copies(onlineFullUtf7Name));
         if (NS_SUCCEEDED(rv) && onlineFullUtf7Name.get() && strlen(onlineFullUtf7Name.get()))
         {
@@ -664,8 +672,15 @@ nsresult nsImapMailFolder::GetDatabase(nsIMsgWindow *aMsgWindow)
     if (NS_FAILED(rv)) return rv;
 
     nsCOMPtr<nsIMsgDBService> msgDBService = do_GetService(NS_MSGDB_SERVICE_CONTRACTID, &rv);
-    if (msgDBService)
+    NS_ENSURE_SUCCESS(rv, rv);
+
       folderOpen = msgDBService->OpenFolderDB(this, PR_TRUE, PR_FALSE, getter_AddRefs(mDatabase));
+
+    if (NS_FAILED(folderOpen) && folderOpen != NS_MSG_ERROR_FOLDER_SUMMARY_MISSING)
+      folderOpen = msgDBService->OpenFolderDB(this, PR_TRUE, PR_TRUE, getter_AddRefs(mDatabase));
+
+    if (NS_FAILED(folderOpen) && folderOpen != NS_MSG_ERROR_FOLDER_SUMMARY_MISSING)
+      return folderOpen;
 
     if(folderOpen == NS_MSG_ERROR_FOLDER_SUMMARY_MISSING)
       folderOpen = NS_OK;
@@ -865,19 +880,7 @@ NS_IMETHODIMP nsImapMailFolder::CreateClientSubfolderInfo(const char *folderName
   nsresult rv = NS_OK;
     
   //Get a directory based on our current path.
-  nsCOMPtr<nsIFileSpec> pathSpec;
-  rv = GetPath(getter_AddRefs(pathSpec));
-  if (NS_FAILED(rv)) return rv;
-
   nsFileSpec path;
-  rv = pathSpec->GetFileSpec(&path);
-  if (NS_FAILED(rv)) return rv;
-
-//  if (!path.Exists())
-//  {
-//    path.CreateDir();
-//  }
-
   rv = CreateDirectoryForFolder(path);
   if(NS_FAILED(rv))
     return rv;
@@ -897,16 +900,18 @@ NS_IMETHODIMP nsImapMailFolder::CreateClientSubfolderInfo(const char *folderName
         parentName.Truncate(folderStart);
 
 	// the parentName might be too long or have some illegal chars
-    // so we make it safe.
-    // XXX Here it's assumed that IMAP folder names are stored locally 
-    // in UTF-7 (ASCII-only) as is stored remotely.  If we ever change
-    // this, we have to work with nsString instead of nsCString 
-    // (ref. bug 264071)
+        // so we make it safe.
+        // XXX Here it's assumed that IMAP folder names are stored locally 
+        // in UTF-7 (ASCII-only) as is stored remotely.  If we ever change
+        // this, we have to work with nsString instead of nsCString 
+        // (ref. bug 264071)
         nsCAutoString safeParentName;
         safeParentName.AssignWithConversion(parentName);
         NS_MsgHashIfNecessary(safeParentName);
         path += safeParentName.get();
 
+        // path is an out parameter to CreateDirectoryForFolder - I'm not
+        // sure why we're munging it above.
         rv = CreateDirectoryForFolder(path);
         if (NS_FAILED(rv)) return rv;
         uri.Append('/');
@@ -1633,10 +1638,8 @@ NS_IMETHODIMP nsImapMailFolder::RenameLocal(const char *newName, nsIMsgFolder *p
     if (mSubFolders)
         mSubFolders->Count(&cnt);
     if (cnt > 0)
-    {
-        oldPathSpec->GetFileSpec(&dirSpec);
         rv = CreateDirectoryForFolder(dirSpec);
-    }
+
     nsFileSpec fileSpec;
     oldPathSpec->GetFileSpec(&fileSpec);
     nsLocalFolderSummarySpec oldSummarySpec(fileSpec);
@@ -2717,7 +2720,7 @@ NS_IMETHODIMP nsImapMailFolder::UpdateImapMailboxInfo(
         if (NS_SUCCEEDED(GetServer(getter_AddRefs(server))) && server)
           server->SetPerformingBiff(PR_TRUE);
         
-        SetNumNewMessages(keysToFetch.GetSize());
+         SetNumNewMessages(keysToFetch.GetSize());
       }
     }
     SyncFlags(flagState);
@@ -3174,7 +3177,7 @@ NS_IMETHODIMP nsImapMailFolder::ApplyFilterHit(nsIMsgFilter *filter, nsIMsgWindo
 
   PRBool msgIsNew = PR_TRUE;
 
-  for (PRUint32 actionIndex = 0; actionIndex < numActions && *applyMore; actionIndex++)
+  for (PRUint32 actionIndex = 0; actionIndex < numActions; actionIndex++)
   {
     nsCOMPtr<nsIMsgRuleAction> filterAction;
     filterActionList->QueryElementAt(actionIndex, NS_GET_IID(nsIMsgRuleAction), getter_AddRefs(filterAction));
@@ -3182,7 +3185,8 @@ NS_IMETHODIMP nsImapMailFolder::ApplyFilterHit(nsIMsgFilter *filter, nsIMsgWindo
       continue;
     if (NS_SUCCEEDED(filterAction->GetType(&actionType)))
     {
-      if (actionType == nsMsgFilterAction::MoveToFolder)
+      if (actionType == nsMsgFilterAction::MoveToFolder ||
+          actionType == nsMsgFilterAction::CopyToFolder)
       {
         filterAction->GetTargetFolderUri(getter_Copies(actionTargetFolderUri));
         if (actionTargetFolderUri.IsEmpty())
@@ -3249,10 +3253,47 @@ NS_IMETHODIMP nsImapMailFolder::ApplyFilterHit(nsIMsgFilter *filter, nsIMsgWindo
           *applyMore = PR_FALSE; 
         }
         break;
+        case nsMsgFilterAction::CopyToFolder:
+        {
+          nsXPIDLCString uri;
+          rv = GetURI(getter_Copies(uri));
+
+          if (NS_STATIC_CAST(const char *, actionTargetFolderUri) &&
+            strcmp(uri, actionTargetFolderUri))
+          {
+            // XXXshaver I'm not actually 100% what the right semantics are for
+            // MDNs and copied messages, but I suspect deep down inside that
+            // we probably want to suppress them only on the copies.
+            msgHdr->GetFlags(&msgFlags);
+            if (msgFlags & MSG_FLAG_MDN_REPORT_NEEDED && !isRead)
+            {
+               msgHdr->SetFlags(msgFlags & ~MSG_FLAG_MDN_REPORT_NEEDED);
+               msgHdr->OrFlags(MSG_FLAG_MDN_REPORT_SENT, &newFlags);
+            }
+
+            nsCOMPtr<nsISupportsArray> messageArray;
+            NS_NewISupportsArray(getter_AddRefs(messageArray));
+            messageArray->AppendElement(msgHdr);
+
+            nsCOMPtr<nsIMsgFolder> dstFolder;
+            rv = GetExistingFolder(actionTargetFolderUri,
+                                   getter_AddRefs(dstFolder));
+            NS_ENSURE_SUCCESS(rv, rv);
+
+            nsCOMPtr<nsIMsgCopyService> copyService =
+              do_GetService(NS_MSGCOPYSERVICE_CONTRACTID, &rv);
+            NS_ENSURE_SUCCESS(rv, rv);
+            rv = copyService->CopyMessages(this, messageArray, dstFolder,
+                                           PR_FALSE, nsnull, msgWindow, PR_FALSE);
+            NS_ENSURE_SUCCESS(rv, rv);
+          }
+        }
+        break;
         case nsMsgFilterAction::MarkRead:
         {
           nsMsgKeyArray keysToFlag;
           keysToFlag.Add(msgKey);
+          msgHdr->OrFlags(MSG_FLAG_READ, &newFlags);
           StoreImapFlags(kImapMsgSeenFlag, PR_TRUE, keysToFlag.GetArray(), keysToFlag.GetSize());
           msgIsNew = PR_FALSE;
         }
@@ -3699,8 +3740,10 @@ nsresult nsImapMailFolder::MoveIncorporatedMessage(nsIMsgDBHdr *mailHdr,
         if (imapDeleteIsMoveToTrash)
         {
         }
-         
-        destIFolder->SetFlag(MSG_FOLDER_FLAG_GOT_NEW);
+        PRBool isRead = PR_FALSE;
+        mailHdr->GetIsRead(&isRead);
+        if (!isRead)
+          destIFolder->SetFlag(MSG_FOLDER_FLAG_GOT_NEW);
         
         if (imapDeleteIsMoveToTrash)  
           err = 0;
@@ -7371,9 +7414,9 @@ NS_IMETHODIMP nsImapMailFolder::RenameClient(nsIMsgWindow *msgWindow, nsIMsgFold
     PRInt32 folderStart = newLeafName.RFindChar('/');  //internal use of hierarchyDelimiter is always '/'
     if (folderStart > 0)
     {
-        newNameString.Right(newLeafName, newLeafName.Length() - folderStart - 1);
-		CreateDirectoryForFolder(path);    //needed when we move a folder to a folder with no subfolders.
-	}	
+      newNameString.Right(newLeafName, newLeafName.Length() - folderStart - 1);
+      CreateDirectoryForFolder(path);    //needed when we move a folder to a folder with no subfolders.
+    }	
 
     // if we get here, it's really a leaf, and "this" is the parent.
     folderNameStr = newLeafName;

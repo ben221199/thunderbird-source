@@ -75,6 +75,7 @@
 #include "nsMsgSearchCore.h"
 #include "nsMailHeaders.h"
 #include "nsIMsgMailSession.h"
+#include "nsIMsgCopyService.h"
 
 static NS_DEFINE_CID(kCMailDB, NS_MAILDB_CID);
 static NS_DEFINE_CID(kIOServiceCID,              NS_IOSERVICE_CID);
@@ -1433,6 +1434,7 @@ nsParseNewMailState::nsParseNewMailState()
   m_ibuffer = nsnull;
   m_ibuffer_size = 0;
   m_ibuffer_fp = 0;
+  m_moveCoalescer = nsnull;
  }
 
 NS_IMPL_ISUPPORTS_INHERITED1(nsParseNewMailState, nsMsgMailboxParser, nsIMsgFilterHitNotify)
@@ -1633,7 +1635,8 @@ NS_IMETHODIMP nsParseNewMailState::ApplyFilterHit(nsIMsgFilter *filter, nsIMsgWi
     
     if (NS_SUCCEEDED(filterAction->GetType(&actionType)))
     {
-      if (actionType == nsMsgFilterAction::MoveToFolder)
+      if (actionType == nsMsgFilterAction::MoveToFolder ||
+          actionType == nsMsgFilterAction::CopyToFolder)
       {
         filterAction->GetTargetFolderUri(getter_Copies(actionTargetFolderUri));
         if (actionTargetFolderUri.IsEmpty())
@@ -1660,18 +1663,71 @@ NS_IMETHODIMP nsParseNewMailState::ApplyFilterHit(nsIMsgFilter *filter, nsIMsgWi
         if ((const char*)actionTargetFolderUri &&
           nsCRT::strcasecmp(m_inboxUri, actionTargetFolderUri))
         {
-          nsresult err = MoveIncorporatedMessage(msgHdr, m_mailDB, actionTargetFolderUri, filter, msgWindow);
-          if (NS_SUCCEEDED(err))
+          nsresult err;
+          nsCOMPtr<nsIRDFService> rdf(do_GetService(kRDFServiceCID, &err)); 
+          NS_ENSURE_SUCCESS(err, err);
+          nsCOMPtr<nsIRDFResource> res;
+          err = rdf->GetResource(actionTargetFolderUri, getter_AddRefs(res));
+          if (NS_FAILED(err))
+            return err;
+  
+          nsCOMPtr<nsIMsgFolder> destIFolder(do_QueryInterface(res, &err));
+          if (NS_FAILED(err))
+            return err;        
+  
+
+          if (StringBeginsWith(actionTargetFolderUri, NS_LITERAL_CSTRING("imap:")))
           {
-            if (loggingEnabled)
-              (void)filter->LogRuleHit(filterAction, msgHdr); 
-            
+            if (!m_moveCoalescer)
+              m_moveCoalescer = new nsImapMoveCoalescer(m_downloadFolder, m_msgWindow);
+            NS_ENSURE_TRUE(m_moveCoalescer, NS_ERROR_OUT_OF_MEMORY);
+            nsMsgKey msgKey;
+            (void) msgHdr->GetMessageKey(&msgKey);
+            m_moveCoalescer->AddMove(destIFolder , msgKey);
+            err = NS_OK;
+            msgIsNew = PR_FALSE;
+          }
+          else
+          {
+            err = MoveIncorporatedMessage(msgHdr, m_mailDB, destIFolder, filter, msgWindow);
             // cleanup after mailHdr in source DB because we moved the message.
             m_mailDB->RemoveHeaderMdbRow(msgHdr);
             m_msgMovedByFilter = PR_TRUE;
           }
+          if (NS_SUCCEEDED(err))
+          {
+            if (loggingEnabled)
+              (void)filter->LogRuleHit(filterAction, msgHdr); 
+          }
         }
         *applyMore = PR_FALSE; 
+        break;
+        case nsMsgFilterAction::CopyToFolder:
+        {
+          nsXPIDLCString uri;
+          rv = m_rootFolder->GetURI(getter_Copies(uri));
+
+          if (NS_STATIC_CAST(const char*, actionTargetFolderUri) &&
+            strcmp(uri, actionTargetFolderUri))
+          {
+
+            nsCOMPtr<nsISupportsArray> messageArray;
+            NS_NewISupportsArray(getter_AddRefs(messageArray));
+            messageArray->AppendElement(msgHdr);
+
+            nsCOMPtr<nsIMsgFolder> dstFolder;
+            rv = GetExistingFolder(actionTargetFolderUri,
+                                   getter_AddRefs(dstFolder));
+            NS_ENSURE_SUCCESS(rv, rv);
+
+            nsCOMPtr<nsIMsgCopyService> copyService =
+              do_GetService(NS_MSGCOPYSERVICE_CONTRACTID, &rv);
+            NS_ENSURE_SUCCESS(rv, rv);
+            rv = copyService->CopyMessages(m_rootFolder, messageArray, dstFolder,
+                                           PR_FALSE, nsnull, msgWindow, PR_FALSE);
+            NS_ENSURE_SUCCESS(rv, rv);
+          }
+        }
         break;
       case nsMsgFilterAction::MarkRead:
         msgIsNew = PR_FALSE;
@@ -1709,6 +1765,7 @@ NS_IMETHODIMP nsParseNewMailState::ApplyFilterHit(nsIMsgFilter *filter, nsIMsgWi
         msgHdr->GetMessageKey(&msgKey);
         m_mailDB->SetStringProperty(msgKey, "junkscore", junkScoreStr.get());
         m_mailDB->SetStringProperty(msgKey, "junkscoreorigin", /* ### should this be plugin? */"plugin");
+        break;
       }
       case nsMsgFilterAction::DeleteFromPop3Server:
         {
@@ -1765,7 +1822,7 @@ NS_IMETHODIMP nsParseNewMailState::ApplyFilterHit(nsIMsgFilter *filter, nsIMsgWi
       default:
         break;
       }
-      if (loggingEnabled && actionType != nsMsgFilterAction::MoveToFolder && actionType != nsMsgFilterAction::Delete)  
+      if (loggingEnabled && actionType != nsMsgFilterAction::MoveToFolder && actionType != nsMsgFilterAction::Delete)
         (void)filter->LogRuleHit(filterAction, msgHdr); 
     }
   }
@@ -1790,6 +1847,9 @@ int nsParseNewMailState::MarkFilteredMessageRead(nsIMsgDBHdr *msgHdr)
 
 nsresult nsParseNewMailState::EndMsgDownload()
 {
+  if (m_moveCoalescer)
+    m_moveCoalescer->PlaybackMoves();
+
   // need to do this for all folders that had messages filtered into them
   PRUint32 serverCount = m_filterTargetFolders.Count();
   nsresult rv;
@@ -1816,23 +1876,12 @@ nsresult nsParseNewMailState::EndMsgDownload()
 
 nsresult nsParseNewMailState::MoveIncorporatedMessage(nsIMsgDBHdr *mailHdr, 
                                                       nsIMsgDatabase *sourceDB, 
-                                                      const nsACString& destFolderUri,
+                                                      nsIMsgFolder *destIFolder,
                                                       nsIMsgFilter *filter,
                                                       nsIMsgWindow *msgWindow)
 {
   nsresult err = 0;
   nsIOFileStream *destFile;
-  
-  nsCOMPtr<nsIRDFService> rdf(do_GetService(kRDFServiceCID, &err)); 
-  NS_ENSURE_SUCCESS(err, err);
-  nsCOMPtr<nsIRDFResource> res;
-  err = rdf->GetResource(destFolderUri, getter_AddRefs(res));
-  if (NS_FAILED(err))
-    return err;
-  
-  nsCOMPtr<nsIMsgFolder> destIFolder(do_QueryInterface(res, &err));
-  if (NS_FAILED(err))
-    return err;        
   
   // check if the destination is a real folder (by checking for null parent)
   // and if it can file messages (e.g., servers or news folders can't file messages).
@@ -1850,7 +1899,7 @@ nsresult nsParseNewMailState::MoveIncorporatedMessage(nsIMsgDBHdr *mailHdr,
   }
   
   nsCOMPtr <nsIFileSpec> destIFolderSpec;
-  
+
   nsFileSpec destFolderSpec;
   destIFolder->GetPath(getter_AddRefs(destIFolderSpec));
   err = destIFolderSpec->GetFileSpec(&destFolderSpec);

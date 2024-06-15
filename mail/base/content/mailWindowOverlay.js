@@ -1011,9 +1011,8 @@ function MsgCreateFilter()
   var msgHdr = gDBView.hdrForFirstSelectedMessage;
   var headerParser = Components.classes["@mozilla.org/messenger/headerparser;1"].getService(Components.interfaces.nsIMsgHeaderParser);
   var emailAddress = headerParser.extractHeaderAddressMailboxes(null, msgHdr.author);
-
   if (emailAddress)
-    top.MsgFilters(emailAddress);
+    top.MsgFilters(emailAddress, null);
 }
 
 
@@ -1376,9 +1375,45 @@ function MsgCanFindAgain()
   return canFindAgainInPage();
 }
 
-function MsgFilters(emailAddress)
+function MsgFilters(emailAddress, folder)
 {
-    var preselectedFolder = GetFirstSelectedMsgFolder();
+    if (!folder)
+    {
+      // try to determine the folder from the selected message. 
+      if (gDBView)
+      {
+        try
+        {
+          var msgHdr = gDBView.hdrForFirstSelectedMessage;
+          var accountKey = msgHdr.accountKey;
+          if (accountKey.length > 0)
+          {
+            var account = accountManager.getAccount(accountKey);
+            if (account)
+            {
+              server = account.incomingServer;
+              if (server)
+                folder = server.rootFolder;
+            }
+          }
+        }
+        catch (ex) {}
+      }
+      if (!folder)
+      {
+        folder = GetFirstSelectedMsgFolder();
+        // if this is the local folders account, check if the default account
+        // defers to it; if so, we'll use the default account so the simple case
+        // of one pop3 account with the global inbox creates filters for the right server.
+        if (folder && folder.server.type == "none" && folder.server.isDeferredTo)
+        {
+          var defaultServer = accountManager.defaultAccount.incomingServer;
+          if (defaultServer.rootMsgFolder == folder.server.rootFolder)
+            folder = defaultServer.rootFolder;
+        }
+      }
+
+    }
     var args;
     if (emailAddress)
     {
@@ -1386,7 +1421,7 @@ function MsgFilters(emailAddress)
          launch the filterEditor dialog
          and prefill that with the emailAddress */
          
-      var curFilterList = preselectedFolder.getFilterList(msgWindow);
+      var curFilterList = folder.getFilterList(msgWindow);
       args = {filterList: curFilterList};
       args.filterName = emailAddress;
       window.openDialog("chrome://messenger/content/FilterEditor.xul", "", 
@@ -1403,7 +1438,7 @@ function MsgFilters(emailAddress)
     }
     else  // just launch filterList dialog
     {
-      args = { refresh: false, folder: preselectedFolder };
+      args = { refresh: false, folder: folder };
       MsgFilterList(args);
     }
 }
@@ -1742,6 +1777,11 @@ function MsgAddAllToAddressBook() {}
 function SpaceHit(event)
 {
   var contentWindow = window.top._content;
+  var rssiframe = contentWindow.document.getElementById('_mailrssiframe');
+
+  // if we are displaying an RSS article, we really want to scroll the nested iframe
+  if (rssiframe)
+    contentWindow = rssiframe.contentWindow;
 
   if (event && event.shiftKey) {
     // if at the start of the message, go to the previous one
@@ -1891,7 +1931,7 @@ function GetFolderMessages()
     // should shift click get mail for all (authenticated) accounts?
     // see bug #125885
     if (!folder.server.isDeferredTo)
-    folder = defaultAccountRootFolder;
+     folder = defaultAccountRootFolder;
   }
 
   var folders = new Array(1);
@@ -2330,7 +2370,8 @@ function HandleMDNResponse(aUrl)
     return;
 
   var DNTHeader = mimeHdr.extractHeader("Disposition-Notification-To", false);
-  if (!DNTHeader)
+  var oldDNTHeader = mimeHdr.extractHeader("Return-Receipt-To", false);
+  if (!DNTHeader && !oldDNTHeader)
     return;
  
   // Everything looks good so far, let's generate the MDN response.

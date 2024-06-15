@@ -154,12 +154,14 @@ NS_IMPL_THREADSAFE_ISUPPORTS5(nsMsgAccountManager,
 
 nsMsgAccountManager::nsMsgAccountManager() :
   m_accountsLoaded(PR_FALSE),
+  m_folderCacheNeedsClearing(PR_FALSE),
   m_defaultAccount(nsnull),
   m_emptyTrashInProgress(PR_FALSE),
   m_cleanupInboxInProgress(PR_FALSE),
   m_haveShutdown(PR_FALSE),
   m_shutdownInProgress(PR_FALSE),
   m_userAuthenticated(PR_FALSE),
+  m_loadingVirtualFolders(PR_FALSE),
   m_prefs(0)
 {
 }
@@ -223,8 +225,12 @@ nsresult nsMsgAccountManager::Shutdown()
       msgDBService->UnregisterPendingListener(m_virtualFolderListeners[i]);
   }
   if(m_msgFolderCache)
+  {
+    if (m_folderCacheNeedsClearing)
+      m_msgFolderCache->Clear();
+    m_folderCacheNeedsClearing = PR_FALSE;
     WriteToFolderCache(m_msgFolderCache);
-
+  }
   (void)ShutdownServers();
   (void)UnloadAccounts();
   
@@ -1473,8 +1479,6 @@ nsMsgAccountManager::LoadAccounts()
       token = nsCRT::strtok(newStr, ",", &newStr);
     }
 
-    
-    LoadVirtualFolders();
     nsCOMPtr<nsIMsgMailSession> mailSession = do_GetService(NS_MSGMAILSESSION_CONTRACTID, &rv); 
 
     if (NS_SUCCEEDED(rv))
@@ -2672,12 +2676,14 @@ nsresult nsMsgAccountManager::GetVirtualFoldersFile(nsCOMPtr<nsILocalFile>& file
   return rv;
 }
 
-nsresult nsMsgAccountManager::LoadVirtualFolders()
+NS_IMETHODIMP nsMsgAccountManager::LoadVirtualFolders()
 {
   nsCOMPtr <nsILocalFile> file;
   GetVirtualFoldersFile(file);
   if (!file)
     return NS_ERROR_FAILURE;
+
+  m_loadingVirtualFolders = PR_TRUE;
 
   nsresult rv;
   nsCOMPtr<nsIMsgDBService> msgDBService = do_GetService(NS_MSGDB_SERVICE_CONTRACTID, &rv);
@@ -2740,9 +2746,15 @@ nsresult nsMsgAccountManager::LoadVirtualFolders()
               rv = db->GetDBFolderInfo(getter_AddRefs(dbFolderInfo));
               else
                 continue;
-              rv =  parentFolder->AddSubfolder(currentFolderNameStr, getter_AddRefs(childFolder));
-
+              
+              parentFolder->AddSubfolder(currentFolderNameStr, getter_AddRefs(childFolder));
               virtualFolder->SetFlag(MSG_FOLDER_FLAG_VIRTUAL);
+              if (childFolder)
+              {
+                nsCOMPtr<nsISupports> childSupports(do_QueryInterface(childFolder));
+                nsCOMPtr<nsISupports> folderSupports(do_QueryInterface(parentFolder));
+                parentFolder->NotifyItemAdded(folderSupports, childSupports, "folderView");              
+              }
             }
           }
         }
@@ -2768,6 +2780,9 @@ nsresult nsMsgAccountManager::LoadVirtualFolders()
               msgDBService->RegisterPendingListener(realFolder, dbListener);
             }
           }
+          else // this folder is useless
+          {
+          }
         }
         else if (dbFolderInfo && Substring(buffer, 0, 6).Equals("terms="))
         {
@@ -2782,6 +2797,9 @@ nsresult nsMsgAccountManager::LoadVirtualFolders()
       }
     }
   }
+
+  m_loadingVirtualFolders = PR_FALSE;
+
   return rv;
 }
 
@@ -2834,21 +2852,24 @@ NS_IMETHODIMP nsMsgAccountManager::SaveVirtualFolders()
             rv = msgFolder->GetDBFolderInfoAndDB(getter_AddRefs(dbFolderInfo), getter_AddRefs(db)); // force db to get created.
             if (dbFolderInfo)
             {
-            nsXPIDLCString srchFolderUri;
-            nsXPIDLCString searchTerms; 
-            PRBool searchOnline = PR_FALSE;
-            dbFolderInfo->GetBooleanProperty("searchOnline", &searchOnline, PR_FALSE);
-            dbFolderInfo->GetCharPtrProperty("searchFolderUri", getter_Copies(srchFolderUri));
-            dbFolderInfo->GetCharPtrProperty("searchStr", getter_Copies(searchTerms));
-            folderRes->GetValueConst(&uri);
-            WriteLineToOutputStream("uri=", uri, outputStream);
-            WriteLineToOutputStream("scope=", srchFolderUri.get(), outputStream);
-            WriteLineToOutputStream("terms=", searchTerms.get(), outputStream);
-            WriteLineToOutputStream("searchOnline=", searchOnline ? "true" : "false", outputStream);
+              nsXPIDLCString srchFolderUri;
+              nsXPIDLCString searchTerms; 
+              PRBool searchOnline = PR_FALSE;
+              dbFolderInfo->GetBooleanProperty("searchOnline", &searchOnline, PR_FALSE);
+              dbFolderInfo->GetCharPtrProperty("searchFolderUri", getter_Copies(srchFolderUri));
+              dbFolderInfo->GetCharPtrProperty("searchStr", getter_Copies(searchTerms));
+              folderRes->GetValueConst(&uri);
+              if (!srchFolderUri.IsEmpty() && !searchTerms.IsEmpty())
+              {
+                WriteLineToOutputStream("uri=", uri, outputStream);
+                WriteLineToOutputStream("scope=", srchFolderUri.get(), outputStream);
+                WriteLineToOutputStream("terms=", searchTerms.get(), outputStream);
+                WriteLineToOutputStream("searchOnline=", searchOnline ? "true" : "false", outputStream);
+              }
+            }
           }
         }
       }
-   }
    }
    if (outputStream)
     outputStream->Close();
@@ -2875,7 +2896,7 @@ NS_IMETHODIMP nsMsgAccountManager::OnItemAdded(nsISupports *parentItem, nsISuppo
   folder->GetFlags(&folderFlags);
   nsresult rv = NS_OK;
   // need to make sure this isn't happening during loading of virtualfolders.dat
-  if (folderFlags & MSG_FOLDER_FLAG_VIRTUAL)
+  if (folderFlags & MSG_FOLDER_FLAG_VIRTUAL && !m_loadingVirtualFolders)
   {
     // When a new virtual folder is added, need to create a db Listener for it.
     nsCOMPtr<nsIMsgDBService> msgDBService = do_GetService(NS_MSGDB_SERVICE_CONTRACTID, &rv);
@@ -2910,6 +2931,7 @@ NS_IMETHODIMP nsMsgAccountManager::OnItemRemoved(nsISupports *parentItem, nsISup
   // just kick out with a success code if the item in question is not a folder
   if (!folder)
     return NS_OK;
+  m_folderCacheNeedsClearing = PR_TRUE;
   nsresult rv = NS_OK;
   PRUint32 folderFlags;
   folder->GetFlags(&folderFlags);

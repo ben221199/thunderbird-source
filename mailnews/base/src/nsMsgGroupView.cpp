@@ -76,21 +76,16 @@ nsMsgGroupView::~nsMsgGroupView()
 
 NS_IMETHODIMP nsMsgGroupView::Open(nsIMsgFolder *aFolder, nsMsgViewSortTypeValue aSortType, nsMsgViewSortOrderValue aSortOrder, nsMsgViewFlagsTypeValue aViewFlags, PRInt32 *aCount)
 {
-  nsCOMPtr <nsISimpleEnumerator> headers;
-  nsresult rv = aFolder->GetMsgDatabase(nsnull, getter_AddRefs(m_db));
+  nsresult rv = nsMsgDBView::Open(aFolder, aSortType, aSortOrder, aViewFlags, aCount);
   NS_ENSURE_SUCCESS(rv, rv);
-  m_db->AddListener(this);
-
-  m_viewFlags = aViewFlags;
-  m_sortOrder = aSortOrder;
-  m_sortType = aSortType;
 
   nsCOMPtr <nsIDBFolderInfo> dbFolderInfo;
   PersistFolderInfo(getter_AddRefs(dbFolderInfo));
 
+  nsCOMPtr <nsISimpleEnumerator> headers;
   rv = m_db->EnumerateMessages(getter_AddRefs(headers));
   NS_ENSURE_SUCCESS(rv, rv);
-  m_folder = aFolder;
+
   return OpenWithHdrs(headers, aSortType, aSortOrder, aViewFlags, aCount);
 }
 
@@ -104,6 +99,32 @@ NS_IMETHODIMP nsMsgGroupView::Open(nsIMsgFolder *aFolder, nsMsgViewSortTypeValue
 
 NS_IMETHODIMP nsMsgGroupView::Close()
 {
+  if (m_db && m_sortType == nsMsgViewSortType::byDate)
+  {
+    nsCOMPtr <nsIDBFolderInfo> dbFolderInfo;
+    nsresult rv = m_db->GetDBFolderInfo(getter_AddRefs(dbFolderInfo));
+    if (dbFolderInfo)
+    {
+      PRUint32 expandFlags = 0;
+      PRUint32 num = GetSize();
+	  
+      for (PRUint32 i = 0; i < num; i++) 
+      {
+        if (m_flags[i] & MSG_VIEW_FLAG_ISTHREAD && ! (m_flags[i] & MSG_FLAG_ELIDED))
+        {
+          nsCOMPtr <nsIMsgDBHdr> msgHdr;
+          nsresult rv = GetMsgHdrForViewIndex(i, getter_AddRefs(msgHdr));
+          if (msgHdr)
+          {
+             nsHashKey *hashKey = AllocHashKeyForHdr(msgHdr);
+             if (hashKey)
+               expandFlags |=  1 << ((nsPRUint32Key *)hashKey)->GetValue();
+          }
+        }
+      }
+      dbFolderInfo->SetUint32Property("dateGroupFlags", expandFlags);
+    }
+  }
   // enumerate m_groupsTable releasing the thread objects.
   m_groupsTable.Enumerate(ReleaseThread);
   return nsMsgThreadedDBView::Close();
@@ -290,7 +311,7 @@ nsMsgGroupThread *nsMsgGroupView::AddHdrToThread(nsIMsgDBHdr *msgHdr, PRBool *pN
   }
   delete hashKey;
   if (foundThread)
-    foundThread->AddChild(msgHdr, nsnull, PR_FALSE, nsnull /* announcer */);
+    foundThread->AddChildFromGroupView(msgHdr, this);
   // check if new hdr became thread root
   if (!newThread && foundThread->m_keys[0] == msgKey)
   {
@@ -331,9 +352,18 @@ NS_IMETHODIMP nsMsgGroupView::OpenWithHdrs(nsISimpleEnumerator *aHeaders, nsMsgV
       AddHdrToThread(msgHdr, &notUsed);
     }
   }
-  *aCount = m_keys.GetSize();
+  PRUint32 expandFlags = 0;
   PRUint32 viewFlag = (m_sortType == nsMsgViewSortType::byDate) ? MSG_VIEW_FLAG_DUMMY : 0;
-  //go through the view updating the flags for threads with more than one message...
+  if (viewFlag)
+  {
+    nsCOMPtr <nsIDBFolderInfo> dbFolderInfo;
+    nsresult rv = m_db->GetDBFolderInfo(getter_AddRefs(dbFolderInfo));
+    if (dbFolderInfo)
+      dbFolderInfo->GetUint32Property("dateGroupFlags", &expandFlags, 0);
+
+  }
+  // go through the view updating the flags for threads with more than one message...
+  // and if grouped by date, expanding threads that were expanded before.
   for (PRUint32 viewIndex = 0; viewIndex < m_keys.GetSize(); viewIndex++)
   {
     nsCOMPtr <nsIMsgThread> thread;
@@ -344,8 +374,19 @@ NS_IMETHODIMP nsMsgGroupView::OpenWithHdrs(nsISimpleEnumerator *aHeaders, nsMsgV
       thread->GetNumChildren(&numChildren);
       if (numChildren > 1 || viewFlag)
         OrExtraFlag(viewIndex, viewFlag | MSG_VIEW_FLAG_HASCHILDREN);
+      if (expandFlags)
+      {
+        nsMsgGroupThread *groupThread = NS_STATIC_CAST(nsMsgGroupThread *, (nsIMsgThread *) thread);
+        if (expandFlags & (1 << groupThread->m_threadKey))
+        {
+          PRUint32 numExpanded;
+          ExpandByIndex(viewIndex, &numExpanded);
+          viewIndex += numExpanded;
+        }
+      }
     }
   }
+  *aCount = m_keys.GetSize();
   return rv;
 }
 
@@ -377,6 +418,7 @@ nsresult nsMsgGroupView::OnNewHeader(nsIMsgDBHdr *newHdr, nsMsgKey aParentKey, P
       if (! (m_flags[threadIndex] & MSG_FLAG_ELIDED))
       {
         PRUint32 msgIndexInThread = thread->m_keys.IndexOf(msgKey);
+        PRBool insertedAtThreadRoot = !msgIndexInThread;
         if (!msgIndexInThread && GroupViewUsesDummyRow())
           msgIndexInThread++;
 
@@ -413,7 +455,7 @@ nsresult nsMsgGroupView::OnNewHeader(nsIMsgDBHdr *newHdr, nsMsgKey aParentKey, P
         }
         // the call to NoteChange() has to happen after we add the key
         // as NoteChange() will call RowCountChanged() which will call our GetRowCount()
-        NoteChange((newThread && GroupViewUsesDummyRow()) ? threadIndex + msgIndexInThread - 1 : threadIndex + msgIndexInThread,
+        NoteChange((insertedAtThreadRoot && GroupViewUsesDummyRow()) ? threadIndex + msgIndexInThread - 1 : threadIndex + msgIndexInThread,
                       numRowsInserted, nsMsgViewNotificationCode::insertOrDelete);
 
         numRowsToInvalidate = msgIndexInThread;

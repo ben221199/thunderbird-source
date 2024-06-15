@@ -42,7 +42,7 @@
 #include "nsIWebProgress.h"
 #include "nsIDOMWindowInternal.h"
 #include "nsPIDOMWindow.h"
-
+#include "nsIXULBrowserWindow.h"
 #include "nsMsgStatusFeedback.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsIDocumentViewer.h"
@@ -56,6 +56,8 @@
 #include "nsIMsgMailNewsUrl.h"
 #include "nsIMimeMiscStatus.h"
 #include "nsIMsgWindow.h"
+#include "nsMsgUtils.h"
+#include "nsIMsgHdr.h"
 
 #define MSGFEEDBACK_TIMER_INTERVAL 500
 
@@ -71,6 +73,8 @@ nsMsgStatusFeedback::nsMsgStatusFeedback() :
     if (NS_SUCCEEDED(rv))
         bundleService->CreateBundle("chrome://messenger/locale/messenger.properties",
                                     getter_AddRefs(mBundle));
+
+    m_msgLoadedAtom = do_GetAtom("msgLoaded");
 }
 
 nsMsgStatusFeedback::~nsMsgStatusFeedback()
@@ -169,6 +173,22 @@ nsMsgStatusFeedback::OnStateChange(nsIWebProgress* aWebProgress,
               if (hdrSink)
                 hdrSink->OnEndMsgDownload(mailnewsUrl);
             }
+            // get the folder and notify that the msg has been loaded. We're 
+            // using NotifyPropertyFlagChanged. To be completely consistent,
+            // we'd send a similar notification that the old message was
+            // unloaded.
+            nsXPIDLCString spec;
+            nsCOMPtr <nsIMsgDBHdr> msgHdr;
+            nsCOMPtr <nsIMsgFolder> msgFolder;
+            mailnewsUrl->GetFolder(getter_AddRefs(msgFolder));
+            nsCOMPtr <nsIMsgMessageUrl> msgUrl = do_QueryInterface(mailnewsUrl);
+            if (msgUrl)
+            {
+              // not sending this notification is not a fatal error...
+              (void) msgUrl->GetMessageHeader(getter_AddRefs(msgHdr));
+              if (msgFolder && msgHdr)
+                msgFolder->NotifyPropertyFlagChanged(msgHdr, m_msgLoadedAtom, 0, 1);
+            }
           }
         }
       }
@@ -215,6 +235,15 @@ nsMsgStatusFeedback::ShowStatusString(const PRUnichar *status)
   if (mStatusFeedback)
     mStatusFeedback->ShowStatusString(status);
 	return NS_OK;
+}
+
+NS_IMETHODIMP
+nsMsgStatusFeedback::SetStatusString(const PRUnichar *status)
+{
+  nsCOMPtr <nsIXULBrowserWindow> xulBrowserWindow = do_QueryInterface(mStatusFeedback);
+  if (xulBrowserWindow)
+    xulBrowserWindow->SetJSDefaultStatus(status);
+  return NS_OK;
 }
 
 NS_IMETHODIMP

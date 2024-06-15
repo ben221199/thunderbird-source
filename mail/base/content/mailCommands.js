@@ -19,18 +19,24 @@
 
 function DoRDFCommand(dataSource, command, srcArray, argumentArray)
 {
-	var commandResource = RDF.GetResource(command);
-	if(commandResource) {
-      try {
-		dataSource.DoCommand(srcArray, commandResource, argumentArray);
-      }
-      catch(e) { 
-        if (command == "http://home.netscape.com/NC-rdf#NewFolder") {
-          throw(e); // so that the dialog does not automatically close.
-        }
-        dump("Exception : In mail commands\n");
-      }
+  var commandResource = RDF.GetResource(command);
+  if (commandResource) {
+    try {
+      if (!argumentArray)
+        argumentArray = Components.classes["@mozilla.org/supports-array;1"]
+                        .createInstance(Components.interfaces.nsISupportsArray);
+
+        if (argumentArray)
+          argumentArray.AppendElement(msgWindow);
+	          dataSource.DoCommand(srcArray, commandResource, argumentArray);
     }
+    catch(e) { 
+      if (command == "http://home.netscape.com/NC-rdf#NewFolder") {
+        throw(e); // so that the dialog does not automatically close.
+      }
+      dump("Exception : In mail commands\n");
+    }
+  }
 }
 
 function GetNewMessages(selectedFolders, server, compositeDataSource)
@@ -77,7 +83,7 @@ function getBestIdentity(identities, optionalHint)
     var tempID;
     for (id = 0; id < identities.Count(); id++) { 
       tempID = identities.GetElementAt(id).QueryInterface(Components.interfaces.nsIMsgIdentity);
-      if (optionalHint.search(tempID.email) >= 0) {
+      if (optionalHint.search(tempID.email.toLowerCase()) >= 0) {
         identity = tempID;
         break;
       }
@@ -98,7 +104,7 @@ function getBestIdentity(identities, optionalHint)
         // extract out the partial domain
         var start = tempID.email.lastIndexOf("@"); // be sure to include the @ sign in our search to reduce the risk of false positives
   
-        if (optionalHint.search(tempID.email.slice(start, tempID.email.length)) >= 0) {
+        if (optionalHint.search(tempID.email.slice(start, tempID.email.length).toLowerCase()) >= 0) {
           identity = tempID;
           break;
         }
@@ -163,9 +169,8 @@ function ComposeMessage(type, format, folder, messageArray)
 			{
         type = msgComposeType.NewsPost;
         newsgroup = folder.folderURL;
-			}
+			}  
 
-      // 
       identity = getIdentityForServer(server);
       // dump("identity = " + identity + "\n");
 		}
@@ -213,31 +218,35 @@ function ComposeMessage(type, format, folder, messageArray)
 		for (var i = 0; i < messageArray.length; i ++)
 		{	
 			var messageUri = messageArray[i];
-
       var hdr = messenger.messageServiceFromURI(messageUri).messageURIToMsgHdr(messageUri);
       var hintForIdentity = (type == msgComposeType.Template) ? hdr.author : hdr.recipients + hdr.ccList;
 
-        if (folder)
-          server = folder.server;
-        if (server)
-          identity = getIdentityForServer(server, hintForIdentity);
+      if (folder)
+        server = folder.server;
 
-        if (!identity || hintForIdentity.search(identity.email) < 0)
-        {
-      var accountKey = hdr.accountKey;
-      if (accountKey.length > 0)
-      {
-        var account = accountManager.getAccount(accountKey);
-        if (account)
-            {
-          server = account.incomingServer;
       if (server)
         identity = getIdentityForServer(server, hintForIdentity);
-            }
+
+      if (!identity || hintForIdentity.search(identity.email) < 0)
+      {
+        var accountKey = hdr.accountKey;
+        if (accountKey.length > 0)
+        {
+          var account = accountManager.getAccount(accountKey);
+          if (account)
+          {
+            server = account.incomingServer;
+            if (server)
+              identity = getIdentityForServer(server, hintForIdentity);
           }
         }
+      }
 
-			if (type == msgComposeType.Reply || type == msgComposeType.ReplyAll || type == msgComposeType.ForwardInline ||
+      var messageID = hdr.messageId;
+      var messageIDScheme = messageID.split(":")[0];
+      if ((messageIDScheme == 'http' || messageIDScheme == 'https') &&  "openComposeWindowForRSSArticle" in this) 
+        openComposeWindowForRSSArticle(messageID, hdr, type); 
+      else	if (type == msgComposeType.Reply || type == msgComposeType.ReplyAll || type == msgComposeType.ForwardInline ||
 				type == msgComposeType.ReplyToGroup || type == msgComposeType.ReplyToSender || 
 				type == msgComposeType.ReplyToSenderAndGroup ||
 				type == msgComposeType.Template || type == msgComposeType.Draft)
@@ -255,7 +264,7 @@ function ComposeMessage(type, format, folder, messageArray)
 			}
 		}
 
-		if (type == msgComposeType.ForwardAsAttachment)
+		if (type == msgComposeType.ForwardAsAttachment && uri)
 			msgComposeService.OpenComposeWindow(null, uri, type, format, identity, msgWindow);
 	}
 	else
@@ -636,7 +645,11 @@ function analyzeFolderForJunk()
 
   var messages = new Array(count)
   for (var i = 0; i < count; i++) {
-    messages[i] = view.getURIForViewIndex(i);
+    try
+    {
+      messages[i] = view.getURIForViewIndex(i);
+    }
+    catch (ex) {} // blow off errors here - dummy headers will fail
   }
   analyzeMessages(messages);
 }
@@ -697,9 +710,13 @@ function deleteJunkInFolder()
   var clearedSelection = false;
   
   // select the junk messages
+  var messageUri;
   for (var i = 0; i < count; i++) 
   {
-    var messageUri = view.getURIForViewIndex(i);
+    try {
+      messageUri = view.getURIForViewIndex(i);
+    }
+    catch (ex) {continue;} // blow off errors for dummy rows
     var msgHdr = messenger.messageServiceFromURI(messageUri).messageURIToMsgHdr(messageUri);
     var junkScore = msgHdr.getStringProperty("junkscore"); 
     var isJunk = ((junkScore != "") && (junkScore != "0"));

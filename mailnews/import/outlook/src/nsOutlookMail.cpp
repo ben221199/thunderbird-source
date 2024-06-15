@@ -84,7 +84,7 @@ typedef struct {
 #define	kNoMultiLine	-1
 
 static MAPIFields	gMapiFields[] = {
-	{ 35, kIsMultiLine, PR_COMMENT},
+	{ 35, kIsMultiLine, PR_BODY},
 	{ 6, kNoMultiLine, PR_BUSINESS_TELEPHONE_NUMBER},
 	{ 7, kNoMultiLine, PR_HOME_TELEPHONE_NUMBER},
 	{ 25, kNoMultiLine, PR_COMPANY_NAME},
@@ -360,8 +360,11 @@ void nsOutlookMail::SetDefaultContentType(CMapiMessage &msg, nsCString &cType)
   // here. Same thing when conten type is not being set at all.
   if (msg.GetMimeContentLen())
   {
-    // If content type is not multipart/alternative, return.
-    if (nsCRT::strcasecmp(msg.GetMimeContent(), "multipart/alternative"))
+    // If content type is not multipart/alternative or mixed or related, return.
+    // for a multipart alternative with attachments, we get multipart mixed!
+    if (nsCRT::strcasecmp(msg.GetMimeContent(), "multipart/alternative")
+      && nsCRT::strcasecmp(msg.GetMimeContent(), "multipart/mixed")
+      && nsCRT::strcasecmp(msg.GetMimeContent(), "multipart/related"))
       return;
 
     // For multipart/alternative, if no body or boundary,

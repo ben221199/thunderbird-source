@@ -269,7 +269,7 @@ nsresult nsFolderCompactState::ShowStatusMsg(const PRUnichar *aMsg)
   {
     m_window->GetStatusFeedback(getter_AddRefs(statusFeedback));
     if (statusFeedback && aMsg)
-      return statusFeedback->ShowStatusString (aMsg);
+      return statusFeedback->SetStatusString (aMsg);
   }
   return NS_OK;
 }
@@ -431,7 +431,8 @@ nsFolderCompactState::FinishCompact()
   // and set the summary valid again.
   if(dbFolderInfo)
     dbFolderInfo->SetExpungedBytes(0);
-  m_db->Close(PR_TRUE);
+  if (m_db)
+    m_db->Close(PR_TRUE);
   m_db = nsnull;
 
   m_folder->NotifyCompactCompleted();
@@ -455,6 +456,17 @@ nsFolderCompactState::ReleaseFolderLock()
   return result;
 }
 
+void nsFolderCompactState::ShowDoneStatus()
+{
+  if (m_folder)
+  {
+  nsXPIDLString statusString;
+  nsresult rv = m_folder->GetStringWithFolderNameFromBundle("compactingDone", getter_Copies(statusString));
+  if (statusString && NS_SUCCEEDED(rv))
+    ShowStatusMsg(statusString);
+}
+}
+
 nsresult
 nsFolderCompactState::CompactNextFolder()
 {
@@ -474,7 +486,10 @@ nsFolderCompactState::CompactNextFolder()
          folder->CompactAllOfflineStores(m_window, m_offlineFolderArray);
      }
      else
+     {
+       ShowDoneStatus();
        return rv;
+     }
        
    } 
    nsCOMPtr<nsIMsgFolder> folder = do_QueryElementAt(m_folderArray,
@@ -482,6 +497,8 @@ nsFolderCompactState::CompactNextFolder()
 
    if (NS_SUCCEEDED(rv) && folder)
      rv = Compact(folder, m_compactingOfflineFolders, m_window);                    
+    else
+      ShowDoneStatus();
    return rv;
 }
 
@@ -748,6 +765,9 @@ nsOfflineStoreCompactState::FinishCompact()
   m_db->GetDBFolderInfo(getter_AddRefs(dbFolderInfo));
   if (dbFolderInfo)
     dbFolderInfo->SetExpungedBytes(0);
+  // this forces the m_folder to update mExpungedBytes from the db folder info.
+  PRUint32 expungedBytes;
+  m_folder->GetExpungedBytes(&expungedBytes);
   m_folder->UpdateSummaryTotals(PR_TRUE);
   m_db->SetSummaryValid(PR_TRUE);
   m_db->Commit(nsMsgDBCommitType::kLargeCommit);

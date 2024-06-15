@@ -296,10 +296,16 @@ NS_IMETHODIMP nsMsgDBFolder::EndFolderLoading(void)
     if (!hasNewMessages)
     {
       for (PRUint32 keyIndex = 0; keyIndex < m_newMsgs.GetSize(); keyIndex++)
-        mDatabase->AddToNewList(m_newMsgs[keyIndex]);
-
-      hasNewMessages = (m_newMsgs.GetSize() > 0);
-      m_newMsgs.RemoveAll();
+      {
+        PRBool isRead = PR_FALSE;
+        mDatabase->IsRead(m_newMsgs[keyIndex], &isRead);
+        if (!isRead)
+        {
+          mDatabase->AddToNewList(m_newMsgs[keyIndex]);
+          hasNewMessages = PR_TRUE;
+        }
+      }
+     m_newMsgs.RemoveAll();
     }
     SetHasNewMessages(hasNewMessages);
   }
@@ -1267,12 +1273,14 @@ nsMsgDBFolder::MarkAllMessagesRead(void)
   // ### fix me need nsIMsgWindow
   nsresult rv = GetDatabase(nsnull);
   
+  m_newMsgs.RemoveAll();
   if(NS_SUCCEEDED(rv))
   {
     EnableNotifications(allMessageCountNotifications, PR_FALSE, PR_TRUE /*dbBatching*/);
     rv = mDatabase->MarkAllRead(nsnull);
     EnableNotifications(allMessageCountNotifications, PR_TRUE, PR_TRUE /*dbBatching*/);
   }
+  SetHasNewMessages(PR_FALSE);
   return rv;
 }
 
@@ -1828,6 +1836,13 @@ nsMsgDBFolder::CallFilterPlugins(nsIMsgWindow *aMsgWindow, PRBool *aFiltersRun)
   PRInt32 spamLevel = 0;
   nsXPIDLCString whiteListAbURI;
 
+  nsresult rv = GetServer(getter_AddRefs(server));
+  NS_ENSURE_SUCCESS(rv, rv); 
+  
+  nsXPIDLCString serverType; 
+  server->GetType(getter_Copies(serverType));
+  
+
   // if this is the junk folder, or the trash folder
   // don't analyze for spam, because we don't care
   //
@@ -1838,15 +1853,15 @@ nsMsgDBFolder::CallFilterPlugins(nsIMsgWindow *aMsgWindow, PRBool *aFiltersRun)
   // if it's a public imap folder, or another users
   // imap folder, don't analyze for spam, because
   // it's not ours to analyze
-  if (mFlags & (MSG_FOLDER_FLAG_JUNK | MSG_FOLDER_FLAG_TRASH |
+  if ( !(nsCRT::strcmp(serverType.get(), "rss")) || 
+       (mFlags & (MSG_FOLDER_FLAG_JUNK | MSG_FOLDER_FLAG_TRASH |
                MSG_FOLDER_FLAG_SENTMAIL | MSG_FOLDER_FLAG_QUEUE |
                MSG_FOLDER_FLAG_DRAFTS | MSG_FOLDER_FLAG_TEMPLATES |
                MSG_FOLDER_FLAG_IMAP_PUBLIC | MSG_FOLDER_FLAG_IMAP_OTHER_USER)
-       && !(mFlags & MSG_FOLDER_FLAG_INBOX))
+       && !(mFlags & MSG_FOLDER_FLAG_INBOX)) )
     return NS_OK;
 
-  nsresult rv = GetServer(getter_AddRefs(server));
-  NS_ENSURE_SUCCESS(rv, rv); 
+
   rv = server->GetSpamSettings(getter_AddRefs(spamSettings));
   nsCOMPtr <nsIMsgFilterPlugin> filterPlugin;
   server->GetSpamFilterPlugin(getter_AddRefs(filterPlugin));
@@ -2073,6 +2088,12 @@ nsresult nsMsgDBFolder::PromptForCachePassword(nsIMsgIncomingServer *server, nsI
         passwordCorrect = password.Equals(NS_ConvertUCS2toUTF8(passwordFound).get());
         if (!passwordCorrect)
           server->SetPassword("");
+        else
+        {
+          nsCOMPtr<nsIMsgAccountManager> accountManager = do_GetService(NS_MSGACCOUNTMANAGER_CONTRACTID);
+          if (accountManager)
+            accountManager->SetUserNeedsToAuthenticate(PR_FALSE);
+        }
       }
     }
   }
@@ -3091,7 +3112,12 @@ NS_IMETHODIMP nsMsgDBFolder::AddSubfolder(const nsAString& name,
   nsCOMPtr<nsIMsgFolder> folder(do_QueryInterface(res, &rv));
   if (NS_FAILED(rv))
     return rv;
-  
+
+  nsFileSpec path;
+  nsMsgDBFolder *dbFolder = NS_STATIC_CAST(nsMsgDBFolder *, NS_STATIC_CAST(nsIMsgFolder *, folder.get()));
+  rv = dbFolder->CreateDirectoryForFolder(path);
+  NS_ENSURE_SUCCESS(rv, rv);
+
   folder->GetFlags((PRUint32 *)&flags);
   
   flags |= MSG_FOLDER_FLAG_MAIL;
@@ -3208,7 +3234,7 @@ nsMsgDBFolder::AddDirectorySeparator(nsFileSpec &path)
 
 /* Finds the directory associated with this folder.  That is if the path is
    c:\Inbox, it will return c:\Inbox.sbd if it succeeds.  If that path doesn't
-   currently exist then it will create it
+   currently exist then it will create it. Path is strictly an out parameter.
   */
 nsresult nsMsgDBFolder::CreateDirectoryForFolder(nsFileSpec &path)
 {

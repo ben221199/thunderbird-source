@@ -36,7 +36,7 @@
  * ***** END LICENSE BLOCK ***** */
 
 pref("general.useragent.vendor", "Thunderbird");
-pref("general.useragent.vendorSub",
+pref("general.useragent.vendorSub", 
 #expand __APP_VERSION__
 );
 
@@ -50,7 +50,7 @@ pref("app.version",
 pref("app.build_id", 
 #expand __BUILD_ID__
 );
-pref("app.extensions.version", "0.9");
+pref("app.extensions.version", "1.0");
 
 #ifdef XP_MACOSX
 pref("mail.biff.animate_dock_icon", false);
@@ -145,6 +145,7 @@ pref("addressbook.throbber.url","chrome://messenger-region/locale/region.propert
 
 // show a broken image icon for blocked remote image requests
 pref("network.image.imageBehavior", 2);
+pref("network.cookie.cookieBehavior", 2); // 0-Accept, 1-dontAcceptForeign, 2-dontUse, 3-p3p
 
 // thunderbird shows size in KB instead of lines by default
 pref("news.show_size_in_lines", false);

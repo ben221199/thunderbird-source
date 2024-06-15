@@ -30,7 +30,7 @@
 # may use your version of this file under either the MPL or the
 # GPL.
 #
-CONFIG_CVS_ID = "@(#) $RCSfile: config.mk,v $ $Revision: 1.7.22.1 $ $Date: 2004/10/15 21:13:52 $ $Name: THUNDERBIRD_0_9_RELEASE $"
+CONFIG_CVS_ID = "@(#) $RCSfile: config.mk,v $ $Revision: 1.7.22.1 $ $Date: 2004/10/15 21:13:52 $ $Name: THUNDERBIRD_1_0_RELEASE $"
 
 #
 #  Override TARGETS variable so that only shared libraries

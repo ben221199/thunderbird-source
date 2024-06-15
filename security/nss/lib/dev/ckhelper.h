@@ -41,7 +41,7 @@
 #define CKHELPER_H
 
 #ifdef DEBUG
-static const char CKHELPER_CVS_ID[] = "@(#) $RCSfile: ckhelper.h,v $ $Revision: 1.17 $ $Date: 2002/08/30 22:56:58 $ $Name: THUNDERBIRD_0_9_RELEASE $";
+static const char CKHELPER_CVS_ID[] = "@(#) $RCSfile: ckhelper.h,v $ $Revision: 1.17 $ $Date: 2002/08/30 22:56:58 $ $Name: THUNDERBIRD_1_0_RELEASE $";
 #endif /* DEBUG */
 
 #ifndef NSSCKT_H

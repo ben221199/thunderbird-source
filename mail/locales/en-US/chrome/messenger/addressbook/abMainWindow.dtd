@@ -35,9 +35,12 @@
 <!ENTITY printCardViewCmd.key                           "P">
 <!ENTITY printAddressBook.label                         "Print Address Book...">
 <!ENTITY printAddressBook.accesskey                     "A">
-<!ENTITY quitApplicationCmd.label                       "Exit">
-<!ENTITY quitApplicationCmd.key                         "Q">
-<!ENTITY quitApplicationCmd.accesskey                   "x">
+
+<!ENTITY quitApplicationCmdWin.label                    "Exit"> 
+<!ENTITY quitApplicationCmdWin.accesskey                "x">
+<!ENTITY quitApplicationCmd.label                       "Quit"> 
+<!ENTITY quitApplicationCmd.accesskey                   "Q">
+<!ENTITY quitApplicationCmd.key "Q">
 
 <!-- Edit Menu -->
 <!ENTITY editMenu.label                                 "Edit">
@@ -118,6 +121,8 @@
 <!ENTITY preferencesCmd.label                           "Options...">
 <!ENTITY preferencesCmd.key                             "O">
 <!ENTITY preferencesCmd.accesskey                       "O">
+<!ENTITY preferencesCmdUnix.label                       "Preferences">
+<!ENTITY preferencesCmdUnix.accesskey                   "n"> 
 
 <!-- Help Menu -->
 <!ENTITY helpMenu.label                                 "Help">
@@ -158,7 +163,7 @@
 <!ENTITY dirTreeHeader.label                            "Address Books">
 
 <!-- Search Bar -->
-<!ENTITY SearchNameOrEmail.label                        "Name or Email contains:">
+<!ENTITY SearchNameOrEmail.label                        "Name or Email">
 <!ENTITY SearchNameOrEmail.accesskey                    "N">
 <!ENTITY clearButton.label                              "Clear">
 <!ENTITY clearButton.accesskey                          "C">
@@ -166,6 +171,7 @@
 <!ENTITY advancedButton.label                           "Advanced...">
 <!ENTITY advancedButton.accesskey                       "A">
 <!ENTITY advancedButton.tooltip                         "Advanced address search">
+<!ENTITY quickSearchCmd.key                             "k">
 
 <!-- Results Pane -->
 <!ENTITY GeneratedName.label                            "Name">

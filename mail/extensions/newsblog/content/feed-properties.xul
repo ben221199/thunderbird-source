@@ -40,7 +40,11 @@
   xmlns:nc="http://home.netscape.com/NC-rdf#"
   xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
   title="&window.title;"
+#ifdef XP_MACOSX
+  style="width: 55em;"
+#else
   style="width: 30em;"
+#endif
   buttons="accept,cancel"
   onload="onLoad();"
   ondialogaccept="return onOk();">
@@ -74,7 +78,7 @@
               datasources="rdf:msgaccountmanager rdf:mailnewsfolders"
               ref="...">           
             <menupopup>
-              <menuitem  id="rssAccountMenuItem"/>
+              <menuitem id="rssAccountMenuItem"/>
               <menuseparator/>
             </menupopup>
 
@@ -84,14 +88,17 @@
                 <menupopup>
                   <menu uri="..."
                         class="folderMenuItem menu-iconic"
-                        oncommand="PickedMsgFolder(event.target,'selectFolder')"
                         SpecialFolder="rdf:http://home.netscape.com/NC-rdf#SpecialFolder"
                         BiffState="rdf:http://home.netscape.com/NC-rdf#BiffState"
                         IsServer="rdf:http://home.netscape.com/NC-rdf#IsServer"
                         IsSecure="rdf:http://home.netscape.com/NC-rdf#IsSecure"
                         ServerType="rdf:http://home.netscape.com/NC-rdf#ServerType"
                         label="rdf:http://home.netscape.com/NC-rdf#Name">
-			              <menupopup class="menulist-menupopup"/>
+			              <menupopup class="menulist-menupopup">
+                      <menuitem label="&choosethisfolder.label;"
+                                oncommand="PickedMsgFolder(event.target.parentNode.parentNode,'selectFolder')"/>
+                      <menuseparator/>
+                    </menupopup>
                   </menu>
                 </menupopup>
               </rule>

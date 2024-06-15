@@ -1017,7 +1017,7 @@ function CreateFilter(emailAddressNode)
   {
      var emailAddress = emailAddressNode.getAttribute("emailAddress");
      if (emailAddress){
-         top.MsgFilters(emailAddress);
+         top.MsgFilters(emailAddress, GetFirstSelectedMsgFolder());
      }
   }
 }
@@ -1354,6 +1354,21 @@ function ClearEditMessageButton()
   var editBox = document.getElementById("editMessageBox");
   if (editBox)
     editBox.collapsed = true;
+}
+
+// CopyWebsiteAddress takes the website address title button, extracts
+// the website address we stored in there and copies it to the clipboard
+function CopyWebsiteAddress(websiteAddressNode)
+{
+  if (websiteAddressNode)
+  {
+    var websiteAddress = websiteAddressNode.getAttribute("value");
+
+    var contractid = "@mozilla.org/widget/clipboardhelper;1";
+    var iid = Components.interfaces.nsIClipboardHelper;
+    var clipboard = Components.classes[contractid].getService(iid);
+    clipboard.copyString(websiteAddress);
+  }
 }
 
 var attachmentAreaDNDObserver = {

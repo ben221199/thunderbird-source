@@ -76,8 +76,13 @@ Feed.prototype.download = function(parseItems, aCallback) {
   var uri = Components.classes["@mozilla.org/network/standard-url;1"].
                       createInstance(Components.interfaces.nsIURI);
   uri.spec = this.url;
-  if (!uri.schemeIs("http"))
+  if (!(uri.schemeIs("http") || uri.schemeIs("https")))
     return this.onParseError(this); // simulate an invalid feed error
+
+  // Before we try to download the feed, make sure we aren't already processing the feed
+  // by looking up the url in our feed cache
+  if (gFzFeedCache[this.url])
+    return; // don't do anything, the feed is already in use
 
   this.request = Components.classes["@mozilla.org/xmlextras/xmlhttprequest;1"]
                  .createInstance(Components.interfaces.nsIXMLHttpRequest);
@@ -114,13 +119,22 @@ Feed.onProgress = function(event) {
 }
 
 Feed.onDownloadError = function(event) {
+  var request = event.target;
+  var url = request.channel.originalURI.spec;
+  var feed = gFzFeedCache[url];
   if (feed.downloadCallback)
     feed.downloadCallback.downloaded(feed, kNewsBlogRequestFailure);
+
+  gFzFeedCache[url] = "";
 }
 
 Feed.prototype.onParseError = function(feed) {
   if (feed && feed.downloadCallback)
-    feed.downloadCallback.downloaded(feed, kNewsBlogInvalidFeed);
+  {
+    if (feed.downloadCallback)
+      feed.downloadCallback.downloaded(feed, kNewsBlogInvalidFeed);
+    gFzFeedCache[feed.url] = "";
+  }
 }
 
 Feed.prototype.url getter = function() {
@@ -181,11 +195,11 @@ Feed.prototype.parse = function() {
   if (!this.request.responseText) {
     return this.onParseError(this);
   }
-  else if (this.request.responseText.search(/="http:\/\/purl\.org\/rss\/1\.0\/"/) != -1) {
+  else if (this.request.responseText.search(/=(['"])http:\/\/purl\.org\/rss\/1\.0\/\1/) != -1) {
     debug(this.url + " is an RSS 1.x (RDF-based) feed");
     this.parseAsRSS1();
   }
-  else if (this.request.responseText.search(/="http:\/\/purl.org\/atom\/ns#"/) != -1) {
+  else if (this.request.responseText.search(/=(['"])http:\/\/purl.org\/atom\/ns#\1/) != -1) {
     debug(this.url + " is an Atom feed");
     this.parseAsAtom();
   }
@@ -231,12 +245,18 @@ Feed.prototype.parseAsRSS2 = function() {
   this.itemsToStore = new Array();
   this.itemsToStoreIndex = 0; 
 
+  var converter = Components
+    .classes["@mozilla.org/intl/scriptableunicodeconverter"]
+      .createInstance(Components.interfaces.nsIScriptableUnicodeConverter);
+
+  converter.charset = 'UTF-8';
+
   for ( var i=0 ; i<itemNodes.length ; i++ ) {
     var itemNode = itemNodes[i];
     var item = new FeedItem();
     item.feed = this;
 
-    item.characterSet = this.request.responseXML.characterSet ? this.request.responseXML.characterSet : "UTF-8";
+    item.characterSet = "UTF-8";
 
     var link = getNodeValue(itemNode.getElementsByTagName("link")[0]);
 
@@ -247,12 +267,20 @@ Feed.prototype.parseAsRSS2 = function() {
         guidNode.getAttribute('isPermaLink') == 'false' ? false : true;
     }
 
+    // getNodeValue returns unicode strings...
+    // we need to do the proper conversion on these before we call into
+    // item.Store();
+
     item.url = link ? link : (guid && isPermaLink) ? guid : null;
     item.id = guid;
     item.description = getNodeValue(itemNode.getElementsByTagName("description")[0]);
-    item.title = getNodeValue(itemNode.getElementsByTagName("title")[0])
+    item.title = converter.ConvertFromUnicode(getNodeValue(itemNode.getElementsByTagName("title")[0])
                  || (item.description ? item.description.substr(0, 150) : null)
-                 || item.title;
+                 || item.title);
+    // do this after we potentially assign item.description into item.title
+    // because that potential assignment assumes the value is in unicode still
+    item.description = converter.ConvertFromUnicode(item.description);
+
     item.author = getNodeValue(itemNode.getElementsByTagName("author")[0]
                                || itemNode.getElementsByTagName("creator")[0])
                   || this.title
@@ -263,11 +291,11 @@ Feed.prototype.parseAsRSS2 = function() {
 
     var content = getNodeValue(itemNode.getElementsByTagNameNS(RSS_CONTENT_NS, "encoded")[0]);
     if (content)
-      item.content = content;
+      item.content = converter.ConvertFromUnicode(content);
 
     this.itemsToStore[i] = item;
   }
-  
+
   this.storeNextItem();
 }
 
@@ -278,10 +306,12 @@ Feed.prototype.parseAsRSS1 = function() {
   var ds = Components
              .classes["@mozilla.org/rdf/datasource;1?name=in-memory-datasource"]
                .createInstance(Components.interfaces.nsIRDFDataSource);
+
   rdfparser.parseString(ds, this.request.channel.URI, this.request.responseText);
 
   // Get information about the feed as a whole.
   var channel = ds.GetSource(RDF_TYPE, RSS_CHANNEL, true);
+
   this.title = this.title || getRDFTargetValue(ds, channel, RSS_TITLE);
   this.description = getRDFTargetValue(ds, channel, RSS_DESCRIPTION);
 
@@ -291,24 +321,30 @@ Feed.prototype.parseAsRSS1 = function() {
   this.invalidateItems();
 
   var items = ds.GetTarget(channel, RSS_ITEMS, true);
-  //items = items.QueryInterface(Components.interfaces.nsIRDFContainer);
-  items = rdfcontainer.MakeSeq(ds, items);
-  items = items.GetElements();
+  if (items)
+    items = rdfcontainer.MakeSeq(ds, items).GetElements();
+  
   // If the channel doesn't list any items, look for resources of type "item"
   // (a hacky workaround for some buggy feeds).
-  if (!items.hasMoreElements())
+  if (!items || !items.hasMoreElements())
     items = ds.GetSources(RDF_TYPE, RSS_ITEM, true);
 
   this.itemsToStore = new Array();
   this.itemsToStoreIndex = 0; 
   var index = 0; 
 
+  var converter = Components
+    .classes["@mozilla.org/intl/scriptableunicodeconverter"]
+      .createInstance(Components.interfaces.nsIScriptableUnicodeConverter);
+
+  converter.charset = "UTF-8";
+
   while (items.hasMoreElements()) {
     var itemResource = items.getNext().QueryInterface(Components.interfaces.nsIRDFResource);
     var item = new FeedItem();
     item.feed = this;
 
-    item.characterSet = this.request.responseXML.characterSet ? this.request.responseXML.characterSet : "UTF-8";
+    item.characterSet = "UTF-8";
 
     // Prefer the value of the link tag to the item URI since the URI could be
     // a relative URN.
@@ -331,8 +367,9 @@ Feed.prototype.parseAsRSS1 = function() {
 
     this.itemsToStore[index++] = item;
   }
-  
-  this.storeNextItem();
+
+  if (index) // at least one item to store?
+    this.storeNextItem();
 }
 
 Feed.prototype.parseAsAtom = function() {
@@ -362,7 +399,7 @@ Feed.prototype.parseAsAtom = function() {
     var item = new FeedItem();
     item.feed = this;
 
-    item.characterSet = this.request.responseXML.characterSet ? this.request.responseXML.characterSet : "UTF-8";
+    item.characterSet = "UTF-8";
 
     var url;
     var links = itemNode.getElementsByTagName("link");
@@ -381,12 +418,14 @@ Feed.prototype.parseAsAtom = function() {
                  || (item.description ? item.description.substr(0, 150) : null)
                  || item.title;
 
-    var author = itemNode.getElementsByTagName("author")[0]
+    var authorEl = itemNode.getElementsByTagName("author")[0]
                  || itemNode.getElementsByTagName("contributor")[0]
                  || channel.getElementsByTagName("author")[0];
-    if (author) {
-      var name = getNodeValue(author.getElementsByTagName("name")[0]);
-      var email = getNodeValue(author.getElementsByTagName("email")[0]);
+    var author = "";
+
+    if (authorEl) {
+      var name = getNodeValue(authorEl.getElementsByTagName("name")[0]);
+      var email = getNodeValue(authorEl.getElementsByTagName("email")[0]);
       if (name)
         author = name + (email ? " <" + email + ">" : "");
       else if (email)
@@ -475,6 +514,7 @@ Feed.prototype.removeInvalidItems = function() {
 Feed.prototype.storeNextItem = function()
 {
   var item = this.itemsToStore[this.itemsToStoreIndex]; 
+
   item.store();
   item.markValid();
 
@@ -494,6 +534,9 @@ Feed.prototype.storeNextItem = function()
   }
   else
   {    
+    // now that we are done parsing the feed, remove the feed from our feed cache
+    gFzFeedCache[item.feed.url] = "";
+
     item.feed.removeInvalidItems();
 
     // let's be sure to flush any feed item changes back to disk

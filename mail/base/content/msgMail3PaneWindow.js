@@ -165,7 +165,7 @@ var folderListener = {
             if(folderResource) {
               var folderURI = folderResource.Value;
               if(currentURI == folderURI) {
-                UpdateStatusMessageCounts(folder);
+                UpdateStatusMessageCounts(gMsgFolderSelected);
               }
             }
           }
@@ -823,6 +823,7 @@ function delayedOnLoadMessenger()
   InitPanes();
 
   accountManager.setSpecialFolders();
+  accountManager.loadVirtualFolders();
   accountManager.addIncomingServerListener(gThreePaneIncomingServerListener);
 
   AddToSession();
@@ -953,16 +954,16 @@ function loadStartFolder(initialUri)
         // the folder. i.e. the user just clicked on a news folder they aren't subscribed to from a browser
         // the news url comes in here.   
 
-        SelectFolder(startFolder.URI);        
 
-        // Perform biff on the server to check for new mail, except for imap
-        // or a pop3 account that is deferred or deferred to,
+        // Perform biff on the server to check for new mail, except for 
+        // a pop3 account that is deferred or deferred to,
         // or the case where initialUri is non-null (non-startup)
         if (!initialUri && isLoginAtStartUpEnabled && gLoadStartFolder
-            && defaultServer.type != "imap" && !defaultServer.isDeferredTo &&
+             && !defaultServer.isDeferredTo &&
             defaultServer.msgFolder == defaultServer.rootMsgFolder)
               defaultServer.PerformBiff(msgWindow);        
 
+        SelectFolder(startFolder.URI);        
         // because the "open" state persists, we'll call
         // PerformExpand() for all servers that are open at startup.
         // note, because of the "news.persist_server_open_state_in_folderpane" pref

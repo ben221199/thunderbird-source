@@ -31,7 +31,7 @@
 # may use your version of this file under either the MPL or the
 # GPL.
 #
-$cvs_id = '@(#) $RCSfile: ckapi.perl,v $ $Revision: 1.6 $ $Date: 2003/04/17 00:07:06 $ $Name: THUNDERBIRD_0_9_RELEASE $';
+$cvs_id = '@(#) $RCSfile: ckapi.perl,v $ $Revision: 1.6 $ $Date: 2003/04/17 00:07:06 $ $Name: THUNDERBIRD_1_0_RELEASE $';
 
 $copyright = '/* THIS IS A GENERATED FILE */
 /* 

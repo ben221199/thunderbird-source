@@ -72,6 +72,8 @@ static NS_DEFINE_CID(kImapUrlCID, NS_IMAPURL_CID);
 static NS_DEFINE_CID(kCMailboxUrl, NS_MAILBOXURL_CID);
 static NS_DEFINE_CID(kCNntpUrlCID, NS_NNTPURL_CID);
 
+#define ILLEGAL_FOLDER_CHARS ";#"
+
 #define NS_PASSWORDMANAGER_CATEGORY "passwordmanager"
 static PRBool gInitPasswordManager = PR_FALSE;
 
@@ -263,7 +265,7 @@ inline PRUint32 StringHash(const nsAutoString& str)
 nsresult NS_MsgHashIfNecessary(nsCAutoString &name)
 {
   NS_NAMED_LITERAL_CSTRING (illegalChars, 
-                            FILE_PATH_SEPARATOR FILE_ILLEGAL_CHARACTERS);
+                            FILE_PATH_SEPARATOR FILE_ILLEGAL_CHARACTERS ILLEGAL_FOLDER_CHARS);
   nsCAutoString str(name);
 
   // Given a filename, make it safe for filesystem
@@ -306,7 +308,7 @@ nsresult NS_MsgHashIfNecessary(nsCAutoString &name)
 // because MAX_LEN is defined rather conservatively in the first place.
 nsresult NS_MsgHashIfNecessary(nsAutoString &name)
 {
-  PRInt32 illegalCharacterIndex = name.FindCharInSet(FILE_PATH_SEPARATOR FILE_ILLEGAL_CHARACTERS);
+  PRInt32 illegalCharacterIndex = name.FindCharInSet(FILE_PATH_SEPARATOR FILE_ILLEGAL_CHARACTERS ILLEGAL_FOLDER_CHARS);
   char hashedname[9];
   if (illegalCharacterIndex == kNotFound) 
   {
@@ -692,6 +694,7 @@ nsresult IsRFC822HeaderFieldName(const char *aHdr, PRBool *aResult)
   return NS_OK;
 }
 
+// Warning, currently this routine only works for the Junk Folder
 nsresult
 GetOrCreateFolder(const nsACString &aURI, nsIUrlListener *aListener)
 {
@@ -743,8 +746,19 @@ GetOrCreateFolder(const nsACString &aURI, nsIUrlListener *aListener)
       folderPath->Exists(&exists);
     if (!exists)
     {
+      // Hack to work around a localization bug with the Junk Folder.
+      // Please see Bug #270261 for more information...
+      nsXPIDLString localizedJunkName; 
+      msgFolder->GetName(getter_Copies(localizedJunkName));
+
+      // force the junk folder name to be Junk so it gets created on disk correctly...
+      msgFolder->SetName(NS_LITERAL_STRING("Junk").get());
+
       rv = msgFolder->CreateStorageIfMissing(aListener);
       NS_ENSURE_SUCCESS(rv,rv);
+
+      // now restore the localized folder name...
+      msgFolder->SetName(localizedJunkName.get());
 
       // XXX TODO
       // JUNK MAIL RELATED

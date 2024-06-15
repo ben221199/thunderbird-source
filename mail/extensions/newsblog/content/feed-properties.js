@@ -54,8 +54,12 @@ function onLoad()
 
 function onOk()
 {
-  window.arguments[0].feedLocation = document.getElementById('feedLocation').value;
-  window.arguments[0].folderURI = document.getElementById('selectFolder').value;
+  var feedLocation = document.getElementById('feedLocation').value;
+  // trim leading and trailing white space from the url
+  feedLocation = feedLocation.replace( /^\s+/, "").replace( /\s+$/, ""); 
+
+  window.arguments[0].feedLocation = feedLocation;
+  window.arguments[0].folderURI = document.getElementById('selectFolder').getAttribute("uri");; 
   window.arguments[0].quickMode = document.getElementById('quickMode').checked;
   window.arguments[0].result = true;
 

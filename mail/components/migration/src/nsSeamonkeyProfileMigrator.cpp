@@ -140,8 +140,8 @@ void nsSeamonkeyProfileMigrator::CopyNextFolder()
     }
     // fire a timer to handle the next one. 
     mFileIOTimer = do_CreateInstance("@mozilla.org/timer;1");
-    // if the progress = 100% let's pause for a second or two with a finished progessmeter before we move on
-    mFileIOTimer->InitWithCallback(NS_STATIC_CAST(nsITimerCallback *, this), percentage == 100 ? 500 : 0, nsITimer::TYPE_ONE_SHOT);
+    if (mFileIOTimer)
+      mFileIOTimer->InitWithCallback(NS_STATIC_CAST(nsITimerCallback *, this), percentage == 100 ? 500 : 0, nsITimer::TYPE_ONE_SHOT);
   } else
     EndCopyFolders();
   
@@ -486,6 +486,10 @@ nsSeamonkeyProfileMigrator::TransformPreferences(const nsAString& aSourcePrefFil
   ReadBranch("ldap_2.servers.", psvc, ldapservers);
   ReadBranch("mailnews.labels.", psvc, labelPrefs);
 
+  // the signature file prefs may be paths to files in the seamonkey profile path
+  // so we need to copy them over and fix these paths up before we write them out to the new prefs.js
+  CopySignatureFiles(identities, psvc);
+
   // certain mail prefs may actually be absolute paths instead of profile relative paths
   // we need to fix these paths up before we write them out to the new prefs.js
   CopyMailFolders(servers, psvc);
@@ -545,6 +549,55 @@ nsresult nsSeamonkeyProfileMigrator::CopyAddressBookDirectories(nsVoidArray* aLd
 
   NOTIFY_OBSERVERS(MIGRATION_ITEMAFTERMIGRATE, index.get());
 
+  return NS_OK;
+}
+
+
+nsresult nsSeamonkeyProfileMigrator::CopySignatureFiles(nsVoidArray* aIdentities, nsIPrefService* aPrefService)
+{
+  nsresult rv = NS_OK;
+
+  PRUint32 count = aIdentities->Count();
+  for (PRUint32 i = 0; i < count; ++i) 
+  {
+    PrefBranchStruct* pref = (PrefBranchStruct*)aIdentities->ElementAt(i);
+    nsDependentCString prefName (pref->prefName);
+
+    // a partial fix for bug #255043
+    // if the user's signature file from seamonkey lives in the 
+    // seamonkey profile root, we'll copy it over to the new 
+    // thunderbird profile root and thenn set the pref to the new value
+    // note, this doesn't work for multiple signatures that live
+    // below the seamonkey profile root
+    if (StringEndsWith(prefName, nsDependentCString(".sig_file")))
+    {
+      // turn the pref into a nsILocalFile
+      nsCOMPtr<nsILocalFile> srcSigFile = do_CreateInstance(NS_LOCAL_FILE_CONTRACTID);
+      srcSigFile->SetPersistentDescriptor(nsDependentCString(pref->stringValue));
+
+      nsCOMPtr<nsIFile> targetSigFile;
+      rv = mTargetProfile->Clone(getter_AddRefs(targetSigFile));
+      NS_ENSURE_SUCCESS(rv, rv); 
+
+      // now make the copy
+      PRBool exists; 
+      srcSigFile->Exists(&exists);
+      if (exists)
+      {
+        nsAutoString leafName;
+        srcSigFile->GetLeafName(leafName);
+        srcSigFile->CopyTo(targetSigFile,leafName); // will fail if we've already copied a sig file here
+        targetSigFile->Append(leafName);
+
+        // now write out the new descriptor
+        nsCAutoString descriptorString;
+        nsCOMPtr<nsILocalFile> localFile = do_QueryInterface(targetSigFile);
+        localFile->GetPersistentDescriptor(descriptorString);
+        nsCRT::free(pref->stringValue);
+        pref->stringValue = ToNewCString(descriptorString);
+      }   
+    }
+  }
   return NS_OK;
 }
 
@@ -618,6 +671,11 @@ nsresult nsSeamonkeyProfileMigrator::CopyMailFolders(nsVoidArray* aMailServers, 
           nsXPIDLCString hostName; 
           serverBranch->GetCharPref("hostname", getter_Copies(hostName));
           targetMailFolder->Append(NS_ConvertASCIItoUCS2(hostName));  
+
+          // we should make sure the host name based directory we are going to migrate 
+          // the accounts into is unique. This protects against the case where the user
+          // has multiple servers with the same host name.
+          targetMailFolder->CreateUnique(nsIFile::DIRECTORY_TYPE, 0777);
         }
 
         rv = RecursiveCopy(sourceMailFolder, targetMailFolder);

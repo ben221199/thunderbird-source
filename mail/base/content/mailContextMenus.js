@@ -120,7 +120,11 @@ function fillThreadPaneContextMenu()
   EnableMenuItem("threadPaneContext-labels", (numSelected >= 1));
   EnableMenuItem("threadPaneContext-mark", (numSelected >= 1));
   SetupSaveAsMenuItem("threadPaneContext-saveAs", numSelected, false);
+#ifdef XP_MACOSX
+  SetupPrintPreviewMenuItem("threadPaneContext-printpreview", numSelected, true);
+#else
   SetupPrintPreviewMenuItem("threadPaneContext-printpreview", numSelected, false);
+#endif
   SetupPrintMenuItem("threadPaneContext-print", numSelected, false);
   SetupDeleteMenuItem("threadPaneContext-delete", numSelected, false);
   SetupAddSenderToABMenuItem("threadPaneContext-addSenderToAddressBook", numSelected, false);
@@ -332,7 +336,8 @@ function SetupRenameMenuItem(folderResource, numSelected, isServer, serverType, 
 {
   var msgFolder = folderResource.QueryInterface(Components.interfaces.nsIMsgFolder);
   var folderTree = GetFolderTree();
-  var isSpecialFolder = !(specialFolder == "none" || (specialFolder == "Junk" && CanRenameDeleteJunkMail(msgFolder.URI)));
+  var isSpecialFolder = !(specialFolder == "none" || (specialFolder == "Junk" && CanRenameDeleteJunkMail(msgFolder.URI))
+                                                  || (specialFolder == "Virtual") );
   var canRename = GetFolderAttribute(folderTree, folderResource, "CanRename") == "true";
 
   ShowMenuItem("folderPaneContext-rename", (numSelected <= 1) && !isServer && !isSpecialFolder && canRename);
@@ -349,7 +354,8 @@ function SetupRemoveMenuItem(folderResource, numSelected, isServer, serverType, 
 {
   var msgFolder = folderResource.QueryInterface(Components.interfaces.nsIMsgFolder);
   var isMail = serverType != 'nntp';
-  var isSpecialFolder = !(specialFolder == "none" || (specialFolder == "Junk" && CanRenameDeleteJunkMail(msgFolder.URI)));
+  var isSpecialFolder = !(specialFolder == "none" || (specialFolder == "Junk" && CanRenameDeleteJunkMail(msgFolder.URI))
+                                                  || (specialFolder == "Virtual") );
   //Can't currently delete Accounts or special folders.
   var showRemove = (numSelected <=1) && (isMail && !isSpecialFolder) && !isServer;
 
@@ -461,7 +467,12 @@ function fillMessagePaneContextMenu()
   SetupLabelsMenuItem("messagePaneContext-labels", numSelected, (numSelected == 0 || hideMailItems));
   SetupMarkMenuItem("messagePaneContext-mark", numSelected, (numSelected == 0 || hideMailItems));
   SetupSaveAsMenuItem("messagePaneContext-saveAs", numSelected, (numSelected == 0 || hideMailItems));
+#ifdef XP_MACOSX
+  SetupPrintPreviewMenuItem("messagePaneContext-printpreview", numSelected, true);
+#else
   SetupPrintPreviewMenuItem("messagePaneContext-printpreview", numSelected, (numSelected == 0 || hideMailItems));
+#endif
+
   SetupPrintMenuItem("messagePaneContext-print", numSelected, (numSelected == 0 || hideMailItems));
   if (numSelected == 0 || hideMailItems)
     ShowMenuItem("messagePaneContext-delete", false)
