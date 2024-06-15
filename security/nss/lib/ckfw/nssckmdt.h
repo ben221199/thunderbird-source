@@ -35,7 +35,7 @@
 #define NSSCKMDT_H
 
 #ifdef DEBUG
-static const char NSSCKMDT_CVS_ID[] = "@(#) $RCSfile: nssckmdt.h,v $ $Revision: 1.3 $ $Date: 2002/03/29 07:34:20 $ $Name: THUNDERBIRD_0_7_2_RELEASE $";
+static const char NSSCKMDT_CVS_ID[] = "@(#) $RCSfile: nssckmdt.h,v $ $Revision: 1.3 $ $Date: 2002/03/29 07:34:20 $ $Name: THUNDERBIRD_0_7_3_RELEASE $";
 #endif /* DEBUG */
 
 /*
