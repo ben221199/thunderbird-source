@@ -1,0 +1,2 @@
+Adding client.mk options from /cygdrive/c/build/trees/src/mozilla/.mozconfig:
+    MOZ_THUNDERBIRD=1
