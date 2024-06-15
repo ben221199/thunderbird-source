@@ -1,4 +1,2 @@
-Adding client.mk options from /debiandev/devbeds/sarge/home/asac/mozilla-thunderbird-snapshot/tmp/ee/mozilla/.mozconfig:
+Adding client.mk options from /builds/src07/mozilla/.mozconfig:
     MOZ_THUNDERBIRD=1
-    BUILD_OFFICIAL=1
-    MOZILLA_OFFICIAL=1

@@ -30,6 +30,8 @@
 #include "nsPrimitiveHelpers.h"
 #include "nsXPIDLString.h"
 #include "prmem.h"
+#include "nsIObserverService.h"
+#include "nsIServiceManager.h"
 
 #include "nsOS2Uni.h"
 
@@ -57,10 +59,19 @@ nsClipboard::nsClipboard() : nsBaseClipboard()
   RegisterClipboardFormat(kURLMime);
   RegisterClipboardFormat(kNativeImageMime);
   RegisterClipboardFormat(kNativeHTMLMime);
+
+  // Register for a shutdown notification so that we can flush data
+  // to the OS clipboard.
+  nsCOMPtr<nsIObserverService> observerService =
+    do_GetService("@mozilla.org/observer-service;1");
+  if (observerService)
+    observerService->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, PR_FALSE);
 }
 
 nsClipboard::~nsClipboard()
 {}
+
+NS_IMPL_ISUPPORTS_INHERITED1(nsClipboard, nsBaseClipboard, nsIObserver)
 
 nsresult nsClipboard::SetNativeClipboardData(PRInt32 aWhichClipboard)
 {
@@ -378,10 +389,15 @@ ULONG nsClipboard::GetFormatID(const char *aMimeStr)
   return RegisterClipboardFormat(aMimeStr);
 }
 
-NS_IMETHODIMP nsClipboard::ForceDataToClipboard(PRInt32 aWhichClipboard)
+// nsIObserver
+NS_IMETHODIMP
+nsClipboard::Observe(nsISupports *aSubject, const char *aTopic,
+                     const PRUnichar *aData)
 {
+  // This will be called on shutdown.
+
   // make sure we have a good transferable
-  if (!mTransferable || aWhichClipboard != kGlobalClipboard)
+  if (!mTransferable)
     return NS_ERROR_FAILURE;
 
   if (WinOpenClipbrd(0/*hab*/)) {

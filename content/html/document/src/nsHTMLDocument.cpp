@@ -606,35 +606,6 @@ nsHTMLDocument::UseWeakDocTypeDefault(PRInt32& aCharsetSource,
 }
 
 PRBool
-nsHTMLDocument::TryChannelCharset(nsIChannel *aChannel,
-                                  PRInt32& aCharsetSource,
-                                  nsACString& aCharset)
-{
-  if(kCharsetFromChannel <= aCharsetSource) {
-    return PR_TRUE;
-  }
-
-  if (aChannel) {
-    nsCAutoString charsetVal;
-    nsresult rv = aChannel->GetContentCharset(charsetVal);
-    if (NS_SUCCEEDED(rv)) {
-      nsCOMPtr<nsICharsetAlias> calias(do_GetService(kCharsetAliasCID));
-      if (calias) {
-        nsCAutoString preferred;
-        rv = calias->GetPreferred(charsetVal,
-                                  preferred);
-        if(NS_SUCCEEDED(rv)) {
-          aCharset = preferred;
-          aCharsetSource = kCharsetFromChannel;
-          return PR_TRUE;
-        }
-      }
-    }
-  }
-  return PR_FALSE;
-}
-
-PRBool
 nsHTMLDocument::TryDefaultCharset( nsIMarkupDocumentViewer* aMarkupDV,
                                    PRInt32& aCharsetSource,
                                    nsACString& aCharset)
@@ -830,6 +801,7 @@ nsHTMLDocument::StartDocumentLoad(const char* aCommand,
   if (IsXHTML()) {
     charsetSource = kCharsetFromDocTypeDefault;
     charset = NS_LITERAL_CSTRING("UTF-8");
+    TryChannelCharset(aChannel, charsetSource, charset);
   } else {
     charsetSource = kCharsetUninitialized;
 
@@ -1396,9 +1368,13 @@ nsHTMLDocument::CreateElement(const nsAString& aTagName,
                               nsIDOMElement** aReturn)
 {
   *aReturn = nsnull;
+  nsresult rv;
 
-  nsresult rv = nsContentUtils::CheckQName(aTagName, PR_FALSE);
-  NS_ENSURE_SUCCESS(rv, rv);
+  // if we are in quirks, don't validate the tag name
+  if (mCompatMode != eCompatibility_NavQuirks){
+    rv = nsContentUtils::CheckQName(aTagName, PR_FALSE);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }  
 
   nsAutoString tmp(aTagName);
 

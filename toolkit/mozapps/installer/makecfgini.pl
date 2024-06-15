@@ -89,6 +89,7 @@ $userAgentShort   = $ENV{WIZ_userAgentShort};
 $xpinstallVersion = $ENV{WIZ_xpinstallVersion};
 $nameCompany      = $ENV{WIZ_nameCompany};
 $nameProduct      = $ENV{WIZ_nameProduct};
+$shortNameProduct = $ENV{WIZ_shortNameProduct};
 $nameProductInternal = $ENV{WIZ_nameProductInternal};
 $fileMainExe      = $ENV{WIZ_fileMainExe};
 $fileUninstall    = $ENV{WIZ_fileUninstall};
@@ -131,8 +132,13 @@ while($line = <fpInIt>)
     @colonSplit = split(/:/, $line);
     if($#colonSplit >= 0)
     {
-      $componentName    = $colonSplit[1];
-      chop($componentName);
+      $componentName = $colonSplit[1];
+      if (substr($componentName, -2, 2) eq "\r\n") {
+        $componentName = substr($componentName, 0, length($componentName) - 2) . "\n";
+      }
+      else {
+        chop($componentName);
+      }
 
       if($componentName =~ /\$UninstallFileZip\$/i)
       {
@@ -179,7 +185,12 @@ while($line = <fpInIt>)
     if($#colonSplit >= 0)
     {
       $componentName = $colonSplit[1];
-      chop($componentName);
+      if (substr($componentName, -2, 2) eq "\r\n") {
+        $componentName = substr($componentName, 0, length($componentName) - 2) . "\n";
+      }
+      else {
+        chop($componentName);
+      }
       $componentName      =~ s/\$UninstallFileZip\$/$fileUninstallZip/gi;
       $installSizeArchive = OutputInstallSizeArchive("$inXpiPath/$componentName");
     }
@@ -192,14 +203,15 @@ while($line = <fpInIt>)
     {
       $stageDir = "$inStagePath/$componentName";
       $stageDir =~ s/(.xpi|.zip)\b//i;
-	    system("find $stageDir -type f | wc -l > filecount.log");
+      if (substr($stageDir, -1, 1) eq "\n") {
+        chop($stageDir);
+      }
+      $fileCount = `find $stageDir -type f | wc -l`;
+      if (substr($fileCount, -1, 1) eq "\n") {
+        chop($fileCount);
+      }
   
-      open(fpFileCount, "filecount.log");
-      $cl = <fpFileCount>;
-	    $cl =~ s/\s//g;
-      close(fpFileCount);
-
-      $line =~ s/\$FileCount\$/$cl/i;
+      $line =~ s/\$FileCount\$/$fileCount/i;
 
       print fpOutIni $line;
     }
@@ -221,6 +233,7 @@ while($line = <fpInIt>)
     $line =~ s/\$CompanyName\$/$nameCompany/gi;
     $line =~ s/\$ProductName\$/$nameProduct/gi;
     $line =~ s/\$ProductNameInternal\$/$nameProductInternal/gi;
+    $line =~ s/\$ProductShortName\$/$shortNameProduct/gi;
     $line =~ s/\$MainExeFile\$/$fileMainExe/gi;
     $line =~ s/\$UninstallFile\$/$fileUninstall/gi;
     $line =~ s/\$UninstallFileZip\$/$fileUninstallZip/gi;
@@ -280,7 +293,11 @@ sub OutputInstallSize()
   my($installSize);
 
   print "   calculating size for $inPath\n";
-  $installSize    = `$ENV{WIZ_distInstallPath}/ds32.exe /D /L0 /A /S /C 32768 $inPath`;
+
+  my ($inPathWin) = `cygpath -wa $inPath`;
+  chomp($inPathWin);
+  $inPathWin =~ s/\\/\\\\/g;
+  $installSize    = `$ENV{WIZ_distInstallPath}/ds32.exe /D /L0 /A /S /C 32768 $inPathWin`;
   $installSize   += 32768; # take into account install.js
   $installSize    = int($installSize / 1024);
   $installSize   += 1;

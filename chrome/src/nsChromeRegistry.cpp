@@ -64,7 +64,6 @@
 #include "nsNetUtil.h"
 #include "nsIFileChannel.h"
 #include "nsIXBLService.h"
-#include "nsPIDOMWindow.h"
 #include "nsIDOMWindowInternal.h"
 #include "nsIDOMWindowCollection.h"
 #include "nsIDOMLocation.h"
@@ -517,43 +516,22 @@ nsChromeRegistry::ConvertChromeURL(nsIURI* aChromeURL, nsACString& aResult)
     return NS_OK;
   
   rv = GetBaseURL(package, provider, finalURL);
-#ifdef DEBUG
   if (NS_FAILED(rv)) {
+#ifdef DEBUG
     nsCAutoString msg("chrome: failed to get base url");
     nsCAutoString url;
-    rv = aChromeURL->GetSpec(url);
-    if (NS_SUCCEEDED(rv)) {
+    nsresult rv2 = aChromeURL->GetSpec(url);
+    if (NS_SUCCEEDED(rv2)) {
       msg += " for ";
       msg += url.get();
     }
     msg += " -- using wacky default";
     NS_WARNING(msg.get());
-  }
 #endif
-  if (finalURL.IsEmpty()) {
-    // hard-coded fallback
-    if (provider.Equals("skin")) {
-      finalURL = "resource:/chrome/skins/classic/";
-    }
-    else if (provider.Equals("locale")) {
-      finalURL = "resource:/chrome/locales/en-US/";
-    }
-    else if (package.Equals("aim")) {
-      finalURL = "resource:/chrome/packages/aim/";
-    }
-    else if (package.Equals("messenger")) {
-      finalURL = "resource:/chrome/packages/messenger/";
-    }
-    else if (package.Equals("global")) {
-      finalURL = "resource:/chrome/packages/widget-toolkit/";
-    }
-    else {
-      finalURL = "resource:/chrome/packages/core/";
-    }
+    return rv;
   }
 
   aResult = finalURL + remaining;
-
   return NS_OK;
 }
 
@@ -1731,6 +1709,12 @@ NS_IMETHODIMP nsChromeRegistry::SelectLocaleForProfile(const nsACString& aLocale
   return SetProvider(NS_LITERAL_CSTRING("locale"), mSelectedLocale, aLocale, PR_TRUE, NS_ConvertUCS2toUTF8(aProfilePath).get(), PR_TRUE);
 }
 
+NS_IMETHODIMP nsChromeRegistry::SelectSkinForProfile(const nsACString& aSkin,
+                                                     const PRUnichar *aProfilePath)
+{
+  return SetProvider(NS_LITERAL_CSTRING("skin"), mSelectedSkin, aSkin, PR_TRUE, NS_ConvertUCS2toUTF8(aProfilePath).get(), PR_TRUE);
+}
+
 /* void setRuntimeProvider (in boolean runtimeProvider); */
 // should we inline this one?
 NS_IMETHODIMP nsChromeRegistry::SetRuntimeProvider(PRBool runtimeProvider)
@@ -2672,7 +2656,7 @@ NS_IMETHODIMP nsChromeRegistry::UninstallSkin(const nsACString& aSkinName, PRBoo
   DeselectSkin(aSkinName, aUseProfile);
 
   // Now uninstall it.
-  return UninstallProvider(NS_LITERAL_CSTRING("skin"), aSkinName, aUseProfile);
+  return  UninstallProvider(NS_LITERAL_CSTRING("skin"), aSkinName, aUseProfile);
 }
 
 NS_IMETHODIMP nsChromeRegistry::UninstallLocale(const nsACString& aLocaleName, PRBool aUseProfile)
@@ -2683,10 +2667,272 @@ NS_IMETHODIMP nsChromeRegistry::UninstallLocale(const nsACString& aLocaleName, P
   return UninstallProvider(NS_LITERAL_CSTRING("locale"), aLocaleName, aUseProfile);
 }
 
-NS_IMETHODIMP nsChromeRegistry::UninstallPackage(const PRUnichar* aPackageName, PRBool aUseProfile)
+static void GetURIForProvider(nsIIOService* aIOService, const nsACString& aProviderName, 
+                              const nsACString& aProviderType, nsIURI** aResult)
 {
-  NS_ERROR("XXX Write me!\n");
-  return NS_ERROR_FAILURE;
+  nsCAutoString chromeURL("chrome://");
+  chromeURL += aProviderName;
+  chromeURL += "/";
+  chromeURL += aProviderType;
+  chromeURL += "/";
+
+  nsCOMPtr<nsIURI> uri;
+  aIOService->NewURI(chromeURL, nsnull, nsnull, aResult);
+}
+
+nsresult nsChromeRegistry::UninstallFromDynamicDataSource(const nsACString& aPackageName,
+                                                          PRBool aIsOverlay, PRBool aUseProfile)
+{
+  nsresult rv;
+
+  // Disconnect any overlay/stylesheet entries that this package may have 
+  // supplied. This is a little tricky - the chrome registry identifies 
+  // that packages may have dynamic overlays/stylesheets specified like so: 
+  // - each package entry in the chrome registry datasource has a 
+  //   "chrome:hasOverlays"/"chrome:hasStylesheets" property set to "true"
+  // - if this property is set, the chrome registry knows to load a dynamic overlay
+  //   datasource over in 
+  //    <profile>/chrome/overlayinfo/<package_name>/content/overlays.rdf
+  //   or
+  //    <profile>/chrome/overlayinfo/<package_name>/skin/stylesheets.rdf
+  // To remove this dynamic overlay info when we disable a package:
+  // - first get an enumeration of all the packages that have the 
+  //   "hasOverlays" and "hasStylesheets" properties set. 
+  // - walk this list, loading the Dynamic Datasource (overlays.rdf/
+  //   stylesheets.rdf) for each package
+  // - enumerate the Seqs in each Dynamic Datasource
+  // - for each seq, remove entries that refer to chrome URLs that are supplied
+  //   by the package we're removing.
+  nsCOMPtr<nsIIOService> ioServ(do_GetService(NS_IOSERVICE_CONTRACTID));
+
+  nsCOMPtr<nsIURI> uninstallURI;
+  const nsACString& providerType = aIsOverlay ? NS_LITERAL_CSTRING("content") 
+                                              : NS_LITERAL_CSTRING("skin");
+  GetURIForProvider(ioServ, aPackageName, providerType,
+                    getter_AddRefs(uninstallURI));
+  if (!uninstallURI) return NS_ERROR_OUT_OF_MEMORY;
+  nsCAutoString uninstallHost;
+  uninstallURI->GetHost(uninstallHost);
+
+  nsCOMPtr<nsIRDFLiteral> trueLiteral;
+  mRDFService->GetLiteral(NS_LITERAL_STRING("true").get(), getter_AddRefs(trueLiteral));
+  
+  nsCOMPtr<nsISimpleEnumerator> e;
+  mChromeDataSource->GetSources(aIsOverlay ? mHasOverlays : mHasStylesheets, 
+                                trueLiteral, PR_TRUE, getter_AddRefs(e));
+  do {
+    PRBool hasMore;
+    e->HasMoreElements(&hasMore);
+    if (!hasMore)
+      break;
+    
+    nsCOMPtr<nsISupports> res;
+    e->GetNext(getter_AddRefs(res));
+    nsCOMPtr<nsIRDFResource> package(do_QueryInterface(res));
+
+    nsXPIDLCString val;
+    package->GetValue(getter_Copies(val));
+
+    val.Cut(0, NS_LITERAL_CSTRING("urn:mozilla:package:").Length());
+    nsCOMPtr<nsIURI> sourcePackageURI;
+    GetURIForProvider(ioServ, val, providerType, getter_AddRefs(sourcePackageURI));
+    if (!sourcePackageURI) return NS_ERROR_OUT_OF_MEMORY;
+
+    PRBool states[] = { PR_FALSE, PR_TRUE };
+    for (PRInt32 i = 0; i < 2; ++i) {
+      nsCOMPtr<nsIRDFDataSource> overlayDS;
+      rv = GetDynamicDataSource(sourcePackageURI, aIsOverlay, states[i], PR_FALSE,
+                                getter_AddRefs(overlayDS));
+      if (NS_FAILED(rv) || !overlayDS) continue;
+
+      PRBool dirty = PR_FALSE;
+
+      // Look for all the seqs in this file
+      nsCOMPtr<nsIRDFResource> instanceOf, seq;
+      GetResource(NS_LITERAL_CSTRING("http://www.w3.org/1999/02/22-rdf-syntax-ns#instanceOf"),
+                  getter_AddRefs(instanceOf));
+      GetResource(NS_LITERAL_CSTRING("http://www.w3.org/1999/02/22-rdf-syntax-ns#Seq"),
+                  getter_AddRefs(seq));
+
+      nsCOMPtr<nsISimpleEnumerator> seqs;
+      overlayDS->GetSources(instanceOf, seq, PR_TRUE, getter_AddRefs(seqs));
+
+      do {
+        PRBool hasMore;
+        seqs->HasMoreElements(&hasMore);
+        if (!hasMore)
+          break;
+
+        nsCOMPtr<nsISupports> res;
+        seqs->GetNext(getter_AddRefs(res));
+        nsCOMPtr<nsIRDFResource> seq(do_QueryInterface(res));
+
+        nsCOMPtr<nsIRDFContainer> container(do_CreateInstance("@mozilla.org/rdf/container;1"));
+        container->Init(overlayDS, seq);
+
+        nsCOMPtr<nsISimpleEnumerator> elements;
+        container->GetElements(getter_AddRefs(elements));
+
+        do {
+          PRBool hasMore;
+          elements->HasMoreElements(&hasMore);
+          if (!hasMore)
+            break;
+
+          nsCOMPtr<nsISupports> res;
+          elements->GetNext(getter_AddRefs(res));
+          nsCOMPtr<nsIRDFLiteral> element(do_QueryInterface(res));
+
+          nsXPIDLString val;
+          element->GetValue(getter_Copies(val));
+
+          nsCAutoString valC; valC.AssignWithConversion(val);
+          nsCOMPtr<nsIURI> targetURI;
+          rv = ioServ->NewURI(valC, nsnull, nsnull, getter_AddRefs(targetURI));
+          if (NS_FAILED(rv)) return rv;
+
+          nsCAutoString targetHost;
+          targetURI->GetHost(targetHost);
+
+          // This overlay entry is for a package that is being uninstalled. Remove the
+          // entry from the overlay list.
+          if (targetHost.Equals(uninstallHost)) {
+            container->RemoveElement(element, PR_FALSE);
+            dirty = PR_TRUE;
+          }
+        }
+        while (PR_TRUE);
+      }
+      while (PR_TRUE);
+
+      if (dirty) {
+        nsCOMPtr<nsIRDFRemoteDataSource> remote = do_QueryInterface(overlayDS);
+        rv = remote->Flush();
+      }
+    }
+  }
+  while (PR_TRUE);
+
+  return rv;
+}
+
+static nsresult CleanResource(nsIRDFDataSource* aDS, nsIRDFResource* aResource)
+{
+  nsresult rv;
+
+  nsCOMPtr<nsISimpleEnumerator> arcs;
+  for (PRInt32 i = 0; i < 2; ++i) {
+    rv = i == 0 ? aDS->ArcLabelsOut(aResource, getter_AddRefs(arcs)) 
+                : aDS->ArcLabelsIn(aResource, getter_AddRefs(arcs)) ;
+    if (NS_FAILED(rv)) return rv;
+    do {
+      PRBool hasMore;
+      arcs->HasMoreElements(&hasMore);
+
+      if (!hasMore)
+        break;
+
+      nsCOMPtr<nsISupports> supp;
+      arcs->GetNext(getter_AddRefs(supp));
+
+      nsCOMPtr<nsIRDFResource> prop(do_QueryInterface(supp));
+      nsCOMPtr<nsIRDFNode> target;
+      rv = aDS->GetTarget(aResource, prop, PR_TRUE, getter_AddRefs(target));
+      if (NS_FAILED(rv)) continue;
+
+      aDS->Unassert(aResource, prop, target);
+    }
+    while (1);
+  }
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP nsChromeRegistry::UninstallPackage(const nsACString& aPackageName, PRBool aUseProfile)
+{
+  nsresult rv;
+
+  // Uninstalling a package is a three step process:
+  //
+  // 1) Unhook all secondary resources
+  // 2) Remove the package from the package list
+  // 3) Remove references in the Dynamic Datasources (overlayinfo).
+  //
+  // Details:
+  // 1) The Chrome Registry holds information about a package like this:
+  //
+  //   urn:mozilla:package:root
+  //   --> urn:mozilla:package:newext1
+  //       --> c:baseURL = <BASEURL>
+  //       --> c:locType = "install"
+  //       --> c:name    = "newext1"
+  //
+  //   urn:mozilla:skin:classic/1.0:packages
+  //   --> urn:mozilla:skin:classic/1.0:newext1
+  //       --> c:baseURL = <BASEURL>
+  //       --> c:package = urn:mozilla:package:newext1
+  //
+  //   urn:mozilla:locale:en-US:packages
+  //   --> urn:mozilla:locale:en-US:newext1
+  //       --> c:baseURL = <BASEURL>
+  //       --> c:package = urn:mozilla:package:newext1
+  //
+  // We need to follow chrome:package arcs from the package resource to 
+  // secondary resources and then clean them. This is so that a subsequent
+  // installation of the same package into the opposite datasource (profile
+  // vs. install) does not result in the chrome registry telling the necko
+  // to load from the wrong location by "hitting" on redundant entries in
+  // the opposing datasource first.
+  //
+  // 2) Then we have to clean the resource and remove it from the package list.
+  // 3) Then update the dynamic datasources.
+  //
+
+  nsCAutoString packageResourceURI("urn:mozilla:package:");
+  packageResourceURI += aPackageName;
+
+  nsCOMPtr<nsIRDFResource> packageResource;
+  GetResource(packageResourceURI, getter_AddRefs(packageResource));
+
+  // Instantiate the data source we wish to modify.
+  nsCOMPtr<nsIRDFDataSource> installSource;
+  rv = LoadDataSource(kChromeFileName, getter_AddRefs(installSource), aUseProfile, nsnull);
+  if (NS_FAILED(rv)) return rv;
+  NS_ASSERTION(installSource, "failed to get installSource");
+
+  nsCOMPtr<nsISimpleEnumerator> sources;
+  rv = installSource->GetSources(mPackage, packageResource, PR_TRUE, 
+                                 getter_AddRefs(sources));
+  if (NS_FAILED(rv)) return rv;
+
+  do {
+    PRBool hasMore;
+    sources->HasMoreElements(&hasMore);
+
+    if (!hasMore)
+      break;
+
+    nsCOMPtr<nsISupports> supp;
+    sources->GetNext(getter_AddRefs(supp));
+
+    nsCOMPtr<nsIRDFResource> res(do_QueryInterface(supp));
+    rv = CleanResource(installSource, res);
+    if (NS_FAILED(rv)) continue;
+  }
+  while (1);
+
+  // Clean the package resource
+  rv = CleanResource(installSource, packageResource);
+  if (NS_FAILED(rv)) return rv;
+
+  // Remove the package from the package list
+  rv = UninstallProvider(NS_LITERAL_CSTRING("package"), aPackageName, aUseProfile);
+  if (NS_FAILED(rv)) return rv;
+
+  rv = UninstallFromDynamicDataSource(aPackageName, PR_TRUE, aUseProfile);
+  if (NS_FAILED(rv)) return rv;
+
+  return UninstallFromDynamicDataSource(aPackageName, PR_FALSE, aUseProfile);
 }
 
 nsresult

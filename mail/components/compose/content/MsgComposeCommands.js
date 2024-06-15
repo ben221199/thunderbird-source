@@ -1262,6 +1262,7 @@ function ComposeStartup(recycled, aParams)
         dump("Failed to get editor element!\n");
         return;
       }
+
       document.getElementById("returnReceiptMenu").setAttribute('checked', 
                                          gMsgCompose.compFields.returnReceipt);
       document.getElementById("cmd_attachVCard").setAttribute('checked', 
@@ -1387,9 +1388,13 @@ var gMsgEditorCreationObserver =
     {
       var editor = GetCurrentEditor();
       if (editor && GetCurrentCommandManager() == aSubject)
+      {
+        var editorStyle = editor.QueryInterface(Components.interfaces.nsIEditorStyleSheets);
+        editorStyle.addStyleSheet("chrome://messenger/skin/messageQuotes.css");
         gMsgCompose.initEditor(editor, window.content);
     }
   }
+}
 }
 
 function WizCallback(state)
@@ -2599,13 +2604,7 @@ function DetermineHTMLAction(convertible)
         }
         dump("DetermineHTMLAction: preferFormat = " + preferFormat + ", noHtmlRecipients are " + noHtmlRecipients + "\n");
 
-        //Check newsgroups now...
-        try {
-            noHtmlnewsgroups = gMsgCompose.GetNoHtmlNewsgroups(null);
-        } catch(ex)
-        {
-           noHtmlnewsgroups = gMsgCompose.compFields.newsgroups;
-        }
+        noHtmlnewsgroups = gMsgCompose.compFields.newsgroups;
 
         if (noHtmlRecipients != "" || noHtmlnewsgroups != "")
         {
@@ -3203,17 +3202,23 @@ function loadHTMLMsgPrefs()
   var bodyElement = GetBodyElement(); 
   try { 
     textColor = pref.getCharPref("msgcompose.text_color");
-    bodyElement.setAttribute("text", textColor);
-    gDefaultTextColor = textColor;
-    document.getElementById("cmd_fontColor").setAttribute("state", textColor);    
-    onFontColorChange();
+    if (!bodyElement.getAttribute("text"))
+    {
+      bodyElement.setAttribute("text", textColor);
+      gDefaultTextColor = textColor;
+      document.getElementById("cmd_fontColor").setAttribute("state", textColor);    
+      onFontColorChange();
+    }
   } catch (e) {}
  
   try { 
     bgColor = pref.getCharPref("msgcompose.background_color");
-    bodyElement.setAttribute("bgcolor", bgColor);
-    gDefaultBackgroundColor = bgColor;
-    document.getElementById("cmd_backgroundColor").setAttribute("state", bgColor);
-    onBackgroundColorChange();
+    if (!bodyElement.getAttribute("bgcolor"))
+    {
+      bodyElement.setAttribute("bgcolor", bgColor);
+      gDefaultBackgroundColor = bgColor;
+      document.getElementById("cmd_backgroundColor").setAttribute("state", bgColor);
+      onBackgroundColorChange();
+    }
   } catch (e) {}
 }

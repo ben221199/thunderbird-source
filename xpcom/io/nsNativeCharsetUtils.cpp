@@ -61,7 +61,7 @@
 // iconv for all platforms where nltypes.h and nllanginfo.h are present 
 // along with iconv.
 //
-#if defined(HAVE_ICONV) && defined(HAVE_NL_TYPES_H) && defined(HAVE_NL_LANGINFO)
+#if defined(HAVE_ICONV) && defined(HAVE_NL_TYPES_H) && defined(HAVE_LANGINFO_CODESET)
 #define USE_ICONV 1
 #else
 #define USE_STDCONV 1
@@ -949,6 +949,7 @@ NS_ShutdownNativeCharsetUtils()
 #include <uconv.h>
 #include "nsAString.h"
 #include <ulserrno.h>
+#include "nsNativeCharsetUtils.h"
 
 static UconvObject UnicodeConverter = NULL;
 
@@ -971,6 +972,9 @@ NS_CopyNativeToUnicode(const nsACString &input, nsAString  &output)
 
     size_t cSubs = 0;
     size_t resultLeft = resultLen;
+
+    if (!UnicodeConverter)
+      NS_StartupNativeCharsetUtils();
 
     int unirc = ::UniUconvToUcs(UnicodeConverter, (void**)&inputStr, &inputLen,
                                 &result, &resultLeft, &cSubs);
@@ -1008,6 +1012,9 @@ NS_CopyUnicodeToNative(const nsAString &input, nsACString &output)
 
     size_t cSubs = 0;
     size_t resultLeft = resultLen;
+
+    if (!UnicodeConverter)
+      NS_StartupNativeCharsetUtils();
   
     int unirc = ::UniUconvFromUcs(UnicodeConverter, &inputStr, &inputLen,
                                   (void**)&result, &resultLeft, &cSubs);

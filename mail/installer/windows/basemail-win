@@ -14,6 +14,8 @@ thunderbird\defaults\profile\US\mimeTypes.rdf
 thunderbird\defaults\messenger\mailViews.dat
 thunderbird\defaults\profile\localstore.rdf
 thunderbird\defaults\profile\mimeTypes.rdf
+thunderbird\defaults\profile\extensions\*
+thunderbird\defaults\profile\extensions\{972ce4c6-7e08-4474-a285-3208198ce6fd}\install.rdf
 
 [xpcom]
 thunderbird\xpcom.dll
@@ -50,6 +52,18 @@ thunderbird\chrome\inspector.jar
 thunderbird\defaults\pref\inspector.js
 thunderbird\res\inspector\viewer-registry.rdf
 thunderbird\res\inspector\search-registry.rdf
+
+; Optional Talkback
+[talkback]
+thunderbird\components\qfaservices.dll
+thunderbird\components\qfaservices.xpt
+thunderbird\components\BrandRes.dll
+thunderbird\components\fullsoft.dll
+thunderbird\components\master.ini
+thunderbird\components\talkback-l10n.ini
+thunderbird\components\talkback.cnt
+thunderbird\components\talkback.exe
+thunderbird\components\talkback.hlp
 
 [mail]
 
@@ -222,9 +236,10 @@ thunderbird\components\jar.xpt
 thunderbird\components\pref.xpt                     
 thunderbird\components\xppref32.dll
 
-; profile
-thunderbird\components\profile.dll                  
+; profile              
 thunderbird\components\profile.xpt
+thunderbird\components\profilemigration.dll
+thunderbird\components\toolkitprofile.xpt
 
 ; rdf
 thunderbird\components\rdf.dll
@@ -237,7 +252,6 @@ thunderbird\components\locale.xpt
 thunderbird\components\uconv.dll
 thunderbird\components\uconv.xpt
 thunderbird\components\unicharutil.xpt
-thunderbird\components\ucnative.xpt
 
 ; dom 
 thunderbird\components\dom.xpt                      
@@ -279,6 +293,12 @@ thunderbird\components\necko_file.xpt
 thunderbird\components\necko_cache.xpt
 thunderbird\components\necko_cookie.xpt         
 thunderbird\components\nsProxyAutoConfig.js
+ 
+; extensions
+thunderbird\components\nsExtensionManager.js
+thunderbird\components\nsBackgroundUpdateService.js
+thunderbird\components\extensions.xpt
+thunderbird\components\update.xpt
             
 ; psm2
 ; Optional - only if you need HTTPS support

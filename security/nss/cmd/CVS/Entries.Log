@@ -13,10 +13,12 @@ A D/crlutil////
 A D/crmf-cgi////
 A D/crmftest////
 A D/dbck////
+A D/dbdump////
 A D/dbtest////
 A D/derdump////
 A D/digest////
 A D/doc////
+A D/fipstest////
 A D/ilock////
 A D/include////
 A D/keyutil////
@@ -61,6 +63,8 @@ R D/pwdecrypt////
 R D/preenc////
 R D/pk11util////
 R D/nssutil////
+R D/fipstest////
 R D/doc////
+R D/dbdump////
 R D/cipher////
 R D/cgi////

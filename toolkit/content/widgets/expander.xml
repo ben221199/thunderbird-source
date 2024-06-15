@@ -14,7 +14,7 @@
         <xul:label class="header expanderButton" anonid="label" xbl:inherits="value=label,disabled" mousethrough="always" flex="1"/>
         <xul:button anonid="clear-button" xbl:inherits="label=clearlabel,disabled=cleardisabled,hidden=clearhidden" mousethrough="always"/>
       </xul:hbox>
-      <xul:vbox flex="1" anonid="settings" class="settingsContainer" collapsed="true">
+      <xul:vbox flex="1" anonid="settings" class="settingsContainer" collapsed="true" xbl:inherits="align">
         <children/>
       </xul:vbox>
     </content>
@@ -36,7 +36,7 @@
             if (val)
               this.setAttribute("open", "true");
             else
-              this.removeAttribute("open");
+              this.setAttribute("open", "false");
             return val;
           ]]>
         </setter>
@@ -52,7 +52,10 @@
           switch (button) {
           case "disclosure":
           case "label":
-            this.open = !this.open;
+            if (this.open == "true")
+              this.open = false;
+            else
+              this.open = true;
             break;
           case "clear-button":
             var event = document.createEvent("Events");

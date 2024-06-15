@@ -308,6 +308,11 @@ endif
 endif
 # MOZ_COVERAGE
 
+ifdef MOZ_PDB
+MOZ_OPTIMIZE_FLAGS=-Zi -O1 -UDEBUG -DNDEBUG
+OS_LDFLAGS = /DEBUG /OPT:REF
+endif
+
 #
 # Handle trace-malloc in optimized builds.
 # No opt to give sane callstacks.

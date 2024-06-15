@@ -1,11 +1,3 @@
-/.cvsignore/1.1/Sat Feb 24 06:22:21 2001//TTHUNDERBIRD_0_6_RELEASE
-/Makefile.in/1.6/Sat Aug 16 00:41:12 2003//TTHUNDERBIRD_0_6_RELEASE
-D/base////
-D/events////
-D/html////
-D/shared////
-D/svg////
-D/xbl////
-D/xml////
-D/xsl////
-D/xul////
+/.cvsignore/1.1/Sat Feb 24 06:22:21 2001//TTHUNDERBIRD_0_7_RELEASE
+/Makefile.in/1.6/Sat Aug 16 00:41:12 2003//TTHUNDERBIRD_0_7_RELEASE
+D

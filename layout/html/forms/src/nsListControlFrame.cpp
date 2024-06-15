@@ -1762,13 +1762,10 @@ nsListControlFrame::SetInitialChildList(nsIPresContext* aPresContext,
                                         nsIFrame*       aChildList)
 {
   // First check to see if all the content has been added
-  nsCOMPtr<nsISelectElement> element(do_QueryInterface(mContent));
-  if (element) {
-    element->IsDoneAddingChildren(&mIsAllContentHere);
-    if (!mIsAllContentHere) {
-      mIsAllFramesHere    = PR_FALSE;
-      mHasBeenInitialized = PR_FALSE;
-    }
+  mIsAllContentHere = mContent->IsDoneAddingChildren();
+  if (!mIsAllContentHere) {
+    mIsAllFramesHere    = PR_FALSE;
+    mHasBeenInitialized = PR_FALSE;
   }
   nsresult rv = nsGfxScrollFrame::SetInitialChildList(aPresContext, aListName, aChildList);
 
@@ -2306,15 +2303,12 @@ nsListControlFrame::AddOption(nsIPresContext* aPresContext, PRInt32 aIndex)
   GetNumberOfOptions(&numOptions);
 
   if (!mIsAllContentHere) {
-    nsCOMPtr<nsISelectElement> element(do_QueryInterface(mContent));
-    if (element) {
-      element->IsDoneAddingChildren(&mIsAllContentHere);
-      if (!mIsAllContentHere) {
-        mIsAllFramesHere    = PR_FALSE;
-        mHasBeenInitialized = PR_FALSE;
-      } else {
-        mIsAllFramesHere = aIndex == numOptions-1;
-      }
+    mIsAllContentHere = mContent->IsDoneAddingChildren();
+    if (!mIsAllContentHere) {
+      mIsAllFramesHere    = PR_FALSE;
+      mHasBeenInitialized = PR_FALSE;
+    } else {
+      mIsAllFramesHere = aIndex == numOptions-1;
     }
   }
   
@@ -3112,10 +3106,12 @@ nsListControlFrame::ScrollToFrame(nsIContent* aOptElement)
         }
         fRect.y += optRect.y;
 
-        // see if the selected frame is inside the scrolled area
-        if (!rect.Contains(fRect)) {
+        // See if the selected frame (fRect) is inside the scrolled
+        // area (rect). Check only the vertical dimension. Don't
+        // scroll just because there's horizontal overflow.
+        if (!(rect.y <= fRect.y && fRect.YMost() <= rect.YMost())) {
           // figure out which direction we are going
-          if (fRect.y+fRect.height >= rect.y+rect.height) {
+          if (fRect.YMost() > rect.YMost()) {
             y = fRect.y-(rect.height-fRect.height);
           } else {
             y = fRect.y;
@@ -3344,8 +3340,12 @@ nsListControlFrame::KeyPress(nsIDOMEvent* aKeyEvent)
       } break;
 
     case nsIDOMKeyEvent::DOM_VK_ESCAPE: {
-      if (IsInDropDownMode() == PR_TRUE) {
-        ComboboxFinish(mSelectedIndexWhenPoppedDown);
+      if (mComboboxFrame != nsnull) {
+        PRBool droppedDown = PR_FALSE;
+        mComboboxFrame->IsDroppedDown(&droppedDown);
+        if (droppedDown == PR_TRUE) {
+          ComboboxFinish(mSelectedIndexWhenPoppedDown);
+        }
       }
       } break;
 

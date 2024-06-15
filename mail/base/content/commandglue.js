@@ -98,14 +98,19 @@ function LoadMessageByUri(uri)
 
 function setTitleFromFolder(msgfolder, subject)
 {
-    var title = subject || "";
+    var wintype = document.firstChild.getAttribute('windowtype');
+    var title; 
 
-    if (msgfolder)
+    // If we are showing the mail:3pane. Never include the subject of the selected
+    // message in the title. ("Inbox for greenlantern@mozilla.org - Mozilla Thunderbird")
+    // If we are a stand alone message window, we should show the Subject
+    // and the product but not the account name: "Re: New window Title - Mozilla Thunderbird"
+
+    if (wintype == "mail:messageWindow")  
+      title = subject;
+    else if (msgfolder)
     {
-      if (title)
-        title += " - ";
-
-      title += msgfolder.prettyName;
+      title = msgfolder.prettyName;
 
       if (!msgfolder.isServer)
       {
@@ -129,7 +134,7 @@ function setTitleFromFolder(msgfolder, subject)
             }
         if (middle) title += " " + middle;
         if (end) title += " " + end;
-    }
+      }
     }
 
 #ifndef XP_MACOSX
@@ -297,8 +302,6 @@ function RerootFolder(uri, newFolder, viewType, viewFlags, sortType, sortOrder)
 
   //Clear out the thread pane so that we can sort it with the new sort id without taking any time.
   // folder.setAttribute('ref', "");
-  // show "Lines" for news, "Size" for mail
-  SetNewsFolderColumns(isNewsURI(uri));
 
   // null this out, so we don't try sort.
   if (gDBView) {
@@ -391,13 +394,7 @@ function SwitchView(command)
     break;
   }
 
-  // that should have initialized gDBView, now re-root the thread pane
-  var treeView = gDBView.QueryInterface(Components.interfaces.nsITreeView);
-  if (treeView)
-  {
-    var tree = GetThreadTree();
-    tree.boxObject.QueryInterface(Components.interfaces.nsITreeBoxObject).view = treeView;
-  }
+  RerootThreadPane();
 }
 
 function SetSentFolderColumns(isSentFolder)
@@ -432,11 +429,11 @@ function SetSentFolderColumns(isSentFolder)
   }
 }
 
-function SetNewsFolderColumns(isNewsFolder)
+function SetNewsFolderColumns()
 {
   var sizeColumn = document.getElementById("sizeCol");
 
-  if (isNewsFolder) {
+  if (gDBView.usingLines) {
      sizeColumn.setAttribute("label",gMessengerBundle.getString("linesColumnHeader"));
   }
   else {
@@ -684,6 +681,11 @@ function GetSelectedFolderResource()
 
 function ChangeMessagePaneVisibility(now_hidden)
 {
+  // we also have to hide the File/Attachments menuitem
+  node = document.getElementById("fileAttachmentMenu");
+  if (node)
+    node.hidden = now_hidden;
+
   if (gDBView) {
     // the collapsed state is the state after we released the mouse 
     // so we take it as it is

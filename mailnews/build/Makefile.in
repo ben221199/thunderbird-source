@@ -29,8 +29,10 @@ include $(DEPTH)/config/autoconf.mk
 MODULE		= mail
 LIBRARY_NAME = mail
 
+ifndef BUILD_STATIC_LIBS
 ifeq ($(OS_ARCH),WINNT)
 RESFILE		= mail.res
+endif
 endif
 
 META_COMPONENT = mail
@@ -39,7 +41,7 @@ EXPORT_LIBRARY = 1
 
 IS_COMPONENT	= 1
 
-MODULE_NAME	= nsMsgMailModule
+MODULE_NAME	= nsMailModule
 
 REQUIRES	= xpcom \
 		  xpcom_obsolete \

@@ -1,11 +1,2 @@
-/Makefile.in/1.2/Sat Aug 16 00:41:38 2003//TTHUNDERBIRD_0_6_RELEASE
-D/build////
-D/docs////
-D/interfaceinfo////
-D/proxy////
-D/public////
-D/schema////
-D/security////
-D/soap////
-D/uddi////
-D/wsdl////
+/Makefile.in/1.2/Sat Aug 16 00:41:38 2003//TTHUNDERBIRD_0_7_RELEASE
+D

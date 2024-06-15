@@ -143,6 +143,8 @@ nsMsgDBView::nsMsgDBView()
   m_deletingRows = PR_FALSE;
   mOutstandingJunkBatches = 0;
 
+  mShowSizeInLines = PR_FALSE;
+
   /* mCommandsNeedDisablingBecauseOffline - A boolean that tell us if we needed to disable commands because we're offline w/o a downloaded msg select */
   
   mCommandsNeedDisablingBecauseOffline = PR_FALSE;  
@@ -677,8 +679,8 @@ nsresult nsMsgDBView::FetchSize(nsIMsgHdr * aHdr, PRUnichar ** aSizeString)
   nsAutoString formattedSizeString;
   PRUint32 msgSize = 0;
   
-  // for news, show the line count not the size
-  if (mIsNews) 
+  // for news, show the line count, not the size if the user wants so
+  if (mShowSizeInLines)
   {
     aHdr->GetLineCount(&msgSize);
     formattedSizeString.AppendInt(msgSize);
@@ -1641,7 +1643,7 @@ NS_IMETHODIMP nsMsgDBView::CycleCell(PRInt32 row, const PRUnichar *colID)
   case 't': // threaded cell or total cell
     if (colID[1] == 'h') 
     {
-      ExpandAndSelectThreadByIndex(row);
+      ExpandAndSelectThreadByIndex(row, PR_FALSE);
     }
     break;
   case 'f': // flagged column
@@ -1761,6 +1763,18 @@ NS_IMETHODIMP nsMsgDBView::Open(nsIMsgFolder *folder, nsMsgViewSortTypeValue sor
 
     mIsNews = !strcmp("nntp",type.get());
     GetImapDeleteModel(nsnull);
+
+    if (mIsNews)
+    {
+      nsCOMPtr<nsIPrefBranch> prefs(do_GetService(NS_PREFSERVICE_CONTRACTID));
+      if (prefs)
+      {
+        PRBool temp;
+        rv = prefs->GetBoolPref("news.show_size_in_lines", &temp);
+        if (NS_SUCCEEDED(rv))
+          mShowSizeInLines = temp;
+      }
+    }
   }
   return NS_OK;
 }
@@ -1838,6 +1852,12 @@ NS_IMETHODIMP nsMsgDBView::SetSuppressMsgDisplay(PRBool aSuppressDisplay)
 NS_IMETHODIMP nsMsgDBView::GetSuppressMsgDisplay(PRBool * aSuppressDisplay)
 {
   *aSuppressDisplay = mSuppressMsgDisplay;
+  return NS_OK;
+}
+
+NS_IMETHODIMP nsMsgDBView::GetUsingLines(PRBool * aUsingLines)
+{
+  *aUsingLines = mShowSizeInLines;
   return NS_OK;
 }
 
@@ -3191,7 +3211,7 @@ nsresult nsMsgDBView::GetLongField(nsIMsgDBHdr *msgHdr, nsMsgViewSortTypeValue s
   switch (sortType) 
   {
     case nsMsgViewSortType::bySize:
-      rv = (mIsNews) ? msgHdr->GetLineCount(result) : msgHdr->GetMessageSize(result);
+      rv = (mShowSizeInLines) ? msgHdr->GetLineCount(result) : msgHdr->GetMessageSize(result);
       break;
     case nsMsgViewSortType::byPriority: 
         nsMsgPriorityValue priority;
@@ -3814,12 +3834,12 @@ nsresult nsMsgDBView::ExpandAndSelectThread()
     rv = mTreeSelection->GetCurrentIndex(&index);
     NS_ENSURE_SUCCESS(rv,rv);
 
-    rv = ExpandAndSelectThreadByIndex(index);
+    rv = ExpandAndSelectThreadByIndex(index, PR_FALSE);
     NS_ENSURE_SUCCESS(rv,rv);
     return NS_OK;
 }
 
-nsresult nsMsgDBView::ExpandAndSelectThreadByIndex(nsMsgViewIndex index)
+nsresult nsMsgDBView::ExpandAndSelectThreadByIndex(nsMsgViewIndex index, PRBool augment)
 {
   nsresult rv;
 
@@ -3862,26 +3882,9 @@ nsresult nsMsgDBView::ExpandAndSelectThreadByIndex(nsMsgViewIndex index)
   NS_ASSERTION(mTreeSelection, "no tree selection");
   if (!mTreeSelection) return NS_ERROR_UNEXPECTED;
 
-  // clear the existing selection.
-  mTreeSelection->ClearSelection(); 
-
-  // is this correct when we are selecting multiple items?
-  mTreeSelection->SetCurrentIndex(threadIndex); 
-
   // the count should be 1 or greater. if there was only one message in the thread, we just select it.
   // if more, we select all of them.
-  mTreeSelection->RangedSelect(threadIndex, threadIndex + count - 1, PR_TRUE /* augment */);
-
-  if (count == 1) {
-    // if we ended up selecting on message, this will cause us to load it.
-    SelectionChanged();
-  }
-  else {
-    //XXX todo, should multiple selection clear the thread pane?  see bug #xxxxx
-    //do we want to do something like this to clear the message pane
-    //when the user selects a thread?
-    //NoteChange(?, ?, nsMsgViewNotificationCode::clearMessagePane);
-  }
+  mTreeSelection->RangedSelect(threadIndex + count - 1, threadIndex, augment);
   return NS_OK;
 }
 
@@ -4196,6 +4199,14 @@ nsresult	nsMsgDBView::AddHdr(nsIMsgDBHdr *msgHdr)
   msgHdr->GetThreadId(&threadId);
   msgHdr->GetThreadParent(&threadParent);
   
+  nsCOMPtr <nsIMsgThread> thread;
+  m_db->GetThreadContainingMsgHdr(msgHdr, getter_AddRefs(thread));
+  if (thread)
+  {
+    PRUint32 threadFlags;
+    thread->GetFlags(&threadFlags);
+    flags |= threadFlags;
+  }
   // ### this isn't quite right, is it? Should be checking that our thread parent key is none?
   if (threadParent == nsMsgKey_None) 
     flags |= MSG_VIEW_FLAG_ISTHREAD;
@@ -5710,6 +5721,7 @@ nsresult nsMsgDBView::CopyDBView(nsMsgDBView *aNewMsgDBView, nsIMessenger *aMess
   if (m_db)
     aNewMsgDBView->m_db->AddListener(aNewMsgDBView);
   aNewMsgDBView->mIsNews = mIsNews;
+  aNewMsgDBView->mShowSizeInLines = mShowSizeInLines;
   aNewMsgDBView->mHeaderParser = mHeaderParser;
   aNewMsgDBView->mDeleteModel = mDeleteModel;
   aNewMsgDBView->m_flags.CopyArray(m_flags);

@@ -104,7 +104,7 @@ mkdir($STAGE, 0775);
 #-------------------------------------------------------------------------
 #// call pkgcp.pl
 chdir("$inSrcDir/xpinstall/packager");
-system("perl pkgcp.pl -o $platform -s $DIST -d $STAGE -f $inConfigFiles/packages-static -v");
+system("perl pkgcp.pl -o $platform -s $DIST -d $STAGE -f $inConfigFiles/$ENV{WIZ_packagesFile} -v");
 spew("Completed copying build files");
 
 #// call xptlink.pl to make big .xpt files/component
@@ -143,45 +143,63 @@ sub copy
 
 sub ParseInstallerCfg
 {
+    $ENV{WIZ_distSubdir} = "bin";
+    $ENV{WIZ_packagesFile} = "packages-static";
+
     open(fpInstallCfg, "$inConfigFiles/installer.cfg") || die"\ncould not open $inConfigFiles/installer.cfg: $!\n";
 
     while ($line = <fpInstallCfg>)
     {
-	($prop, $value) = ($line =~ m/(\w*)\s+=\s+(.*)\n/);
+      if (substr($line, -2, 2) eq "\r\n") {
+        $line = substr($line, 0, length($line) - 2) . "\n";
+      }
+      ($prop, $value) = ($line =~ m/(\w*)\s+=\s+(.*)\n/);
 
-	if ($prop eq "VersionLanguage") {
-	    $ENV{WIZ_versionLanguage} = $value;
-	}
-	elsif ($prop eq "NameCompany") {
-	    $ENV{WIZ_nameCompany} = $value;
-	}
-	elsif ($prop eq "NameProduct") {
-	    $ENV{WIZ_nameProduct} = $value;
-	}
-	elsif ($prop eq "NameProductInternal") {
-	    $ENV{WIZ_nameProductInternal} = $value;
-	}
-	elsif ($prop eq "VersionProduct") {
-	    $ENV{WIZ_versionProduct} = $value;
-	}
-	elsif ($prop eq "FileInstallerEXE") {
-	    $ENV{WIZ_fileInstallerExe} = $value;
-	}
-	elsif ($prop eq "FileUninstall") {
-	    $ENV{WIZ_fileUninstall} = $value;
-	}
-	elsif ($prop eq "FileUninstallZIP") {
-	    $ENV{WIZ_fileUninstallZip} = $value;
-	}
-	elsif ($prop eq "FileMainEXE") {
-	    $ENV{WIZ_fileMainExe} = $value;
-	}
-	elsif ($prop eq "FileInstallerNETRoot") {
-	    $ENV{WIZ_fileNetStubRootName} = $value;
-	}
-	elsif ($prop eq "ComponentList") {
-	    $ENV{WIZ_componentList} = $value;
-	}
+      if ($prop eq "VersionLanguage") {
+        $ENV{WIZ_versionLanguage} = $value;
+      }
+      elsif ($prop eq "NameCompany") {
+        $ENV{WIZ_nameCompany} = $value;
+      }
+      elsif ($prop eq "NameProduct") {
+        $ENV{WIZ_nameProduct} = $value;
+      }
+      elsif ($prop eq "ShortNameProduct") {
+        $ENV{WIZ_shortNameProduct} = $value;
+      }
+      elsif ($prop eq "NameProductInternal") {
+        $ENV{WIZ_nameProductInternal} = $value;
+      }
+      elsif ($prop eq "VersionProduct") {
+        $ENV{WIZ_versionProduct} = $value;
+      }
+      elsif ($prop eq "FileInstallerEXE") {
+        $ENV{WIZ_fileInstallerExe} = $value;
+      }
+      elsif ($prop eq "FileUninstall") {
+        $ENV{WIZ_fileUninstall} = $value;
+      }
+      elsif ($prop eq "FileUninstallZIP") {
+        $ENV{WIZ_fileUninstallZip} = $value;
+      }
+      elsif ($prop eq "FileMainEXE") {
+        $ENV{WIZ_fileMainExe} = $value;
+      }
+      elsif ($prop eq "FileInstallerNETRoot") {
+        $ENV{WIZ_fileNetStubRootName} = $value;
+      }
+      elsif ($prop eq "ComponentList") {
+        $ENV{WIZ_componentList} = $value;
+      }
+      elsif ($prop eq "7ZipSFXModule") {
+        $ENV{WIZ_sfxModule} = $value;
+      }
+      elsif ($prop eq "DistSubdir") {
+        $ENV{WIZ_distSubdir} = $value;
+      }
+      elsif ($prop eq "packagesFile") {
+        $ENV{WIZ_packagesFile} = $value;
+      }
     }
 
     close(fpInstallCfg);
@@ -256,7 +274,8 @@ sub GetVersion
 
     $distWinPathName = "dist";
 
-    $fileMozilla = "$depthPath/$distWinPathName/bin/$ENV{WIZ_fileMainExe}";
+    $fileMozilla = "$depthPath/$distWinPathName/$ENV{WIZ_distSubdir}/$ENV{WIZ_fileMainExe}";
+    
   # verify the existance of file
   if(!(-e "$fileMozilla"))
   {

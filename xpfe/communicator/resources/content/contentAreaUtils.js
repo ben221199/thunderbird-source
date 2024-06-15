@@ -351,7 +351,7 @@ function foundHeaderInfo(aSniffer, aData)
   var persistArgs = {
     source      : source,
     contentType : (useSaveDocument && fp.filterIndex == 2) ? "text/plain" : contentType,
-    target      : fp.file,
+    target      : makeFileURL(fp.file),
     postData    : isDocument ? getPostData() : null,
     bypassCache : aData.bypassCache
   };
@@ -377,10 +377,7 @@ function foundHeaderInfo(aSniffer, aData)
     var filesFolder = null;
     if (persistArgs.contentType != "text/plain") {
       // Create the local directory into which to save associated files. 
-      const lfContractID = "@mozilla.org/file/local;1";
-      const lfIID = Components.interfaces.nsILocalFile;
-      filesFolder = Components .classes[lfContractID].createInstance(lfIID);
-      filesFolder.initWithPath(persistArgs.target.path);
+      filesFolder = fp.file.clone();
       
       var nameWithoutExtension = filesFolder.leafName.replace(/\.[^.]*$/, "");
       var filesFolderLeafName = getStringBundle().formatStringFromName("filesFolder",
@@ -446,8 +443,7 @@ nsHeaderSniffer.prototype = {
   QueryInterface: function (iid) {
     if (!iid.equals(Components.interfaces.nsIRequestObserver) &&
         !iid.equals(Components.interfaces.nsISupports) &&
-        !iid.equals(Components.interfaces.nsIInterfaceRequestor) &&
-        !iid.equals(Components.interfaces.nsIAuthPrompt)) {
+        !iid.equals(Components.interfaces.nsIInterfaceRequestor)) {
       throw Components.results.NS_ERROR_NO_INTERFACE;
     }
     return this;
@@ -455,37 +451,14 @@ nsHeaderSniffer.prototype = {
 
   // ---------- nsIInterfaceRequestor methods ----------
   getInterface : function(iid) {
-    return this.QueryInterface(iid);
-  },
-
-  // ---------- nsIAuthPrompt methods ----------
-  prompt : function(dlgTitle, text, pwrealm, savePW, defaultText, result)
-  {
-    dump("authprompt prompt! pwrealm="+pwrealm+"\n");
-    var promptServ = this.promptService;
-    if (!promptServ)
-      return false;
-    var saveCheck = {value:savePW};
-    return promptServ.prompt(window, dlgTitle, text, defaultText, pwrealm, saveCheck);
-  },
-  promptUsernameAndPassword : function(dlgTitle, text, pwrealm, savePW, user, pw)
-  {
-    dump("authprompt promptUsernameAndPassword!  "+dlgTitle+" "+text+", pwrealm="+pwrealm+"\n");
-    var promptServ = this.promptService;
-    if (!promptServ)
-      return false;
-    var saveCheck = {value:savePW};
-    return promptServ.promptUsernameAndPassword(window, dlgTitle, text, user, pw, pwrealm, saveCheck);
-  },
-  promptPassword : function(dlgTitle, text, pwrealm, savePW, pw)
-  {
-    dump("auth promptPassword!  "+dlgTitle+" "+text+", pwrealm="+pwrealm+"\n");
-    var promptServ = this.promptService;
-    if (!promptServ)
-      return false;
-
-    var saveCheck = {value:savePW};
-    return promptServ.promptPassword(window, dlgTitle, text, pw, pwrealm, saveCheck);
+    if (iid.equals(Components.interfaces.nsIAuthPrompt)) {
+      // use the window watcher service to get a nsIAuthPrompt impl
+      var ww = Components.classes["@mozilla.org/embedcomp/window-watcher;1"]
+                         .getService(Components.interfaces.nsIWindowWatcher);
+      return ww.getNewAuthPrompter(window);
+    }
+    Components.returnCode = Components.results.NS_ERROR_NO_INTERFACE;
+    return null;
   },
 
   // ---------- nsIRequestObserver methods ----------
@@ -669,10 +642,10 @@ function appendFiltersForContentType(aFilePicker, aContentType, aFileExtension, 
 function getPostData()
 {
   try {
-    return getWebNavigation().sessionHistory
-                             .getEntryAtIndex(sessionHistory.index, false)
-                             .QueryInterface(Components.interfaces.nsISHEntry)
-                             .postData;
+    var sessionHistory = getWebNavigation().sessionHistory;
+    return sessionHistory.getEntryAtIndex(sessionHistory.index, false)
+                         .QueryInterface(Components.interfaces.nsISHEntry)
+                         .postData;
   }
   catch (e) {
   }
@@ -706,7 +679,13 @@ function makeURL(aURL)
   var ioService = Components.classes["@mozilla.org/network/io-service;1"]
                 .getService(Components.interfaces.nsIIOService);
   return ioService.newURI(aURL, null, null);
-  
+}
+
+function makeFileURL(aFile)
+{
+  var ioService = Components.classes["@mozilla.org/network/io-service;1"]
+                .getService(Components.interfaces.nsIIOService);
+  return ioService.newFileURI(aFile);
 }
 
 function makeFilePicker()

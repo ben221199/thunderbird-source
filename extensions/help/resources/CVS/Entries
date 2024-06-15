@@ -1,6 +1,4 @@
-/.cvsignore/1.1/Fri Jul  6 02:35:36 2001//TTHUNDERBIRD_0_6_RELEASE
-/Makefile.in/1.6/Thu Mar 14 07:11:09 2002//TTHUNDERBIRD_0_6_RELEASE
-/jar.mn/1.48/Thu Feb 26 20:58:54 2004//TTHUNDERBIRD_0_6_RELEASE
-D/content////
-D/locale////
-D/skin////
+/.cvsignore/1.1/Fri Jul  6 02:35:36 2001//TTHUNDERBIRD_0_7_RELEASE
+/Makefile.in/1.6/Thu Mar 14 07:11:09 2002//TTHUNDERBIRD_0_7_RELEASE
+/jar.mn/1.48/Thu Feb 26 20:58:54 2004//TTHUNDERBIRD_0_7_RELEASE
+D

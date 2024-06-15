@@ -409,7 +409,7 @@ ShouldBeInElements(nsIFormControl* aFormControl)
 // construction, destruction
 nsresult
 NS_NewHTMLFormElement(nsIHTMLContent** aInstancePtrResult,
-                      nsINodeInfo *aNodeInfo)
+                      nsINodeInfo *aNodeInfo, PRBool aFromParser)
 {
   NS_ENSURE_ARG_POINTER(aInstancePtrResult);
 
@@ -741,7 +741,7 @@ nsHTMLFormElement::HandleDOMEvent(nsIPresContext* aPresContext,
             // to forget it and the form element will build a new one
             ForgetPendingSubmission();
           }
-          rv = DoSubmitOrReset(aPresContext, aEvent, aEvent->message);
+          DoSubmitOrReset(aPresContext, aEvent, aEvent->message);
         }
         break;
       }
@@ -848,9 +848,7 @@ nsHTMLFormElement::DoSubmit(nsIPresContext* aPresContext, nsEvent* aEvent)
   // 
   // perform the submission
   //
-  SubmitSubmission(aPresContext, submission); 
-
-  return NS_OK;
+  return SubmitSubmission(aPresContext, submission); 
 }
 
 nsresult

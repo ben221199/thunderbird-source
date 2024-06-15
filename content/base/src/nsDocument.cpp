@@ -24,6 +24,7 @@
  *   L. David Baron  <dbaron@dbaron.org>
  *   Pierre Phaneuf  <pp@ludusdesign.com>
  *   Pete Collins    <petejc@collab.net>
+ *   James Ross      <silver@warwickcompsocc.o.uk>
  *
  *
  * Alternatively, the contents of this file may be used under the terms of
@@ -52,6 +53,7 @@
 #include "nsIBaseWindow.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeItem.h"
+#include "nsIJARURI.h"
 
 #include "nsGUIEvent.h"
 
@@ -124,10 +126,8 @@ static NS_DEFINE_CID(kDOMEventGroupCID, NS_DOMEVENTGROUP_CID);
 #include "nsIElementFactory.h"
 #include "nsIParserService.h"
 
-#ifdef DEBUG
 #include "nsICharsetAlias.h"
 static NS_DEFINE_CID(kCharsetAliasCID, NS_CHARSETALIAS_CID);
-#endif
 
 // Helper structs for the content->subdoc map
 
@@ -694,11 +694,24 @@ nsDocument::Reset(nsIChannel* aChannel, nsILoadGroup* aLoadGroup)
 
   ResetToURI(uri, aLoadGroup);
 
-  if (aChannel) {
-    nsCOMPtr<nsISupports> owner;
-    aChannel->GetOwner(getter_AddRefs(owner));
+  if (uri) {
+    // Use the channel owner as our principal if we're loading a
+    // javascript:, data:, or chrome: URI.
+    PRBool useOwner = PR_FALSE;
+    nsCOMPtr<nsIJARURI> jarURI;
+    while ((jarURI = do_QueryInterface(uri)))
+      jarURI->GetJARFile(getter_AddRefs(uri));
+ 
+    if (NS_FAILED(uri->SchemeIs("javascript", &useOwner)) || useOwner ||
+        NS_FAILED(uri->SchemeIs("data", &useOwner)) || useOwner ||
+        NS_FAILED(uri->SchemeIs("about", &useOwner)) || useOwner ||
+        NS_FAILED(uri->SchemeIs("resource", &useOwner)) || useOwner ||
+        NS_FAILED(uri->SchemeIs("chrome", &useOwner)) || useOwner) {
+      nsCOMPtr<nsISupports> owner;
+      aChannel->GetOwner(getter_AddRefs(owner));
 
-    mPrincipal = do_QueryInterface(owner);
+      mPrincipal = do_QueryInterface(owner);
+    }
   }
 }
 
@@ -1115,6 +1128,35 @@ nsDocument::SetHeaderData(nsIAtom* aHeaderField, const nsAString& aData)
       }
     }
   }
+}
+
+PRBool
+nsDocument::TryChannelCharset(nsIChannel *aChannel,
+                              PRInt32& aCharsetSource,
+                              nsACString& aCharset)
+{
+  if(kCharsetFromChannel <= aCharsetSource) {
+    return PR_TRUE;
+  }
+
+  if (aChannel) {
+    nsCAutoString charsetVal;
+    nsresult rv = aChannel->GetContentCharset(charsetVal);
+    if (NS_SUCCEEDED(rv)) {
+      nsCOMPtr<nsICharsetAlias> calias(do_GetService(kCharsetAliasCID));
+      if (calias) {
+        nsCAutoString preferred;
+        rv = calias->GetPreferred(charsetVal,
+                                  preferred);
+        if(NS_SUCCEEDED(rv)) {
+          aCharset = preferred;
+          aCharsetSource = kCharsetFromChannel;
+          return PR_TRUE;
+        }
+      }
+    }
+  }
+  return PR_FALSE;
 }
 
 nsresult

@@ -21,18 +21,14 @@ content/messenger/addressbook,                       msg/content/messenger/addre
 #################################################################################################
 # Files we need from comm.jar
 #################################################################################################
-
 content/editor,                                       comm/content/editor
 content/editor-region,                                comm/content/editor-region
 content/communicator-region,                          comm/content/communicator-region,
 content/communicator-platform,                        comm/content/communicator-platform
 content/communicator/contents.rdf, 		                comm/content/communicator/contents.rdf
-content/communicator/communicator.css,                comm/content/communicator/communicator.css
 content/communicator/communicatorOverlay.xul,         comm/content/communicator/communicatorOverlay.xul 
 content/communicator/utilityOverlay.xul,              comm/content/communicator/utilityOverlay.xul 
 content/communicator/utilityOverlay.js,               comm/content/communicator/utilityOverlay.js 
-content/communicator/tasksOverlay.js,                 comm/content/communicator/tasksOverlay.js 
-content/communicator/tasksOverlay.xul,                comm/content/communicator/tasksOverlay.xul 
 content/communicator/browserBindings.xul,             comm/content/communicator/browserBindings.xul 
 content/communicator/editorBindings.xul,              comm/content/communicator/editorBindings.xul 
 content/communicator/platformBrowserBindings.xul,     comm/content/communicator/platformBrowserBindings.xul 
@@ -44,35 +40,19 @@ content/communicator/contentAreaDD.js,                comm/content/communicator/
 content/communicator/contentAreaClick.js,             comm/content/communicator/contentAreaClick.js 
 content/communicator/contentAreaContextOverlay.xul,   comm/content/communicator/contentAreaContextOverlay.xul 
 content/communicator/nsContextMenu.js,                comm/content/communicator/nsContextMenu.js
-content/communicator/printPreviewBindings.xml,        comm/content/communicator/printPreviewBindings.xml
 content/communicator/printing.js,                     comm/content/communicator/printing.js
 content/communicator/XPCNativeWrapper.js,             comm/content/communicator/XPCNativeWrapper.js
 
 # from xpfe\components jar.mn
 content/communicator/alerts,                          comm/content/communicator/alerts
-content/communicator/pref/pref-advanced.xul,          comm/content/communicator/pref/pref-advanced.xul
-content/communicator/pref/pref-appearance.xul,        comm/content/communicator/pref/pref-appearance.xul
-content/communicator/pref/overrideHandler.js,         comm/content/communicator/pref/overrideHandler.js
-content/communicator/pref/pref-colors.js,             comm/content/communicator/pref/pref-colors.js
-content/communicator/pref/pref-colors.xul,            comm/content/communicator/pref/pref-colors.xul
-content/communicator/pref/pref-help.js,               comm/content/communicator/pref/pref-help.js
 content/communicator/pref/pref-themes.xul,            comm/content/communicator/pref/pref-themes.xul
 content/communicator/pref/pref-themes.js,             comm/content/communicator/pref/pref-themes.js
 content/communicator/pref/pref-extensions.xul,        comm/content/communicator/pref/pref-extensions.xul
 content/communicator/pref/pref-extensions.js,         comm/content/communicator/pref/pref-extensions.js
-content/communicator/pref/pref-charset.js,            comm/content/communicator/pref/pref-charset.js
-content/communicator/pref/pref-charset.xul,           comm/content/communicator/pref/pref-charset.xul
 content/communicator/pref/pref-fonts.js,              comm/content/communicator/pref/pref-fonts.js
 content/communicator/pref/pref-fonts.xul,             comm/content/communicator/pref/pref-fonts.xul
-content/communicator/pref/pref-languages.xul,         comm/content/communicator/pref/pref-languages.xul
-content/communicator/pref/pref-languages-add.xul,     comm/content/communicator/pref/pref-languages-add.xul
-content/communicator/pref/pref-languages.js,          comm/content/communicator/pref/pref-languages.js
-content/communicator/pref/pref-proxies.js,            comm/content/communicator/pref/pref-proxies.js
-content/communicator/pref/pref-policies.xul,          comm/content/communicator/pref/pref-policies.xul
-content/communicator/pref/pref-proxies.xul,           comm/content/communicator/pref/pref-proxies.xul
 content/communicator/pref/pref.xul,                   comm/content/communicator/pref/pref.xul
 content/communicator/pref/nsPrefWindow.js,            comm/content/communicator/pref/nsPrefWindow.js
-content/communicator/pref/pref-applications-edit.xul, comm/content/communicator/pref/pref-applications-edit.xul
 content/communicator/pref/pref-calibrate-screen.xul,  comm/content/communicator/pref/pref-calibrate-screen.xul
 
 # dummy contextHelp.js file so we don't get a bunch of errors about this file not being found
@@ -132,6 +112,7 @@ content/global/printdialog.xul,                       toolkit/content/global/pri
 content/global/printdialog.js,                        toolkit/content/global/printdialog.js
 content/global/printProgress.xul,                     toolkit/content/global/printProgress.xul
 content/global/printProgress.js,                      toolkit/content/global/printProgress.js
+content/global/printPreviewBindings.xml,              toolkit/content/global/printPreviewBindings.xml
 content/global/printPreviewProgress.xul,              toolkit/content/global/printPreviewProgress.xul
 content/global/printPreviewProgress.js,               toolkit/content/global/printPreviewProgress.js
 content/global/printPageSetup.js,                     toolkit/content/global/printPageSetup.js
@@ -156,6 +137,10 @@ content/global/editMenuOverlay.js,                    toolkit/content/global/edi
 
 #from mozapps
 content/mozapps/downloads,                            toolkit/content/mozapps/downloads
+content/mozapps/profile,                              toolkit/content/mozapps/profile
+content/mozapps/extensions,                           toolkit/content/mozapps/extensions
+content/mozapps/update,                               toolkit/content/mozapps/update
+content/mozapps/shared,                               toolkit/content/mozapps/shared
 content/mozapps/contents.rdf,                         toolkit/content/mozapps/contents.rdf
 
 # from xpfe\components
@@ -179,7 +164,6 @@ content/global/nsProgressDialog.xul,                  toolkit/content/global/nsP
 #################################################################################################
 content/pipnss/contents.rdf,                          pipnss/content/pipnss/contents.rdf
 content/pippki,                                       pippki/content/pippki
-
 
 #################################################################################################
 # files needed by the optional pref extension. These files may not necessarily exist if the extension

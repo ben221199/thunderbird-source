@@ -50,6 +50,8 @@
 <!ENTITY  rememberChoice.accesskey    "a">
 
 <!ENTITY  settingsChange.label        "Settings can be changed in the Downloads section of Tools, Options.">
+<!ENTITY  settingsChangeMac.label     "Settings can be changed in the Downloads section of &brandShortName;, Preferences.">
+<!ENTITY  settingsChangeUnix.label    "Settings can be changed in the Downloads section of Edit, Preferences.">
 
 <!ENTITY  whichIsA.label              "which is a:">
 

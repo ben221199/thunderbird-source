@@ -178,7 +178,6 @@ protected:
   //
   // expiration/removal stuff
   //
-  nsresult RemovePage(const char *aURL);
   PRInt32   mExpireDays;
   nsresult ExpireEntries(PRBool notify);
   nsresult RemoveMatchingRows(rowMatchCallback aMatchFunc,
@@ -225,7 +224,7 @@ protected:
                              const nsAString& aUserURL,
                              AutocompleteExclude* aExclude);
   PR_STATIC_CALLBACK(int)
-  AutoCompleteSortComparison(const void *v1, const void *v2, void *closureVoid);
+  AutoCompleteSortComparison(nsIMdbRow *row1, nsIMdbRow *row2, void *closureVoid);
 
   // AutoCompleteSortClosure - used to pass info into 
   // AutoCompleteSortComparison from the NS_QuickSort() function
@@ -308,8 +307,10 @@ protected:
                                      PRInt64 aDate,
                                      PRInt64 *aOldDate,
                                      PRInt32 *aOldCount);
-  nsresult AddNewPageToDatabase(const char *aURL,
+  nsresult AddNewPageToDatabase(nsIURI* aURI,
                                 PRInt64 aDate,
+                                PRBool aRedirect,
+                                PRBool aTopLevel,
                                 nsIMdbRow **aResult);
   //
   // generic routines for setting/retrieving various datatypes

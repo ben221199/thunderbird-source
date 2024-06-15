@@ -1706,7 +1706,7 @@ nsSocketTransport::GetSelfAddr(PRNetAddr *addr)
     {
         nsAutoLock lock(mLock);
         ReleaseFD_Locked(fd);
-   }
+    }
 
     return rv;
 }

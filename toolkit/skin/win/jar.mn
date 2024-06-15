@@ -2,7 +2,7 @@ classic.jar:
 *+ skin/classic/global/arrow.css
 *+ skin/classic/global/autocomplete.css
 +  skin/classic/global/browser.css
-+  skin/classic/global/checkbox.css
+*+  skin/classic/global/checkbox.css
 +  skin/classic/global/colorpicker.css
 +  skin/classic/global/customizeToolbar.css
 +  skin/classic/global/contents.rdf
@@ -15,17 +15,17 @@ classic.jar:
 +  skin/classic/global/menulist.css
 +  skin/classic/global/popup.css
 +  skin/classic/global/progressmeter.css
-+  skin/classic/global/radio.css
+*+  skin/classic/global/radio.css
 +  skin/classic/global/scrollbars.css
 +  skin/classic/global/scrollbox.css
 +  skin/classic/global/spinbuttons.css
 +  skin/classic/global/splitter.css
 *+ skin/classic/global/tabbox.css
 +  skin/classic/global/textbox.css
-+  skin/classic/global/toolbarbutton.css
+*+  skin/classic/global/toolbarbutton.css
 +  skin/classic/global/tree.css
 +  skin/classic/global/wizard.css
-+  skin/classic/global/button.css
+*+  skin/classic/global/button.css
 +  skin/classic/global/menu.css
    skin/classic/global/expander.css
 +  skin/classic/global/toolbar.css
@@ -74,6 +74,7 @@ classic.jar:
 +  skin/classic/global/radio/radio-check-dis.gif                  (radio/radio-check-dis.gif)
 +  skin/classic/global/radio/radio-check.gif                      (radio/radio-check.gif)
 +  skin/classic/global/scrollbar/slider.gif                       (scrollbar/slider.gif)
++  skin/classic/global/toolbar/Flex.png                           (toolbar/Flex.png)
 +  skin/classic/global/toolbar/Lighten.png                        (toolbar/Lighten.png)
 +  skin/classic/global/toolbar/chevron.gif                        (toolbar/chevron.gif)
 +  skin/classic/global/toolbar/spacer-lft.gif                     (toolbar/spacer-lft.gif)

@@ -114,15 +114,16 @@ ifeq ($(OS_ARCH),WINNT)
 REQUIRES	+= appcomps \
 		   profile \
 		   $(NULL)
+
+ifdef BUILD_STATIC_LIBS
+DEFINES	+= -DMOZ_STATIC_BUILD
+endif
+
 CPPSRCS		+= nsMessengerWinIntegration.cpp 
 endif
 
 ifeq ($(OS_ARCH),OS2)
 CPPSRCS		+= nsMessengerOS2Integration.cpp 
-endif
-
-ifneq (,$(filter cocoa mac, $(MOZ_WIDGET_TOOLKIT)))
-CPPSRCS		+= nsMessengerOSXIntegration.cpp 
 endif
 
 ifdef MOZ_LDAP_XPCOM
@@ -135,6 +136,11 @@ endif
 
 ifdef MOZ_THUNDERBIRD
 CPPSRCS		+= nsMsgContentPolicy.cpp 
+
+ifneq (,$(filter cocoa mac, $(MOZ_WIDGET_TOOLKIT)))
+CPPSRCS         += nsMessengerOSXIntegration.cpp
+endif
+
 endif
 
 EXPORTS		= \

@@ -127,7 +127,6 @@ static NS_DEFINE_CID(kStreamListenerTeeCID, NS_STREAMLISTENERTEE_CID);
 #define IMAP_ENV_AND_DB_HEADERS IMAP_ENV_HEADERS IMAP_DB_HEADERS
 static const PRIntervalTime kImapSleepTime = PR_MillisecondsToInterval(1000);
 static PRInt32 gPromoteNoopToCheckCount = 0;
-nsXPIDLString nsImapProtocol::mAcceptLanguages;
 static const PRUint32 kFlagChangesBeforeCheck = 10;
 static const PRInt32 kMaxSecondsBeforeCheck = 600;
 
@@ -339,14 +338,6 @@ nsresult nsImapProtocol::GlobalInitialization()
     prefBranch->GetBoolPref("mail.imap.use_envelope_cmd",
                             &gUseEnvelopeCmd);
     prefBranch->GetBoolPref("mail.imap.use_literal_plus", &gUseLiteralPlus);
-    nsCOMPtr<nsIPrefLocalizedString> prefString;
-    prefBranch->GetComplexValue("intl.accept_languages",
-                                NS_GET_IID(nsIPrefLocalizedString),
-                                getter_AddRefs(prefString));
-    if (prefString) {
-      prefString->ToString(getter_Copies(mAcceptLanguages));
-    }
-
     return NS_OK;
 }
 
@@ -366,6 +357,18 @@ nsImapProtocol::nsImapProtocol() : nsMsgProtocol(nsnull),
     
   if (!gInitialized)
     GlobalInitialization();
+
+  // read in the accept languages preference
+  nsCOMPtr<nsIPrefBranch> prefBranch(do_GetService(NS_PREFSERVICE_CONTRACTID)); 
+  if (prefBranch)
+  {
+    nsCOMPtr<nsIPrefLocalizedString> prefString;
+    prefBranch->GetComplexValue("intl.accept_languages",
+                                NS_GET_IID(nsIPrefLocalizedString),
+                                getter_AddRefs(prefString));
+    if (prefString)
+      prefString->ToString(getter_Copies(mAcceptLanguages));
+  }
 
     // ***** Thread support *****
   m_thread = nsnull;
@@ -873,7 +876,12 @@ void nsImapProtocol::ReleaseUrlState()
     nsCOMPtr<nsIMsgMailNewsUrl>  mailnewsurl = do_QueryInterface(m_runningUrl);
     if (m_imapServerSink)  
       m_imapServerSink->RemoveChannelFromUrl(mailnewsurl, NS_OK);
+
+    {
+      nsAutoCMonitor mon (this);
     m_runningUrl = nsnull; // force us to release our last reference on the url
+      m_urlInProgress = PR_FALSE;
+    }
 
     // we want to make sure the imap protocol's last reference to the url gets released
     // back on the UI thread. This ensures that the objects the imap url hangs on to
@@ -1025,7 +1033,7 @@ nsImapProtocol::TellThreadToDie(PRBool isSafeToClose)
   if (m_currentServerCommandTagNumber > 0)
   {
     if (TestFlag(IMAP_CONNECTION_IS_OPEN) && m_idle)
-      EndIdle();
+      EndIdle(PR_FALSE);
 
     if (closeNeeded && GetDeleteIsMoveToTrash() &&
         TestFlag(IMAP_CONNECTION_IS_OPEN) && m_outputStream)
@@ -1414,7 +1422,6 @@ PRBool nsImapProtocol::ProcessCurrentURL()
   ResetProgressInfo();
 
   ClearFlag(IMAP_CLEAN_UP_URL_STATE);
-  m_urlInProgress = PR_FALSE;
 
   if (imapMailFolderSink)
   {
@@ -2746,6 +2753,18 @@ void nsImapProtocol::FetchMsgAttribute(const char * messageIds, const char *attr
 
 // this routine is used to fetch a message or messages, or headers for a
 // message...
+
+void nsImapProtocol::FallbackToFetchWholeMsg(const char *messageId, PRUint32 messageSize)
+{
+  if (m_imapMessageSink && m_runningUrl)
+  {
+    PRBool shouldStoreMsgOffline;
+    m_runningUrl->GetShouldStoreMsgOffline(&shouldStoreMsgOffline);
+    if (shouldStoreMsgOffline)
+      m_imapMessageSink->SetNotifyDownloadedLines(PR_TRUE);
+  }
+  FetchTryChunking(messageId, kEveryThingRFC822, PR_TRUE, NULL, messageSize, PR_TRUE);
+}
 
 void
 nsImapProtocol::FetchMessage(const char * messageIds, 
@@ -5238,9 +5257,7 @@ void nsImapProtocol::UploadMessageFromFile (nsIFileSpec* fileSpec,
           {
             // if the appended to folder isn't selected in the connection,
             // select it.
-            if (!GetServerStateParser().GetSelectedMailboxName() || 
-                  PL_strcmp(GetServerStateParser().GetSelectedMailboxName(),
-                            mailboxName))
+            if (!FolderIsSelected(mailboxName))
               SelectMailbox(mailboxName);
           
             if (GetServerStateParser().LastCommandSuccessful())
@@ -5652,8 +5669,28 @@ void nsImapProtocol::GetMyRightsForFolder(const char *mailboxName)
     ParseIMAPandCheckForNewMail();
 }
 
+PRBool nsImapProtocol::FolderIsSelected(const char *mailboxName)
+{
+  return (GetServerStateParser().GetIMAPstate() ==
+      nsImapServerResponseParser::kFolderSelected && GetServerStateParser().GetSelectedMailboxName() && 
+      PL_strcmp(GetServerStateParser().GetSelectedMailboxName(),
+                    mailboxName) == 0);
+}
+
 void nsImapProtocol::OnStatusForFolder(const char *mailboxName)
 {
+
+  if (FolderIsSelected(mailboxName))
+  {
+    PRInt32 prevNumMessages = GetServerStateParser().NumberOfMessages();
+    Noop();
+    // OnNewIdleMessages will cause the ui thread to update the folder
+    if (m_imapMailFolderSink && GetServerStateParser().NumberOfRecentMessages()
+          || prevNumMessages != GetServerStateParser().NumberOfMessages())
+      m_imapMailFolderSink->OnNewIdleMessages();
+    return;
+  }
+
   IncrementCommandTagNumber();
 
   nsCAutoString command(GetServerCommandTag());
@@ -6597,10 +6634,7 @@ void nsImapProtocol::DeleteMailbox(const char *mailboxName)
   // check if this connection currently has the folder to be deleted selected.
   // If so, we should close it because at least some UW servers don't like you deleting
   // a folder you have open.
-  if (GetServerStateParser().GetIMAPstate() ==
-      nsImapServerResponseParser::kFolderSelected && GetServerStateParser().GetSelectedMailboxName() && 
-      PL_strcmp(GetServerStateParser().GetSelectedMailboxName(),
-                    mailboxName) == 0)
+  if (FolderIsSelected(mailboxName))
     Close();
   
   
@@ -6624,10 +6658,7 @@ void nsImapProtocol::RenameMailbox(const char *existingName,
                                    const char *newName)
 {
   // just like DeleteMailbox; Some UW servers don't like it.
-  if (GetServerStateParser().GetIMAPstate() ==
-    nsImapServerResponseParser::kFolderSelected && GetServerStateParser().GetSelectedMailboxName() && 
-    PL_strcmp(GetServerStateParser().GetSelectedMailboxName(),
-                  existingName) == 0)
+  if (FolderIsSelected(existingName))
     Close();
 
   ProgressEventFunctionUsingIdWithString (IMAP_STATUS_RENAMING_MAILBOX, existingName);
@@ -6795,7 +6826,10 @@ void nsImapProtocol::Idle()
   }
 }
 
-void nsImapProtocol::EndIdle()
+// until we can fix the hang on shutdown waiting for server
+// responses, we need to not wait for the server response
+// on shutdown.
+void nsImapProtocol::EndIdle(PRBool waitForResponse /* = PR_TRUE */)
 {
   // clear the async wait - otherwise, we seem to have trouble doing a blocking read
   nsCOMPtr <nsIAsyncInputStream> asyncInputStream = do_QueryInterface(m_inputStream);
@@ -6805,6 +6839,7 @@ void nsImapProtocol::EndIdle()
   if (NS_SUCCEEDED(rv))
   {
     m_idle = PR_FALSE;
+    if (waitForResponse)
     ParseIMAPandCheckForNewMail();
   }
   m_imapMailFolderSink = nsnull;

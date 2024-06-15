@@ -72,13 +72,15 @@
 #define XP_SHSetUnreadMailCounts "SHSetUnreadMailCountW"
 #define XP_SHEnumerateUnreadMailAccounts "SHEnumerateUnreadMailAccountsW"
 #define ShellNotifyWideVersion "Shell_NotifyIconW"
+#define NOTIFICATIONCLASSNAME "MailBiffNotificationMessageWindow"
 #define UNREADMAILNODEKEY "Software\\Microsoft\\Windows\\CurrentVersion\\UnreadMail\\"
 #define SHELL32_DLL NS_LITERAL_CSTRING("shell32.dll")
 #define DOUBLE_QUOTE "\""
 #define PROFILE_COMMANDLINE_ARG " -p "
 #define MAIL_COMMANDLINE_ARG " -mail"
 #define TIMER_INTERVAL_PREF "mail.windows_xp_integration.unread_count_interval"
-#define IDI_MAILBIFF 101
+
+#define IDI_MAILBIFF 115
 
 #define NEW_MAIL_ALERT_ICON "chrome://messenger/skin/icons/new-mail-alert.png"
 #define SHOW_ALERT_PREF "mail.biff.show_alert"
@@ -124,140 +126,91 @@ static void activateWindow( nsIDOMWindowInternal *win )
 static void openMailWindow(const PRUnichar * aMailWindowName, const char * aFolderUri)
 {
   nsCOMPtr<nsIWindowMediator> mediator ( do_GetService(NS_WINDOWMEDIATOR_CONTRACTID) );
-  if (mediator)
+  if (!mediator)
+    return;
+
+  nsCOMPtr<nsIDOMWindowInternal> domWindow;
+  mediator->GetMostRecentWindow(aMailWindowName, getter_AddRefs(domWindow));
+  if (domWindow)
   {
-    nsCOMPtr<nsIDOMWindowInternal> domWindow;
-    mediator->GetMostRecentWindow( aMailWindowName, getter_AddRefs(domWindow));
-    if (domWindow)
+    if (aFolderUri)
     {
-      nsCOMPtr<nsISupports> xpConnectObj;
       nsCOMPtr<nsPIDOMWindow> piDOMWindow(do_QueryInterface(domWindow));
       if (piDOMWindow)
       {
+        nsCOMPtr<nsISupports> xpConnectObj;
         piDOMWindow->GetObjectProperty(NS_LITERAL_STRING("MsgWindowCommands").get(), getter_AddRefs(xpConnectObj));
         nsCOMPtr<nsIMsgWindowCommands> msgWindowCommands = do_QueryInterface(xpConnectObj);
         if (msgWindowCommands)
           msgWindowCommands->SelectFolder(aFolderUri);
       }
+    }
 
-      activateWindow(domWindow);
-    }
-    else
-    {
-      // the user doesn't have a mail window open already so open one for them...
-      nsCOMPtr <nsIMessengerWindowService> messengerWindowService = do_GetService(NS_MESSENGERWINDOWSERVICE_CONTRACTID);
-      // if we want to preselect the first account with new mail, here is where we would try to generate
-      // a uri to pass in (and add code to the messenger window service to make that work)
-      if (messengerWindowService) 
-        messengerWindowService->OpenMessengerWindowWithUri("mail:3pane", aFolderUri, nsMsgKey_None);
-    }
+    activateWindow(domWindow);
+  }
+  else
+  {
+    // the user doesn't have a mail window open already so open one for them...
+    nsCOMPtr<nsIMessengerWindowService> messengerWindowService =
+      do_GetService(NS_MESSENGERWINDOWSERVICE_CONTRACTID);
+    // if we want to preselect the first account with new mail,
+    // here is where we would try to generate a uri to pass in
+    // (and add code to the messenger window service to make that work)
+    if (messengerWindowService)
+      messengerWindowService->OpenMessengerWindowWithUri(
+                                "mail:3pane", aFolderUri, nsMsgKey_None);
   }
 }
 
-// Message window encapsulation.
-struct MessageWindow 
+// Window proc.
+static long CALLBACK MessageWindowProc( HWND msgWindow, UINT msg, WPARAM wp, LPARAM lp ) 
 {
-    // ctor/dtor are simplistic
-    MessageWindow() 
-    {
-      Create();
-      // dummy code to force creation of our string
-      const char * fakeName = mailWinName();
-    }
-
-    // Act like an HWND.
-    operator HWND() 
-    {
-        return mHandle;
-    }
-
-    // for some reason WindowProc can't access the string literal "mail:3pane", we need to copy that string
-    // into a static buffer outside of the WindowProc call. 
-    static const char * mailWinName()
-    {
-      static char mailNameBuffer[128];
-      static char *mMailWinName = 0;
-      if ( !mMailWinName ) 
-      {
-        ::_snprintf( mailNameBuffer,
-                     sizeof mailNameBuffer,
-                     "%s",
-                     "mail:3pane" );
-        mMailWinName = mailNameBuffer;
-      }
-      return mMailWinName;
-    }
-
-    // Class name: appName + "MessageWindow"
-    static const char *className() 
-    {
-      static char classNameBuffer[128];
-      static char *mClassName = 0;
-      if ( !mClassName ) 
-      {
-        ::_snprintf( classNameBuffer,
-                     sizeof classNameBuffer,
-                     "%s%s",
-                     "MailBiffNotification",
-                     "MessageWindow" );
-        mClassName = classNameBuffer;
-      }
-      return mClassName;
-    }
-
-    // Create: Register class and create window.
-    NS_IMETHOD Create() 
-    {
-      // Try to find window.
-      mHandle = ::FindWindow( className(), 0 );
-      if (mHandle) 
-        return NS_OK;
-
-      WNDCLASS classStruct = { 0,                          // style
-                               &MessageWindow::WindowProc, // lpfnWndProc
-                               0,                          // cbClsExtra
-                               0,                          // cbWndExtra
-                               0,                          // hInstance
-                               0,                          // hIcon
-                               0,                          // hCursor
-                               0,                          // hbrBackground
-                               0,                          // lpszMenuName
-                               className() };              // lpszClassName
-
-      // Register the window class.
-      NS_ENSURE_TRUE( ::RegisterClass( &classStruct ), NS_ERROR_FAILURE );
-      // Create the window.
-      NS_ENSURE_TRUE( ( mHandle = ::CreateWindow( className(),
-                                                  0,          // title
-                                                  WS_CAPTION, // style
-                                                  0,0,0,0,    // x, y, cx, cy
-                                                  0,          // parent
-                                                  0,          // menu
-                                                  0,          // instance
-                                                  0 ) ),      // create struct
-                        NS_ERROR_FAILURE );
-      return NS_OK;
-    }
-
-    // Window proc.
-    static long CALLBACK WindowProc( HWND msgWindow, UINT msg, WPARAM wp, LPARAM lp ) 
-    {
-      if ( msg == WM_USER ) 
-      {
-         if ( lp == WM_LBUTTONDBLCLK ) 
-         {
-           nsAutoString mailName;
-           mailName.AssignWithConversion(mailWinName());
-           openMailWindow(mailName.get(), nsnull);
-         }
-      }
+  if ( msg == WM_USER ) 
+  {
+     if ( lp == WM_LBUTTONDBLCLK ) 
+     {
+       nsAutoString mailName;
+       mailName.AssignWithConversion("mail:3pane");
+       openMailWindow(mailName.get(), nsnull);
+     }
+  }
      
-      return TRUE;
-    }
+  return TRUE;
+}
 
-private:
-    HWND mHandle;
-}; // struct MessageWindow
+static HWND msgWindow;
+
+// Create: Register class and create window.
+static nsresult Create() 
+{
+  if (msgWindow)
+    return NS_OK;
+
+  WNDCLASS classStruct = { 0,                          // style
+                           &MessageWindowProc,         // lpfnWndProc
+                           0,                          // cbClsExtra
+                           0,                          // cbWndExtra
+                           0,                          // hInstance
+                           0,                          // hIcon
+                           0,                          // hCursor
+                           0,                          // hbrBackground
+                           0,                          // lpszMenuName
+                           NOTIFICATIONCLASSNAME };    // lpszClassName
+
+  // Register the window class.
+  NS_ENSURE_TRUE( ::RegisterClass( &classStruct ), NS_ERROR_FAILURE );
+  // Create the window.
+  NS_ENSURE_TRUE( msgWindow = ::CreateWindow( NOTIFICATIONCLASSNAME,
+                                              0,          // title
+                                              WS_CAPTION, // style
+                                              0,0,0,0,    // x, y, cx, cy
+                                              0,          // parent
+                                              0,          // menu
+                                              0,          // instance
+                                              0 ),        // create struct
+                  NS_ERROR_FAILURE );
+  return NS_OK;
+}
 
 
 nsMessengerWinIntegration::nsMessengerWinIntegration()
@@ -338,7 +291,11 @@ NOTIFYICONDATAW nsMessengerWinIntegration::mWideBiffIconData = { sizeof(NOTIFYIC
                                                     0 };
 
 #ifdef MOZ_THUNDERBIRD
+#ifdef MOZ_STATIC_BUILD
+#define MAIL_DLL_NAME "thunderbird.exe"
+#else
 #define MAIL_DLL_NAME "mail.dll"
+#endif
 #else
 #define MAIL_DLL_NAME "msgbase.dll"
 #endif
@@ -346,8 +303,7 @@ NOTIFYICONDATAW nsMessengerWinIntegration::mWideBiffIconData = { sizeof(NOTIFYIC
 void nsMessengerWinIntegration::InitializeBiffStatusIcon()
 {
   // initialize our biff status bar icon 
-  nsresult rv = NS_OK; 
-  MessageWindow msgWindow;
+  Create();
 
   if (mUseWideCharBiffIcon)
   {

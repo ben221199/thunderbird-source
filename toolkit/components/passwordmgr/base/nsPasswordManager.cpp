@@ -521,7 +521,7 @@ nsPasswordManager::FindEntryEnumerator(const nsACString& aKey,
   rv = manager->FindPasswordEntryInternal(aEntry->head,
                                           context->username,
                                           context->password,
-                                          nsString(),
+                                          EmptyString(),
                                           &entry);
 
   if (NS_SUCCEEDED(rv) && entry) {
@@ -552,7 +552,7 @@ nsPasswordManager::FindPasswordEntry(const nsACString& aHostURI,
       nsresult rv = FindPasswordEntryInternal(hashEnt->head,
                                               aUsername,
                                               aPassword,
-                                              nsString(),
+                                              EmptyString(),
                                               &entry);
 
       if (NS_SUCCEEDED(rv) && entry) {
@@ -818,6 +818,7 @@ nsPasswordManager::OnStateChange(nsIWebProgress* aWebProgress,
     SignonDataEntry* firstMatch = nsnull;
     nsCOMPtr<nsIDOMHTMLInputElement> userField, passField;
     nsCOMPtr<nsIDOMHTMLInputElement> temp;
+    nsAutoString fieldType;
 
     for (SignonDataEntry* e = hashEnt->head; e; e = e->next) {
       
@@ -828,6 +829,10 @@ nsPasswordManager::OnStateChange(nsIWebProgress* aWebProgress,
       nsAutoString oldUserValue;
 
       if (temp) {
+        temp->GetType(fieldType);
+        if (!fieldType.Equals(NS_LITERAL_STRING("text")))
+          continue;
+
         temp->GetValue(oldUserValue);
         userField = temp;
       } else {
@@ -878,6 +883,10 @@ nsPasswordManager::OnStateChange(nsIWebProgress* aWebProgress,
       nsAutoString oldPassValue;
 
       if (temp) {
+        temp->GetType(fieldType);
+        if (!fieldType.Equals(NS_LITERAL_STRING("password")))
+          continue;
+
         temp->GetValue(oldPassValue);
         passField = temp;
       } else {
@@ -1037,6 +1046,11 @@ nsPasswordManager::Notify(nsIContent* aFormNode,
 
       nsCOMPtr<nsIDOMElement> formDOMEl = do_QueryInterface(aFormNode);
       formDOMEl->GetAttribute(NS_LITERAL_STRING("autocomplete"), autocomplete);
+      if (autocomplete.EqualsIgnoreCase("off"))
+        return NS_OK;
+
+      nsCOMPtr<nsIDOMElement> passFieldElement = do_QueryInterface(passFields.ObjectAt(0));
+      passFieldElement->GetAttribute(NS_LITERAL_STRING("autocomplete"), autocomplete);
       if (autocomplete.EqualsIgnoreCase("off"))
         return NS_OK;
 
@@ -1219,10 +1233,15 @@ nsPasswordManager::Notify(nsIContent* aFormNode,
                                  formatArgs,
                                  1);
 
-              PRBool confirm;
-              prompt->Confirm(dialogTitle.get(), dialogText.get(), &confirm);
+              PRInt32 selection;
+              prompt->ConfirmEx(dialogTitle.get(),
+                                dialogText.get(),
+                                (nsIPrompt::BUTTON_TITLE_YES * nsIPrompt::BUTTON_POS_0) +
+                                (nsIPrompt::BUTTON_TITLE_NO * nsIPrompt::BUTTON_POS_1),
+                                nsnull, nsnull, nsnull, nsnull, nsnull,
+                                &selection);
 
-              if (confirm)
+              if (selection == 0)
                 changeEntry = entry;
             }
           }
@@ -1715,7 +1734,7 @@ nsPasswordManager::EnsureDecoderRing()
     token->GetNeedsUserInit(&needUserInit);
 
     if (needUserInit)
-      token->InitPassword(NS_LITERAL_STRING("").get());
+      token->InitPassword(EmptyString().get());
   }
 }
 
@@ -1815,7 +1834,7 @@ nsPasswordManager::FillPassword(nsIDOMEvent* aEvent)
     return NS_OK;
 
   SignonDataEntry* foundEntry;
-  FindPasswordEntryInternal(hashEnt->head, userValue, nsString(),
+  FindPasswordEntryInternal(hashEnt->head, userValue, EmptyString(),
                             fieldName, &foundEntry);
 
   if (!foundEntry)

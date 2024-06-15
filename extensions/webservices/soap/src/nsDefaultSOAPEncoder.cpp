@@ -2131,6 +2131,13 @@ static nsresult DecodeStructParticle(nsISOAPEncoding* aEncoding, nsIDOMElement* 
           rc = aEncoding->Decode(aElement, type, aAttachments, getter_AddRefs(value));
           if (NS_FAILED(rc))
             return rc;
+          if (!value) {
+            nsCOMPtr<nsIWritableVariant> nullVariant(do_CreateInstance("@mozilla.org/variant;1"));
+            if (nullVariant) {
+              nullVariant->SetAsISupports(nsnull);
+              value = nullVariant;
+            }
+          }
           rc = aDestination->AddProperty(name, value);
           if (NS_FAILED(rc))
             return rc;
@@ -2216,7 +2223,7 @@ static nsresult DecodeStructParticle(nsISOAPEncoding* aEncoding, nsIDOMElement* 
             if (NS_FAILED(rc))
               return rc;
             nsCOMPtr<nsIDOMElement> after;
-            rc = DecodeStructParticle(aEncoding, aElement, child, aAttachments, aDestination, getter_AddRefs(after));
+            rc = DecodeStructParticle(aEncoding, next, child, aAttachments, aDestination, getter_AddRefs(after));
             if (!NS_FAILED(rc)) {
                next = after;
             }
@@ -2277,6 +2284,13 @@ static nsresult DecodeStructParticle(nsISOAPEncoding* aEncoding, nsIDOMElement* 
     rc = aEncoding->Decode(child, nsnull, aAttachments, getter_AddRefs(value));
     if (NS_FAILED(rc))
       return rc;
+    if (!value) {
+      nsCOMPtr<nsIWritableVariant> nullVariant(do_CreateInstance("@mozilla.org/variant;1"));
+      if (nullVariant) {
+        nullVariant->SetAsISupports(nsnull);
+        value = nullVariant;
+      }
+    }
     rc = aDestination->AddProperty(name, value);
     if (NS_FAILED(rc))
       return rc;

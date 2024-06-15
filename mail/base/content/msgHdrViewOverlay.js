@@ -371,13 +371,13 @@ var messageHeaderSink = {
             {
               gCollectAddress = header.headerValue;
               // collect, and add card if doesn't exist
-              gCollectAddressTimer = setTimeout('abAddressCollector.collectUnicodeAddress(gCollectAddress, true);', 2000);
+              gCollectAddressTimer = setTimeout('abAddressCollector.collectUnicodeAddress(gCollectAddress, true, Components.interfaces.nsIAbPreferMailFormat.unknown);', 2000);
             }
             else if (gCollectOutgoing) 
             {
               // collect, but only update existing cards
               gCollectAddress = header.headerValue;
-              gCollectAddressTimer = setTimeout('abAddressCollector.collectUnicodeAddress(gCollectAddress, false);', 2000);
+              gCollectAddressTimer = setTimeout('abAddressCollector.collectUnicodeAddress(gCollectAddress, false, Components.interfaces.nsIAbPreferMailFormat.unknown);', 2000);
             }
           } 
         } // if lowerCaseHeaderName == "from"
@@ -388,6 +388,17 @@ var messageHeaderSink = {
 
     handleAttachment: function(contentType, url, displayName, uri, notDownloaded) 
     {
+      // presentation level change....don't show vcards as external attachments in the UI.
+      // libmime already renders them inline.
+
+      if (contentType == "text/x-vcard")
+      {
+      var inlineAttachments = pref.getBoolPref("mail.inline_attachments");
+        var displayHtmlAs = pref.getIntPref("mailnews.display.html_as");
+        if (inlineAttachments && !displayHtmlAs)
+        return;
+      }
+
       currentAttachments.push (new createNewAttachmentInfo(contentType, url, displayName, uri, notDownloaded));
       // if we have an attachment, set the MSG_FLAG_ATTACH flag on the hdr
       // this will cause the "message with attachment" icon to show up
@@ -395,6 +406,11 @@ var messageHeaderSink = {
       // we only need to do this on the first attachment
       var numAttachments = currentAttachments.length;
       if (numAttachments == 1) {
+        // we also have to enable the File/Attachments menuitem
+        var node = document.getElementById("fileAttachmentMenu");
+        if (node)
+          node.removeAttribute("disabled");
+
         try {
           // convert the uri into a hdr
           var hdr = messenger.messageServiceFromURI(uri).messageURIToMsgHdr(uri);
@@ -730,6 +746,11 @@ function HideMessageHeaderPane()
   if (node)
     node.collapsed = true;
 
+  // we also have to disable the File/Attachments menuitem
+  node = document.getElementById("fileAttachmentMenu");
+  if (node)
+    node.setAttribute("disabled", "true");
+
   node = document.getElementById("attachmentView");
   if (node)
     node.collapsed = true;
@@ -813,8 +834,10 @@ function setFromBuddyIcon(email)
          gIOService = Components.classes["@mozilla.org/network/io-service;1"].getService(Components.interfaces.nsIIOService);
          gFileHandler = gIOService.getProtocolHandler("file").QueryInterface(Components.interfaces.nsIFileProtocolHandler);
          
-         var profile = Components.classes["@mozilla.org/profile/manager;1"].getService(Components.interfaces.nsIProfileInternal);
-         gProfileDirURL = gIOService.newFileURI(profile.getProfileDir(profile.currentProfile));
+         var dirService = Components.classes["@mozilla.org/directory_service;1"]
+             .getService(Components.interfaces.nsIProperties);
+         var profileDir = dirService.get("ProfD", Components.interfaces.nsIFile);
+         gProfileDirURL = gIOService.newFileURI(profileDir);
        }
 
        // if we did have a buddy icon on disk for this screenname, this would be the file url spec for it
@@ -1282,6 +1305,11 @@ function SaveAllAttachments()
 
 function ClearAttachmentList() 
 { 
+  // we also have to disable the File/Attachments menuitem
+  node = document.getElementById("fileAttachmentMenu");
+  if (node)
+    node.setAttribute("disabled", "true");
+
   // clear selection
   var list = document.getElementById('attachmentList');
 

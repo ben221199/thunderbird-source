@@ -231,6 +231,7 @@ public:
     PRUint32 downloadSize,
     PRBool tryChunking);
   virtual void PipelinedFetchMessageParts(nsCString &uid, nsIMAPMessagePartIDArray *parts);
+  void FallbackToFetchWholeMsg(const char *messageId, PRUint32 messageSize);
   
   // used when streaming a message fetch
   virtual nsresult BeginMessageDownLoad(PRUint32 totalSize, // for user, headers and body
@@ -544,6 +545,8 @@ private:
   void FolderRenamed(const char *oldName,
     const char *newName);
   
+  PRBool FolderIsSelected(const char *mailboxName);
+
   PRBool	MailboxIsNoSelectMailbox(const char *mailboxName);
   char * CreatePossibleTrashName(const char *prefix);
   const char * GetTrashFolderName();
@@ -557,7 +560,7 @@ private:
   void Subscribe(const char *mailboxName);
   void Unsubscribe(const char *mailboxName);
   void Idle();
-  void EndIdle();
+  void EndIdle(PRBool waitForResponse = PR_TRUE);
   // Some imap servers include the mailboxName following the dir-separator in the list of 
   // subfolders of the mailboxName. In fact, they are the same. So we should decide if
   // we should delete such subfolder and provide feedback if the delete operation succeed.
@@ -603,7 +606,7 @@ private:
   nsCString m_logonCookie;
   PRInt16 m_logonPort;
   
-  static nsXPIDLString mAcceptLanguages;
+  nsXPIDLString mAcceptLanguages;
   
   // progress stuff
   void SetProgressString(PRInt32 stringId);

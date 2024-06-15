@@ -170,6 +170,7 @@ pref("news.fcc_folder",                     "");
 pref("news.notify.on",                      true);
 pref("news.max_articles",                   500);
 pref("news.mark_old_read",                  false);
+pref("news.show_size_in_lines",             true);
 
 pref("mailnews.wraplength",                 72);
 pref("mail.compose.wrap_to_window_width",   false);
@@ -206,6 +207,8 @@ pref("mailnews.search_date_separator",     "chrome://messenger/locale/messenger.
 pref("mailnews.language_sensitive_font",    true);
 
 pref("mailnews.quotingPrefs.version",       0);  // used to decide whether to migrate global quoting prefs
+
+pref("mapi.blind-send.enabled",             true);
 
 pref("offline.news.download.unread_only",   true);
 pref("offline.news.download.by_date",       true);

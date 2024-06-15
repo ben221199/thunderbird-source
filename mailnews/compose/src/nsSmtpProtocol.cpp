@@ -75,13 +75,11 @@
 #include "nsISignatureVerifier.h"
 #include "nsISSLSocketControl.h"
 #include "nsPrintfCString.h"
-#include "nsIDNSService.h"
 
 #ifndef XP_UNIX
 #include <stdarg.h>
 #endif /* !XP_UNIX */
 
-const char kDNSService_CONTRACTID[] = "@mozilla.org/network/dns-service;1";
 static PRLogModuleInfo *SMTPLogModule = nsnull;
 
 /* the output_buffer_size must be larger than the largest possible line
@@ -352,31 +350,30 @@ void nsSmtpProtocol::Initialize(nsIURI * aURL)
 
 void nsSmtpProtocol::GetUserDomainName(nsACString& aResult)
 {
+  nsresult rv;
+  
+  PRNetAddr iaddr; // IP address for this connection
+  // our transport is always a nsISocketTransport
+  nsCOMPtr<nsISocketTransport> socketTransport = do_QueryInterface(m_transport); 
   // should return the interface ip of the SMTP connection
   // minimum case - see bug 68877 and RFC 2821, chapter 4.1.1.1
-  nsresult rv = NS_OK;
-  
-  nsCOMPtr <nsIDNSService> dns = do_GetService(kDNSService_CONTRACTID, &rv);
+  rv = socketTransport->GetSelfAddr(&iaddr);
+
   if (NS_SUCCEEDED(rv))
   {
-    PRNetAddr iaddr; // IP address for this connection
-    // our transport is always a nsISocketTransport
-    nsCOMPtr<nsISocketTransport> socketTransport = do_QueryInterface(m_transport); 
-    rv = socketTransport->GetSelfAddr(&iaddr);
-
-    if (NS_SUCCEEDED(rv))
+    // turn it into a string
+    char ipAddressString[64];
+    if (PR_NetAddrToString(&iaddr, ipAddressString, sizeof(ipAddressString)) == PR_SUCCESS) 
     {
-      // turn it into a string
-      char ipAddressString[64];
-      if (PR_NetAddrToString(&iaddr, ipAddressString, sizeof(ipAddressString)) == PR_SUCCESS) 
-      {
-        if (strchr(ipAddressString, ':'))   // IPv6 style address?
-          aResult.Assign(NS_LITERAL_CSTRING("[IPv6:"));
-        else
-          aResult.Assign(NS_LITERAL_CSTRING("["));
+      NS_ASSERTION(PR_IsNetAddrType(&iaddr, PR_IpAddrV4Mapped) == PR_FALSE,
+        "unexpected IPv4-mapped IPv6 address");
 
-        aResult.Append(nsDependentCString(ipAddressString) + NS_LITERAL_CSTRING("]"));
-      }
+      if (iaddr.raw.family == PR_AF_INET6)   // IPv6 style address?
+        aResult.Assign(NS_LITERAL_CSTRING("[IPv6:"));
+      else
+        aResult.Assign(NS_LITERAL_CSTRING("["));
+
+      aResult.Append(nsDependentCString(ipAddressString) + NS_LITERAL_CSTRING("]"));
     }
   }
 }

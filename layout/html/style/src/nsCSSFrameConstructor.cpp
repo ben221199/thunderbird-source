@@ -2886,7 +2886,14 @@ nsCSSFrameConstructor::ConstructTableCellFrame(nsIPresShell*            aPresShe
     // pass in null tableCreator so ProcessChildren will not call TableProcessChildren
     rv = ProcessChildren(aPresShell, aPresContext, aState, aContent, aNewCellInnerFrame, 
                          PR_TRUE, childItems, PR_TRUE, nsnull);
-    if (NS_FAILED(rv)) return rv;
+    if (NS_FAILED(rv)) {
+      // Clean up
+      aNewCellInnerFrame->Destroy(aPresContext);
+      aNewCellInnerFrame = nsnull;
+      aNewCellOuterFrame->Destroy(aPresContext);
+      aNewCellOuterFrame = nsnull;
+      return rv;
+    }
 
     aNewCellInnerFrame->SetInitialChildList(aPresContext, nsnull, childItems.childList);
     if (aState.mFloatedItems.childList) {
@@ -2972,6 +2979,13 @@ nsCSSFrameConstructor::ConstructTableForeignFrame(nsIPresShell*            aPres
 
   if (!parentFrame) return rv; // if pseudo frame wasn't created
 
+  NS_ASSERTION(parentFrame == aState.mPseudoFrames.mCellInner.mFrame,
+               "Weird parent in ConstructTableForeignFrame");
+
+  // Push the parent as the floater containing block
+  nsFrameConstructorSaveState saveState;
+  aState.PushFloatContainingBlock(parentFrame, saveState, PR_FALSE, PR_FALSE);
+  
   // save the pseudo frame state XXX - why
   nsPseudoFrames prevPseudoFrames; 
   aState.mPseudoFrames.Reset(&prevPseudoFrames);
@@ -6050,6 +6064,17 @@ nsCSSFrameConstructor::ConstructFrameByDisplayType(nsIPresShell*            aPre
     }
   }
 
+  nsFrameConstructorSaveState pseudoSaveState;
+  if (pseudoParent) {
+    // We pushed an anonymous table cell.  The inner block of this
+    // needs to become the float containing block.  Luckily, it's
+    // hanging about in adjParentFrame!
+    NS_ASSERTION(adjParentFrame == aState.mPseudoFrames.mCellInner.mFrame,
+                 "Weird parent frame in ConstructFrameByDisplayType");
+    aState.PushFloatContainingBlock(adjParentFrame, pseudoSaveState,
+                                    PR_FALSE, PR_FALSE);
+  }
+
   // If this is "body", try propagating its scroll style to the viewport
   // Note that we need to do this even if the body is NOT scrollable;
   // it might have dynamically changed from scrollable to not scrollable,
@@ -6354,7 +6379,7 @@ nsCSSFrameConstructor::ConstructFrameByDisplayType(nsIPresShell*            aPre
       rv = ConstructTableCaptionFrame(aPresShell, aPresContext, aState, aContent, 
                                       parentFrame, aStyleContext, tableCreator, 
                                       aFrameItems, newFrame, pseudoParent);
-      if (!pseudoParent) {
+      if (NS_SUCCEEDED(rv) && !pseudoParent) {
         aFrameItems.AddChild(newFrame);
       }
       return rv;
@@ -6366,7 +6391,7 @@ nsCSSFrameConstructor::ConstructFrameByDisplayType(nsIPresShell*            aPre
       rv = ConstructTableRowGroupFrame(aPresShell, aPresContext, aState, aContent, 
                                        adjParentFrame, aStyleContext, tableCreator, 
                                        PR_FALSE, aFrameItems, newFrame, pseudoParent);
-      if (!pseudoParent) {
+      if (NS_SUCCEEDED(rv) && !pseudoParent) {
         aFrameItems.AddChild(newFrame);
       }
       return rv;
@@ -6375,7 +6400,7 @@ nsCSSFrameConstructor::ConstructFrameByDisplayType(nsIPresShell*            aPre
       rv = ConstructTableColGroupFrame(aPresShell, aPresContext, aState, aContent, 
                                        adjParentFrame, aStyleContext, tableCreator, 
                                        PR_FALSE, aFrameItems, newFrame, pseudoParent);
-      if (!pseudoParent) {
+      if (NS_SUCCEEDED(rv) && !pseudoParent) {
         aFrameItems.AddChild(newFrame);
       }
       return rv;
@@ -6384,7 +6409,7 @@ nsCSSFrameConstructor::ConstructFrameByDisplayType(nsIPresShell*            aPre
       rv = ConstructTableColFrame(aPresShell, aPresContext, aState, aContent, 
                                   adjParentFrame, aStyleContext, tableCreator, 
                                   PR_FALSE, aFrameItems, newFrame, pseudoParent);
-      if (!pseudoParent) {
+      if (NS_SUCCEEDED(rv) && !pseudoParent) {
         aFrameItems.AddChild(newFrame);
       }
       return rv;
@@ -6393,7 +6418,7 @@ nsCSSFrameConstructor::ConstructFrameByDisplayType(nsIPresShell*            aPre
       rv = ConstructTableRowFrame(aPresShell, aPresContext, aState, aContent, 
                                   adjParentFrame, aStyleContext, tableCreator, 
                                   PR_FALSE, aFrameItems, newFrame, pseudoParent);
-      if (!pseudoParent) {
+      if (NS_SUCCEEDED(rv) && !pseudoParent) {
         aFrameItems.AddChild(newFrame);
       }
       return rv;
@@ -6404,7 +6429,7 @@ nsCSSFrameConstructor::ConstructFrameByDisplayType(nsIPresShell*            aPre
         rv = ConstructTableCellFrame(aPresShell, aPresContext, aState, aContent, 
                                      adjParentFrame, aStyleContext, tableCreator, 
                                      PR_FALSE, aFrameItems, newFrame, innerTable, pseudoParent);
-        if (!pseudoParent) {
+        if (NS_SUCCEEDED(rv) && !pseudoParent) {
           aFrameItems.AddChild(newFrame);
         }
         return rv;

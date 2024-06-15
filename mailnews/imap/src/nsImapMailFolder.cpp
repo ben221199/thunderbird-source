@@ -723,6 +723,8 @@ nsImapMailFolder::UpdateFolder(nsIMsgWindow *msgWindow)
       getter_AddRefs(eventQ));
     nsCOMPtr <nsIURI> url;
     rv = imapService->SelectFolder(eventQ, this, m_urlListener, msgWindow, getter_AddRefs(url));
+    if (NS_SUCCEEDED(rv))
+    m_urlRunning = PR_TRUE;
     if (url)
     {
       nsCOMPtr <nsIMsgMailNewsUrl> mailnewsUrl = do_QueryInterface(url);
@@ -1030,6 +1032,28 @@ NS_IMETHODIMP nsImapMailFolder::GetVerifiedAsOnlineFolder(PRBool *aVerifiedAsOnl
 NS_IMETHODIMP nsImapMailFolder::SetVerifiedAsOnlineFolder(PRBool aVerifiedAsOnlineFolder)
 {
   m_verifiedAsOnlineFolder = aVerifiedAsOnlineFolder;
+  // mark ancestors as verified as well
+  if (aVerifiedAsOnlineFolder)
+  {
+    nsCOMPtr<nsIMsgFolder> parent;
+    do
+    {
+      GetParent(getter_AddRefs(parent));
+      if (parent)
+      {
+        nsCOMPtr<nsIMsgImapMailFolder> imapParent = do_QueryInterface(parent);
+        if (imapParent)
+        {
+          PRBool verifiedOnline;
+          imapParent->GetVerifiedAsOnlineFolder(&verifiedOnline);
+          if (verifiedOnline)
+            break;
+          imapParent->SetVerifiedAsOnlineFolder(PR_TRUE);
+        }
+      }
+    }
+    while (parent);
+  }
   return NS_OK;
 }
 
@@ -4377,6 +4401,8 @@ NS_IMETHODIMP nsImapMailFolder::GetCurMoveCopyMessageFlags(nsIImapUrl *runningUr
       if (label != 0)
         *aResult |= label << 25;
     }
+    else if (mFlags & MSG_FOLDER_FLAG_DRAFTS) // if the message is being added to the drafts folder, don't add the seen flag (Bug #198087)
+      *aResult = 0;
   }
   return NS_OK;
 }
@@ -6463,6 +6489,7 @@ nsImapMailFolder::CopyMessages(nsIMsgFolder* srcFolder,
         nsCOMPtr <nsIMsgDBHdr> msgDBHdr = do_QueryElementAt(messages, i, &rv);
         if (mDatabase && msgDBHdr)
         {
+          nsMsgLabelValue label;
           nsXPIDLCString junkScore, junkScoreOrigin;
           msgDBHdr->GetStringProperty("junkscore", getter_Copies(junkScore));
           msgDBHdr->GetStringProperty("junkscoreorigin", getter_Copies(junkScoreOrigin));
@@ -6470,6 +6497,13 @@ nsImapMailFolder::CopyMessages(nsIMsgFolder* srcFolder,
             mDatabase->SetAttributesOnPendingHdr(msgDBHdr, "junkscore", junkScore.get(), 0);
           if (!junkScoreOrigin.IsEmpty())
             mDatabase->SetAttributesOnPendingHdr(msgDBHdr, "junkscoreorigin", junkScore.get(), 0);
+          msgDBHdr->GetLabel(&label);
+          if (label != 0)
+          {
+            nsCAutoString labelStr;
+            labelStr.AppendInt(label);
+            mDatabase->SetAttributesOnPendingHdr(msgDBHdr, "label", labelStr.get(), 0);
+          }
         }
       }
    }
@@ -7038,20 +7072,6 @@ NS_IMETHODIMP nsImapMailFolder::GetFolderNeedsAdded(PRBool *bVal)
 NS_IMETHODIMP nsImapMailFolder::SetFolderNeedsAdded(PRBool bVal)
 {
     m_folderNeedsAdded = bVal;
-    return NS_OK;
-}
-
-NS_IMETHODIMP nsImapMailFolder::GetFolderVerifiedOnline(PRBool *bVal)
-{
-    if (!bVal)
-        return NS_ERROR_NULL_POINTER;
-    *bVal = m_verifiedAsOnlineFolder;
-    return NS_OK;
-}
-
-NS_IMETHODIMP nsImapMailFolder::SetFolderVerifiedOnline(PRBool bVal)
-{
-    m_verifiedAsOnlineFolder = bVal;
     return NS_OK;
 }
 

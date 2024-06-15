@@ -74,9 +74,12 @@ static NS_DEFINE_IID(kStringBundleServiceCID, NS_STRINGBUNDLESERVICE_CID);
 
 #include "nsIEventQueueService.h"
 
-#define PREF_XPINSTALL_CONFIRM_DLG "xpinstall.dialog.confirm"
-#define PREF_XPINSTALL_STATUS_DLG "xpinstall.dialog.progress"
-#define PREF_XPINSTALL_STATUS_DLG_TYPE "xpinstall.dialog.progress.type"
+#define PREF_XPINSTALL_ENABLED                "xpinstall.enabled"
+#define PREF_XPINSTALL_CONFIRM_DLG            "xpinstall.dialog.confirm"
+#define PREF_XPINSTALL_STATUS_DLG_SKIN        "xpinstall.dialog.progress.skin"
+#define PREF_XPINSTALL_STATUS_DLG_CHROME      "xpinstall.dialog.progress.chrome"
+#define PREF_XPINSTALL_STATUS_DLG_TYPE_SKIN   "xpinstall.dialog.progress.type.skin"
+#define PREF_XPINSTALL_STATUS_DLG_TYPE_CHROME "xpinstall.dialog.progress.type.chrome"
 
 #define UPDATE_DLG(x)  (((x) - mLastUpdate) > 250000)
 
@@ -92,7 +95,7 @@ inline PRBool nsXPInstallManager::TimeToUpdate(PRTime now)
 nsXPInstallManager::nsXPInstallManager()
   : mTriggers(0), mItem(0), mNextItem(0), mNumJars(0), mChromeType(NOT_CHROME),
     mContentLength(0), mDialogOpen(PR_FALSE), mCancelled(PR_FALSE),
-    mSelectChrome(PR_TRUE), mNeedsShutdown(PR_FALSE)
+    mSelectChrome(PR_FALSE), mNeedsShutdown(PR_FALSE)
 {
     // we need to own ourself because we have a longer
     // lifetime than the scriptlet that created us.
@@ -118,15 +121,58 @@ nsXPInstallManager::~nsXPInstallManager()
 }
 
 
-NS_IMPL_THREADSAFE_ISUPPORTS8( nsXPInstallManager,
+NS_IMPL_THREADSAFE_ISUPPORTS9( nsXPInstallManager,
                                nsIXPIListener,
                                nsIXPIDialogService,
+                               nsIXPInstallManager,
                                nsIObserver,
                                nsIStreamListener,
                                nsIProgressEventSink,
                                nsIInterfaceRequestor,
                                nsPICertNotification,
                                nsISupportsWeakReference)
+
+NS_IMETHODIMP
+nsXPInstallManager::InitManagerFromChrome(const PRUnichar **aURLs, PRUint32 aURLCount, 
+                                          nsIXPIProgressDialog* aListener)
+{
+    // If Software Installation is not enabled, we don't want to proceed with
+    // update. 
+    PRBool xpinstallEnabled = PR_TRUE;
+    nsCOMPtr<nsIPrefBranch> pref(do_GetService(NS_PREFSERVICE_CONTRACTID));
+    if (pref) 
+        pref->GetBoolPref(PREF_XPINSTALL_ENABLED, &xpinstallEnabled);
+
+    if (!xpinstallEnabled)
+        return NS_OK;
+  
+    mTriggers = new nsXPITriggerInfo();
+    if (!mTriggers)
+        return NS_ERROR_OUT_OF_MEMORY;
+
+    for (PRInt32 i = 0; i < aURLCount; ++i) 
+    {
+        nsXPITriggerItem* item = new nsXPITriggerItem(0, aURLs[i], nsnull);
+        if (!item)
+        {
+            delete mTriggers; // nsXPITriggerInfo frees any alloc'ed nsXPITriggerItems
+            mTriggers = nsnull;
+            return NS_ERROR_OUT_OF_MEMORY;
+        }
+        mTriggers->Add(item);
+    }
+
+    nsresult rv;
+    mInstallSvc = do_GetService(nsSoftwareUpdate::GetCID(), &rv);
+    if (NS_FAILED(rv)) 
+    {
+        delete mTriggers;
+        mTriggers = nsnull;
+        return rv;
+    }
+
+    return Observe(aListener, XPI_PROGRESS_TOPIC, NS_LITERAL_STRING("open").get());
+}
 
 
 NS_IMETHODIMP
@@ -372,12 +418,10 @@ PRBool nsXPInstallManager::ConfirmChromeInstall(nsIDOMWindowInternal* aParentWin
     nsCOMPtr<nsIPromptService> dlgService(do_GetService("@mozilla.org/embedcomp/prompt-service;1"));
     if (dlgService)
     {
-        dlgService->ConfirmCheck(
+        dlgService->Confirm(
             aParentWindow,
             nsnull,
             confirmText,
-            applyNowText,
-            &mSelectChrome,
             &bInstall );
     }
 
@@ -420,12 +464,16 @@ nsXPInstallManager::OpenProgressDialog(const PRUnichar **aPackageList, PRUint32 
         char *statusDialogURL, *statusDialogType;
         nsCOMPtr<nsIPrefBranch> pref(do_GetService(NS_PREFSERVICE_CONTRACTID));
         if (pref) {
-          rv = pref->GetCharPref(PREF_XPINSTALL_STATUS_DLG, &statusDialogURL);
+          const char* statusDlg = mChromeType == CHROME_SKIN ? PREF_XPINSTALL_STATUS_DLG_SKIN
+                                                             : PREF_XPINSTALL_STATUS_DLG_CHROME;
+          rv = pref->GetCharPref(statusDlg, &statusDialogURL);
           NS_ASSERTION(NS_SUCCEEDED(rv), "Can't invoke XPInstall FE without a FE URL! Set xpinstall.dialog.status");
           if (NS_FAILED(rv))
             return rv;
 
-          rv = pref->GetCharPref(PREF_XPINSTALL_STATUS_DLG_TYPE, &statusDialogType);
+          const char* statusType = mChromeType == CHROME_SKIN ? PREF_XPINSTALL_STATUS_DLG_TYPE_SKIN
+                                                              : PREF_XPINSTALL_STATUS_DLG_TYPE_CHROME;
+          rv = pref->GetCharPref(statusType, &statusDialogType);
           nsAutoString type; 
           type.AssignWithConversion(statusDialogType);
           if (NS_SUCCEEDED(rv) && !type.IsEmpty()) {

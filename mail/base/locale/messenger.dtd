@@ -223,6 +223,9 @@
 <!ENTITY searchMenu.label "Search">
 <!ENTITY searchMenu.accesskey "S">
 
+
+<!ENTITY find.label "Find">
+<!ENTITY find.accesskey "F">
 <!ENTITY findCmd.label "Find in This Message...">
 <!ENTITY findCmd.accesskey "F">
 <!ENTITY findCmd.key "f">
@@ -370,7 +373,13 @@
 
 <!-- Tools Menu -->
 <!ENTITY tasksMenu.label "Tools">
-<!ENTITY tasksMenu.accesskey "T">
+<!ENTITY tasksMenu.accesskey "T"> 
+<!ENTITY extensions.label             "Extensions">
+<!ENTITY extensions.tooltip           "Show and Manage installed Extensions">
+<!ENTITY extensions.accesskey         "E">
+<!ENTITY themes.label                 "Themes">
+<!ENTITY themes.tooltip               "Change the Theme">
+<!ENTITY themes.accesskey             "T">
 <!ENTITY messengerCmd.label "Mail &amp; Newsgroups">
 <!ENTITY messengerCmd.accesskey "m">
 <!ENTITY messengerCmd.commandkey "1">
@@ -387,7 +396,7 @@
 <!ENTITY runJunkControls.label "Run Junk Mail Controls on Folder">
 <!ENTITY runJunkControls.accesskey "u">
 <!ENTITY deleteJunk.label "Delete Mail Marked as Junk in Folder">
-<!ENTITY deleteJunk.accesskey "e">
+<!ENTITY deleteJunk.accesskey "l">
 <!ENTITY javaScriptConsoleCmd.label "JavaScript Console">
 <!ENTITY javaScriptConsoleCmd.accesskey "C">
 
@@ -397,6 +406,7 @@
 <!ENTITY releaseCmd.label "Release Notes">
 <!ENTITY releaseCmd.accesskey "R"> 
 <!ENTITY hintsAndTips.label "&brandFullName; Help">
+<!ENTITY hintsAndTipsMac.commandkey "?">
 <!ENTITY hintsAndTips.accesskey "h"> 
 <!ENTITY aboutCmd.label "About &brandFullName;">
 <!ENTITY aboutCmd.accesskey "A">
@@ -591,6 +601,6 @@
 
 <!--  Mac OS X Window Menu -->
 <!ENTITY minimizeWindow.key "m">
-<!ENTITY minimizeWindow.label "Minimize Window">
+<!ENTITY minimizeWindow.label "Minimize">
 <!ENTITY bringAllToFront.label "Bring All to Front">
-<!ENTITY zoomWindow.label "Zoom Window">
+<!ENTITY zoomWindow.label "Zoom">

@@ -505,6 +505,129 @@ BOOL UpdateFile(char *szInFilename, char *szOutFilename, char *szIgnoreStr)
   return(bFoundIgnoreStr);
 }
 
+/* Function: RemoveDelayedDeleteFileEntries()
+ *
+ *       in: const char *aPathToMatch - path to match against
+ *
+ *  purpose: To remove windows registry entries (normally set by the uninstaller)
+ *           that dictates what files to remove at system remove.
+ *           The windows registry key that will be parsed is:
+ *
+ *             key : HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager
+ *             name: PendingFileRenameOperations
+ *
+ *           This will not remove any entries that are set to be 'renamed'
+ *           at system remove, only to be 'deleted'.
+ *
+ *           This function is multibyte safe.
+ *
+ *           To see what format the value of the var is in, look up the win32 API:
+ *             MoveFileEx()
+ */
+void RemoveDelayedDeleteFileEntries(const char *aPathToMatch)
+{
+  HKEY  hkResult;
+  DWORD dwErr;
+  DWORD dwType = REG_NONE;
+  DWORD oldMaxValueLen = 0;
+  DWORD newMaxValueLen = 0;
+  DWORD lenToEnd = 0;
+  char  *multiStr = NULL;
+  const char key[] = "SYSTEM\\CurrentControlSet\\Control\\Session Manager";
+  const char name[] = "PendingFileRenameOperations";
+  char  *pathToMatch;
+  char  *lcName;
+  char  *pName;
+  char  *pRename;
+  int   nameLen, renameLen;
+
+  assert(aPathToMatch);
+
+  /* if not NT systems (win2k, winXP) return */
+  if (!(gSystemInfo.dwOSType & OS_NT))
+    return;
+
+  if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_READ|KEY_WRITE, &hkResult) != ERROR_SUCCESS)
+    return;
+
+  dwErr = RegQueryValueEx(hkResult, name, 0, &dwType, NULL, &oldMaxValueLen);
+  if (dwErr != ERROR_SUCCESS || oldMaxValueLen == 0 || dwType != REG_MULTI_SZ)
+  {
+    /* no value, no data, or wrong type */
+    return;
+  }
+
+  multiStr = calloc(oldMaxValueLen, sizeof(BYTE));
+  if (!multiStr)
+    return;
+
+  pathToMatch = strdup(aPathToMatch);
+  if (!pathToMatch)
+  {
+      free(multiStr);
+      return;
+  }
+
+  if (RegQueryValueEx(hkResult, name, 0, NULL, multiStr, &oldMaxValueLen) == ERROR_SUCCESS)
+  {
+      // The registry value consists of name/newname pairs of null-terminated
+      // strings, with a final extra null termination. We're only interested
+      // in files to be deleted, which are indicated by a null newname.
+      CharLower(pathToMatch);
+      lenToEnd = newMaxValueLen = oldMaxValueLen;
+      pName = multiStr;
+      while(*pName && lenToEnd > 0)
+      {
+          // find the locations and lengths of the current pair. Count the
+          // nulls,  we need to know how much data to skip or move
+          nameLen = strlen(pName) + 1;
+          pRename = pName + nameLen;
+          renameLen = strlen(pRename) + 1;
+
+          // How much remains beyond the current pair
+          lenToEnd -= (nameLen + renameLen);
+
+          if (*pRename == '\0')
+          {
+              // No new name, it's a delete. Is it the one we want?
+              lcName = strdup(pName);
+              if (lcName)
+              {
+                  CharLower(lcName);
+                  if (strstr(lcName, pathToMatch))
+                  {
+                      // It's a match--
+                      // delete this pair by moving the remainder on top
+                      memmove(pName, pRename + renameLen, lenToEnd);
+
+                      // update the total length to reflect the missing pair
+                      newMaxValueLen -= (nameLen + renameLen);
+
+                      // next pair is in place, continue w/out moving pName
+                      free(lcName);
+                      continue;
+                  }
+                  free(lcName);
+              }
+          }
+          // on to the next pair
+          pName = pRename + renameLen;
+      }
+
+      if (newMaxValueLen != oldMaxValueLen)
+      {
+          // We've deleted something, save the changed data
+          RegSetValueEx(hkResult, name, 0, REG_MULTI_SZ, multiStr, newMaxValueLen);
+          RegFlushKey(hkResult);
+      }
+  }
+
+  RegCloseKey(hkResult);
+  free(multiStr);
+  free(pathToMatch);
+}
+
+
 /* Looks for and removes the uninstaller from the Windows Registry
  * that is set to delete the uninstaller at the next restart of
  * Windows.  This key is set/created when the user does the following:
@@ -518,92 +641,21 @@ BOOL UpdateFile(char *szInFilename, char *szOutFilename, char *szIgnoreStr)
  */
 void ClearWinRegUninstallFileDeletion(void)
 {
-  char  *szPtrIn  = NULL;
-  char  *szPtrOut = NULL;
-  char  szInMultiStr[MAX_BUF];
-  char  szOutMultiStr[MAX_BUF];
-  char  szLCKeyBuf[MAX_BUF];
   char  szLCUninstallFilenameLongBuf[MAX_BUF];
   char  szLCUninstallFilenameShortBuf[MAX_BUF];
   char  szWinInitFile[MAX_BUF];
   char  szTempInitFile[MAX_BUF];
   char  szWinDir[MAX_BUF];
-  DWORD dwOutMultiStrLen;
-  DWORD dwType;
-  BOOL  bFoundUninstaller = FALSE;
 
   if(!GetWindowsDirectory(szWinDir, sizeof(szWinDir)))
     return;
 
   wsprintf(szLCUninstallFilenameLongBuf, "%s\\%s", szWinDir, sgProduct.szUninstallFilename);
   GetShortPathName(szLCUninstallFilenameLongBuf, szLCUninstallFilenameShortBuf, sizeof(szLCUninstallFilenameShortBuf));
-  CharLower(szLCUninstallFilenameLongBuf);
-  CharLower(szLCUninstallFilenameShortBuf);
 
   if(gSystemInfo.dwOSType & OS_NT)
   {
-    ZeroMemory(szInMultiStr,  sizeof(szInMultiStr));
-    ZeroMemory(szOutMultiStr, sizeof(szOutMultiStr));
-
-    dwType = GetWinReg(HKEY_LOCAL_MACHINE,
-                       "System\\CurrentControlSet\\Control\\Session Manager",
-                       "PendingFileRenameOperations",
-                       szInMultiStr,
-                       sizeof(szInMultiStr));
-    if((dwType == REG_MULTI_SZ) && (szInMultiStr != '\0'))
-    {
-      szPtrIn          = szInMultiStr;
-      szPtrOut         = szOutMultiStr;
-      dwOutMultiStrLen = 0;
-      do
-      {
-        lstrcpy(szLCKeyBuf, szPtrIn);
-        CharLower(szLCKeyBuf);
-        if(!strstr(szLCKeyBuf, szLCUninstallFilenameLongBuf) && !strstr(szLCKeyBuf, szLCUninstallFilenameShortBuf))
-        {
-          if((dwOutMultiStrLen + lstrlen(szPtrIn) + 3) <= sizeof(szOutMultiStr))
-          {
-            /* uninstaller not found, so copy the szPtrIn string to szPtrOut buffer */
-            lstrcpy(szPtrOut, szPtrIn);
-            dwOutMultiStrLen += lstrlen(szPtrIn) + 2;            /* there are actually 2 NULL bytes between the strings */
-            szPtrOut          = &szPtrOut[lstrlen(szPtrIn) + 2]; /* there are actually 2 NULL bytes between the strings */
-          }
-          else
-          {
-            bFoundUninstaller = FALSE;
-            /* not enough memory; break out of while loop. */
-            break;
-          }
-        }
-        else
-          bFoundUninstaller = TRUE;
-
-        szPtrIn = &szPtrIn[lstrlen(szPtrIn) + 2];              /* there are actually 2 NULL bytes between the strings */
-      }while(*szPtrIn != '\0');
-    }
-
-    if(bFoundUninstaller)
-    {
-      if(dwOutMultiStrLen > 0)
-      {
-        /* take into account the 3rd NULL byte that signifies the end of the MULTI string */
-        ++dwOutMultiStrLen;
-        SetWinReg(HKEY_LOCAL_MACHINE,
-                  "System\\CurrentControlSet\\Control\\Session Manager",
-                  TRUE,
-                  "PendingFileRenameOperations",
-                  TRUE,
-                  REG_MULTI_SZ,
-                  szOutMultiStr,
-                  dwOutMultiStrLen,
-                  FALSE,
-                  FALSE);
-      }
-      else
-        DeleteWinRegValue(HKEY_LOCAL_MACHINE,
-                          "System\\CurrentControlSet\\Control\\Session Manager",
-                          "PendingFilerenameOperations");
-    }
+    RemoveDelayedDeleteFileEntries(szLCUninstallFilenameShortBuf);
   }
   else
   {
@@ -3541,24 +3593,22 @@ HRESULT InitDlgWindowsIntegration(diWI *diDialog)
     exit(1);
   if((diDialog->szMessage0 = NS_GlobalAlloc(MAX_BUF)) == NULL)
     exit(1);
+  if((diDialog->szRegistryKey = NS_GlobalAlloc(MAX_BUF)) == NULL)
+    exit(1);
 
   diDialog->wiCB0.bEnabled = FALSE;
   diDialog->wiCB1.bEnabled = FALSE;
   diDialog->wiCB2.bEnabled = FALSE;
-  diDialog->wiCB3.bEnabled = FALSE;
-
+  
   diDialog->wiCB0.bCheckBoxState = FALSE;
   diDialog->wiCB1.bCheckBoxState = FALSE;
   diDialog->wiCB2.bCheckBoxState = FALSE;
-  diDialog->wiCB3.bCheckBoxState = FALSE;
-
+  
   if((diDialog->wiCB0.szDescription = NS_GlobalAlloc(MAX_BUF)) == NULL)
     return(1);
   if((diDialog->wiCB1.szDescription = NS_GlobalAlloc(MAX_BUF)) == NULL)
     return(1);
   if((diDialog->wiCB2.szDescription = NS_GlobalAlloc(MAX_BUF)) == NULL)
-    return(1);
-  if((diDialog->wiCB3.szDescription = NS_GlobalAlloc(MAX_BUF)) == NULL)
     return(1);
 
   if((diDialog->wiCB0.szArchive = NS_GlobalAlloc(MAX_BUF)) == NULL)
@@ -3566,8 +3616,6 @@ HRESULT InitDlgWindowsIntegration(diWI *diDialog)
   if((diDialog->wiCB1.szArchive = NS_GlobalAlloc(MAX_BUF)) == NULL)
     return(1);
   if((diDialog->wiCB2.szArchive = NS_GlobalAlloc(MAX_BUF)) == NULL)
-    return(1);
-  if((diDialog->wiCB3.szArchive = NS_GlobalAlloc(MAX_BUF)) == NULL)
     return(1);
 
   return(0);
@@ -3578,15 +3626,14 @@ void DeInitDlgWindowsIntegration(diWI *diDialog)
   FreeMemory(&(diDialog->szTitle));
   FreeMemory(&(diDialog->szSubTitle));
   FreeMemory(&(diDialog->szMessage0));
+  FreeMemory(&(diDialog->szRegistryKey));
 
   FreeMemory(&(diDialog->wiCB0.szDescription));
   FreeMemory(&(diDialog->wiCB1.szDescription));
   FreeMemory(&(diDialog->wiCB2.szDescription));
-  FreeMemory(&(diDialog->wiCB3.szDescription));
   FreeMemory(&(diDialog->wiCB0.szArchive));
   FreeMemory(&(diDialog->wiCB1.szArchive));
   FreeMemory(&(diDialog->wiCB2.szArchive));
-  FreeMemory(&(diDialog->wiCB3.szArchive));
 }
 
 HRESULT InitDlgProgramFolder(diPF *diDialog)
@@ -7452,12 +7499,43 @@ HRESULT ParseConfigIni(LPSTR lpszCmdLine)
     diSelectAdditionalComponents.bShowDialog = TRUE;
 
   /* Windows Integration dialog */
-  GetPrivateProfileString("Dialog Windows Integration", "Show Dialog",  "", szShowDialog,                    sizeof(szShowDialog), szFileIniConfig);
-  GetPrivateProfileString("Dialog Windows Integration", "Title",        "", diWindowsIntegration.szTitle,    MAX_BUF, szFileIniConfig);
-  GetPrivateProfileString("Dialog Windows Integration", "Sub Title",    "", diWindowsIntegration.szSubTitle, MAX_BUF, szFileIniConfig);
-  GetPrivateProfileString("Dialog Windows Integration", "Message0",     "", diWindowsIntegration.szMessage0, MAX_BUF, szFileIniConfig);
+  GetPrivateProfileString("Dialog Windows Integration", "Show Dialog",  "", szShowDialog,                       sizeof(szShowDialog), szFileIniConfig);
+  GetPrivateProfileString("Dialog Windows Integration", "Title",        "", diWindowsIntegration.szTitle,       MAX_BUF, szFileIniConfig);
+  GetPrivateProfileString("Dialog Windows Integration", "Sub Title",    "", diWindowsIntegration.szSubTitle,    MAX_BUF, szFileIniConfig);
+  GetPrivateProfileString("Dialog Windows Integration", "Message0",     "", diWindowsIntegration.szMessage0,    MAX_BUF, szFileIniConfig);
+  GetPrivateProfileString("Dialog Windows Integration", "Registry Key", "", diWindowsIntegration.szRegistryKey, MAX_BUF, szFileIniConfig);
   if(lstrcmpi(szShowDialog, "TRUE") == 0)
     diWindowsIntegration.bShowDialog = TRUE;
+
+  GetPrivateProfileString("Windows Integration-Item0", "CheckBoxState", "", szBuf,                                    sizeof(szBuf), szFileIniConfig);
+  GetPrivateProfileString("Windows Integration-Item0", "Description",   "", diWindowsIntegration.wiCB0.szDescription, MAX_BUF, szFileIniConfig);
+  GetPrivateProfileString("Windows Integration-Item0", "Archive",       "", diWindowsIntegration.wiCB0.szArchive,     MAX_BUF, szFileIniConfig);
+  /* Check to see if the checkbox need to be shown at all or not */
+  if(*diWindowsIntegration.wiCB0.szDescription != '\0')
+    diWindowsIntegration.wiCB0.bEnabled = TRUE;
+  /* check to see if the checkbox needs to be checked by default or not */
+  if(lstrcmpi(szBuf, "TRUE") == 0)
+    diWindowsIntegration.wiCB0.bCheckBoxState = TRUE;
+
+  GetPrivateProfileString("Windows Integration-Item1", "CheckBoxState", "", szBuf,                           sizeof(szBuf), szFileIniConfig);
+  GetPrivateProfileString("Windows Integration-Item1", "Description",   "", diWindowsIntegration.wiCB1.szDescription, MAX_BUF, szFileIniConfig);
+  GetPrivateProfileString("Windows Integration-Item1", "Archive",       "", diWindowsIntegration.wiCB1.szArchive, MAX_BUF, szFileIniConfig);
+  /* Check to see if the checkbox need to be shown at all or not */
+  if(*diWindowsIntegration.wiCB1.szDescription != '\0')
+    diWindowsIntegration.wiCB1.bEnabled = TRUE;
+  /* check to see if the checkbox needs to be checked by default or not */
+  if(lstrcmpi(szBuf, "TRUE") == 0)
+    diWindowsIntegration.wiCB1.bCheckBoxState = TRUE;
+
+  GetPrivateProfileString("Windows Integration-Item2", "CheckBoxState", "", szBuf,                           sizeof(szBuf), szFileIniConfig);
+  GetPrivateProfileString("Windows Integration-Item2", "Description",   "", diWindowsIntegration.wiCB2.szDescription, MAX_BUF, szFileIniConfig);
+  GetPrivateProfileString("Windows Integration-Item2", "Archive",       "", diWindowsIntegration.wiCB2.szArchive, MAX_BUF, szFileIniConfig);
+  /* Check to see if the checkbox need to be shown at all or not */
+  if(*diWindowsIntegration.wiCB2.szDescription != '\0')
+    diWindowsIntegration.wiCB2.bEnabled = TRUE;
+  /* check to see if the checkbox needs to be checked by default or not */
+  if(lstrcmpi(szBuf, "TRUE") == 0)
+    diWindowsIntegration.wiCB2.bCheckBoxState = TRUE;
 
   /* Program Folder dialog */
   GetPrivateProfileString("Dialog Program Folder",      "Show Dialog",  "", szShowDialog,                    sizeof(szShowDialog), szFileIniConfig);
@@ -7595,46 +7673,6 @@ HRESULT ParseConfigIni(LPSTR lpszCmdLine)
     diReboot.dwShowDialog = TRUE;
   else if(lstrcmpi(szShowDialog, "AUTO") == 0)
     diReboot.dwShowDialog = AUTO;
-
-  GetPrivateProfileString("Windows Integration-Item0", "CheckBoxState", "", szBuf,                                    sizeof(szBuf), szFileIniConfig);
-  GetPrivateProfileString("Windows Integration-Item0", "Description",   "", diWindowsIntegration.wiCB0.szDescription, MAX_BUF, szFileIniConfig);
-  GetPrivateProfileString("Windows Integration-Item0", "Archive",       "", diWindowsIntegration.wiCB0.szArchive,     MAX_BUF, szFileIniConfig);
-  /* Check to see if the checkbox need to be shown at all or not */
-  if(*diWindowsIntegration.wiCB0.szDescription != '\0')
-    diWindowsIntegration.wiCB0.bEnabled = TRUE;
-  /* check to see if the checkbox needs to be checked by default or not */
-  if(lstrcmpi(szBuf, "TRUE") == 0)
-    diWindowsIntegration.wiCB0.bCheckBoxState = TRUE;
-
-  GetPrivateProfileString("Windows Integration-Item1", "CheckBoxState", "", szBuf,                           sizeof(szBuf), szFileIniConfig);
-  GetPrivateProfileString("Windows Integration-Item1", "Description",   "", diWindowsIntegration.wiCB1.szDescription, MAX_BUF, szFileIniConfig);
-  GetPrivateProfileString("Windows Integration-Item1", "Archive",       "", diWindowsIntegration.wiCB1.szArchive, MAX_BUF, szFileIniConfig);
-  /* Check to see if the checkbox need to be shown at all or not */
-  if(*diWindowsIntegration.wiCB1.szDescription != '\0')
-    diWindowsIntegration.wiCB1.bEnabled = TRUE;
-  /* check to see if the checkbox needs to be checked by default or not */
-  if(lstrcmpi(szBuf, "TRUE") == 0)
-    diWindowsIntegration.wiCB1.bCheckBoxState = TRUE;
-
-  GetPrivateProfileString("Windows Integration-Item2", "CheckBoxState", "", szBuf,                           sizeof(szBuf), szFileIniConfig);
-  GetPrivateProfileString("Windows Integration-Item2", "Description",   "", diWindowsIntegration.wiCB2.szDescription, MAX_BUF, szFileIniConfig);
-  GetPrivateProfileString("Windows Integration-Item2", "Archive",       "", diWindowsIntegration.wiCB2.szArchive, MAX_BUF, szFileIniConfig);
-  /* Check to see if the checkbox need to be shown at all or not */
-  if(*diWindowsIntegration.wiCB2.szDescription != '\0')
-    diWindowsIntegration.wiCB2.bEnabled = TRUE;
-  /* check to see if the checkbox needs to be checked by default or not */
-  if(lstrcmpi(szBuf, "TRUE") == 0)
-    diWindowsIntegration.wiCB2.bCheckBoxState = TRUE;
-
-  GetPrivateProfileString("Windows Integration-Item3", "CheckBoxState", "", szBuf,                           sizeof(szBuf), szFileIniConfig);
-  GetPrivateProfileString("Windows Integration-Item3", "Description",   "", diWindowsIntegration.wiCB3.szDescription, MAX_BUF, szFileIniConfig);
-  GetPrivateProfileString("Windows Integration-Item3", "Archive",       "", diWindowsIntegration.wiCB3.szArchive, MAX_BUF, szFileIniConfig);
-  /* Check to see if the checkbox need to be shown at all or not */
-  if(*diWindowsIntegration.wiCB3.szDescription != '\0')
-    diWindowsIntegration.wiCB3.bEnabled = TRUE;
-  /* check to see if the checkbox needs to be checked by default or not */
-  if(lstrcmpi(szBuf, "TRUE") == 0)
-    diWindowsIntegration.wiCB3.bCheckBoxState = TRUE;
 
   /* Read in the Site Selector Status */
   GetPrivateProfileString("Site Selector", "Status", "", szBuf, sizeof(szBuf), szFileIniConfig);

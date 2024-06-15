@@ -2183,9 +2183,12 @@ PRBool nsWindow::OnKey( MPARAM mp1, MPARAM mp2)
    /* Checking for a scroll mouse event vs. a keyboard event */
    /* The way we know this is that the repeat count is 0 and */
    /* the key is not physically down */
+   /* unfortunately, there is an exception here - if alt or ctrl are */
+   /* held down, repeat count is set so we have to add special checks for them */
    if (((event.keyCode == NS_VK_UP) || (event.keyCode == NS_VK_DOWN)) &&
-       (!(fsFlags & KC_KEYUP)) &&
-       (CHAR3FROMMP(mp1) == 0)) {
+       (!(fsFlags & KC_KEYUP))
+       && ((CHAR3FROMMP(mp1) == 0) || fsFlags & KC_CTRL || fsFlags & KC_ALT)
+       ) {
       if (!(WinGetPhysKeyState(HWND_DESKTOP, CHAR4FROMMP(mp1)) & 0x8000)) {
          MPARAM mp2;
          if (event.keyCode == NS_VK_UP)
@@ -2251,7 +2254,7 @@ PRBool nsWindow::OnKey( MPARAM mp1, MPARAM mp2)
          if ( !(fsFlags & KC_VIRTUALKEY) || 
               ((fsFlags & KC_CHAR) && (pressEvent.keyCode == 0)) )
          {
-            pressEvent.isShift = PR_FALSE;
+//            pressEvent.isShift = PR_FALSE;
             pressEvent.keyCode = 0;
          }
          else if (usVKey == VK_SPACE)
@@ -2263,9 +2266,9 @@ PRBool nsWindow::OnKey( MPARAM mp1, MPARAM mp2)
             pressEvent.charCode = 0;
          }
       }
+      rc = DispatchWindowEvent( &pressEvent);
    }
 
-   rc = DispatchWindowEvent( &pressEvent);
    NS_RELEASE( pressEvent.widget);
    return rc;
 }

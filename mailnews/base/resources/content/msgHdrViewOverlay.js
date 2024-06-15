@@ -337,13 +337,13 @@ var messageHeaderSink = {
             {
               gCollectAddress = header.headerValue;
               // collect, and add card if doesn't exist
-              gCollectAddressTimer = setTimeout('abAddressCollector.collectUnicodeAddress(gCollectAddress, true);', 2000);
+              gCollectAddressTimer = setTimeout('abAddressCollector.collectUnicodeAddress(gCollectAddress, true, Components.interfaces.nsIAbPreferMailFormat.unknown);', 2000);
             }
             else if (gCollectOutgoing) 
             {
               // collect, but only update existing cards
               gCollectAddress = header.headerValue;
-              gCollectAddressTimer = setTimeout('abAddressCollector.collectUnicodeAddress(gCollectAddress, false);', 2000);
+              gCollectAddressTimer = setTimeout('abAddressCollector.collectUnicodeAddress(gCollectAddress, false, Components.interfaces.nsIAbPreferMailFormat.unknown);', 2000);
             }
           } 
         } // if lowerCaseHeaderName == "from"
@@ -727,8 +727,10 @@ function setFromBuddyIcon(email)
          gIOService = Components.classes["@mozilla.org/network/io-service;1"].getService(Components.interfaces.nsIIOService);
          gFileHandler = gIOService.getProtocolHandler("file").QueryInterface(Components.interfaces.nsIFileProtocolHandler);
          
-         var profile = Components.classes["@mozilla.org/profile/manager;1"].getService(Components.interfaces.nsIProfileInternal);
-         gProfileDirURL = gIOService.newFileURI(profile.getProfileDir(profile.currentProfile));
+         var dirService = Components.classes["@mozilla.org/directory_service;1"]
+             .getService(Components.interfaces.nsIProperties);
+         var profileDir = dirService.get("ProfD", Components.interfaces.nsIFile);
+         gProfileDirURL = gIOService.newFileURI(profileDir);
        }
 
        // if we did have a buddy icon on disk for this screenname, this would be the file url spec for it

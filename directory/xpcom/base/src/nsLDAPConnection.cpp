@@ -416,6 +416,7 @@ nsLDAPConnection::RemovePendingOperation(nsILDAPOperation *aOperation)
     nsresult rv;
     PRInt32 msgID;
 
+    NS_ENSURE_TRUE(mPendingOperations, NS_OK);
     NS_ENSURE_ARG_POINTER(aOperation);
 
     // find the message id
@@ -481,9 +482,8 @@ nsLDAPConnection::InvokeMessageCallback(LDAPMessage *aMsgHandle,
         return NS_ERROR_OUT_OF_MEMORY;
 
     // find the operation in question
-    //
-    nsISupports *data = mPendingOperations->Get(key);
-    if (!data) {
+    operation = getter_AddRefs(NS_STATIC_CAST(nsILDAPOperation *, mPendingOperations->Get(key)));
+    if (!operation) {
 
         PR_LOG(gLDAPLogModule, PR_LOG_WARNING, 
                ("Warning: InvokeMessageCallback(): couldn't find "
@@ -496,7 +496,6 @@ nsLDAPConnection::InvokeMessageCallback(LDAPMessage *aMsgHandle,
         return NS_OK;
     }
 
-    operation = getter_AddRefs(NS_STATIC_CAST(nsILDAPOperation *, data));
 
     // Make sure the mOperation member is set to this operation before
     // we call the callback.
@@ -516,8 +515,9 @@ nsLDAPConnection::InvokeMessageCallback(LDAPMessage *aMsgHandle,
 
     // invoke the callback 
     //
-    listener->OnLDAPMessage(aMsg);
-
+    if (listener) {
+      listener->OnLDAPMessage(aMsg);
+    }
     // if requested (ie the operation is done), remove the operation
     // from the connection queue.
     //
@@ -716,6 +716,28 @@ CheckLDAPOperationResult(nsHashKey *aKey, void *aData, void* aClosure)
             switch (rv) {
 
             case NS_OK: 
+              {
+                PRInt32 errorCode;
+                rawMsg->GetErrorCode(&errorCode);
+                if (errorCode == LDAP_PROTOCOL_ERROR)
+                {
+                  // maybe a version error, e.g., using v3 on a v2 server.
+                  // if we're using v3, try v2.
+                  if (loop->mRawConn->mVersion == nsILDAPConnection::VERSION3)
+                  {
+                    nsCAutoString password;
+                    loop->mRawConn->mVersion = nsILDAPConnection::VERSION2;
+                    ldap_set_option(loop->mRawConn->mConnectionHandle, LDAP_OPT_PROTOCOL_VERSION, &loop->mRawConn->mVersion);
+                    nsCOMPtr <nsILDAPOperation> operation = NS_STATIC_CAST(nsILDAPOperation *, NS_STATIC_CAST(nsISupports *, aData));
+                    // we pass in an empty password to tell the operation that it
+                    // should use the cached password.
+                    operation->SimpleBind(password);
+                    operationFinished = PR_FALSE;
+                    // we don't want to notify callers that we're done...
+                    return PR_TRUE;
+                  }
+                }
+              }
                 break;
 
             case NS_ERROR_LDAP_DECODING_ERROR:
@@ -918,7 +940,7 @@ nsLDAPConnection::OnLookupComplete(nsIDNSRequest *aRequest,
         if ( !mConnectionHandle ) {
             rv = NS_ERROR_FAILURE;  // LDAP C SDK API gives no useful error
         } else {
-#ifdef DEBUG_dmose
+#if defined(DEBUG_dmose) || defined(DEBUG_bienvenu)
             const int lDebug = 0;
             ldap_set_option(mConnectionHandle, LDAP_OPT_DEBUG_LEVEL, &lDebug);
 #endif

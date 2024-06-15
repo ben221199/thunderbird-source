@@ -824,7 +824,12 @@ nsBayesianFilter::nsBayesianFilter()
     }
 }
 
-nsBayesianFilter::~nsBayesianFilter() {}
+nsBayesianFilter::~nsBayesianFilter() 
+{
+  // call shutdown when we are going away in case we need
+  // to flush the training set to disk
+  Shutdown();
+}
 
 // this object is used for one call to classifyMessage or classifyMessages(). 
 // So if we're classifying multiple messages, this object will be used for each message.
@@ -987,7 +992,7 @@ void nsBayesianFilter::classifyMessage(Tokenizer& tokenizer, const char* message
         first = 0;
 
     double H = 1.0, S = 1.0;
-    PRUint32 Hexp = 0, Sexp = 0;
+    PRInt32 Hexp = 0, Sexp = 0;
     goodclues=0;
     int e;
 

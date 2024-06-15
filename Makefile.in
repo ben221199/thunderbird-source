@@ -209,8 +209,6 @@ ifdef MOZ_PHOENIX
 ifdef MOZ_USE_OFFICIAL_BRANDING
 tier_9_dirs  += other-licenses/branding/firefox
 endif
-
-tier_9_dirs	+= toolkit/components/profile/public
 endif
 
 tier_9_dirs	+= \
@@ -325,6 +323,9 @@ endif # MOZ_COMPONENTLIB
 
 ifdef MOZ_PHOENIX
 tier_99_dirs	+= browser xpfe/bootstrap/init.d
+ifdef MOZ_USE_OFFICIAL_BRANDING
+tier_99_dirs += other-licenses/branding/firefox/content
+endif
 endif
 
 ifdef MOZ_THUNDERBIRD
@@ -476,12 +477,20 @@ endif
 
 splitsymbols:
 ifdef MOZILLA_OFFICIAL
+ifdef MOZ_PDB
+	echo finding pdb files
+	mkdir -p $(DIST)/$(BUILDID)
+	-cp `/bin/find . -path "./dist" -prune -o -name "*.dll" | sed "s/\.dll$$/\.pdb/" | xargs` $(DIST)/$(BUILDID)
+	-cp `/bin/find . -path "./dist" -prune -o -name "*.exe" | sed "s/\.exe$$/\.pdb/" | xargs` $(DIST)/$(BUILDID)
+	-cp `/bin/find . -path "./dist" -prune -o -name "*.EXE" | sed "s/\.EXE$$/\.pdb/" | xargs` $(DIST)/$(BUILDID)
+else
 	echo splitting symbols out of binaries
 	/bin/find $(DIST) -name "*.dll" -exec splitsym {} \;
 	/bin/find $(DIST) -name "*.exe" -exec splitsym {} \;
 	/bin/find $(DIST) -name "*.EXE" -exec splitsym {} \;
 	mkdir -p $(DIST)/$(BUILDID)
 	/bin/find $(DIST) -name "*.dbg" -exec mv {} $(DIST)/$(BUILDID) \;
+endif # MOZ_PDB
 endif # MOZILLA_OFFICIAL
 
 signnss:

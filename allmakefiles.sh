@@ -849,7 +849,10 @@ extensions/typeaheadfind/Makefile
 
 if [ "$MOZ_USE_OFFICIAL_BRANDING" ]; then
     if [ "$MOZ_PHOENIX" ]; then
-        MAKEFILES_firefox_branding="other-licenses/branding/firefox/Makefile"
+        MAKEFILES_firefox_branding="
+            other-licenses/branding/firefox/Makefile
+            other-licenses/branding/firefox/content/Makefile
+        "
     fi
     if [ "$MOZ_THUNDERBIRD" ]; then
         MAKEFILES_thunderbird_branding="other-licenses/branding/thunderbird/Makefile"
@@ -963,6 +966,7 @@ mail/extensions/smime/skin/Makefile
 mail/extensions/offline/Makefile
 mail/extensions/inspector/Makefile
 mail/config/Makefile
+mail/installer/Makefile
 mail/installer/windows/Makefile
 xpfe/components/build2/Makefile
 "

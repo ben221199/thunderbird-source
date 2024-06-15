@@ -30,7 +30,7 @@
 # may use your version of this file under either the MPL or the
 # GPL.
 #
-MAKEFILE_CVS_ID = "@(#) $RCSfile: Makefile,v $ $Revision: 1.4 $ $Date: 2002/04/15 21:04:00 $ $Name: THUNDERBIRD_0_6_RELEASE $"
+MAKEFILE_CVS_ID = "@(#) $RCSfile: Makefile,v $ $Revision: 1.4 $ $Date: 2002/04/15 21:04:00 $ $Name: THUNDERBIRD_0_7_RELEASE $"
 
 include manifest.mn
 include $(CORE_DEPTH)/coreconf/config.mk

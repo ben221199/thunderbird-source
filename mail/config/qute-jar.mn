@@ -9,7 +9,6 @@
 #################################################################################################
 # mail
 #################################################################################################
-
 skin/classic/messenger,                              classic/skin/classic/messenger 	
 skin/classic/messenger/icons,                        classic/skin/classic/messenger/icons 
 skin/classic/messenger/addressbook,                  classic/skin/classic/messenger/addressbook
@@ -17,6 +16,7 @@ skin/classic/messenger/addressbook/icons,            classic/skin/classic/messen
 skin/classic/messenger/messengercompose,             classic/skin/classic/messenger/messengercompose
 skin/classic/messenger/smime,                        classic/skin/classic/messenger/smime
 skin/classic/messenger/smime/icons,                  classic/skin/classic/messenger/smime/icons
+icon.png,                                            classic/icon.png
 
 #################################################################################################
 # communicator
@@ -25,13 +25,7 @@ skin/classic/communicator/alerts,                    classic/skin/classic/commun
 skin/classic/communicator/profile,                   classic/skin/classic/communicator/profile
 
 skin/classic/communicator/contents.rdf,              classic/skin/classic/communicator/contents.rdf
-skin/classic/communicator/tasksOverlay.css,          classic/skin/classic/communicator/tasksOverlay.css
-skin/classic/communicator/button.css,                classic/skin/classic/communicator/button.css
-skin/classic/communicator/dialogs.css,               classic/skin/classic/communicator/dialogs.css
-skin/classic/communicator/printing.css,              classic/skin/classic/communicator/printing.css
 skin/classic/communicator/communicator.css,          classic/skin/classic/communicator/communicator.css
-skin/classic/communicator/formatting.css,            classic/skin/classic/communicator/formatting.css
-skin/classic/communicator/prefpanels.css,            classic/skin/classic/communicator/prefpanels.css
 skin/classic/communicator/smileys.css,               classic/skin/classic/communicator/smileys.css
 
 skin/classic/communicator/icons/offline.gif,                      classic/skin/classic/communicator/icons/offline.gif
@@ -63,27 +57,24 @@ skin/classic/communicator/xpinstall/xpinstall.css,   classic/skin/classic/commun
 skin/classic/mozapps/pref,                            classic/skin/classic/mozapps/pref
 skin/classic/mozapps/contents.rdf,                    classic/skin/classic/mozapps/contents.rdf
 skin/classic/mozapps/downloads,                       classic/skin/classic/mozapps/downloads
+skin/classic/mozapps/profile,                         classic/skin/classic/mozapps/profile
+skin/classic/mozapps/extensions,                      classic/skin/classic/mozapps/extensions
+skin/classic/mozapps/update,                          classic/skin/classic/mozapps/update
+skin/classic/mozapps/shared,                          classic/skin/classic/mozapps/shared
 
 #################################################################################################
 # Global
 #################################################################################################
 skin/classic/global,                                   classic/skin/classic/global
-skin/classic/global/filepicker,                        classic/skin/classic/global/filepicker
 skin/classic/global/arrow,                             classic/skin/classic/global/arrow
 skin/classic/global/tree,                              classic/skin/classic/global/tree
 skin/classic/global/checkbox,                          classic/skin/classic/global/checkbox
 skin/classic/global/radio,                             classic/skin/classic/global/radio
-
 skin/classic/global/icons,                             classic/skin/classic/global/icons
 skin/classic/global/toolbar,                           classic/skin/classic/global/toolbar
 skin/classic/global/menu,                              classic/skin/classic/global/menu
 skin/classic/global/progressmeter,                     classic/skin/classic/global/progressmeter
-
-# mozilla/toolkit
 skin/classic/global/console,                           classic/skin/classic/global/console
-skin/classic/global/icons/Message.png                  classic/skin/classic/global/icons/Message.png
-skin/classic/global/icons/Question.png                 classic/skin/classic/global/icons/Question.png
-skin/classic/global/icons/Warning.png                  classic/skin/classic/global/cons/Warning.png
 
 #################################################################################################
 # Editor
@@ -94,4 +85,9 @@ skin/classic/editor/EdImageMapPage.css,               classic/skin/classic/edito
 skin/classic/editor/editor.css,                       classic/skin/classic/editor/editor.css
 skin/classic/editor/EditorDialog.css,                 classic/skin/classic/editor/EditorDialog.css
 skin/classic/editor/textEditor.css,                   classic/skin/classic/editor/textEditor.css
-skin/classic/editor/icons,                            classic/skin/classic/editor/icons
+skin/classic/editor/icons/btn1.gif,                   classic/skin/classic/editor/icons/btn1.gif
+skin/classic/editor/icons/img-align-bottom.gif,       classic/skin/classic/editor/icons/img-align-bottom.gif
+skin/classic/editor/icons/img-align-left.gif,         classic/skin/classic/editor/icons/img-align-left.gif
+skin/classic/editor/icons/img-align-middle.gif,       classic/skin/classic/editor/icons/img-align-middle.gif
+skin/classic/editor/icons/img-align-right.gif,        classic/skin/classic/editor/icons/img-align-right.gif
+skin/classic/editor/icons/img-align-top.gif,          classic/skin/classic/editor/icons/img-align-top.gif

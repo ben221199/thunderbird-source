@@ -65,6 +65,8 @@ greprefs\*
 defaults\messenger\mailViews.dat
 defaults\profile\localstore.rdf
 defaults\profile\mimeTypes.rdf
+defaults\profile\extensions\*
+defaults\profile\extensions\{972ce4c6-7e08-4474-a285-3208198ce6fd}\install.rdf
 defaults\profile\US\localstore.rdf
 defaults\profile\US\mimeTypes.rdf
 
@@ -204,9 +206,10 @@ components\jar.xpt
 components\pref.xpt                     
 components\xppref32.dll
 
-; profile
-components\profile.dll                  
+; profile                
 components\profile.xpt
+components\profilemigration.dll
+components\toolkitprofile.xpt
 
 ; rdf
 components\rdf.dll
@@ -219,7 +222,6 @@ components\locale.xpt
 components\uconv.dll
 components\uconv.xpt
 components\unicharutil.xpt
-components\ucnative.xpt
 
 ; dom
 components\dom.xpt                      
@@ -342,3 +344,20 @@ res\table-remove-column.gif
 res\table-remove-row-active.gif
 res\table-remove-row-hover.gif
 res\table-remove-row.gif
+
+; extensions
+components\nsExtensionManager.js
+components\nsBackgroundUpdateService.js
+components\extensions.xpt
+components\update.xpt
+
+; talkback
+components\qfaservices.dll
+components\qfaservices.xpt
+components\BrandRes.dll
+components\fullsoft.dll
+components\master.ini
+components\talkback-l10n.ini
+components\talkback.cnt
+components\talkback.exe
+components\talkback.hlp

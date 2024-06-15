@@ -599,7 +599,7 @@ GlobalWindowImpl::SetNewDocument(nsIDOMDocument* aDocument,
         ClearAllTimeouts();
 
         if (mContext && mJSObject) {
-          if (mNavigator) {
+          if (mNavigator && sXPConnect) {
             nsIDOMNavigator* navigator =
               NS_STATIC_CAST(nsIDOMNavigator*, mNavigator.get());
             sXPConnect->WrapNative(cx, mJSObject, navigator,
@@ -1973,7 +1973,7 @@ GlobalWindowImpl::GetScrollMaxXY(PRInt32* aScrollMaxX, PRInt32* aScrollMaxY)
 
   GetScrollInfo(&view, &p2t, &t2p);
   if (!view)
-    return NS_ERROR_FAILURE;
+    return NS_OK;      // bug 230965 changed from NS_ERROR_FAILURE
 
   nsSize scrolledSize;
   rv = view->GetContainerSize(&scrolledSize.width, &scrolledSize.height);

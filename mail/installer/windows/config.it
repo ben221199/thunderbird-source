@@ -237,7 +237,7 @@ C4=Component En US lang pack
 C5=Component US region pack
 ; Make sure Component QFA is LAST so 3rd party developers who might not want
 ; this component can easily remove it.
-; C6=Component QFA
+C6=Component QFA
 
 [Setup Type1]
 ;*** LOCALIZE ME BABY ***
@@ -255,10 +255,10 @@ C3=Component US English Profile Defaults
 C4=Component En US lang pack
 C5=Component US region pack
 C6=Component Offline
-C7=Component ADT
+;C7=Component ADT
 ; Make sure Component QFA is LAST so 3rd party developers who might not want
 ; this component can easily remove it.
-; C8=Component QFA
+C7=Component QFA
 
 [Dialog Select Components]
 Show Dialog=TRUE
@@ -310,14 +310,16 @@ Message0=Select or clear the additional components you want to install.
 [Dialog Windows Integration]
 ; Note - this dialog isn't actually used yet!
 Show Dialog=TRUE
+Registry Key=SOFTWARE\\$CompanyName$\\$ProductName$\\$UserAgent$\\Main
 ;*** LOCALIZE ME BABY ***
-Title=Windows Integration
+Title=Set Up Shortcuts
 ;*** LOCALIZE ME BABY ***
-Sub Title=Create Shortcuts and set Default Browser
+Sub Title=Creates Program Icons
 ;*** LOCALIZE ME BABY ***
-Message0=Create %s shortcuts:
+Message0=Create icons for $ProductShortName$:
 
-; Only a maximum of 4 "Windows Integration-Item"s are allowded.  Each Item
+
+; Only a maximum of 3 "Windows Integration-Item"s are allowded.  Each Item
 ; shows up as a checkbox in the Windows Integration dialog.
 [Windows Integration-Item0]
 CheckBoxState=TRUE
@@ -335,12 +337,6 @@ Archive=
 CheckBoxState=TRUE
 ;*** LOCALIZE ME BABY ***
 Description=In my Quick Launch bar
-Archive=
-
-[Windows Integration-Item3]
-CheckBoxState=TRUE
-;*** LOCALIZE ME BABY ***
-Description=Use %s as my Default Mail Client.
 Archive=
 
 [Dialog Program Folder]
@@ -661,16 +657,16 @@ Attributes=FORCE_UPGRADE|VISIBLE
 Force Upgrade File0=[SETUP PATH]\chrome\offline.jar
 FileCount=$FileCount$
 
-[Component ADT]
-Description Short=Developer Tools
+;[Component ADT]
+;Description Short=Developer Tools
 ;*** LOCALIZE ME BABY ***
-Description Long=Tools for web developers including the Document Inspector. 
-Archive=adt.xpi
-$InstallSize$:adt
-$InstallSizeArchive$:adt.xpi
-Attributes=FORCE_UPGRADE|VISIBLE
-Force Upgrade File0=[SETUP PATH]\chrome\inspector.jar
-FileCount=$FileCount$
+;Description Long=Tools for web developers including the Document Inspector. 
+;Archive=adt.xpi
+;$InstallSize$:adt
+;$InstallSizeArchive$:adt.xpi
+;Attributes=FORCE_UPGRADE|VISIBLE
+;Force Upgrade File0=[SETUP PATH]\chrome\inspector.jar
+;FileCount=$FileCount$
 
 [Component Uninstaller]
 Description Short=$CompanyName$ Uninstaller
@@ -727,17 +723,17 @@ Attributes=SELECTED|INVISIBLE|FORCE_UPGRADE
 Force Upgrade File0=[SETUP PATH]\chrome\US.jar
 FileCount=$FileCount$
 
-;[Component QFA]
-;Description Short=Quality Feedback Agent
+[Component QFA]
+Description Short=Quality Feedback Agent
 ;*** LOCALIZE ME BABY ***
-;Description Long=for reporting $ProductName$ crash information
-;Archive=talkback.xpi
-;Install Size=870
-;Install Size System=1
-;Install Size Archive=248
-;Attributes=SELECTED|FORCE_UPGRADE
-;Force Upgrade File0=[SETUP PATH]\components\fullsoft.dll
-;FileCount=$FileCount$
+Description Long=for reporting $ProductName$ crash information
+Archive=talkback.xpi
+$InstallSize$:talkback
+$InstallSizeSystem$
+$InstallSizeArchive$:talkbck.xpi
+Attributes=SELECTED|FORCE_UPGRADE
+Force Upgrade File0=[SETUP PATH]\components\fullsoft.dll
+FileCount=$FileCount$
 
 ; This is to randomly set the default checkbox for this component.
 ; This particular value will set the checkbox checked [number]% of the time.
@@ -1110,9 +1106,128 @@ Overwrite Key=TRUE
 Overwrite Name=TRUE
 Timing=post smartupdate
 
+[Windows Registry14]
+Root Key=HKEY_LOCAL_MACHINE
+Key=Software\Microsoft\Windows\CurrentVersion\Uninstall\$ProductName$ ($UserAgentShort$)
+Name=DisplayIcon
+Name Value=[SETUP PATH]\$MainExeFile$,0
+Type=REG_SZ
+Decrypt Key=FALSE
+Decrypt Name=FALSE
+Decrypt Name Value=TRUE
+Overwrite Key=TRUE
+Overwrite Name=TRUE
+Timing=post smartupdate
+
+[Windows Registry15]
+Root Key=HKEY_LOCAL_MACHINE
+Key=Software\Microsoft\Windows\CurrentVersion\Uninstall\$ProductName$ ($UserAgentShort$)
+Name=DisplayVersion
+Name Value=$UserAgent$
+Type=REG_SZ
+Decrypt Key=FALSE
+Decrypt Name=FALSE
+Decrypt Name Value=TRUE
+Overwrite Key=TRUE
+Overwrite Name=TRUE
+Timing=post smartupdate
+
+[Windows Registry16]
+Root Key=HKEY_LOCAL_MACHINE
+Key=Software\Microsoft\Windows\CurrentVersion\Uninstall\$ProductName$ ($UserAgentShort$)
+Name=Comment
+Name Value=Reclaim Your Inbox.
+Type=REG_SZ
+Decrypt Key=FALSE
+Decrypt Name=FALSE
+Decrypt Name Value=TRUE
+Overwrite Key=TRUE
+Overwrite Name=TRUE
+Timing=post smartupdate
+
+[Windows Registry17]
+Root Key=HKEY_LOCAL_MACHINE
+Key=Software\Microsoft\Windows\CurrentVersion\Uninstall\$ProductName$ ($UserAgentShort$)
+Name=InstallLocation
+Name Value=[SETUP PATH]
+Type=REG_SZ
+Decrypt Key=FALSE
+Decrypt Name=FALSE
+Decrypt Name Value=TRUE
+Overwrite Key=TRUE
+Overwrite Name=TRUE
+Timing=post smartupdate
+
+[Windows Registry18]
+Root Key=HKEY_LOCAL_MACHINE
+Key=Software\Microsoft\Windows\CurrentVersion\Uninstall\$ProductName$ ($UserAgentShort$)
+Name=NoModify
+Name Value=1
+Type=REG_DWORD
+Decrypt Key=FALSE
+Decrypt Name=FALSE
+Decrypt Name Value=TRUE
+Overwrite Key=TRUE
+Overwrite Name=TRUE
+Timing=post smartupdate
+
+[Windows Registry19]
+Root Key=HKEY_LOCAL_MACHINE
+Key=Software\Microsoft\Windows\CurrentVersion\Uninstall\$ProductName$ ($UserAgentShort$)
+Name=NoRepair
+Name Value=1
+Type=REG_DWORD
+Decrypt Key=FALSE
+Decrypt Name=FALSE
+Decrypt Name Value=TRUE
+Overwrite Key=TRUE
+Overwrite Name=TRUE
+Timing=post smartupdate
+
+[Windows Registry20]
+Root Key=HKEY_LOCAL_MACHINE
+Key=Software\Microsoft\Windows\CurrentVersion\Uninstall\$ProductName$ ($UserAgentShort$)
+Name=Publisher
+Name Value=$CompanyName$
+Type=REG_SZ
+Decrypt Key=FALSE
+Decrypt Name=FALSE
+Decrypt Name Value=TRUE
+Overwrite Key=TRUE
+Overwrite Name=TRUE
+Timing=post smartupdate
+
+[Windows Registry21]
+Root Key=HKEY_LOCAL_MACHINE
+Key=Software\Microsoft\Windows\CurrentVersion\Uninstall\$ProductName$ ($UserAgentShort$)
+Name=URLInfoAbout
+;*** LOCALIZE ME BABY ***
+Name Value=http://www.mozilla.org/
+Type=REG_SZ
+Decrypt Key=FALSE
+Decrypt Name=FALSE
+Decrypt Name Value=TRUE
+Overwrite Key=TRUE
+Overwrite Name=TRUE
+Timing=post smartupdate
+
+[Windows Registry22]
+Root Key=HKEY_LOCAL_MACHINE
+Key=Software\Microsoft\Windows\CurrentVersion\Uninstall\$ProductName$ ($UserAgentShort$)
+Name=URLUpdateInfo
+;*** LOCALIZE ME BABY ***
+Name Value=http://www.mozilla.org/products/thunderbird/
+Type=REG_SZ
+Decrypt Key=FALSE
+Decrypt Name=FALSE
+Decrypt Name Value=TRUE
+Overwrite Key=TRUE
+Overwrite Name=TRUE
+Timing=post smartupdate
+
 ; The following keys are to help JRE's installer locate where mozilla gets
 ; installed to.  It has not been updated to look for the new keys.
-[Windows Registry14]
+[Windows Registry23]
 Root Key=HKEY_LOCAL_MACHINE
 Key=Software\Mozilla
 Name=

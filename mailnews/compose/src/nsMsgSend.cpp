@@ -110,6 +110,7 @@
 #include "nsIRDFService.h"
 #include "nsRDFCID.h"
 #include "nsIMsgAccountManager.h"
+#include "nsIAbCard.h"
 
 static NS_DEFINE_CID(kRDFServiceCID, NS_RDFSERVICE_CID);
 
@@ -3392,45 +3393,58 @@ nsMsgComposeAndSend::DeliverFileAsMail()
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
-  nsresult rv;
-
   PRBool collectOutgoingAddresses = PR_TRUE;
   nsCOMPtr<nsIPrefBranch> pPrefBranch(do_GetService(NS_PREFSERVICE_CONTRACTID));
   if (pPrefBranch)
     pPrefBranch->GetBoolPref(PREF_MAIL_COLLECT_EMAIL_ADDRESS_OUTGOING, &collectOutgoingAddresses);
  
-
   nsCOMPtr<nsIAbAddressCollecter> addressCollecter = 
-           do_GetService(NS_ABADDRESSCOLLECTER_CONTRACTID, &rv);
-
-  if (NS_FAILED(rv))
-    addressCollecter = nsnull;
+           do_GetService(NS_ABADDRESSCOLLECTER_CONTRACTID);
 
   PRBool collectAddresses = (collectOutgoingAddresses && addressCollecter);
+  PRBool forcePlainText = mCompFields->GetForcePlainText();
+  PRBool useMultipartAlternative = mCompFields->GetUseMultipartAlternative();
+  PRUint32 sendFormat = nsIAbPreferMailFormat::unknown;
+
+  // see GenericSendMessage() in MsgComposeCommands.js for the reverse logic
+  // if we choose to send both (html and plain) remember html.
+  if (forcePlainText && !useMultipartAlternative)
+  {
+    // for now, don't remember the "plaintext" decision.
+    // we could get in here because while sending html mail
+    // the body was "convertible", but that doesn't mean
+    // we intended to force plain text here.
+    // so for now, use "unknown" which will have no effect on the
+    // prefers html attribute in the ab.
+    // see bug #245520 for more details
+    // sendFormat = nsIAbPreferMailFormat::plaintext;
+    sendFormat = nsIAbPreferMailFormat::unknown;
+  }
+  else if (!forcePlainText)
+    sendFormat = nsIAbPreferMailFormat::html;
+  else
+    NS_ASSERTION(0,"unknown send format, should not happen");
 
   PL_strcpy (buf, "");
   buf2 = buf + PL_strlen (buf);
   if (mCompFields->GetTo() && *mCompFields->GetTo())
   {
     PL_strcat (buf2, mCompFields->GetTo());
-    if (collectAddresses)
-      addressCollecter->CollectAddress(mCompFields->GetTo(), PR_TRUE);
+    addressCollecter->CollectAddress(mCompFields->GetTo(), collectAddresses /* create card if one doesn't exist */, sendFormat);
   }
   if (mCompFields->GetCc() && *mCompFields->GetCc()) {
     if (*buf2) PL_strcat (buf2, ",");
       PL_strcat (buf2, mCompFields->GetCc());
-    if (collectAddresses)
-      addressCollecter->CollectAddress(mCompFields->GetCc(), PR_TRUE);
+    addressCollecter->CollectAddress(mCompFields->GetCc(), collectAddresses /* create card if one doesn't exist */, sendFormat);
   }
   if (mCompFields->GetBcc() && *mCompFields->GetBcc()) {
     if (*buf2) PL_strcat (buf2, ",");
       PL_strcat (buf2, mCompFields->GetBcc());
-    if (collectAddresses)
-      addressCollecter->CollectAddress(mCompFields->GetBcc(), PR_TRUE);
+    addressCollecter->CollectAddress(mCompFields->GetBcc(), collectAddresses /* create card if one doesn't exist */, sendFormat);
   }
 
   // We need undo groups to keep only the addresses
-  rv = StripOutGroupNames(buf);
+  nsresult rv = StripOutGroupNames(buf);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Ok, now MIME II encode this to prevent 8bit problems...
@@ -4413,9 +4427,12 @@ nsMsgComposeAndSend::MimeDoFCC(nsFileSpec       *input_file,
     char       *buf = 0;
     PRUint16   flags = 0;
 
-    flags |= MSG_FLAG_READ;
+    // for save as draft and send later, we want to leave the message as unread.
+    // See Bug #198087
     if (mode == nsMsgQueueForLater)
       flags |= MSG_FLAG_QUEUED;
+    else if (mode != nsMsgSaveAsDraft)
+      flags |= MSG_FLAG_READ;
     buf = PR_smprintf(X_MOZILLA_STATUS_FORMAT CRLF, flags);
     if (buf)
     {

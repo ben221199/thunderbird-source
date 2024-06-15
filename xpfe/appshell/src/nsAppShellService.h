@@ -49,8 +49,11 @@
 #include "nsIWindowMediator.h"
 #include "nsPIWindowWatcher.h"
 #include "nsISplashScreen.h"
+
+#ifdef MOZ_THUNDERBIRD
 #include "nsIURIContentListener.h"
 #include "nsIInterfaceRequestor.h"
+#endif
 
 class nsAppShellService : public nsIAppShellService,
                           public nsIObserver,
@@ -84,7 +87,9 @@ protected:
   nsCOMPtr<nsPIWindowWatcher> mWindowWatcher;
   nsCOMPtr<nsIXULWindow>      mHiddenWindow;
   PRBool mDeleteCalled;
+#ifndef MOZ_XUL_APP
   nsCOMPtr<nsISplashScreen> mSplashScreen;
+#endif
   nsCOMPtr<nsINativeAppSupport> mNativeAppSupport;
 
   PRUint16     mModalWindowCount;
@@ -97,7 +102,7 @@ protected:
   PR_STATIC_CALLBACK(void) DestroyExitEvent(PLEvent* aEvent);
 
 private:
-#ifndef MOZ_PHOENIX  
+#ifndef MOZ_XUL_APP
   nsresult CheckAndRemigrateDefunctProfile();
 #endif
 
@@ -112,7 +117,7 @@ private:
   nsresult OpenBrowserWindow(PRInt32 height, PRInt32 width);
 };
 
-
+#ifdef MOZ_THUNDERBIRD
 class nsAppShellServiceContentListener : public nsIURIContentListener,
                                          public nsIInterfaceRequestor
 {
@@ -127,5 +132,6 @@ public:
 private:
   nsCOMPtr<nsISupports> mLoadCookie;
 };
+#endif
 
 #endif

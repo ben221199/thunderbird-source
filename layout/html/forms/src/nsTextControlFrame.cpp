@@ -100,6 +100,7 @@
 #include "nsIDOMEventGroup.h"
 #include "nsIDOM3EventTarget.h"
 #include "nsIDOMNSUIEvent.h"
+#include "nsIEventStateManager.h"
 
 #include "nsIDOMFocusListener.h" //onchange events
 #include "nsIDOMCharacterData.h" //for selection setting helper func
@@ -585,16 +586,6 @@ nsTextInputSelectionImpl::SetCaretEnabled(PRBool enabled)
 
   nsCOMPtr<nsIPresShell> shell = do_QueryReferent(mPresShellWeak);
   if (!shell) return NS_ERROR_FAILURE;
-  
-  // first, tell the caret which selection to use
-  nsCOMPtr<nsISelection> domSel;
-  GetSelection(nsISelectionController::SELECTION_NORMAL, getter_AddRefs(domSel));
-  if (!domSel) return NS_ERROR_FAILURE;
-  
-  nsCOMPtr<nsICaret> caret;
-  shell->GetCaret(getter_AddRefs(caret));
-  if (!caret) return NS_OK;
-  caret->SetCaretDOMSelection(domSel);
 
   // tell the pres shell to enable the caret, rather than settings its visibility directly.
   // this way the presShell's idea of caret visibility is maintained.
@@ -2086,7 +2077,54 @@ nsTextControlFrame::GetFormControlType() const
   return nsFormControlHelper::GetType(mContent);
 }
 
-void    nsTextControlFrame::SetFocus(PRBool aOn , PRBool aRepaint){}
+static PRBool
+IsFocusedContent(nsIPresContext* aPresContext, nsIContent* aContent)
+{
+  nsCOMPtr<nsIContent> focusedContent;
+  aPresContext->EventStateManager()->
+    GetFocusedContent(getter_AddRefs(focusedContent));
+  return focusedContent == aContent;
+}
+
+void    nsTextControlFrame::SetFocus(PRBool aOn, PRBool aRepaint)
+{
+  if (!aOn || !mSelCon)
+    return;
+
+  // onfocus="some_where_else.focus()" can trigger several focus
+  // in succession. Here, we only care if we are the winner.
+  // @see also nsTextEditorFocusListener::Focus()
+  if (!IsFocusedContent(GetPresContext(), mContent))
+    return;
+
+  // tell the caret to use our selection
+
+  nsCOMPtr<nsISelection> ourSel;
+  mSelCon->GetSelection(nsISelectionController::SELECTION_NORMAL, 
+    getter_AddRefs(ourSel));
+  if (!ourSel) return;
+
+  nsIPresShell* presShell = GetPresContext()->GetPresShell();
+  nsCOMPtr<nsICaret> caret;
+  presShell->GetCaret(getter_AddRefs(caret));
+  if (!caret) return;
+  caret->SetCaretDOMSelection(ourSel);
+
+  // mutual-exclusion: the selection is either controlled by the
+  // document or by the text input/area. Clear any selection in the
+  // document since the focus is now on our independent selection.
+
+  nsCOMPtr<nsISelectionController> selCon(do_QueryInterface(presShell));
+  nsCOMPtr<nsISelection> docSel;
+  selCon->GetSelection(nsISelectionController::SELECTION_NORMAL,
+    getter_AddRefs(docSel));
+  if (!docSel) return;
+
+  PRBool isCollapsed = PR_FALSE;
+  docSel->GetIsCollapsed(&isCollapsed);
+  if (!isCollapsed)
+    docSel->RemoveAllRanges();
+}
 
 void    nsTextControlFrame::ScrollIntoView(nsIPresContext* aPresContext)
 {
@@ -2658,13 +2696,14 @@ nsTextControlFrame::AttributeChanged(nsIPresContext* aPresContext,
     if (NS_CONTENT_ATTR_NOT_THERE != rv) 
     { // set readonly
       flags |= nsIPlaintextEditor::eEditorReadonlyMask;
-      if (mSelCon)
+      if (mSelCon && IsFocusedContent(aPresContext, mContent))
         mSelCon->SetCaretEnabled(PR_FALSE);
     }
     else 
     { // unset readonly
       flags &= ~(nsIPlaintextEditor::eEditorReadonlyMask);
-      if (mSelCon && !(flags & nsIPlaintextEditor::eEditorDisabledMask))
+      if (mSelCon && !(flags & nsIPlaintextEditor::eEditorDisabledMask) &&
+          IsFocusedContent(aPresContext, mContent))
         mSelCon->SetCaretEnabled(PR_TRUE);
     }    
     mEditor->SetFlags(flags);
@@ -2685,8 +2724,9 @@ nsTextControlFrame::AttributeChanged(nsIPresContext* aPresContext,
       flags |= nsIPlaintextEditor::eEditorDisabledMask;
       if (mSelCon)
       {
-        mSelCon->SetCaretEnabled(PR_FALSE);
         mSelCon->SetDisplaySelection(nsISelectionController::SELECTION_OFF);
+        if (IsFocusedContent(aPresContext, mContent))
+          mSelCon->SetCaretEnabled(PR_FALSE);
       }
     }
     else 

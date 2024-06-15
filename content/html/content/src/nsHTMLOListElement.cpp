@@ -79,7 +79,7 @@ public:
 
 nsresult
 NS_NewHTMLOListElement(nsIHTMLContent** aInstancePtrResult,
-                       nsINodeInfo *aNodeInfo)
+                       nsINodeInfo *aNodeInfo, PRBool aFromParser)
 {
   NS_ENSURE_ARG_POINTER(aInstancePtrResult);
 
@@ -130,13 +130,11 @@ nsHTMLOListElement::CloneNode(PRBool aDeep, nsIDOMNode** aReturn)
   NS_ENSURE_ARG_POINTER(aReturn);
   *aReturn = nsnull;
 
-  nsHTMLOListElement* it = new nsHTMLOListElement();
+  nsRefPtr<nsHTMLOListElement> it = new nsHTMLOListElement();
 
   if (!it) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
-
-  nsCOMPtr<nsIDOMNode> kungFuDeathGrip(it);
 
   nsresult rv = it->Init(mNodeInfo);
 

@@ -93,12 +93,6 @@ pref("browser.helperApps.alwaysAsk.force",  false);
 pref("browser.helperApps.neverAsk.saveToDisk", "");
 pref("browser.helperApps.neverAsk.openFile", "");
 
-// Blacklist of servers whose content-location headers are unreliable
-// and should be ignored.  This is a comma-separated list of server
-// names, with no spaces before or after the commas.  If the server
-// name you want to add here contains a comma, use a period instead.
-pref("browser.content-location.bogus-servers", "Microsoft-IIS/4.0,Microsoft-IIS/5.0,Microsoft-IIS/6.0,Oracle9iAS/9.0.2,Oracle9iAS (1.0.2.2.1)");
-
 // xxxbsmedberg: where should prefs for the toolkit go?
 pref("browser.chrome.toolbar_tips",         true);
 // 0 = Pictures Only, 1 = Text Only, 2 = Pictures and Text
@@ -447,6 +441,8 @@ pref("network.protocol-handler.external.vbscript", false);
 pref("network.protocol-handler.external.javascript", false);
 pref("network.protocol-handler.external.ms-help", false);
 pref("network.protocol-handler.external.vnd.ms.radio", false);
+pref("network.protocol-handler.external.help", false);
+pref("network.protocol-handler.external.disk", false);
 
 // An exposed protocol handler is one that can be used in all contexts.  A
 // non-exposed protocol handler is one that can only be used internally by the
@@ -536,9 +532,6 @@ pref("network.http.proxy.pipelining", false);
 // Max number of requests in the pipeline
 pref("network.http.pipelining.maxrequests" , 4);
 
-// Whether to warn if the user connects to a site with authentication
-// information that isn't required.
-pref("network.http.confirm_superfluous_auth",true);
 // </http>
 
 // This preference controls whether or not internationalized domain names (IDN)
@@ -684,10 +677,22 @@ pref("mousewheel.withcontrolkey.numlines",1);
 pref("mousewheel.withcontrolkey.sysnumlines",true);
 pref("mousewheel.withshiftkey.action",0);
 pref("mousewheel.withshiftkey.numlines",1);
-pref("mousewheel.withshiftkey.sysnumlines",false);
+pref("mousewheel.withshiftkey.sysnumlines",true);
 pref("mousewheel.withaltkey.action",2);
 pref("mousewheel.withaltkey.numlines",1);
 pref("mousewheel.withaltkey.sysnumlines",false);
+pref("mousewheel.horizscroll.withnokey.action",2);
+pref("mousewheel.horizscroll.withnokey.numlines",-1);
+pref("mousewheel.horizscroll.withnokey.sysnumlines",false);
+pref("mousewheel.horizscroll.withcontrolkey.action",2);
+pref("mousewheel.horizscroll.withcontrolkey.numlines",-1);
+pref("mousewheel.horizscroll.withcontrolkey.sysnumlines",false);
+pref("mousewheel.horizscroll.withshiftkey.action",2);
+pref("mousewheel.horizscroll.withshiftkey.numlines",-1);
+pref("mousewheel.horizscroll.withshiftkey.sysnumlines",false);
+pref("mousewheel.horizscroll.withaltkey.action",2);
+pref("mousewheel.horizscroll.withaltkey.numlines",-1);
+pref("mousewheel.horizscroll.withaltkey.sysnumlines",false);
 
 pref("profile.confirm_automigration",true);
 // profile.migration_behavior determines how the profiles root is set
