@@ -1436,7 +1436,7 @@ mime_encoder_output_fn(const char *buf, PRInt32 size, void *closure)
   nsMsgComposeAndSend *state = (nsMsgComposeAndSend *) closure;
   return mime_write_message_body (state, (char *) buf, size);
 }
- 
+
 nsresult
 nsMsgComposeAndSend::GetEmbeddedObjectInfo(nsIDOMNode *node, nsMsgAttachmentData *attachment, PRBool *acceptObject)
 {
@@ -1481,7 +1481,7 @@ nsMsgComposeAndSend::GetEmbeddedObjectInfo(nsIDOMNode *node, nsMsgAttachmentData
         NS_IF_ADDREF(attachment->url);
       else
         return NS_OK;
-    }
+     }
   }
   else if (image)        // Is this an image?
   {

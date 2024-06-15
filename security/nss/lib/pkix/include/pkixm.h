@@ -35,7 +35,7 @@
 #define PKIXM_H
 
 #ifdef DEBUG
-static const char PKIXM_CVS_ID[] = "@(#) $Source: /cvsroot/mozilla/security/nss/lib/pkix/include/Attic/pkixm.h,v $ $Revision: 1.1 $ $Date: 2000/03/31 19:03:32 $ $Name: NSS_CLIENT_TAG $";
+static const char PKIXM_CVS_ID[] = "@(#) $Source: /cvsroot/mozilla/security/nss/lib/pkix/include/Attic/pkixm.h,v $ $Revision: 1.1 $ $Date: 2000/03/31 19:03:32 $ $Name:  $";
 #endif /* DEBUG */
 
 /*

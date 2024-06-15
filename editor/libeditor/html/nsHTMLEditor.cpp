@@ -3993,9 +3993,8 @@ nsHTMLEditor::GetEmbeddedObjects(nsISupportsArray** aNodeList)
           if (element)
           {
             PRBool hasBackground = PR_FALSE;
-            if (NS_SUCCEEDED(element->HasAttribute(NS_LITERAL_STRING("background"), &hasBackground)))
-              if (hasBackground)
-                (*aNodeList)->AppendElement(node);
+            if (NS_SUCCEEDED(element->HasAttribute(NS_LITERAL_STRING("background"), &hasBackground)) && hasBackground)
+              (*aNodeList)->AppendElement(node);
           }
         }
       }

@@ -35,7 +35,7 @@
 #define NSSPKIX_H
 
 #ifdef DEBUG
-static const char NSSPKIX_CVS_ID[] = "@(#) $Source: /cvsroot/mozilla/security/nss/lib/pkix/include/Attic/nsspkix.h,v $ $Revision: 1.1 $ $Date: 2000/03/31 19:02:06 $ $Name: NSS_CLIENT_TAG $";
+static const char NSSPKIX_CVS_ID[] = "@(#) $Source: /cvsroot/mozilla/security/nss/lib/pkix/include/Attic/nsspkix.h,v $ $Revision: 1.1 $ $Date: 2000/03/31 19:02:06 $ $Name:  $";
 #endif /* DEBUG */
 
 /*

@@ -49,8 +49,7 @@
 %junkMailDTD;
 ]>
 
-<dialog id="junkMail"
-        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+<dialog xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:nc="http://home.netscape.com/NC-rdf#"
         xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
         windowtype="mailnews:junk"
@@ -76,7 +75,7 @@
     <tabs id="junkMailTabs">
       <tab label="&settingsTab.label;"/>
       <tab label="&adaptiveTab.label;"/>
-      <tab label="&blackListsTab.label;"/>
+      <tab hidden="true" label="&blackListsTab.label;"/>
     </tabs>
 
     <tabpanels id="junkMailTabsPanels" flex="1">
@@ -205,8 +204,8 @@
           </hbox>
         </vbox>
 
-        <!-- Real Time Black Lists Tab -->        
-        <vbox index="blackLists" flex="1">
+        <!-- Real Time Black Lists Tab (not implemented yet so hide it) -->        
+        <vbox hidden="true" index="blackLists" flex="1">
           <description width="1">This hasn't been implemented yet</description>
         </vbox>
 

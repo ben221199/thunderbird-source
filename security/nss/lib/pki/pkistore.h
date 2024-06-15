@@ -35,7 +35,7 @@
 #define PKISTORE_H
 
 #ifdef DEBUG
-static const char PKISTORE_CVS_ID[] = "@(#) $RCSfile: pkistore.h,v $ $Revision: 1.5 $ $Date: 2003/01/08 21:48:45 $ $Name: NSS_CLIENT_TAG $";
+static const char PKISTORE_CVS_ID[] = "@(#) $RCSfile: pkistore.h,v $ $Revision: 1.5 $ $Date: 2003/01/08 21:48:45 $ $Name:  $";
 #endif /* DEBUG */
 
 #ifndef NSSPKIT_H

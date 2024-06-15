@@ -4,8 +4,10 @@ A D/mac////
 A D/mkdepend////
 A D/mkdetect////
 A D/os2////
+A D/packager////
 A D/ports////
 R D/ports////
+R D/packager////
 R D/os2////
 R D/mkdetect////
 R D/mac////

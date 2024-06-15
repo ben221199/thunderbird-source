@@ -35,7 +35,7 @@
 #define BASE_H
 
 #ifdef DEBUG
-static const char BASE_CVS_ID[] = "@(#) $RCSfile: base.h,v $ $Revision: 1.15 $ $Date: 2002/04/04 16:14:26 $ $Name: NSS_CLIENT_TAG $";
+static const char BASE_CVS_ID[] = "@(#) $RCSfile: base.h,v $ $Revision: 1.15 $ $Date: 2002/04/04 16:14:26 $ $Name:  $";
 #endif /* DEBUG */
 
 /*

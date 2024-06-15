@@ -104,7 +104,7 @@ pref("mail.imap.mime_parts_on_demand",      true);
 pref("mail.imap.mime_parts_on_demand_max_depth", 15);
 pref("mail.imap.mime_parts_on_demand_threshold", 30000);
 pref("mail.thread_without_re",	            true);
-pref("mail.leave_on_server",                true);
+pref("mail.leave_on_server",                false);
 pref("mail.default_cc",                     "");
 pref("mail.default_fcc",                    ""); // maibox:URL or Imap://Host/OnLineFolderName
 pref("mail.check_new_mail",                 false);
@@ -148,9 +148,9 @@ pref("mail.addr_book.displayName.lastnamefirst", "chrome://messenger/locale/mess
 pref("mail.addr_book.show_phonetic_fields", "chrome://messenger/locale/messenger.properties");
 pref("mail.attach_vcard",                   false);
 pref("mail.html_compose",                   true);
-// you can specify one, option header
+// you can specify multiple, option headers
 // this will show up in the address picker in the compose window
-// examples: "X-Face" or "Approved"
+// examples: "X-Face" or "Approved,X-No-Archive"
 pref("mail.compose.other.header",	    "");
 pref("mail.fcc_folder",                     "");
 pref("mail.encrypt_outgoing_mail",          false);
@@ -310,6 +310,13 @@ pref("mail.identity.default.directoryServer","");
 pref("mail.identity.default.overrideGlobal_Pref", false);
 pref("mail.identity.default.auto_quote", true);
 pref("mail.identity.default.reply_on_top", 0); // 0=bottom 1=top 2=select
+pref("mail.identity.default.sig_bottom", true); // true=below quoted false=above quoted
+
+// Headers to always add to outgoing mail
+// examples: "header1,header2"
+// pref("mail.identity.id1.headers", "header1");
+// user_pref("mail.identity.id1.header.header1", "X-Mozilla-Rocks: True")
+pref("mail.identity.default.headers", "");
 
 // by default, only collect addresses the user sends to (outgoing)
 // incoming is all spam anyways
@@ -324,9 +331,11 @@ pref("mail.default_sendlater_uri","mailbox://nobody@Local%20Folders/Unsent%20Mes
 
 pref("mail.server.default.port", -1);
 pref("mail.server.default.offline_support_level", -1);
-pref("mail.server.default.leave_on_server", true);
+pref("mail.server.default.leave_on_server", false);
 pref("mail.server.default.download_on_biff", false);
 pref("mail.server.default.check_time", 10);
+pref("mail.server.default.delete_by_age_from_server", false);
+pref("mail.server.default.num_days_to_leave_on_server", 7);
 // "mail.server.default.check_new_mail" now lives in the protocol info
 pref("mail.server.default.dot_fix", true);
 pref("mail.server.default.limit_offline_message_size", false);
@@ -344,6 +353,7 @@ pref("mail.server.default.fetch_by_chunks", true);
 pref("mail.server.default.mime_parts_on_demand", true);
 
 pref("mail.server.default.always_authenticate",false);
+pref("mail.server.default.singleSignon", true);
 pref("mail.server.default.max_articles", 500);
 pref("mail.server.default.notify.on", true);
 pref("mail.server.default.mark_old_read", false);

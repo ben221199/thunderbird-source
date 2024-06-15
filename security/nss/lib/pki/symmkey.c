@@ -32,7 +32,7 @@
  */
 
 #ifdef DEBUG
-static const char CVS_ID[] = "@(#) $RCSfile: symmkey.c,v $ $Revision: 1.4 $ $Date: 2002/09/23 21:32:34 $ $Name: NSS_CLIENT_TAG $";
+static const char CVS_ID[] = "@(#) $RCSfile: symmkey.c,v $ $Revision: 1.4 $ $Date: 2002/09/23 21:32:34 $ $Name:  $";
 #endif /* DEBUG */
 
 #ifndef NSSPKI_H

@@ -1,7 +1,7 @@
-/.cvsignore/1.1/Sat Sep 28 00:38:06 2002//TTHUNDERBIRD_0_2_BRANCH
-/Makefile.in/1.2/Sat Sep 28 09:17:06 2002//TTHUNDERBIRD_0_2_BRANCH
-/nsAutoCompleteController.cpp/1.12/Fri Aug  8 02:38:24 2003//TTHUNDERBIRD_0_2_BRANCH
-/nsAutoCompleteController.h/1.2/Mon Oct 28 11:28:43 2002//TTHUNDERBIRD_0_2_BRANCH
-/nsAutoCompleteMdbResult.cpp/1.3/Sat Aug  9 10:07:59 2003//TTHUNDERBIRD_0_2_BRANCH
-/nsAutoCompleteMdbResult.h/1.2/Sat Aug  9 10:07:59 2003//TTHUNDERBIRD_0_2_BRANCH
+/.cvsignore/1.1/Sat Sep 28 00:38:06 2002//TTHUNDERBIRD_0_3_BRANCH
+/Makefile.in/1.2/Sat Sep 28 09:17:06 2002//TTHUNDERBIRD_0_3_BRANCH
+/nsAutoCompleteController.cpp/1.13/Thu Sep  4 07:26:28 2003//TTHUNDERBIRD_0_3_BRANCH
+/nsAutoCompleteController.h/1.3/Thu Sep  4 07:26:30 2003//TTHUNDERBIRD_0_3_BRANCH
+/nsAutoCompleteMdbResult.cpp/1.3/Sat Aug  9 10:07:59 2003//TTHUNDERBIRD_0_3_BRANCH
+/nsAutoCompleteMdbResult.h/1.2/Sat Aug  9 10:07:59 2003//TTHUNDERBIRD_0_3_BRANCH
 D

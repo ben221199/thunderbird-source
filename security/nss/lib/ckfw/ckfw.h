@@ -35,7 +35,7 @@
 #define CKFW_H
 
 #ifdef DEBUG
-static const char CKFW_CVS_ID[] = "@(#) $RCSfile: ckfw.h,v $ $Revision: 1.3 $ $Date: 2000/05/16 01:54:45 $ $Name: NSS_CLIENT_TAG $";
+static const char CKFW_CVS_ID[] = "@(#) $RCSfile: ckfw.h,v $ $Revision: 1.3 $ $Date: 2000/05/16 01:54:45 $ $Name:  $";
 #endif /* DEBUG */
 
 /*

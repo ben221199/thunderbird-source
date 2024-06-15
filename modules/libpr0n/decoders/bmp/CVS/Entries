@@ -1,7 +1,7 @@
-/.cvsignore/1.1/Fri Nov 16 06:43:02 2001//
-/Makefile.in/1.10/Fri Jan 10 01:19:34 2003//
-/nsBMPDecoder.cpp/1.23/Fri May 23 08:38:07 2003//
-/nsBMPDecoder.h/1.18/Wed Jun 11 13:26:37 2003//
-/nsICODecoder.cpp/1.28/Wed Jul 23 18:39:11 2003//
-/nsICODecoder.h/1.9/Wed Jul 23 18:39:11 2003//
+/.cvsignore/1.1/Fri Nov 16 06:43:02 2001//TMOZILLA_1_5_BRANCH
+/Makefile.in/1.10/Fri Jan 10 01:19:34 2003//TMOZILLA_1_5_BRANCH
+/nsBMPDecoder.cpp/1.23/Fri May 23 08:38:07 2003//TMOZILLA_1_5_BRANCH
+/nsBMPDecoder.h/1.18/Wed Jun 11 13:26:37 2003//TMOZILLA_1_5_BRANCH
+/nsICODecoder.cpp/1.28.8.1/Fri Sep 19 22:09:30 2003//TMOZILLA_1_5_BRANCH
+/nsICODecoder.h/1.9/Wed Jul 23 18:39:11 2003//TMOZILLA_1_5_BRANCH
 D

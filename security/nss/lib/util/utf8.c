@@ -32,7 +32,7 @@
  */
 
 #ifdef DEBUG
-static const char CVS_ID[] = "@(#) $RCSfile: utf8.c,v $ $Revision: 1.2 $ $Date: 2000/04/04 02:36:46 $ $Name: NSS_CLIENT_TAG $";
+static const char CVS_ID[] = "@(#) $RCSfile: utf8.c,v $ $Revision: 1.2 $ $Date: 2000/04/04 02:36:46 $ $Name:  $";
 #endif /* DEBUG */
 
 #include "seccomon.h"

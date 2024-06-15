@@ -41,7 +41,7 @@
  */
 
 #ifdef DEBUG
-static const char DEV_CVS_ID[] = "@(#) $RCSfile: dev.h,v $ $Revision: 1.32.2.1 $ $Date: 2003/05/14 00:31:46 $ $Name: NSS_CLIENT_TAG $";
+static const char DEV_CVS_ID[] = "@(#) $RCSfile: dev.h,v $ $Revision: 1.32.2.1 $ $Date: 2003/05/14 00:31:46 $ $Name:  $";
 #endif /* DEBUG */
 
 #ifndef NSSCKT_H

@@ -35,7 +35,7 @@
 #define NSSCKFWC_H
 
 #ifdef DEBUG
-static const char NSSCKFWC_CVS_ID[] = "@(#) $RCSfile: nssckfwc.h,v $ $Revision: 1.1 $ $Date: 2000/03/31 19:43:29 $ $Name: NSS_CLIENT_TAG $";
+static const char NSSCKFWC_CVS_ID[] = "@(#) $RCSfile: nssckfwc.h,v $ $Revision: 1.1 $ $Date: 2000/03/31 19:43:29 $ $Name:  $";
 #endif /* DEBUG */
 
 /*

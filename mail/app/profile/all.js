@@ -47,9 +47,9 @@ pref("keyword.URL", "http://keyword.netscape.com/keyword/");
 pref("keyword.enabled", false);
 pref("general.useragent.locale", "chrome://navigator/locale/navigator.properties");
 pref("general.useragent.contentlocale", "chrome://navigator-region/locale/region.properties");
-pref("general.useragent.misc", "rv:1.5b");
+pref("general.useragent.misc", "rv:1.5");
 pref("general.useragent.vendor", "Thunderbird");
-pref("general.useragent.vendorSub", "0.2");
+pref("general.useragent.vendorSub", "0.3");
 
 pref("general.startup.browser",             false);
 pref("general.startup.mail",                false);
@@ -736,6 +736,8 @@ pref("profile.allow_automigration", false);   // setting to false bypasses autom
 // if -1, we never think your profile is defunct
 // and users will never see the remigrate UI.
 pref("profile.seconds_until_defunct", -1);
+// We can show it anytime from menus
+pref("profile.manage_only_at_launch",false);
 
 // Customizable toolbar stuff
 pref("custtoolbar.personal_toolbar_folder", "");

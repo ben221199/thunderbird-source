@@ -32,7 +32,7 @@
  */
 
 #ifdef DEBUG
-static const char CVS_ID[] = "@(#) $Source: /cvsroot/mozilla/security/nss/lib/pkix/src/Time/Attic/Compare.c,v $ $Revision: 1.2 $ $Date: 2003/02/27 14:49:30 $ $Name: NSS_CLIENT_TAG $";
+static const char CVS_ID[] = "@(#) $Source: /cvsroot/mozilla/security/nss/lib/pkix/src/Time/Attic/Compare.c,v $ $Revision: 1.2 $ $Date: 2003/02/27 14:49:30 $ $Name:  $";
 #endif /* DEBUG */
 
 #ifndef PKIX_H

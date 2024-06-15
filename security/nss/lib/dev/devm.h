@@ -35,7 +35,7 @@
 #define DEVM_H
 
 #ifdef DEBUG
-static const char DEVM_CVS_ID[] = "@(#) $RCSfile: devm.h,v $ $Revision: 1.9 $ $Date: 2002/05/20 23:21:34 $ $Name: NSS_CLIENT_TAG $";
+static const char DEVM_CVS_ID[] = "@(#) $RCSfile: devm.h,v $ $Revision: 1.9 $ $Date: 2002/05/20 23:21:34 $ $Name:  $";
 #endif /* DEBUG */
 
 #ifndef BASE_H
