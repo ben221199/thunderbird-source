@@ -1,5 +1,41 @@
 <?xml version="1.0"?>
 
+# -*- Mode: HTML -*-
+# ***** BEGIN LICENSE BLOCK *****
+# The contents of this file are subject to the Mozilla Public
+# License Version 1.1 (the "License"); you may not use this file
+# except in compliance with the License. You may obtain a copy of
+# the License at http://www.mozilla.org/MPL/
+# 
+# Software distributed under the License is distributed on an "AS
+# IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
+# implied. See the License for the specific language governing
+# rights and limitations under the License.
+# 
+# The Original Code is mozilla.org browser.
+# 
+# The Initial Developer of the Original Code is Joe Hewitt.
+# Portions created by the Initial Developer are
+# Copyright (C) 2003 the Initial Developer.  All
+# Rights Reserved.
+# 
+# Contributor(s):
+#     Pierre Chanial (p_ch@verizon.net)
+#
+# Alternatively, the contents of this file may be used under the
+# terms of the GNU General Public License Version 2 or later (the
+# "GPL"), in which case the provisions of the GPL are applicable 
+# instead of those above.  If you wish to allow use of your 
+# version of this file only under the terms of the GPL and not to
+# allow others to use your version of this file under the MPL,
+# indicate your decision by deleting the provisions above and
+# replace them with the notice and other provisions required by
+# the GPL.  If you do not delete the provisions above, a recipient
+# may use your version of this file under either the MPL or the
+# GPL.
+#
+# ***** END LICENSE BLOCK *****
+
 <bindings id="autocompleteBindings"
           xmlns="http://www.mozilla.org/xbl"
           xmlns:html="http://www.w3.org/1999/xhtml"
@@ -7,7 +43,7 @@
           xmlns:xbl="http://www.mozilla.org/xbl">
 
   <binding id="autocomplete"
-           extends="chrome://global/content/widgets/textbox.xml#textbox">
+           extends="chrome://global/content/bindings/textbox.xml#textbox">
     <resources>
       <stylesheet src="chrome://global/skin/autocomplete.css"/>
     </resources>
@@ -292,8 +328,11 @@
       <method name="onKeyPress">
         <parameter name="aEvent"/>
         <body><![CDATA[
+          //XXXpch this is so bogus...
+          if (aEvent.getPreventDefault())
+            return false;
+
           var cancel = false;
-          
           const IController = Components.interfaces.nsIAutoCompleteController;
           
           if (!this.disableKeyNavigation) {
@@ -382,7 +421,7 @@
     </handlers>
   </binding> 
 
-  <binding id="autocomplete-result-popup" extends="chrome://global/content/widgets/popup.xml#popup">
+  <binding id="autocomplete-result-popup" extends="chrome://global/content/bindings/popup.xml#popup">
     <resources>
       <stylesheet src="chrome://global/skin/tree.css"/>
       <stylesheet src="chrome://global/skin/autocomplete.css"/>
@@ -613,7 +652,7 @@
     </handlers>
   </binding>
 
-  <binding id="autocomplete-tree" extends="chrome://global/content/widgets/tree.xml#tree">
+  <binding id="autocomplete-tree" extends="chrome://global/content/bindings/tree.xml#tree">
     <content>
       <children includes="treecols"/>
       <xul:treerows class="autocomplete-treerows tree-rows" xbl:inherits="hidescrollbar" flex="1">

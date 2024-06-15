@@ -34,7 +34,8 @@
         windowtype="global:console"
         width="640" height="480"
         screenX="10" screenY="10"
-        persist="screenX screenY width height"> 
+        persist="screenX screenY width height"
+        onclose="return closeWindow(false);"> 
 
   <script type="application/x-javascript" src="chrome://global/content/globalOverlay.js"/>
   <script type="application/x-javascript" src="chrome://global/content/console.js"/>
@@ -45,6 +46,7 @@
               events="select"
               oncommandupdate="updateCopyMenu()">
     <command id="cmd_copy" oncommand="copyItemToClipboard()"/>
+    <command id="cmd_close" oncommand="closeWindow(true)"/>
   </commandset>
 
   <broadcaster id="Console:clear" label="&clear.label;" 
@@ -73,14 +75,11 @@
   </broadcasterset>
 
   <keyset>
-    <key id="key_copy" 
-         key="&copyCmd.commandkey;" 
-         modifiers="accel"
+    <key id="key_copy"  key="&copyCmd.commandkey;"  modifiers="accel"
          command="cmd_copy"/>
-    <key id="key_close"
-         key="&closeCmd.commandkey;"
-         modifiers="accel"
-         oncommand="window.close()"/>
+    <key id="key_close" key="&closeCmd.commandkey;" modifiers="accel"
+         command="cmd_close"/>
+    <key keycode="VK_ESCAPE" command="cmd_close"/>
     <key id="key_focus1" key="&focus1.commandkey;" modifiers="accel"
          oncommand="gTextBoxEval.focus()"/>
     <key id="key_focus2" key="&focus2.commandkey;" modifiers="alt"

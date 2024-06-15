@@ -1,7 +1,7 @@
-/.cvsignore/1.1.2.1/Tue Apr 15 06:40:20 2003//TMOZILLA_1_5_BRANCH
-/Makefile.in/1.1.2.3/Tue Jun 24 14:22:43 2003//TMOZILLA_1_5_BRANCH
-/ipcLockProtocol.cpp/1.1.2.2/Wed May 21 19:20:11 2003//TMOZILLA_1_5_BRANCH
-/ipcLockProtocol.h/1.1.2.2/Wed May 21 19:20:11 2003//TMOZILLA_1_5_BRANCH
-/ipcLockService.cpp/1.1.2.2/Wed May 21 19:20:12 2003//TMOZILLA_1_5_BRANCH
-/ipcLockService.h/1.1.2.2/Wed May 21 19:20:12 2003//TMOZILLA_1_5_BRANCH
-D
+/.cvsignore/1.2/Fri Nov  7 13:50:20 2003//TTHUNDERBIRD_0_4_BRANCH
+/Makefile.in/1.2/Fri Nov  7 13:50:22 2003//TTHUNDERBIRD_0_4_BRANCH
+/ipcLockProtocol.cpp/1.2/Fri Nov  7 13:50:22 2003//TTHUNDERBIRD_0_4_BRANCH
+/ipcLockProtocol.h/1.2/Fri Nov  7 13:50:22 2003//TTHUNDERBIRD_0_4_BRANCH
+/ipcLockService.cpp/1.2/Fri Nov  7 13:50:22 2003//TTHUNDERBIRD_0_4_BRANCH
+/ipcLockService.h/1.2/Fri Nov  7 13:50:22 2003//TTHUNDERBIRD_0_4_BRANCH
+D/module////

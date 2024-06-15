@@ -1,3 +1,9 @@
-/.cvsignore/1.1/Thu Apr 15 22:56:12 1999//TTHUNDERBIRD_0_3_BRANCH
-/Makefile.in/1.12/Sat Aug 16 00:42:12 2003//TTHUNDERBIRD_0_3_BRANCH
-D
+/.cvsignore/1.1/Thu Apr 15 22:56:12 1999//TTHUNDERBIRD_0_4_BRANCH
+/Makefile.in/1.12/Sat Aug 16 00:42:12 2003//TTHUNDERBIRD_0_4_BRANCH
+D/build////
+D/defaults////
+D/dirserviceprovider////
+D/pref-migrator////
+D/public////
+D/resources////
+D/src////

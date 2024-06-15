@@ -113,11 +113,12 @@ function initPrefs()
          ["queryBeep",          "beep"],
          ["raiseNewTab",        false],
          ["reconnect",          true],
+         ["showModeSymbols",    false],
          ["stalkBeep",          "beep"],
          ["stalkWholeWords",    true],
          ["stalkWords",         []],
          ["username",           "chatzilla"],
-         ["usermode",           "+ix"],
+         ["usermode",           "+i"],
          ["userHeader",         true],
          ["userLog",            false],
          ["userMaxLines",       200]
@@ -142,7 +143,8 @@ function initPrefs()
 
 function pref_mungeName(name)
 {
-    return escape(name.replace(/\./g, "-").replace(/:/g, "_").toLowerCase());
+    var safeName = name.replace(/\./g, "-").replace(/:/g, "_").toLowerCase();
+    return ecmaEscape(safeName);
 }
 
 function getNetworkPrefManager(network)
@@ -173,7 +175,8 @@ function getNetworkPrefManager(network)
          ["outputWindowURL",  defer],
          ["reconnect",        defer],
          ["username",         defer],
-         ["usermode",         defer]
+         ["usermode",         defer],
+         ["autoperform",      []]
         ];
 
     var branch = "extensions.irc.networks." + pref_mungeName(network.name) +
@@ -182,10 +185,22 @@ function getNetworkPrefManager(network)
     prefManager.addPrefs(prefs);
     prefManager.onPrefChanged = onPrefChanged;
 
-    network.INITIAL_NICK  = prefManager.prefs["nickname"];
-    network.INITIAL_NAME  = prefManager.prefs["username"];
-    network.INITIAL_DESC  = prefManager.prefs["desc"];
-    network.INITIAL_UMODE = prefManager.prefs["usermode"];
+    var value = prefManager.prefs["nickname"];
+    if (value != CIRCNetwork.prototype.INITIAL_NICK)
+        network.INITIAL_NICK = value;
+    
+    value = prefManager.prefs["username"];
+    if (value != CIRCNetwork.prototype.INITIAL_NAME)
+        network.INITIAL_NAME = value;
+    
+    value = prefManager.prefs["desc"];
+    if (value != CIRCNetwork.prototype.INITIAL_DESC)
+        network.INITIAL_DESC = value;
+    
+    value = prefManager.prefs["usermode"];
+    if (value != CIRCNetwork.prototype.INITIAL_UMODE)
+        network.INITIAL_UMODE = value;
+
     network.stayingPower  = prefManager.prefs["reconnect"];
 
     client.prefManagers.push(prefManager);
@@ -299,7 +314,15 @@ function onPrefChanged(prefName, newValue, oldValue)
 
         case "clientMaxLines":
             client.MAX_MESSAGES = newValue;
-
+            break;
+            
+        case "showModeSymbols":
+            if (newValue)
+                setListMode("symbol");
+            else
+                setListMode("graphic");
+            break;
+            
         case "nickname":
             CIRCNetwork.prototype.INITIAL_NICK = newValue;
             break;
@@ -317,20 +340,7 @@ function onPrefChanged(prefName, newValue, oldValue)
             break;
             
         case "debugMode":
-            if (newValue.indexOf("e") != -1)
-                client.debugHook.enabled = true;
-            else
-                client.debugHook.enabled = false;
-
-            if (newValue.indexOf("c") != -1)
-                client.dbgContexts = true;
-            else
-                delete client.dbgContexts;
-
-            if (newValue.indexOf("d") != -1)
-                client.dbgDispatch = true;
-            else
-                delete client.dbgDispatch;
+            setDebugMode(newValue);
             break;
 
         case "desc":

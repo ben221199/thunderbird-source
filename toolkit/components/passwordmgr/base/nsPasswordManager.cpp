@@ -148,8 +148,10 @@ NS_IMETHODIMP
 nsPasswordManager::PasswordEntry::GetUser(nsAString& aUser)
 {
   if (!mUser.IsEmpty() && !mDecrypted[0]) {
-    DecryptData(mUser, mUser);
-    mDecrypted[0] = PR_TRUE;
+    if (NS_SUCCEEDED(DecryptData(mUser, mUser)))
+      mDecrypted[0] = PR_TRUE;
+    else
+      return NS_ERROR_FAILURE;
   }
 
   aUser.Assign(mUser);
@@ -160,8 +162,10 @@ NS_IMETHODIMP
 nsPasswordManager::PasswordEntry::GetPassword(nsAString& aPassword)
 {
   if (!mPassword.IsEmpty() && !mDecrypted[1]) {
-    DecryptData(mPassword, mPassword);
-    mDecrypted[1] = PR_TRUE;
+    if (NS_SUCCEEDED(DecryptData(mPassword, mPassword)))
+      mDecrypted[1] = PR_TRUE;
+    else
+      return NS_ERROR_FAILURE;
   }
 
   aPassword.Assign(mPassword);
@@ -366,7 +370,8 @@ nsPasswordManager::RemoveUser(const nsACString& aHost, const nsAString& aUser)
   for (entry = hashEnt->head; entry; prevEntry = entry, entry = entry->next) {
 
     nsAutoString ptUser;
-    DecryptData(entry->userValue, ptUser);
+    if (NS_FAILED(DecryptData(entry->userValue, ptUser)))
+      break;
 
     if (ptUser.Equals(aUser)) {
       if (prevEntry)
@@ -497,10 +502,12 @@ nsPasswordManager::FindEntryEnumerator(const nsACString& aKey,
                                           &entry);
 
   if (NS_SUCCEEDED(rv) && entry) {
-    context->matched = PR_TRUE;
-    context->hostURIFound.Assign(context->hostURI);
-    DecryptData(entry->userValue, context->usernameFound);
-    DecryptData(entry->passValue, context->passwordFound);
+    if (NS_SUCCEEDED(DecryptData(entry->userValue, context->usernameFound)) &&
+        NS_SUCCEEDED(DecryptData(entry->passValue, context->passwordFound))) {
+      context->matched = PR_TRUE;
+      context->hostURIFound.Assign(context->hostURI);
+    }
+
     return PL_DHASH_STOP;
   }
 
@@ -526,9 +533,12 @@ nsPasswordManager::FindPasswordEntry(const nsACString& aHostURI,
                                               &entry);
 
       if (NS_SUCCEEDED(rv) && entry) {
-        aHostURIFound.Assign(aHostURI);
-        DecryptData(entry->userValue, aUsernameFound);
-        DecryptData(entry->passValue, aPasswordFound);
+        if (NS_SUCCEEDED(DecryptData(entry->userValue, aUsernameFound)) &&
+            NS_SUCCEEDED(DecryptData(entry->passValue, aPasswordFound))) {
+          aHostURIFound.Assign(aHostURI);
+        } else {
+          return NS_ERROR_FAILURE;
+        }
       }
 
       return rv;
@@ -598,11 +608,8 @@ nsPasswordManager::OnStateChange(nsIWebProgress* aWebProgress,
   
   nsCOMPtr<nsIDocument> doc = do_QueryInterface(domDoc);
 
-  nsCOMPtr<nsIURI> uri;
-  doc->GetDocumentURL(getter_AddRefs(uri));
-
   nsCAutoString realm;
-  if (!GetPasswordRealm(uri, realm))
+  if (!GetPasswordRealm(doc->GetDocumentURL(), realm))
     return NS_OK;
 
   SignonHashEntry* hashEnt;
@@ -671,11 +678,12 @@ nsPasswordManager::OnStateChange(nsIWebProgress* aWebProgress,
     if (firstMatch) {
       nsAutoString buffer;
 
-      DecryptData(firstMatch->userValue, buffer);
-      userField->SetValue(buffer);
+      if (NS_SUCCEEDED(DecryptData(firstMatch->userValue, buffer))) {
+        userField->SetValue(buffer);
 
-      DecryptData(firstMatch->passValue, buffer);
-      passField->SetValue(buffer);
+        if (NS_SUCCEEDED(DecryptData(firstMatch->passValue, buffer)))
+          passField->SetValue(buffer);
+      }
 
       AttachToInput(userField);
     }
@@ -737,11 +745,8 @@ nsPasswordManager::Notify(nsIContent* aFormNode,
     return NS_OK;
 
   // Check the reject list
-  nsCOMPtr<nsIURI> uri;
-  aFormNode->GetDocument()->GetDocumentURL(getter_AddRefs(uri));
-
   nsCAutoString realm;
-  if (!GetPasswordRealm(uri, realm))
+  if (!GetPasswordRealm(aFormNode->GetDocument()->GetDocumentURL(), realm))
     return NS_OK;
 
   PRInt32 rejectValue;
@@ -837,11 +842,13 @@ nsPasswordManager::Notify(nsIContent* aFormNode,
           if (entry->userField.Equals(userFieldName) &&
               entry->passField.Equals(passFieldName)) {
 
-            DecryptData(entry->userValue, buffer);
+            if (NS_FAILED(DecryptData(entry->userValue, buffer)))
+              return NS_ERROR_FAILURE;
 
             if (buffer.Equals(userValue)) {
 
-              DecryptData(entry->passValue, buffer);
+              if (NS_FAILED(DecryptData(entry->passValue, buffer)))
+                return NS_ERROR_FAILURE;
 
               if (!buffer.Equals(passValue)) {
                 EncryptDataUCS2(passValue, entry->passValue);
@@ -930,7 +937,9 @@ nsPasswordManager::Notify(nsIContent* aFormNode,
               temp = entry;
 
               for (PRUint32 arg = 0; arg < entryCount; ++arg) {
-                DecryptData(temp->userValue, ptUsernames[arg]);
+                if (NS_FAILED(DecryptData(temp->userValue, ptUsernames[arg])))
+                  return NS_ERROR_FAILURE;
+
                 formatArgs[arg] = ptUsernames[arg].get();
                 temp = temp->next;
               }
@@ -962,7 +971,9 @@ nsPasswordManager::Notify(nsIContent* aFormNode,
             } else {
               nsAutoString dialogTitle, dialogText, ptUser;
 
-              DecryptData(entry->userValue, ptUser);
+              if (NS_FAILED(DecryptData(entry->userValue, ptUser)))
+                return NS_ERROR_FAILURE;
+
               const PRUnichar* formatArgs[1] = { ptUser.get() };
 
               GetLocalizedString(NS_LITERAL_STRING("passwordChangeTitle"),
@@ -1153,11 +1164,9 @@ nsPasswordManager::AutoCompleteSearch(const nsAString& aSearchString,
     aElement->GetOwnerDocument(getter_AddRefs(domDoc));
 
     nsCOMPtr<nsIDocument> doc = do_QueryInterface(domDoc);
-    nsCOMPtr<nsIURI> uri;
-    doc->GetDocumentURL(getter_AddRefs(uri));
 
     nsCAutoString realm;
-    if (!GetPasswordRealm(uri, realm)) {
+    if (!GetPasswordRealm(doc->GetDocumentURL(), realm)) {
       *aResult = nsnull;
       return NS_OK;
     }
@@ -1178,7 +1187,8 @@ nsPasswordManager::AutoCompleteSearch(const nsAString& aSearchString,
       for (SignonDataEntry* e = hashEnt->head; e; e = e->next) {
 
         nsAutoString userValue;
-        DecryptData(e->userValue, userValue);
+        if (NS_FAILED(DecryptData(e->userValue, userValue)))
+          return NS_ERROR_FAILURE;
 
         if (aSearchString.Length() < userValue.Length() &&
             StringBeginsWith(userValue, aSearchString)) {
@@ -1579,7 +1589,10 @@ nsPasswordManager::FindPasswordEntryInternal(const SignonDataEntry* aEntry,
     if (aUser.IsEmpty()) {
       matched = PR_TRUE;
     } else {
-      DecryptData(entry->userValue, buffer);
+      if (NS_FAILED(DecryptData(entry->userValue, buffer))) {
+        *aResult = nsnull;
+        return NS_ERROR_FAILURE;
+      }
       matched = aUser.Equals(buffer);
     }
 
@@ -1589,7 +1602,10 @@ nsPasswordManager::FindPasswordEntryInternal(const SignonDataEntry* aEntry,
     if (aPassword.IsEmpty()) {
       matched = PR_TRUE;
     } else {
-      DecryptData(entry->passValue, buffer);
+      if (NS_FAILED(DecryptData(entry->passValue, buffer))) {
+        *aResult = nsnull;
+        return NS_ERROR_FAILURE;
+      }
       matched = aPassword.Equals(buffer);
     }
 
@@ -1626,13 +1642,9 @@ nsPasswordManager::FillPassword(nsIDOMEvent* aEvent)
     return NS_OK;
 
   nsCOMPtr<nsIContent> fieldContent = do_QueryInterface(userField);
-  nsIDocument* doc = fieldContent->GetDocument();
-
-  nsCOMPtr<nsIURI> documentURL;
-  doc->GetDocumentURL(getter_AddRefs(documentURL));
 
   nsCAutoString realm;
-  if (!GetPasswordRealm(documentURL, realm))
+  if (!GetPasswordRealm(fieldContent->GetDocument()->GetDocumentURL(), realm))
     return NS_OK;
 
   nsAutoString userValue;
@@ -1668,8 +1680,8 @@ nsPasswordManager::FillPassword(nsIDOMEvent* aEvent)
     return NS_OK;
 
   nsAutoString passValue;
-  DecryptData(foundEntry->passValue, passValue);
-  passField->SetValue(passValue);
+  if (NS_SUCCEEDED(DecryptData(foundEntry->passValue, passValue)))
+    passField->SetValue(passValue);
 
   return NS_OK;
 }

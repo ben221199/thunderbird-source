@@ -1,5 +1,7 @@
-/Makefile/1.4/Sun Nov 17 17:26:51 2002//TMOZILLA_1_5_BRANCH
-/Makefile.com/1.5/Wed Feb 12 16:12:14 2003//TMOZILLA_1_5_BRANCH
-/Makefile.targ/1.5/Sun Nov 17 17:26:51 2002//TMOZILLA_1_5_BRANCH
-/bld_awk_pkginfo.ksh/1.2/Wed Oct  2 23:11:27 2002//TMOZILLA_1_5_BRANCH
-D
+/Makefile/1.4/Sun Nov 17 17:26:51 2002//TTHUNDERBIRD_0_4_BRANCH
+/Makefile.com/1.5/Wed Feb 12 16:12:14 2003//TTHUNDERBIRD_0_4_BRANCH
+/Makefile.targ/1.5/Sun Nov 17 17:26:51 2002//TTHUNDERBIRD_0_4_BRANCH
+/bld_awk_pkginfo.ksh/1.2/Wed Oct  2 23:11:27 2002//TTHUNDERBIRD_0_4_BRANCH
+D/SUNWtls////
+D/SUNWtlsx////
+D/common_files////

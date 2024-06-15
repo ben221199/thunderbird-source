@@ -35,7 +35,7 @@
  * Implementation of OCSP services, for both client and server.
  * (XXX, really, mostly just for client right now, but intended to do both.)
  *
- * $Id: ocsp.c,v 1.15 2002/12/12 06:05:28 nelsonb%netscape.com Exp $
+ * $Id: ocsp.c,v 1.17 2003/10/24 17:17:37 wchang0222%aol.com Exp $
  */
 
 #include "prerror.h"
@@ -1757,13 +1757,9 @@ ocsp_ConnectToHost(const char *host, PRUint16 port)
 	hostIndex = 0;
 	do {
 	    hostIndex = PR_EnumerateHostEnt(hostIndex, &hostEntry, port, &addr);
-	    if (hostIndex < 0)
+	    if (hostIndex <= 0)
 		goto loser;
-	} while (PR_Connect(sock, &addr, timeout) != PR_SUCCESS
-		 && hostIndex > 0);
-
-        if (hostIndex == 0)
-	    goto loser;
+	} while (PR_Connect(sock, &addr, timeout) != PR_SUCCESS);
 
 	PORT_Free(netdbbuf);
     } else {
@@ -2478,8 +2474,10 @@ ocsp_CheckSignature(ocspSignature *signature, void *tbs,
      */
     rv = CERT_VerifyCert(handle, signerCert, PR_TRUE, certUsage, checkTime,
 			 pwArg, NULL);
-    if (rv != SECSuccess)
+    if (rv != SECSuccess) {
+        PORT_SetError(SEC_ERROR_OCSP_INVALID_SIGNING_CERT);
 	goto finish;
+    }
 
     /*
      * Now get the public key from the signer's certificate; we need

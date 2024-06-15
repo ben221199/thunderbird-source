@@ -1,2 +1,7 @@
-/Makefile.in/1.4/Tue Sep 24 22:54:48 2002//TTHUNDERBIRD_0_3_BRANCH
-D
+/Makefile.in/1.4/Tue Sep 24 22:54:48 2002//TTHUNDERBIRD_0_4_BRANCH
+D/builder////
+D/nsinstall////
+D/setup////
+D/setuprsc////
+D/test////
+D/uninstall////

@@ -1,4 +1,6 @@
-/.cvsignore/1.1/Fri Jul  6 02:35:36 2001//TTHUNDERBIRD_0_3_BRANCH
-/Makefile.in/1.6/Thu Mar 14 07:11:09 2002//TTHUNDERBIRD_0_3_BRANCH
-/jar.mn/1.28/Tue Sep  9 23:53:53 2003//TTHUNDERBIRD_0_3_BRANCH
-D
+/.cvsignore/1.1/Fri Jul  6 02:35:36 2001//TTHUNDERBIRD_0_4_BRANCH
+/Makefile.in/1.6/Thu Mar 14 07:11:09 2002//TTHUNDERBIRD_0_4_BRANCH
+/jar.mn/1.42/Tue Nov 25 22:57:21 2003//TTHUNDERBIRD_0_4_BRANCH
+D/content////
+D/locale////
+D/skin////

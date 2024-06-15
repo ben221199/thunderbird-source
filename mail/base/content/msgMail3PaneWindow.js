@@ -18,7 +18,7 @@
 # Rights Reserved.
 #
 # Contributor(s):
-#   Jan Varga (varga@utcru.sk)
+#   Jan Varga (varga@nixcorp.com)
 #   Håkan Waara (hwaara@chello.se)
 #   Neil Rashbrook (neil@parkwaycc.co.uk)
 #   Seth Spitzer <sspitzer@netscape.com>
@@ -723,7 +723,6 @@ function delayedOnLoadMessenger()
   verifyAccounts(null);
     
   HideAccountCentral();
-  loadStartPage();
   InitMsgWindow();
   messenger.SetWindow(window, msgWindow);
 
@@ -869,8 +868,8 @@ function loadStartFolder(initialUri)
             }
         }
 
-        var startFolder = startFolderResource.QueryInterface(Components.interfaces.nsIFolder);
-        SelectFolder(startFolder.URI);
+        var startFolder = startFolderResource.QueryInterface(Components.interfaces.nsIMsgFolder);
+        SelectFolder(startFolder.URI);        
 
         // only do this on startup, when we pass in null
         if (!initialUri && isLoginAtStartUpEnabled && gLoadStartFolder)
@@ -922,6 +921,7 @@ function AddToSession()
 function InitPanes()
 {
     OnLoadFolderPane();
+    OnLoadThreadPane();
     SetupCommandUpdateHandlers();
 }
 
@@ -963,6 +963,69 @@ function OnLoadFolderPane()
     folderTreeBuilder.addObserver(folderObserver);
     folderTree.addEventListener("click",FolderPaneOnClick,true);
     folderTree.addEventListener("mousedown",TreeOnMouseDown,true);
+}
+
+// builds prior to 12-08-2001 did not have the labels column
+// in the thread pane.  so if a user ran an old build, and then
+// upgraded, they get the new column, and this causes problems.
+// We're trying to avoid a similar problem to bug #96979.
+// to work around this, we hide the column once, using the 
+// "mailnews.ui.threadpane.version" pref.
+function UpgradeThreadPaneUI()
+{
+  var labelCol;
+  var threadPaneUIVersion;
+
+  try {
+
+    threadPaneUIVersion = pref.getIntPref("mailnews.ui.threadpane.version");
+
+    if (threadPaneUIVersion < 5) {
+      var threadTree = document.getElementById("threadTree");        
+      var junkCol = document.getElementById("junkStatusCol");
+      var beforeCol;
+
+      if (threadPaneUIVersion < 4) {
+
+        if (threadPaneUIVersion < 3) {
+          
+          // in thunderbird, we are inserting the junk column just before the 
+          // date column. 
+          var dateCol = document.getElementById("dateCol");
+          threadTree._reorderColumn(junkCol, dateCol, true);
+
+          // hide labels column by default
+          if (threadPaneUIVersion == 1) {
+            labelCol = document.getElementById("labelCol");
+            labelCol.setAttribute("hidden", "true");
+          }
+        }
+
+        var senderCol = document.getElementById("senderCol");
+        var recipientCol = document.getElementById("recipientCol");    
+        threadTree._reorderColumn(recipientCol, junkCol, true);        
+        threadTree._reorderColumn(senderCol, recipientCol, true);
+
+      } // version 4 upgrades
+
+      // version 5 adds a new column called attachments
+      var attachmentCol = document.getElementById("attachmentCol");
+      var subjectCol = document.getElementById("subjectCol");
+      
+      threadTree._reorderColumn(attachmentCol, subjectCol, true);
+
+      pref.setIntPref("mailnews.ui.threadpane.version", 5);
+
+    } // version 5 upgrades
+	}
+  catch (ex) {
+    dump("UpgradeThreadPane: ex = " + ex + "\n");
+  }
+}
+
+function OnLoadThreadPane()
+{
+    UpgradeThreadPaneUI();
 }
 
 function GetFolderDatasource()
@@ -1392,42 +1455,28 @@ function SetNextMessageAfterDelete()
     gNextMessageViewIndexAfterDelete = treeSelection.currentIndex;
 }
 
-function EnsureAllAncestorsAreExpanded(tree, resource)
+function EnsureFolderIndex(builder, msgFolder)
 {
-    // get the parent of the desired folder, and then try to get
-    // the index of the parent in the tree
-    var folder = resource.QueryInterface(Components.interfaces.nsIFolder);
-    
-    // if this is a server, there are no ancestors, so stop.
-    var msgFolder = folder.QueryInterface(Components.interfaces.nsIMsgFolder);
-    if (msgFolder.isServer)
-      return;
-
-    var parentFolderResource = RDF.GetResource(folder.parent.URI);
-    var folderIndex = GetFolderIndex(tree, parentFolderResource);
-
-    if (folderIndex == -1) {
-      // if we couldn't find the parent, recurse
-      EnsureAllAncestorsAreExpanded(tree, parentFolderResource);
-      // ok, now we should be able to find the parent
-      folderIndex = GetFolderIndex(tree, parentFolderResource);
-    }
-
-    // if the parent isn't open, open it
-    if (!(tree.treeBoxObject.view.isContainerOpen(folderIndex)))
-      tree.treeBoxObject.view.toggleOpenState(folderIndex);
+  // try to get the index of the folder in the tree
+  var index = builder.getIndexOfResource(msgFolder);
+  if (index == -1) {
+    // if we couldn't find the folder, open the parent
+    builder.toggleOpenState(EnsureFolderIndex(builder, msgFolder.parent));
+    index = builder.getIndexOfResource(msgFolder);
+  }
+  return index;
 }
 
 function SelectFolder(folderUri)
 {
     var folderTree = GetFolderTree();
     var folderResource = RDF.GetResource(folderUri);
+    var msgFolder = folderResource.QueryInterface(Components.interfaces.nsIMsgFolder);
 
     // before we can select a folder, we need to make sure it is "visible"
     // in the tree.  to do that, we need to ensure that all its
     // ancestors are expanded
-    EnsureAllAncestorsAreExpanded(folderTree, folderResource);
-    var folderIndex = GetFolderIndex(folderTree, folderResource);
+    var folderIndex = EnsureFolderIndex(folderTree.builderView, msgFolder);
     ChangeSelection(folderTree, folderIndex);
 }
 

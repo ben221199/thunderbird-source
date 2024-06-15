@@ -44,6 +44,7 @@
 #include "nsReadableUtils.h"
 #include "nsIServiceManager.h"
 #include "nsIInterfaceRequestor.h"
+#include "nsIInterfaceRequestorUtils.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIChromeEventHandler.h"
 #include "nsPIDOMWindow.h"
@@ -121,8 +122,7 @@ GetScreenOrigin(nsIDOMElement* aElement)
 
   if (doc) {
     // Get Presentation shell 0
-    nsCOMPtr<nsIPresShell> presShell;
-    doc->GetShellAt(0, getter_AddRefs(presShell));
+    nsIPresShell* presShell = doc->GetShellAt(0);
     
     if (presShell) {
       nsCOMPtr<nsIPresContext> presContext;
@@ -148,14 +148,12 @@ GetScreenOrigin(nsIDOMElement* aElement)
             widget->WidgetToScreen(oldBox, *rect);
           }
           
-          nscoord viewX = 0, viewY = 0;
-          view->GetPosition(&viewX, &viewY);
-
-          rect->x += NSTwipsToIntPixels(offset.x+viewX, scale);
-          rect->y += NSTwipsToIntPixels(offset.y+viewY, scale);
+          nsPoint viewPos = view->GetPosition();
+          rect->x += NSTwipsToIntPixels(offset.x+viewPos.x, scale);
+          rect->y += NSTwipsToIntPixels(offset.y+viewPos.y, scale);
         }
         
-        frame->GetSize(size);
+        size = frame->GetSize();
         rect->width = NSTwipsToIntPixels(size.width, scale);
         rect->height = NSTwipsToIntPixels(size.height, scale);
       }
@@ -560,7 +558,7 @@ NS_IMETHODIMP
 nsFormFillController::KeyPress(nsIDOMEvent* aEvent)
 {
   nsCOMPtr<nsIDOMKeyEvent> keyEvent = do_QueryInterface(aEvent);
-  
+
   PRBool cancel = PR_FALSE;
 
   PRUint32 k;
@@ -768,14 +766,7 @@ nsFormFillController::GetDocShellForInput(nsIDOMHTMLInputElement *aInput)
   aInput->GetOwnerDocument(getter_AddRefs(domDoc));
   nsCOMPtr<nsIDocument> doc = do_QueryInterface(domDoc);
   
-  nsCOMPtr<nsIScriptGlobalObject> ourGlobal;
-  doc->GetScriptGlobalObject(getter_AddRefs(ourGlobal));
-  nsCOMPtr<nsIDOMWindow> domWindow = do_QueryInterface(ourGlobal);
-
-  nsCOMPtr<nsIInterfaceRequestor> ifreq(do_QueryInterface(domWindow));
-  NS_ENSURE_TRUE(ifreq, NS_OK);
-  nsCOMPtr<nsIWebNavigation> webNav;
-  ifreq->GetInterface(NS_GET_IID(nsIWebNavigation), getter_AddRefs(webNav));
+  nsCOMPtr<nsIWebNavigation> webNav = do_GetInterface(doc->GetScriptGlobalObject());
   nsCOMPtr<nsIDocShell> docShell = do_QueryInterface(webNav);
   return docShell;
 }
@@ -792,11 +783,7 @@ nsFormFillController::GetWindowForDocShell(nsIDocShell *aDocShell)
   nsCOMPtr<nsIDocument> doc = do_QueryInterface(domDoc);
   NS_ENSURE_TRUE(doc, nsnull);
 
-  nsCOMPtr<nsIScriptGlobalObject> global;
-  doc->GetScriptGlobalObject(getter_AddRefs(global));
-  NS_ENSURE_TRUE(global, nsnull);
-
-  nsCOMPtr<nsIDOMWindow> domWindow = do_QueryInterface(global);
+  nsCOMPtr<nsIDOMWindow> domWindow = do_QueryInterface(doc->GetScriptGlobalObject());
   return domWindow;
 }
 

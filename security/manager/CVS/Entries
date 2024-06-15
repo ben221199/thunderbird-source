@@ -1,3 +1,5 @@
-/.cvsignore/1.2/Wed May 21 20:13:24 2003//TMOZILLA_1_5_BRANCH
-/Makefile.in/1.50/Fri Jun  6 19:21:57 2003//TMOZILLA_1_5_BRANCH
-D
+/.cvsignore/1.2/Wed May 21 20:13:24 2003//TTHUNDERBIRD_0_4_BRANCH
+/Makefile.in/1.51/Mon Sep 29 06:03:53 2003//TTHUNDERBIRD_0_4_BRANCH
+D/boot////
+D/pki////
+D/ssl////

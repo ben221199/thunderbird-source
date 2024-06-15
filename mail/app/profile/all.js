@@ -40,6 +40,7 @@
 
 pref("startup.homepage_override_url","chrome://navigator-region/locale/region.properties");
 pref("browser.chromeURL","chrome://navigator/content/navigator.xul");
+pref("browser.hiddenWindowChromeURL", "chrome://messenger/content/hiddenWindow.xul");
 
 pref("network.search.url","http://cgi.netscape.com/cgi-bin/url_search.cgi?search=");
 
@@ -47,9 +48,8 @@ pref("keyword.URL", "http://keyword.netscape.com/keyword/");
 pref("keyword.enabled", false);
 pref("general.useragent.locale", "chrome://navigator/locale/navigator.properties");
 pref("general.useragent.contentlocale", "chrome://navigator-region/locale/region.properties");
-pref("general.useragent.misc", "rv:1.5");
 pref("general.useragent.vendor", "Thunderbird");
-pref("general.useragent.vendorSub", "0.3");
+pref("general.useragent.vendorSub", "0.4");
 
 pref("general.startup.browser",             false);
 pref("general.startup.mail",                false);
@@ -92,6 +92,7 @@ pref("browser.display.force_inline_alttext", false); // true = force ALT text fo
 pref("browser.display.normal_lineheight_calc_control", 2);
 pref("browser.display.show_image_placeholders", true); // true = show image placeholders while image is loaded and when image is broken
 pref("browser.anchor_color",                "#0000EE");
+pref("browser.active_color",                "#EE0000");
 pref("browser.visited_color",               "#551A8B");
 pref("browser.underline_anchors",           true);
 pref("browser.blink_allowed",               true);
@@ -154,6 +155,7 @@ pref("browser.show_about_as_stupid_modal_window", false);
 pref("browser.download.progressDnldDialog.keepAlive", true); // keep the dnload progress dialog up after dnload is complete
 pref("browser.download.progressDnldDialog.enable_launch_reveal_buttons", true);
 pref("browser.download.useDownloadDir", false);
+pref("browser.download.folderList", 0);
 
 // various default search settings
 pref("browser.search.defaulturl", "chrome://navigator-region/locale/region.properties");
@@ -431,8 +433,6 @@ pref("capability.policy.default.DOMParser.parseFromStream", "noAccess");
 
 // Scripts & Windows prefs
 pref("browser.block.target_new_window",     false);
-pref("dom.disable_cookie_get",              false);
-pref("dom.disable_cookie_set",              false);
 pref("dom.disable_image_src_set",           false);
 pref("dom.disable_open_during_load",        false);
 pref("dom.disable_window_flip",             false);
@@ -464,7 +464,7 @@ pref("security.enable_java",                true);
 pref("advanced.mailftp",                    false);
 pref("image.animation_mode",                "normal");
 
-pref("offline.startup_state",            0);
+pref("offline.startup_state",            2);
 pref("offline.send.unsent_messages",            0);
 pref("offline.download.download_messages",  0);
 pref("offline.prompt_synch_on_exit",            true);
@@ -483,6 +483,18 @@ pref("network.protocol-handler.external.vbscript", false);
 pref("network.protocol-handler.external.javascript", false);
 pref("network.protocol-handler.external.ms-help", false);
 pref("network.protocol-handler.external.vnd.ms.radio", false);
+
+// Expose only select protocol handlers. All others should go
+// through the external protocol handler route.
+pref("network.protocol-handler.expose-all", false);
+pref("network.protocol-handler.expose.mailto", true);
+pref("network.protocol-handler.expose.news", true);
+pref("network.protocol-handler.expose.snews", true);
+pref("network.protocol-handler.expose.nntp", true);
+pref("network.protocol-handler.expose.imap", true);
+pref("network.protocol-handler.expose.addbook", true);
+pref("network.protocol-handler.expose.pop", true);
+pref("network.protocol-handler.expose.mailbox", true);
 
 pref("network.hosts.smtp_server",           "mail");
 pref("network.hosts.pop_server",            "mail");

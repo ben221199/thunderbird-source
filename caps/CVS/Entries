@@ -1,4 +1,7 @@
-/.cvsignore/1.1/Sat Dec  5 09:00:53 1998//TTHUNDERBIRD_0_3_BRANCH
-/Makefile.in/1.9/Sat Aug 16 00:41:11 2003//TTHUNDERBIRD_0_3_BRANCH
-/README.html/1.1/Sat Nov 20 07:26:45 1999//TTHUNDERBIRD_0_3_BRANCH
-D
+/.cvsignore/1.1/Sat Dec  5 09:00:53 1998//TTHUNDERBIRD_0_4_BRANCH
+/Makefile.in/1.9/Sat Aug 16 00:41:11 2003//TTHUNDERBIRD_0_4_BRANCH
+/README.html/1.1/Sat Nov 20 07:26:45 1999//TTHUNDERBIRD_0_4_BRANCH
+D/idl////
+D/include////
+D/src////
+D/tests////

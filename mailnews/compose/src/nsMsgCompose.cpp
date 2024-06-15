@@ -115,6 +115,7 @@
 #include "nsIContentViewer.h"
 #include "nsIMarkupDocumentViewer.h"
 #include "nsIMsgMdnGenerator.h"
+#include "plbase64.h"
 
 // Defines....
 static NS_DEFINE_CID(kDateTimeFormatCID, NS_DATETIMEFORMAT_CID);
@@ -507,15 +508,22 @@ nsMsgCompose::ConvertAndLoadComposeWindow(nsString& aPrefix,
 
     if (!aPrefix.IsEmpty())
     {
-      if (aHTMLEditor && htmlEditor)
-        htmlEditor->InsertHTML(aPrefix);
-      else if (textEditor)
-        textEditor->InsertText(aPrefix);
+      if (!aHTMLEditor)
+        aPrefix.Append(NS_LITERAL_STRING("\n"));
+      textEditor->InsertText(aPrefix);
       m_editor->EndOfDocument();
     }
 
     if (!aBuf.IsEmpty() && mailEditor)
     {
+      // XXX see bug #206793
+      nsCOMPtr<nsIDocShell> docshell;
+      nsCOMPtr<nsIScriptGlobalObject> globalObj = do_QueryInterface(m_window);
+      if (globalObj)
+        globalObj->GetDocShell(getter_AddRefs(docshell));
+      if (docshell)
+        docshell->SetAppType(nsIDocShell::APP_TYPE_MAIL);
+
       if (aHTMLEditor && !mCiteReference.IsEmpty())
         mailEditor->InsertAsCitedQuotation(aBuf,
                                            mCiteReference,
@@ -524,6 +532,11 @@ nsMsgCompose::ConvertAndLoadComposeWindow(nsString& aPrefix,
       else
         mailEditor->InsertAsQuotation(aBuf,
                                       getter_AddRefs(nodeInserted));
+
+      // XXX see bug #206793
+      if (docshell)
+        docshell->SetAppType(nsIDocShell::APP_TYPE_UNKNOWN);
+
       m_editor->EndOfDocument();
     }
 
@@ -704,7 +717,6 @@ nsMsgCompose::Initialize(nsIDOMWindowInternal *aWindow, nsIMsgComposeParams *par
     if (NS_FAILED(rv)) return rv;
 
     m_baseWindow = do_QueryInterface(treeOwner);
-    docshell->SetAppType(nsIDocShell::APP_TYPE_MAIL);
   }
   
   MSG_ComposeFormat format;
@@ -725,7 +737,7 @@ nsMsgCompose::Initialize(nsIDOMWindowInternal *aWindow, nsIMsgComposeParams *par
   rv = composeService->DetermineComposeHTML(m_identity, format, &m_composeHTML);
   NS_ENSURE_SUCCESS(rv,rv);
 
-  // Set return receipt flag and type.
+  // Set return receipt flag and type, and if we should attach a vCard
   if (m_identity && composeFields)
   {
     PRBool requestReturnReceipt = PR_FALSE;
@@ -738,6 +750,12 @@ nsMsgCompose::Initialize(nsIDOMWindowInternal *aWindow, nsIMsgComposeParams *par
     rv = m_identity->GetReceiptHeaderType(&receiptType);
     NS_ENSURE_SUCCESS(rv, rv);
     rv = composeFields->SetReceiptHeaderType(receiptType);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    PRBool attachVCard;
+    rv = m_identity->GetAttachVCard(&attachVCard);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = composeFields->SetAttachVCard(attachVCard);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -952,7 +970,7 @@ nsresult nsMsgCompose::_SendMsg(MSG_DeliverMode deliverMode, nsIMsgIdentity *ide
   return rv;
 }
 
-NS_IMETHODIMP nsMsgCompose::SendMsg(MSG_DeliverMode deliverMode,  nsIMsgIdentity *identity, nsIMsgProgress *progress)
+NS_IMETHODIMP nsMsgCompose::SendMsg(MSG_DeliverMode deliverMode,  nsIMsgIdentity *identity, nsIMsgWindow *aMsgWindow, nsIMsgProgress *progress)
 {
   nsresult rv = NS_OK;
   PRBool entityConversionDone = PR_FALSE;
@@ -1040,12 +1058,60 @@ NS_IMETHODIMP nsMsgCompose::SendMsg(MSG_DeliverMode deliverMode,  nsIMsgIdentity
         params->SetSubject((const PRUnichar*) msgSubject);
         params->SetDeliveryMode(deliverMode);
         
-        mProgress->OpenProgressDialog(m_window, "chrome://messenger/content/messengercompose/sendProgress.xul", params);
+        mProgress->OpenProgressDialog(m_window, aMsgWindow, "chrome://messenger/content/messengercompose/sendProgress.xul", params);
         mProgress->GetPrompter(getter_AddRefs(prompt));
       }
     }
 
     mProgress->OnStateChange(nsnull, nsnull, nsIWebProgressListener::STATE_START, NS_OK);
+  }
+
+  PRBool attachVCard = PR_FALSE;
+  if (m_compFields)
+      m_compFields->GetAttachVCard(&attachVCard);
+
+  if (attachVCard && identity && (deliverMode == nsIMsgCompDeliverMode::Now || deliverMode == nsIMsgCompDeliverMode::Later))
+  {
+      nsXPIDLCString escapedVCard;
+      // make sure, if there is no card, this returns an empty string, or NS_ERROR_FAILURE
+      if (NS_SUCCEEDED(identity->GetEscapedVCard(getter_Copies(escapedVCard))) && !escapedVCard.IsEmpty()) 
+      {
+          nsCString vCardUrl;
+          vCardUrl = "data:text/x-vcard;charset=utf8;base64,";
+          char *unescapedData = PL_strdup(escapedVCard);
+          if (!unescapedData)
+              return NS_ERROR_OUT_OF_MEMORY;
+          nsUnescape(unescapedData);
+          char *result = PL_Base64Encode(unescapedData, 0, nsnull);
+          vCardUrl += result;
+          PR_Free(result);
+          PR_Free(unescapedData);
+              
+          nsCOMPtr<nsIMsgAttachment> attachment = do_CreateInstance(NS_MSGATTACHMENT_CONTRACTID, &rv);
+          if (NS_SUCCEEDED(rv) && attachment)
+          {
+              // [comment from 4.x]
+              // Send the vCard out with a filename which distinguishes this user. e.g. jsmith.vcf
+              // The main reason to do this is for interop with Eudora, which saves off 
+              // the attachments separately from the message body
+              nsXPIDLCString userid;
+              (void)identity->GetEmail(getter_Copies(userid));
+              PRInt32 index = userid.FindChar('@');
+              if (index != kNotFound)
+                  userid.Truncate(index);
+
+              if (userid.IsEmpty()) 
+                  attachment->SetName(NS_LITERAL_STRING("vcard.vcf").get());
+              else
+              {
+                  userid.Append(NS_LITERAL_CSTRING(".vcf"));
+                  attachment->SetName(NS_ConvertASCIItoUCS2(userid).get());
+              }
+ 
+              attachment->SetUrl(vCardUrl.get());
+              m_compFields->AddAttachment(attachment);
+          }
+      }
   }
 
   rv = _SendMsg(deliverMode, identity, entityConversionDone);
@@ -1333,10 +1399,10 @@ nsresult nsMsgCompose::SetBodyModified(PRBool modified)
   return rv;  
 }
 
-nsresult nsMsgCompose::GetDomWindow(nsIDOMWindowInternal * *aDomWindow)
+NS_IMETHODIMP 
+nsMsgCompose::GetDomWindow(nsIDOMWindowInternal * *aDomWindow)
 {
-  *aDomWindow = m_window;
-  NS_IF_ADDREF(*aDomWindow);
+  NS_IF_ADDREF(*aDomWindow = m_window);
   return NS_OK;
 }
 
@@ -1719,9 +1785,6 @@ QuotingOutputStreamListener::QuotingOutputStreamListener(const char * originalMs
     rv = GetMsgDBHdrFromURI(originalMsgURI, getter_AddRefs(originalMsgHdr));
     if (NS_SUCCEEDED(rv) && originalMsgHdr && !quoteHeaders)
     {
-
-      // mCitePrefix = NS_LITERAL_STRING("<span _moz_skip_spellcheck=\"true\">");
-
       // Setup the cite information....
       nsXPIDLCString myGetter;
       if (NS_SUCCEEDED(originalMsgHdr->GetMessageId(getter_Copies(myGetter))))
@@ -1737,7 +1800,7 @@ QuotingOutputStreamListener::QuotingOutputStreamListener(const char * originalMs
       PRInt32 reply_on_top = 0;
       mIdentity->GetReplyOnTop(&reply_on_top);
       if (reply_on_top == 1)
-        mCitePrefix += NS_LITERAL_STRING("<br><br>");
+        mCitePrefix += NS_LITERAL_STRING("\n\n");
 
       
       PRBool header, headerDate;
@@ -1799,8 +1862,8 @@ QuotingOutputStreamListener::QuotingOutputStreamListener(const char * originalMs
               nsCOMPtr<nsILocaleService> localeService(do_GetService(NS_LOCALESERVICE_CONTRACTID));
 
               // Format date using "mailnews.reply_header_locale", if empty then use application default locale.
-              if (replyHeaderLocale && *replyHeaderLocale)
-                rv = localeService->NewLocale(replyHeaderLocale.get(), getter_AddRefs(locale));
+              if (!replyHeaderLocale.IsEmpty())
+                rv = localeService->NewLocale(replyHeaderLocale, getter_AddRefs(locale));
               else
                 rv = localeService->GetApplicationLocale(getter_AddRefs(locale));
               
@@ -1878,9 +1941,6 @@ QuotingOutputStreamListener::QuotingOutputStreamListener(const char * originalMs
         else
           mCitePrefix.Append(citePrefixAuthor);
         mCitePrefix.Append(replyHeaderColon);
-
-        // mCitePrefix.Append(NS_LITERAL_STRING("</span>"));
-        mCitePrefix.Append(NS_LITERAL_STRING("<br><html>"));
       }
     }
 
@@ -1903,9 +1963,9 @@ QuotingOutputStreamListener::QuotingOutputStreamListener(const char * originalMs
                                 getter_Copies(replyHeaderColon),
                                 getter_Copies(replyHeaderOriginalmessage));
       }
-      mCitePrefix.Append(NS_LITERAL_STRING("<br><br>"));
+      mCitePrefix.Append(NS_LITERAL_STRING("\n\n"));
       mCitePrefix.Append(replyHeaderOriginalmessage);
-      mCitePrefix.Append(NS_LITERAL_STRING("<br><html>"));
+      mCitePrefix.Append(NS_LITERAL_STRING("\n"));
     }
   }
 }
@@ -1918,12 +1978,10 @@ QuotingOutputStreamListener::QuotingOutputStreamListener(const char * originalMs
 nsresult
 QuotingOutputStreamListener::ConvertToPlainText(PRBool formatflowed /* = PR_FALSE */)
 {
-  nsresult  rv = NS_OK;
-
-  rv += ConvertBufToPlainText(mCitePrefix, formatflowed);
-  rv += ConvertBufToPlainText(mMsgBody, formatflowed);
-  rv += ConvertBufToPlainText(mSignature, formatflowed);
-  return rv;
+  nsresult rv = ConvertBufToPlainText(mMsgBody, formatflowed);
+  if (NS_FAILED(rv))
+    return rv;
+  return ConvertBufToPlainText(mSignature, formatflowed);
 }
 
 NS_IMETHODIMP QuotingOutputStreamListener::OnStartRequest(nsIRequest *request, nsISupports * /* ctxt */)
@@ -2299,23 +2357,28 @@ QuotingOutputStreamListener::InsertToCompose(nsIEditor *aEditor,
   {
     if (!mCitePrefix.IsEmpty())
     {
-      if (aHTMLEditor)
-      {
-        nsCOMPtr<nsIHTMLEditor> htmlEditor (do_QueryInterface(aEditor));
-        if (htmlEditor)
-          htmlEditor->InsertHTML(mCitePrefix);
-      }
-      else
-      {
-        nsCOMPtr<nsIPlaintextEditor> textEditor (do_QueryInterface(aEditor));
-        if (textEditor)
-          textEditor->InsertText(mCitePrefix);
-      }
+      if (!aHTMLEditor)
+        mCitePrefix.Append(NS_LITERAL_STRING("\n"));
+      nsCOMPtr<nsIPlaintextEditor> textEditor (do_QueryInterface(aEditor));
+      if (textEditor)
+        textEditor->InsertText(mCitePrefix);
     }
 
     nsCOMPtr<nsIEditorMailSupport> mailEditor (do_QueryInterface(aEditor));
     if (mailEditor)
     {
+      // XXX see bug #206793
+      nsCOMPtr<nsIMsgCompose> compose = do_QueryReferent(mWeakComposeObj);
+      nsCOMPtr<nsIDOMWindowInternal> domWindow;
+      if (compose)
+        compose->GetDomWindow(getter_AddRefs(domWindow));
+      nsCOMPtr<nsIDocShell> docshell;
+      nsCOMPtr<nsIScriptGlobalObject> globalObj = do_QueryInterface(domWindow);
+      if (globalObj)
+        globalObj->GetDocShell(getter_AddRefs(docshell));
+      if (docshell)
+        docshell->SetAppType(nsIDocShell::APP_TYPE_MAIL);
+      
       if (aHTMLEditor)
         mailEditor->InsertAsCitedQuotation(mMsgBody,
                                            NS_LITERAL_STRING(""),
@@ -2323,6 +2386,10 @@ QuotingOutputStreamListener::InsertToCompose(nsIEditor *aEditor,
                                            getter_AddRefs(nodeInserted));
       else
         mailEditor->InsertAsQuotation(mMsgBody, getter_AddRefs(nodeInserted));
+
+      // XXX see bug #206793
+      if (docshell)
+        docshell->SetAppType(nsIDocShell::APP_TYPE_UNKNOWN);
     }
       
   }
@@ -2728,10 +2795,6 @@ nsresult nsMsgComposeSendListener::OnStopSending(const char *aMsgID, nsresult aS
     nsCOMPtr<nsIMsgProgress> progress;
     compose->GetProgress(getter_AddRefs(progress));
     
-    //Unregister ourself from msg compose progress
-    if (progress)
-      progress->UnregisterListener(this);
-
     if (NS_SUCCEEDED(aStatus))
     {
 #ifdef NS_DEBUG
@@ -2754,7 +2817,10 @@ nsresult nsMsgComposeSendListener::OnStopSending(const char *aMsgID, nsresult aS
           {
             compose->NotifyStateListeners(eComposeProcessDone, NS_OK);
             if (progress)
+            {
+              progress->UnregisterListener(this);
               progress->CloseProgressDialog(PR_FALSE);
+            }
             compose->CloseWindow(PR_TRUE);
           }
         }
@@ -2763,7 +2829,10 @@ nsresult nsMsgComposeSendListener::OnStopSending(const char *aMsgID, nsresult aS
       {
         compose->NotifyStateListeners(eComposeProcessDone, NS_OK);
         if (progress)
+        {
+          progress->UnregisterListener(this);
           progress->CloseProgressDialog(PR_FALSE);
+        }
         compose->CloseWindow(PR_TRUE);  // if we fail on the simple GetFcc call, close the window to be safe and avoid
                                         // windows hanging around to prevent the app from exiting.
       }
@@ -2781,7 +2850,10 @@ nsresult nsMsgComposeSendListener::OnStopSending(const char *aMsgID, nsresult aS
 #endif
       compose->NotifyStateListeners(eComposeProcessDone,aStatus);
       if (progress)
+      {
         progress->CloseProgressDialog(PR_TRUE);
+        progress->UnregisterListener(this);
+      }
     }
 
     nsCOMPtr<nsIMsgSendListener> externalListener;
@@ -2848,7 +2920,12 @@ nsMsgComposeSendListener::OnStopCopy(nsresult aStatus)
     nsCOMPtr<nsIMsgProgress> progress;
     compose->GetProgress(getter_AddRefs(progress));
     if (progress)
+    {
+    //Unregister ourself from msg compose progress
+      progress->UnregisterListener(this);
       progress->CloseProgressDialog(NS_FAILED(aStatus));
+    }
+
     compose->NotifyStateListeners(eComposeProcessDone,aStatus);
 
     if (NS_SUCCEEDED(aStatus))
@@ -3329,12 +3406,12 @@ nsMsgCompose::ProcessSignature(nsIMsgIdentity *identity, PRBool aQuoted, nsStrin
 
   static const char      htmlBreak[] = "<BR>";
   static const char      dashes[] = "-- ";
-  static const char      htmlsigopen[] = "<div class=\"moz-signature\" _moz_skip_spellcheck=\"true\">";
+  static const char      htmlsigopen[] = "<div class=\"moz-signature\">";
   static const char      htmlsigclose[] = "</div>";    /* XXX: Due to a bug in
                              4.x' HTML editor, it will not be able to
                              break this HTML sig, if quoted (for the user to
                              interleave a comment). */
-  static const char      _preopen[] = "<pre class=\"moz-signature\" _moz_skip_spellcheck=\"true\" cols=%d>";
+  static const char      _preopen[] = "<pre class=\"moz-signature\" cols=%d>";
   char*                  preopen;
   static const char      preclose[] = "</pre>";
 

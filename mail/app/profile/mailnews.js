@@ -400,7 +400,7 @@ pref("mailnews.display.sanitizeJunkMail", true);
 
 pref("mailnews.display.prefer_plaintext", false);  // Ignore HTML parts in multipart/alternative
 pref("mailnews.display.html_as", 0);  // How to display HTML parts. 0 = Render the sender's HTML; 1 = HTML->TXT->HTML; 2 = Show HTML source; 3 = Sanitize HTML
-pref("mailnews.display.html_sanitizer.allowed_tags", "html head title body p br div(lang,title) h1 h2 h3 h4 h5 h6 ul ol li(value,start,compact) dl dt dd blockquote(type,cite) pre noscript noframes strong em sub sup span(lang,title) acronym(title) abbr(title) del(title,cite,datetime) ins(title,cite,datetime) q(cite) a(href,name,title) img(alt,title,longdesc) base(href) area(alt) applet(alt) object(alt) var samp dfn address kbd code cite s strike tt b i table(align) caption tr(align,valign) td(rowspan,colspan,align,valign) th(rowspan,colspan,align,valign)");
+pref("mailnews.display.html_sanitizer.allowed_tags", "html head title body p br div(lang,title) h1 h2 h3 h4 h5 h6 ul(type,compact) ol(type,compact,start) li(type,value) dl dt dd blockquote(type,cite) pre noscript noframes strong em sub sup span(lang,title) acronym(title) abbr(title) del(title,cite,datetime) ins(title,cite,datetime) q(cite) a(href,name,title) img(alt,title,longdesc,src) base(href) area(alt) applet(alt) object(alt) var samp dfn address kbd code cite s strike tt b i table(align) caption tr(align,valign) td(rowspan,colspan,align,valign) th(rowspan,colspan,align,valign)");
 pref("mailnews.display.disallow_mime_handlers", 0);  /* Let only a few classes process incoming data. This protects from bugs (e.g. buffer overflows) and from security loopholes (e.g. allowing unchecked HTML in some obscure classes, although the user has html_as > 0).
 This option is mainly for the UI of html_as.
 0 = allow all available classes
@@ -438,6 +438,8 @@ pref("mailnews.html_domains","");
 pref("mailnews.plaintext_domains","");
 pref("mailnews.global_html_domains.version",1);
 
+pref("mail.imap.use_status_for_biff", true);
+
 // Pref controlling the updates on the pre-configured accounts.
 // In order to add new pre-configured accounts (after a version),
 // increase the following version number besides updating the
@@ -463,6 +465,14 @@ pref("mail.content_disposition_type", 0);
 pref("mailnews.show_send_progress", true); //Will show a progress dialog when saving or sending a message
 pref("mail.server.default.retainBy", 1);
 pref("mailnews.ui.junk.firstuse", true);
+
+// for manual upgrades of certain UI features.
+// 1 -> 2 is for the thread pane tree landing, to hide the
+// labels column, see msgMail3PaneWindow.js
+// 2 -> 3 is for the junk status column
+// 3 -> 4 is for the sender column
+// 4 -> 5 is for the attachment column
+pref("mailnews.ui.threadpane.version", 1);
 
 //If set to a number greater than 0, msg compose windows will be recycled in order to open them quickly
 pref("mail.compose.max_recycled_windows", 1); 
@@ -511,6 +521,10 @@ pref("mail.purge.min_delay",480);
 // "mail.purge.timer_interval", fire the purge timer every 5 minutes, starting 5 minutes after we load accounts
 pref("mail.purge.timer_interval",5);
 pref("mailnews.view.last",0); // 0 == "all" view
+
+// set to true if viewing a message should mark it as read only if the msg is viewed for a specified time interval in seconds
+pref("mailnews.mark_message_read.delay", false); 
+pref("mailnews.mark_message_read.delay.interval", 5); // measured in seconds
 
 // require a password before showing imap or local headers in thread pane
 pref("mail.password_protect_local_cache", false);

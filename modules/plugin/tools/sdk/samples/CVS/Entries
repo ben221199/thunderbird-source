@@ -1,2 +1,7 @@
-/Makefile.in/1.1/Sun Sep 29 02:39:50 2002//TTHUNDERBIRD_0_3_BRANCH
-D
+/Makefile.in/1.1/Sun Sep 29 02:39:50 2002//TTHUNDERBIRD_0_4_BRANCH
+D/basic////
+D/common////
+D/include////
+D/scriptable////
+D/simple////
+D/winless////

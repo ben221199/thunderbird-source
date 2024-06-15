@@ -1,3 +1,14 @@
-/.cvsignore/1.1/Sat Sep 28 00:37:56 2002//TTHUNDERBIRD_0_3_BRANCH
-/Makefile.in/1.8/Sat Aug 16 11:22:07 2003//TTHUNDERBIRD_0_3_BRANCH
-D
+/.cvsignore/1.1/Sat Sep 28 00:37:56 2002//TTHUNDERBIRD_0_4_BRANCH
+/Makefile.in/1.10/Thu Nov 27 00:51:26 2003//TTHUNDERBIRD_0_4_BRANCH
+D/alerts////
+D/autocomplete////
+D/build////
+D/console////
+D/downloads////
+D/filepicker////
+D/history////
+D/passwordmgr////
+D/printing////
+D/satchel////
+D/viewconfig////
+D/viewsource////

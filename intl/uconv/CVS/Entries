@@ -1,4 +1,20 @@
-/.cvsignore/1.1/Fri Jan 22 06:33:27 1999//TTHUNDERBIRD_0_3_BRANCH
-/Makefile.in/1.17/Sat Aug 16 00:41:46 2003//TTHUNDERBIRD_0_3_BRANCH
-/directory.txt/1.2/Thu Mar 23 09:23:30 2000//TTHUNDERBIRD_0_3_BRANCH
-D
+/.cvsignore/1.1/Fri Jan 22 06:33:27 1999//TTHUNDERBIRD_0_4_BRANCH
+/Makefile.in/1.17/Sat Aug 16 00:41:46 2003//TTHUNDERBIRD_0_4_BRANCH
+/directory.txt/1.2/Thu Mar 23 09:23:30 2000//TTHUNDERBIRD_0_4_BRANCH
+D/idl////
+D/native////
+D/public////
+D/src////
+D/tests////
+D/tools////
+D/ucvcn////
+D/ucvibm////
+D/ucvja////
+D/ucvko////
+D/ucvlatin////
+D/ucvmath////
+D/ucvth////
+D/ucvtw////
+D/ucvtw2////
+D/ucvvt////
+D/util////

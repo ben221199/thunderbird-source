@@ -18,7 +18,7 @@
 # Rights Reserved.
 #
 # Contributors(s):
-#   Jan Varga <varga@utcru.sk>
+#   Jan Varga <varga@nixcorp.com>
 #   Håkan Waara (hwaara@chello.se)
 #   David Bienvenu (bienvenu@netscape.com)
 /*
@@ -214,7 +214,7 @@ function ChangeFolderByURI(uri, viewType, viewFlags, sortType, sortOrder)
     var server = msgfolder.server;
     if (gPrefs.getBoolPref("mail.password_protect_local_cache"))
     {
-      showMessagesAfterLoading = !server.isAuthenticated;
+      showMessagesAfterLoading = server.passwordPromptRequired;
       // servers w/o passwords (like local mail) will always be non-authenticated.
       // So we need to use the account manager for that case.
     }
@@ -305,6 +305,9 @@ function RerootFolder(uri, newFolder, viewType, viewFlags, sortType, sortOrder)
     gDBView.close();
     gDBView = null;
   }
+
+  // cancel the pending mark as read timer
+  ClearPendingReadTimer();
 
   // if this is the drafts, sent, or send later folder,
   // we show "Recipient" instead of "Author"
@@ -399,16 +402,32 @@ function SwitchView(command)
 
 function SetSentFolderColumns(isSentFolder)
 {
-  var senderOrRecipientColumn = document.getElementById("senderOrRecipientCol");
+  var tree = GetThreadTree();
   var searchCriteria = document.getElementById("searchCriteria");
+
+  var lastFolderSent = tree.getAttribute("lastfoldersent") == "true";
+  if (isSentFolder != lastFolderSent)
+  {
+    var senderColumn = document.getElementById("senderCol");
+    var recipientColumn = document.getElementById("recipientCol");
+    
+    var saveHidden = senderColumn.getAttribute("hidden");
+    senderColumn.setAttribute("hidden", senderColumn.getAttribute("swappedhidden"));
+    senderColumn.setAttribute("swappedhidden", saveHidden);
+
+    saveHidden = recipientColumn.getAttribute("hidden");
+    recipientColumn.setAttribute("hidden", recipientColumn.getAttribute("swappedhidden"));
+    recipientColumn.setAttribute("swappedhidden", saveHidden);
+  }
+
   if(isSentFolder)
   {
-    senderOrRecipientColumn.setAttribute("label", gMessengerBundle.getString("recipientColumnHeader"));
+    tree.setAttribute("lastfoldersent", "true");
     searchCriteria.setAttribute("value", gMessengerBundle.getString("recipientSearchCriteria"));
   }
   else
   {
-    senderOrRecipientColumn.setAttribute("label", gMessengerBundle.getString("senderColumnHeader"));
+    tree.setAttribute("lastfoldersent", "false");
     searchCriteria.setAttribute("value", gMessengerBundle.getString("senderSearchCriteria"));
   }
 }
@@ -453,13 +472,11 @@ function ConvertColumnIDToSortType(columnID)
     case "dateCol":
       sortKey = nsMsgViewSortType.byDate;
       break;
-    case "senderOrRecipientCol":
-      if (IsSpecialFolderSelected(MSG_FOLDER_FLAG_SENTMAIL | MSG_FOLDER_FLAG_DRAFTS | MSG_FOLDER_FLAG_QUEUE)) {
-      	sortKey = nsMsgViewSortType.byRecipient;
-      }
-      else {
-      	sortKey = nsMsgViewSortType.byAuthor;
-      }
+    case "senderCol":
+    	sortKey = nsMsgViewSortType.byAuthor;
+      break;
+    case "recipientCol":
+    	sortKey = nsMsgViewSortType.byRecipient;
       break;
     case "subjectCol":
       sortKey = nsMsgViewSortType.bySubject;
@@ -488,12 +505,15 @@ function ConvertColumnIDToSortType(columnID)
     case "labelCol":
       sortKey = nsMsgViewSortType.byLabel;
       break;
-    case "scoreCol":
-      sortKey = nsMsgViewSortType.byScore;
+    case "junkStatusCol":
+      sortKey = nsMsgViewSortType.byJunkStatus;
       break;
     case "idCol":
       sortKey = nsMsgViewSortType.byId;
       break;
+    case "attachmentCol":
+	    sortKey = nsMsgViewSortType.byAttachments;
+	    break;
     default:
       dump("unsupported sort column: " + columnID + "\n");
       sortKey = 0;
@@ -515,8 +535,10 @@ function ConvertSortTypeToColumnID(sortKey)
       columnID = "dateCol";
       break;
     case nsMsgViewSortType.byAuthor:
+      columnID = "senderCol";
+      break;
     case nsMsgViewSortType.byRecipient:
-      columnID = "senderOrRecipientCol";
+      columnID = "recipientCol";
       break;
     case nsMsgViewSortType.bySubject:
       columnID = "subjectCol";
@@ -549,9 +571,12 @@ function ConvertSortTypeToColumnID(sortKey)
       // there is no orderReceivedCol, so return null
       columnID = null;
       break;
-    case nsMsgViewSortType.byScore:
-      columnID = "scoreCol";
+    case nsMsgViewSortType.byJunkStatus:
+      columnID = "junkStatusCol";
       break;
+	  case nsMsgViewSortType.byAttachments:
+	    columnID = "attachmentCol";
+	    break;
     default:
       dump("unsupported sort key: " + sortKey + "\n");
       columnID = null;
@@ -605,18 +630,12 @@ function CreateBareDBView(originalView, msgFolder, viewType, viewFlags, sortType
   if (!gThreadPaneCommandUpdater)
     gThreadPaneCommandUpdater = new nsMsgDBViewCommandUpdater();
 
-  if ((sortType == nsMsgViewSortType.byAuthor) && IsSpecialFolder(msgFolder, MSG_FOLDER_FLAG_SENTMAIL | MSG_FOLDER_FLAG_DRAFTS | MSG_FOLDER_FLAG_QUEUE)) {
-    gCurSortType = nsMsgViewSortType.byRecipient;
-  }
-  else {
-    gCurSortType = sortType;
-  }
+  gCurSortType = sortType;
 
   if (!originalView) {
     gDBView.init(messenger, msgWindow, gThreadPaneCommandUpdater);
 
-    var treatRecipientAsAuthor = IsSpecialFolder(msgFolder, MSG_FOLDER_FLAG_SENTMAIL | MSG_FOLDER_FLAG_DRAFTS | MSG_FOLDER_FLAG_QUEUE);
-    gDBView.open(msgFolder, gCurSortType, sortOrder, viewFlags, treatRecipientAsAuthor, count);
+    gDBView.open(msgFolder, gCurSortType, sortOrder, viewFlags, count);
   } 
   else {
     gDBView = originalView.cloneDBView(messenger, msgWindow, gThreadPaneCommandUpdater);

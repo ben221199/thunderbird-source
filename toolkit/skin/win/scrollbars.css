@@ -32,7 +32,7 @@
 
 scrollbar {
   -moz-appearance: scrollbartrack-horizontal;
-  -moz-binding: url("chrome://global/content/widgets/scrollbar.xml#scrollbar");
+  -moz-binding: url("chrome://global/content/bindings/scrollbar.xml#scrollbar");
   cursor: default;
   background: url("chrome://global/skin/scrollbar/slider.gif") scrollbar;
 }
@@ -90,6 +90,12 @@ scrollbarbutton:hover:active {
   background-position: 1px 2px;
 }
 
+/* ::::: square at the corner of two scrollbars ::::: */
+
+scrollcorner { 
+  background-color: -moz-Dialog;
+}
+
 /* ..... increment .... */
 
 scrollbarbutton[type="increment"] {
@@ -122,7 +128,7 @@ scrollbar[orient="vertical"] > scrollbarbutton[type="decrement"] {
 
   html|div scrollbar {
     -moz-appearance: scrollbartrack-horizontal;
-    -moz-binding: url("chrome://global/content/widgets/scrollbar.xml#scrollbar");
+    -moz-binding: url("chrome://global/content/bindings/scrollbar.xml#scrollbar");
     cursor: default;
     background: url("chrome://global/skin/scrollbar/slider.gif") scrollbar;
   }

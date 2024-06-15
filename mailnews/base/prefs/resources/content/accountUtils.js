@@ -42,6 +42,8 @@ var messengerMigratorContractID   = "@mozilla.org/messenger/migrator;1";
 var gAnyValidIdentity = false; //If there are no valid identities for any account
 // returns the first account with an invalid server or identity
 
+var gNewAccountToLoad = null;   // used to load new messages if we come from the mail3pane
+
 function getInvalidAccounts(accounts)
 {
     var numAccounts = accounts.Count();
@@ -97,10 +99,15 @@ function showMailIntegrationDialog() {
         mapiRegistry = null;
     }
 
+    var prefLocked = false;
+    if (mapiRegistry) { 
+
+      mapiRegistry.registerMailAndNewsClient(); // when verifying the accounts, make sure we have registered our app
+                                                // as a mail and news reader with the OS.
+
     // showDialog is TRUE only if we did not bring up this dialog already
     // and we are not the default mail client
-    var prefLocked = false;
-    if (mapiRegistry && mapiRegistry.showDialog) {
+      if (mapiRegistry.showDialog) {
         const prefbase = "system.windows.lock_ui.";
         try {
             var prefService = Components.classes["@mozilla.org/preferences-service;1"]
@@ -121,6 +128,7 @@ function showMailIntegrationDialog() {
         catch (ex) {
           dump("mapi code failed:  " + ex + "\n");
         }
+      }
     }
 }
 
@@ -179,7 +187,7 @@ function verifyAccounts(wizardcallback) {
         //has only a local folder and tries to compose mail.
 
         if (openWizard || prefillAccount || ((!gAnyValidIdentity) && wizardcallback)) {
-            MsgAccountWizard(prefillAccount);
+            MsgAccountWizard();
 		        ret = false;
         }
         // hack, set a time out to do this, so that the window can load first
@@ -209,10 +217,10 @@ function msgOpenAccountWizard()
   // was called with callback or not.
   if (gReturnmycall)
       window.openDialog("chrome://messenger/content/AccountWizard.xul",
-                        "AccountWizard", "chrome,modal,titlebar,resizable", {okCallback:WizCallback});
+                        "AccountWizard", "chrome,modal,titlebar,centerscreen", {okCallback:WizCallback});
   else
       window.openDialog("chrome://messenger/content/AccountWizard.xul",
-                        "AccountWizard", "chrome,modal,titlebar,resizable");
+                        "AccountWizard", "chrome,modal,titlebar,centerscreen");
 
   loadInboxForNewAccount();
 
@@ -236,7 +244,7 @@ function MsgAccountManager(selectPage)
     } catch (ex) { /* functions might not be defined */}
     
     window.openDialog("chrome://messenger/content/AccountManager.xul",
-                      "AccountManager", "chrome,modal,titlebar,resizable",
+                      "AccountManager", "chrome,centerscreen,modal,titlebar",
                       { server: server, selectPage: selectPage });
 }
 

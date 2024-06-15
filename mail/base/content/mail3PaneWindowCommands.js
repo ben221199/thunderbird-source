@@ -18,7 +18,7 @@
 # Rights Reserved.
 #
 # Contributors(s):
-#   Jan Varga <varga@utcru.sk>
+#   Jan Varga <varga@nixcorp.com>
 #   Håkan Waara (hwaara@chello.se)
 
 var promptService = Components.classes["@mozilla.org/embedcomp/prompt-service;1"].getService(Components.interfaces.nsIPromptService);
@@ -469,10 +469,22 @@ var DefaultController =
         break;// This does nothing because the createfilter is invoked from the popupnode oncommand.
 			case "button_delete":
 			case "cmd_delete":
+         // if the user deletes a message before its mark as read timer goes off, we should mark it as read
+         // this ensures that we clear the biff indicator from the system tray when the user deletes the new message
+        if (gMarkViewedMessageAsReadTimer) 
+        {
+          MarkCurrentMessageAsRead();
+          ClearPendingReadTimer();
+        }
         SetNextMessageAfterDelete();
         gDBView.doCommand(nsMsgViewCommandType.deleteMsg);
 				break;
 			case "cmd_shiftDelete":
+        if (gMarkViewedMessageAsReadTimer)
+        {
+          MarkCurrentMessageAsRead();
+          ClearPendingReadTimer();
+        }
         SetNextMessageAfterDelete();
         gDBView.doCommand(nsMsgViewCommandType.deleteNoTrash);
 				break;
@@ -562,17 +574,26 @@ var DefaultController =
 				MsgReload();
 				return;
 			case "cmd_find":
+        // make sure the message pane has focus before we start a find since we only support searching
+        // within the message body. Do it here and not in MsgFind() which can be called from standalone where we don't want to set focus
+        SetFocusMessagePane(); 
 				MsgFind();
 				return;
 			case "cmd_findAgain":
+        // make sure the message pane has focus before we start a find since we only support searching
+        // within the message body. Do it here and not in MsgFind() which can be called from standalone where we don't want to set focus
+        SetFocusMessagePane(); 
 				MsgFindAgain(false);
+				return;
+			case "cmd_findPrev":
+        // make sure the message pane has focus before we start a find since we only support searching
+        // within the message body. Do it here and not in MsgFind() which can be called from standalone where we don't want to set focus
+        SetFocusMessagePane(); 
+				MsgFindAgain(true);
 				return;
       case "cmd_markReadByDate":
         MsgMarkReadByDate();
         return;
-			case "cmd_findPrev":
-				MsgFindAgain(true);
-				return;
       case "cmd_properties":
         MsgFolderProperties();
         return;

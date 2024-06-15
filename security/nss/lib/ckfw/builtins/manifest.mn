@@ -30,7 +30,7 @@
 # may use your version of this file under either the MPL or the
 # GPL.
 #
-MANIFEST_CVS_ID = "@(#) $RCSfile: manifest.mn,v $ $Revision: 1.6.34.1 $ $Date: 2003/05/09 20:58:43 $ $Name:  $"
+MANIFEST_CVS_ID = "@(#) $RCSfile: manifest.mn,v $ $Revision: 1.7 $ $Date: 2003/04/16 22:22:22 $ $Name:  $"
 
 CORE_DEPTH = ../../../..
 

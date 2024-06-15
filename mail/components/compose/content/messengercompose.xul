@@ -23,7 +23,7 @@
 #   Neil Rashbrook <neil@parkwaycc.co.uk> (ass'td polish fix)
 
 <?xml-stylesheet href="chrome://messenger/skin/messengercompose/messengercompose.css" type="text/css"?>
-
+<?xml-stylesheet href="chrome://messenger/skin/folderMenus.css" type="text/css"?>
 <?xul-overlay href="chrome://editor/content/editorOverlay.xul"?>
 
 <!DOCTYPE window [
@@ -101,6 +101,7 @@
   <command id="cmd_new" oncommand="goDoCommand('cmd_newMessage')"/>
   <command id="cmd_attachFile" oncommand="goDoCommand('cmd_attachFile')"/>
   <command id="cmd_attachPage" oncommand="goDoCommand('cmd_attachPage')"/>
+  <command id="cmd_attachVCard" checked="false" oncommand="ToggleAttachVCard(event.target)"/>
   <command id="cmd_close" oncommand="goDoCommand('cmd_close')"/>
   <command id="cmd_saveDefault" oncommand="goDoCommand('cmd_saveDefault')"/>
   <command id="cmd_saveAsFile" oncommand="goDoCommand('cmd_saveAsFile')"/>
@@ -134,6 +135,14 @@
   <!-- Options Menu -->
   <command id="cmd_quoteMessage" oncommand="goDoCommand('cmd_quoteMessage')"/>
   <command id="cmd_insert"/>
+
+#ifdef XP_MACOSX
+  <!-- Mac Window menu -->
+  <command id="minimizeWindow" label="&minimizeWindow.label;" disabled="true"/>
+  <command id="Tasks:Mail" oncommand="toMessengerWindow();"/>
+  <command id="Tasks:AddressBook" oncommand="toAddressBook();"/>
+#endif
+
 </commandset>
 
 <broadcasterset id="composeBroadcasters">
@@ -173,7 +182,10 @@
   <key keycode="&findPrevCmd.key2;"  command="cmd_findPrev" modifiers="shift"/>
   
   <!-- Options Menu -->
-  <key id="key_checkspelling"  key="&checkSpellingCmd.key;" command="cmd_spelling"  modifiers="accel"/>
+  <key id="key_checkspelling" key="&checkSpellingCmd.key;" command="cmd_spelling"  modifiers="accel"/>
+#ifdef XP_WIN
+  <key keycode="&checkSpellingCmd.key2;" command="cmd_spelling"/>
+#endif
 
    <!-- Tools Menu -->
   <key id="key_mail"  key="&messengerCmd.commandkey;" oncommand="toMessengerWindow();" modifiers="accel"/>
@@ -186,7 +198,14 @@
   <key keycode="VK_F6" oncommand="SwitchElementFocus(event);" modifiers="control,shift"/>
   <key keycode="VK_F6" oncommand="SwitchElementFocus(event);" modifiers="shift"/>
   <key keycode="VK_F6" oncommand="SwitchElementFocus(event);"/>
+
+#ifdef XP_MACOSX
+  <!-- Mac Window Menu -->
+  <key id="key_minimizeWindow" command="minimizeWindow" key="&minimizeWindow.key;" modifiers="accel"/>
+#endif
+
 </keyset>
+
 <keyset id="editorKeys"/>
 
 <popup id="msgComposeContext" onpopupshowing="updateEditItems();">
@@ -195,6 +214,7 @@
   <menuitem label="&cut.label;" accesskey="&cut.accesskey;" command="cmd_cut"/>
   <menuitem label="&copy.label;" accesskey="&copy.accesskey;" command="cmd_copy"/>
   <menuitem label="&paste.label;" accesskey="&paste.accesskey;" command="cmd_paste"/>
+  <menuitem command="cmd_pasteNoFormatting"/>
   <menuitem label="&pasteQuote.label;" accesskey="&pasteQuote.accesskey;" command="cmd_pasteQuote"/>
   <menuitem label="&delete.label;" accesskey="&delete.accesskey;" command="cmd_delete"/>
   <menuseparator/>
@@ -205,7 +225,8 @@
   <menuitem label="&delete.label;" accesskey="&delete.accesskey;" command="cmd_delete"/>
   <menuitem label="&selectAll.label;" accesskey="&selectAll.accesskey;" command="cmd_selectAll"/>
   <menuseparator/>
-  <menuitem label="&addAttachment.label;" accesskey="&addAttachment.accesskey;" command="cmd_attachFile"/>
+  <menuitem label="&attachFile.label;" accesskey="&attachFile.accesskey;" command="cmd_attachFile"/>
+  <menuitem label="&attachPage.label;" accesskey="&attachPage.accesskey;" command="cmd_attachPage"/>
 </popup>
 
 <popup id="aTooltip" class="tooltip" onpopupshowing="return FillInTooltip(document.tooltipNode);" > 
@@ -216,7 +237,7 @@
   <menuitem oncommand="CustomizeMailToolbar('compose-toolbox');" id="CustomizeMailToolbar" label="&customizeToolbar.label;" accesskey="&customizeToolbar.accesskey;"/>
 </popup>
 
-  <toolbox id="compose-toolbox" class="toolbox-top" mode="icons"> 
+  <toolbox id="compose-toolbox" class="toolbox-top" mode="full"> 
 
   <!-- Menu -->
   <!-- if you change the id of the menubar, be sure to update mailCore.js::CustomizeMailToolbar and MailToolboxCustomizeDone -->
@@ -235,8 +256,14 @@
                         oncommand="window.openDialog('chrome://messenger/content/addressbook/abNewCardDialog.xul', '', 'chrome,resizable=no,titlebar,modal');"/>
             </menupopup>
           </menu>
-          <menuitem label="&attachFileCmd.label;" accesskey="&attachFileCmd.accesskey;" command="cmd_attachFile"/>
-          <menuitem label="&attachPageCmd.label;" accesskey="&attachPageCmd.accesskey;" command="cmd_attachPage"/>
+          <menu label="&attachMenu.label;" accesskey="&attachMenu.accesskey;">
+            <menupopup>
+              <menuitem label="&attachFileCmd.label;" accesskey="&attachFileCmd.accesskey;" command="cmd_attachFile"/>
+              <menuitem label="&attachPageCmd.label;" accesskey="&attachPageCmd.accesskey;" command="cmd_attachPage"/>
+              <menuseparator/>
+              <menuitem type="checkbox" label="&attachVCardCmd.label;" accesskey="&attachVCardCmd.accesskey;" command="cmd_attachVCard"/>
+            </menupopup>
+          </menu>
           <menuitem id="offlineGoOfflineCmd" hidden="true" label="&offlineGoOfflineCmd.label;" accesskey="&offlineGoOfflineCmd.accesskey;" observes="Communicator:WorkMode"/>
           <menuitem id="menu_close" label="&closeCmd.label;" key="key_close" accesskey="&closeCmd.accesskey;" command="cmd_close"/>
           <menuseparator/>
@@ -268,6 +295,7 @@
           <menuitem id="menu_cut" label="&cutCmd.label;" key="key_cut" accesskey="&cutCmd.accesskey;" command="cmd_cut"/>
           <menuitem id="menu_copy" label="&copyCmd.label;" key="key_copy" accesskey="&copyCmd.accesskey;" command="cmd_copy"/>
           <menuitem id="menu_paste" label="&pasteCmd.label;" key="key_paste" accesskey="&pasteCmd.accesskey;" command="cmd_paste"/>
+          <menuitem id="menu_pasteNoFormatting" command="cmd_pasteNoFormatting"/>
           <menuitem id="menu_pasteQuote"/>
           <menuitem label="&editRewrapCmd.label;" accesskey="&editRewrapCmd.accesskey;" command="cmd_rewrap"/>
           <menuitem id="menu_delete" label="&deleteCmd.label;" key="key_delete" accesskey="&deleteCmd.accesskey;" command="cmd_delete"/>
@@ -343,6 +371,7 @@
           <menuitem label="&quoteCmd.label;" accesskey="&quoteCmd.accesskey;" command="cmd_quoteMessage"/>
           <menuseparator/>
           <menuitem id="returnReceiptMenu" type="checkbox" label="&returnReceiptMenu.label;" accesskey="&returnReceiptMenu.accesskey;" checked="false" oncommand="ToggleReturnReceipt(event.target)"/>
+          <menuseparator/>
           <menu id="outputFormatMenu" label="&outputFormatMenu.label;" accesskey="&outputFormatMenu.accesskey;" oncommand="OutputFormatMenuSelect(event.target)">
             <menupopup>
               <menuitem type="radio" name="output_format" label="&autoFormatCmd.label;" accesskey="&autoFormatCmd.accesskey;" id="format_auto" checked="true"/>
@@ -417,14 +446,41 @@
 
       <menu id="tasksMenu" label="&tasksMenu.label;" accesskey="&tasksMenu.accesskey;">
           <menupopup id="taskPopup">
+            <!-- Moving the first two items to the Window menu on the Mac -->
+#ifndef XP_MACOSX
             <menuitem accesskey="&messengerCmd.accesskey;" label="&messengerCmd.label;"  key="key_mail" oncommand="toMessengerWindow();" id="tasksMenuMail" class="menuitem-iconic icon-mail16 menu-iconic"/>
             <menuitem label="&addressBookCmd.label;" accesskey="&addressBookCmd.accesskey;" key="key_addressbook" oncommand="toAddressBook();" id="tasksMenuAddressBook" class="menuitem-iconic icon-addressbook16 menu-iconic"/>
             <menuseparator/>
+#endif
             <menuitem label="&accountManagerCmd.label;" accesskey="&accountManagerCmd.accesskey;" command="cmd_account"/>
             <menuitem id="menu_preferences" label="&preferencesCmd.label;" accesskey="&preferencesCmd.accesskey;"
                       oncommand="openOptionsDialog('mailcomposepref', 'chrome://messenger/content/messengercompose/pref-composing_messages.xul', 'mailcomposepref');"/>
          </menupopup>
       </menu>
+
+#ifdef XP_MACOSX
+      <menu id="windowMenu" label="&windowMenu.label;"
+          datasources="rdf:window-mediator" ref="NC:WindowMediatorRoot"
+          onpopupshown="checkFocusedWindow();">
+          <template>
+          <rule>
+              <menupopup>
+              <menuitem uri="rdf:*" label="rdf:http://home.netscape.com/NC-rdf#Name" type="radio" oncommand="ShowWindowFromResource(event.target)"/>
+              </menupopup>
+          </rule>
+          </template>
+          <menupopup id="windowPopup">
+            <menuitem label="&zoomWindow.label;" disabled="true"/>
+            <menuitem command="minimizeWindow" key="key_minimizeWindow"/>
+            <menuseparator/>
+            <menuitem label="&bringAllToFront.label;" disabled="true"/>
+            <menuseparator/>
+              <menuitem accesskey="&messengerCmd.accesskey;" label="&messengerCmd.label;"  key="key_mail" command="Tasks:Mail" id="tasksMenuMail" class="menuitem-iconic icon-mail16 menu-iconic"/>
+              <menuitem label="&addressBookCmd.label;" accesskey="&addressBookCmd.accesskey;" key="key_addressbook" command="Tasks:AddressBook" id="tasksMenuAddressBook" class="menuitem-iconic icon-addressbook16 menu-iconic"/>
+            <menuseparator id="sep-window-list"/>
+          </menupopup>
+      </menu>
+#endif
       
       <menu label="&helpMenu.label;" accesskey="&helpMenu.accesskey;">
         <menupopup id="menu_HelpPopup">
@@ -463,8 +519,10 @@
                tooltiptext="&attachButton.tooltip;" 
                command="cmd_attachFile">
          <menupopup>
-           <menuitem label="&attachFileCmd.label;" accesskey="&attachFileCmd.accesskey;" command="cmd_attachFile"/>
-           <menuitem label="&attachPageCmd.label;" accesskey="&attachPageCmd.accesskey;" command="cmd_attachPage"/>
+            <menuitem label="&attachFileCmd.label;" accesskey="&attachFileCmd.accesskey;" command="cmd_attachFile"/>
+            <menuitem label="&attachPageCmd.label;" accesskey="&attachPageCmd.accesskey;" command="cmd_attachPage"/>
+           <menuseparator/>
+           <menuitem type="checkbox" label="&attachVCardCmd.label;" accesskey="&attachVCardCmd.accesskey;" command="cmd_attachVCard"/>
          </menupopup>
     </toolbarbutton>
     
@@ -488,6 +546,18 @@
                id="quoteButton" label="&quoteButton.label;" 
                tooltiptext="&quoteButton.tooltip;" 
                command="cmd_quoteMessage"/>
+    <toolbarbutton id="cut-button" class="toolbarbutton-1"
+                   label="&cutCmd.label;"
+                   command="cmd_cut"
+                   tooltiptext="&cutButton.tooltip;"/>
+    <toolbarbutton id="copy-button" class="toolbarbutton-1"
+                   label="&copyCmd.label;"
+                   command="cmd_copy"
+                   tooltiptext="&copyButton.tooltip;"/>
+    <toolbarbutton id="paste-button" class="toolbarbutton-1"
+                   label="&pasteCmd.label;"
+                   command="cmd_paste"
+                   tooltiptext="&pasteButton.tooltip;"/>
 
     <toolbaritem id="throbber-box" align="center" pack="center">
       <button id="navigator-throbber" oncommand="loadThrobberUrl('compose.throbber.url')" tooltiptext="&throbber.tooltip;">
@@ -586,6 +656,7 @@
           <label id="attachmentBucketText" value="&attachments.label;" crop="right"
                  accesskey="&attachments.accesskey;" control="attachmentBucket"/>
           <listbox seltype="multiple" id="attachmentBucket" flex="1" rows="4"
+                   style="-moz-user-focus: none;"
                    context="msgComposeAttachmentContext"
                    onkeypress="if (event.keyCode == 8 || event.keyCode == 46) RemoveSelectedAttachment();"
                    onclick="AttachmentBucketClicked(event);"/>
@@ -659,7 +730,7 @@
   <!-- The mail message body frame -->
   <vbox id="appcontent" flex="1">
     <editor type="content-primary" id="content-frame" src="about:blank" name="browser.message.body" flex="1"
-            onkeypress="editorKeyPress(event);" context="msgComposeContext"/>
+            context="msgComposeContext"/>
   </vbox>
   
   </vbox>

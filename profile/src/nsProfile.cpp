@@ -80,6 +80,7 @@
 #include "nsHashtable.h"
 #include "nsIAtom.h"
 #include "nsProfileDirServiceProvider.h"
+#include "nsISessionRoaming.h"
 
 // Interfaces Needed
 #include "nsIDocShell.h"
@@ -120,6 +121,7 @@
 
 #define PREF_CONFIRM_AUTOMIGRATION     "profile.confirm_automigration"
 #define PREF_AUTOMIGRATION             "profile.allow_automigration"
+#define PREF_MIGRATE_ALL               "profile.migrate_all"
 
 #if defined (XP_MAC)
 #define CHROME_STYLE nsIWebBrowserChrome::CHROME_WINDOW_BORDERS | nsIWebBrowserChrome::CHROME_WINDOW_CLOSE | nsIWebBrowserChrome::CHROME_CENTER_SCREEN
@@ -156,6 +158,7 @@ static nsProfileDirServiceProvider *gDirServiceProvider = nsnull;
 static NS_DEFINE_CID(kPrefMigrationCID, NS_PREFMIGRATION_CID);
 static NS_DEFINE_CID(kPrefConverterCID, NS_PREFCONVERTER_CID);
 
+#define NS_SESSIONROAMING_CONTRACTID "@mozilla.org/profile/session-roaming;1"
 
 
 /*
@@ -903,6 +906,9 @@ nsProfile::ProcessArgs(nsICmdLineService *cmdLineArgs,
     if (allowAutoMigration && (NS_SUCCEEDED(rv) || forceMigration))
     {        
         if (cmdResult || forceMigration) {
+        PRBool migrateAll = PR_FALSE;
+        (void)prefBranch->GetBoolPref(PREF_MIGRATE_ALL, &migrateAll);
+
             rv = MigrateProfileInfo();
             if (NS_FAILED(rv)) return rv;
 
@@ -920,7 +926,7 @@ nsProfile::ProcessArgs(nsICmdLineService *cmdLineArgs,
             else if (num4xProfiles == 0 && numProfiles == 1) {
                 profileURLStr = "";
             }
-            else if (num4xProfiles == 1 && numProfiles == 0) {
+            else if ((num4xProfiles == 1 || migrateAll) && numProfiles == 0) {
                 PRBool confirmed = PR_FALSE;
                 if (NS_SUCCEEDED(ConfirmAutoMigration(canInteract, &confirmed)) && confirmed)
                     AutoMigrate();
@@ -1258,6 +1264,13 @@ nsProfile::SetCurrentProfile(const PRUnichar * aCurrentProfile)
           return NS_ERROR_ABORT;
     }
 
+    // Roaming download
+    // Tolerate errors. Maybe the roaming extension isn't installed.
+    nsCOMPtr <nsISessionRoaming> roam =
+      do_GetService(NS_SESSIONROAMING_CONTRACTID, &rv);
+    if (NS_SUCCEEDED(rv))
+      roam->BeginSession();
+
     // Phase 4: Notify observers that the profile has changed - Here they respond to new profile
     observerService->NotifyObservers(subject, "profile-do-change", context.get());
     if (mProfileChangeFailed)
@@ -1343,6 +1356,13 @@ NS_IMETHODIMP nsProfile::ShutDownCurrentProfile(PRUint32 shutDownType)
       // Phase 3: Notify observers of a profile change
       observerService->NotifyObservers(subject, "profile-before-change", context.get());        
     }
+
+    // Roaming upload
+    // Tolerate errors. Maybe the roaming extension isn't installed.
+    nsCOMPtr <nsISessionRoaming> roam =
+      do_GetService(NS_SESSIONROAMING_CONTRACTID, &rv);
+    if (NS_SUCCEEDED(rv))
+      roam->EndSession();
 
     gDirServiceProvider->SetProfileDir(nsnull);
     UpdateCurrentProfileModTime(PR_TRUE);
@@ -1454,7 +1474,7 @@ nsProfile::AddLevelOfIndirection(nsIFile *aDir)
   rv = aDir->Exists(&exists);
   NS_ENSURE_SUCCESS(rv,rv);
   if (!exists) {
-    rv = aDir->Create(nsIFile::DIRECTORY_TYPE, 0775);
+    rv = aDir->Create(nsIFile::DIRECTORY_TYPE, 0700);
     NS_ENSURE_SUCCESS(rv,rv);
   }
 	
@@ -1528,7 +1548,7 @@ nsresult nsProfile::SetProfileDir(const PRUnichar *profileName, nsIFile *profile
     PRBool exists;
     rv = profileDir->Exists(&exists);
     if (NS_SUCCEEDED(rv) && !exists)
-        rv = profileDir->Create(nsIFile::DIRECTORY_TYPE, 0775);
+        rv = profileDir->Create(nsIFile::DIRECTORY_TYPE, 0700);
     if (NS_FAILED(rv)) 
         return rv;
     
@@ -1590,7 +1610,7 @@ nsProfile::CreateNewProfileWithLocales(const PRUnichar* profileName,
         rv = profileDir->Exists(&exists);
         if (NS_FAILED(rv)) return rv;        
         if (!exists)
-            profileDir->Create(nsIFile::DIRECTORY_TYPE, 0775);
+            profileDir->Create(nsIFile::DIRECTORY_TYPE, 0700);
 
         // append profile name
         profileDir->Append(nsDependentString(profileName));
@@ -1609,7 +1629,7 @@ nsProfile::CreateNewProfileWithLocales(const PRUnichar* profileName,
     // Make profile directory unique only when the user 
     // decides to not use an already existing profile directory
     if (!useExistingDir) {
-        rv = profileDir->CreateUnique(nsIFile::DIRECTORY_TYPE, 0775);
+        rv = profileDir->CreateUnique(nsIFile::DIRECTORY_TYPE, 0700);
         if (NS_FAILED(rv)) return rv;
     }
 
@@ -1621,7 +1641,7 @@ nsProfile::CreateNewProfileWithLocales(const PRUnichar* profileName,
     if (NS_FAILED(rv)) return rv;        
     if (!exists)
     {
-        rv = profileDir->Create(nsIFile::DIRECTORY_TYPE, 0775);
+        rv = profileDir->Create(nsIFile::DIRECTORY_TYPE, 0700);
         if (NS_FAILED(rv)) return rv;
         useExistingDir = PR_FALSE;
     }
@@ -2226,7 +2246,7 @@ nsProfile::MigrateProfile(const PRUnichar* profileName)
     if (NS_FAILED(rv)) 
       return rv;
     
-    rv = newProfDir->CreateUnique(nsIFile::DIRECTORY_TYPE, 0775);
+    rv = newProfDir->CreateUnique(nsIFile::DIRECTORY_TYPE, 0700);
     if (NS_FAILED(rv)) 
       return rv;
     
@@ -2269,7 +2289,7 @@ nsProfile::RemigrateProfile(const PRUnichar* profileName)
     NS_ENSURE_SUCCESS(rv,rv);
     
     // Create a new directory for the remigrated profile
-    rv = newProfileDir->CreateUnique(nsIFile::DIRECTORY_TYPE, 0775);
+    rv = newProfileDir->CreateUnique(nsIFile::DIRECTORY_TYPE, 0700);
     NS_ASSERTION(NS_SUCCEEDED(rv), "failed to create new directory for the remigrated profile");
     if (NS_SUCCEEDED(rv)) {
         rv = MigrateProfileInternal(profileName, oldProfileDir, newProfileDir);
@@ -2374,7 +2394,7 @@ NS_IMETHODIMP nsProfile::CloneProfile(const PRUnichar* newProfile)
         destDir->AppendRelativePath(nsDependentString(newProfile));
 
         // Find a unique name in the dest dir
-        rv = destDir->CreateUnique(nsIFile::DIRECTORY_TYPE, 0775);
+        rv = destDir->CreateUnique(nsIFile::DIRECTORY_TYPE, 0700);
         if (NS_FAILED(rv)) return rv;
         
         rv = RecursiveCopy(currProfileDir, destDir);

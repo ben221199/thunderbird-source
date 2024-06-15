@@ -1,4 +1,8 @@
-/.cvsignore/1.1/Sat Feb 24 06:22:46 2001//TTHUNDERBIRD_0_3_BRANCH
-/Makefile.in/1.4/Sat Aug 16 00:42:26 2003//TTHUNDERBIRD_0_3_BRANCH
-/README.html/1.2/Mon Apr  2 19:34:38 2001//TTHUNDERBIRD_0_3_BRANCH
-D
+/.cvsignore/1.1/Sat Feb 24 06:22:46 2001//TTHUNDERBIRD_0_4_BRANCH
+/Makefile.in/1.4/Sat Aug 16 00:42:26 2003//TTHUNDERBIRD_0_4_BRANCH
+/README.html/1.2/Mon Apr  2 19:34:38 2001//TTHUNDERBIRD_0_4_BRANCH
+D/doc////
+D/embed////
+D/obsolete////
+D/public////
+D/src////

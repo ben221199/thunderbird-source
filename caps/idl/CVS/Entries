@@ -1,10 +1,7 @@
-/.cvsignore/1.1/Sun Jul 18 00:26:01 1999//TTHUNDERBIRD_0_3_BRANCH
-/Makefile.in/1.15/Fri Aug 22 03:05:47 2003//TTHUNDERBIRD_0_3_BRANCH
-/nsIAggregatePrincipal.idl/1.12/Fri Aug 22 03:04:12 2003//TTHUNDERBIRD_0_3_BRANCH
-/nsICertificatePrincipal.idl/1.19/Fri Aug 22 03:04:11 2003//TTHUNDERBIRD_0_3_BRANCH
-/nsICodebasePrincipal.idl/1.15/Fri Aug 22 03:04:08 2003//TTHUNDERBIRD_0_3_BRANCH
-/nsIPrincipal.idl/1.27/Fri Aug 22 03:05:48 2003//TTHUNDERBIRD_0_3_BRANCH
-/nsIScriptSecurityManager.idl/1.58/Fri Aug 22 03:05:48 2003//TTHUNDERBIRD_0_3_BRANCH
-/nsISecurityCheckedComponent.idl/1.5/Tue Sep 25 01:03:51 2001//TTHUNDERBIRD_0_3_BRANCH
-/nsISignatureVerifier.idl/1.6/Tue Sep 25 01:03:51 2001//TTHUNDERBIRD_0_3_BRANCH
+/.cvsignore/1.1/Sun Jul 18 00:26:01 1999//TTHUNDERBIRD_0_4_BRANCH
+/Makefile.in/1.16/Tue Oct 21 22:11:40 2003//TTHUNDERBIRD_0_4_BRANCH
+/nsIPrincipal.idl/1.29/Mon Nov  3 04:26:50 2003//TTHUNDERBIRD_0_4_BRANCH
+/nsIScriptSecurityManager.idl/1.60/Tue Oct 21 22:11:40 2003//TTHUNDERBIRD_0_4_BRANCH
+/nsISecurityCheckedComponent.idl/1.5/Tue Sep 25 01:03:51 2001//TTHUNDERBIRD_0_4_BRANCH
+/nsISignatureVerifier.idl/1.6/Tue Sep 25 01:03:51 2001//TTHUNDERBIRD_0_4_BRANCH
 D

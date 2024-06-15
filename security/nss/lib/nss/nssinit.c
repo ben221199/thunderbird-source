@@ -32,7 +32,7 @@
  * may use your version of this file under either the MPL or the
  * GPL.
  *
- # $Id: nssinit.c,v 1.62 2003/02/28 21:13:15 ian.mcgreer%sun.com Exp $
+ # $Id: nssinit.c,v 1.64 2003/05/30 23:31:22 wtc%netscape.com Exp $
  */
 
 #include <ctype.h>
@@ -47,7 +47,6 @@
 #include "secmod.h"
 #include "secoid.h"
 #include "nss.h"
-#include "secrng.h"
 #include "pk11func.h"
 #include "secerr.h"
 #include "nssbase.h"
@@ -78,11 +77,6 @@ nss_mktemp(char *path)
 	sizeof("noModDB")+sizeof("forceOpen")+sizeof("passwordRequired")+ \
 	sizeof ("optimizeSpace")
 #define NSS_DEFAULT_MOD_NAME "NSS Internal Module"
-#ifdef macintosh
-#define SECMOD_DB "Security Modules"
-#else
-#define SECMOD_DB "secmod.db"
-#endif
 
 static char *
 nss_makeFlags(PRBool readOnly, PRBool noCertDB, 

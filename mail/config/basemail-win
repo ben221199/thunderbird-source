@@ -39,6 +39,7 @@ components\msgMapi.dll
 components\mapihook.xpt
 components\nsSetDefaultMail.js
 components\nsUnsetDefaultMail.js
+components\offlineStartup.js
 
 components\mdn-service.js
 
@@ -100,6 +101,10 @@ components\myspell\*
 components\xpinstal.dll
 components\xpinstall.xpt
 
+; xmlextras (for RSS feeds and the like)
+components\xmlextras.dll
+components\xmlextras.xpt
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Base Package Files
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -111,7 +116,6 @@ plds4.dll
 
 ; Javascript:
 js3250.dll   
-jsj3250.dll
 components\jsd3250.dll  
 components\jsurl.xpt
 
@@ -250,6 +254,7 @@ components\necko_strconv.xpt
 components\necko_file.xpt
 components\necko_cache.xpt
 components\necko_cookie.xpt         
+components\nsProxyAutoConfig.js
             
 ; psm2
 ; Optional - only if you need HTTPS support

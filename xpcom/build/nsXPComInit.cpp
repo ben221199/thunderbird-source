@@ -307,7 +307,6 @@ static const nsModuleComponentInfo components[] = {
     COMPONENT(EVENTQUEUESERVICE, nsEventQueueServiceImplConstructor),
     COMPONENT(EVENTQUEUE, nsEventQueueImpl::Create),
     COMPONENT(THREAD, nsThread::Create),
-    COMPONENT(THREADPOOL, nsThreadPool::Create),
 
 #define NS_XPCOMPROXY_CID NS_PROXYEVENT_MANAGER_CID
     COMPONENT(XPCOMPROXY, nsProxyObjectManager::Create),
@@ -581,13 +580,22 @@ nsresult NS_COM NS_InitXPCOM2(nsIServiceManager* *result,
             nsCOMPtr<nsIFile> greDir;
             PRBool persistent = PR_TRUE;
 
-            appFileLocationProvider->GetFile(NS_GRE_COMPONENT_DIR, &persistent, getter_AddRefs(greDir));
+            appFileLocationProvider->GetFile(NS_GRE_DIR, &persistent, getter_AddRefs(greDir));
 
             if (greDir)
             {
 #ifdef DEBUG_dougt
 	printf("start - Registering GRE components\n");
 #endif
+                nsCOMPtr<nsIProperties> dirServiceP = do_QueryInterface(dirService);
+                NS_ENSURE_TRUE(dirServiceP, NS_NOINTERFACE);
+
+                rv = dirServiceP->Get(NS_GRE_COMPONENT_DIR, nsIFile::GetIID(), getter_AddRefs(greDir));
+                if (NS_FAILED(rv)) {
+                    NS_ERROR("Could not get GRE components directory!");
+                    return rv;
+                }
+
                 // If the GRE contains any loaders, we want to know about it so that we can cause another
                 // autoregistration of the applications component directory.
                 int loaderCount = nsComponentManagerImpl::gComponentManager->GetLoaderCount();

@@ -1,6 +1,9 @@
-/Makefile/1.32/Fri Feb  7 05:56:08 2003//TMOZILLA_1_5_BRANCH
-/makefile.win/1.12/Tue Mar  5 15:22:48 2002//TMOZILLA_1_5_BRANCH
-/manifest.mn/1.12/Wed Apr  2 23:22:57 2003//TMOZILLA_1_5_BRANCH
-/relnotes.txt/1.1/Fri Mar 31 20:13:40 2000//TMOZILLA_1_5_BRANCH
-/trademarks.txt/1.1/Fri Mar 31 20:13:40 2000//TMOZILLA_1_5_BRANCH
-D
+/Makefile/1.32/Fri Feb  7 05:56:08 2003//TTHUNDERBIRD_0_4_BRANCH
+/makefile.win/1.12/Tue Mar  5 15:22:48 2002//TTHUNDERBIRD_0_4_BRANCH
+/manifest.mn/1.12/Wed Apr  2 23:22:57 2003//TTHUNDERBIRD_0_4_BRANCH
+/relnotes.txt/1.1/Fri Mar 31 20:13:40 2000//TTHUNDERBIRD_0_4_BRANCH
+/trademarks.txt/1.1/Fri Mar 31 20:13:40 2000//TTHUNDERBIRD_0_4_BRANCH
+D/cmd////
+D/lib////
+D/pkg////
+D/tests////

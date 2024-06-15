@@ -11,10 +11,15 @@
 <!ENTITY newMessage.accesskey "M">
 <!ENTITY newCard.label "Address Book Card...">
 <!ENTITY newCard.accesskey "c">
-<!ENTITY attachFileCmd.label "Attach File...">
+<!ENTITY attachMenu.label "Attach">
+<!ENTITY attachMenu.accesskey "t">
+<!ENTITY attachFileCmd.label "File(s)...">
 <!ENTITY attachFileCmd.accesskey "F">
-<!ENTITY attachPageCmd.label "Attach Web Page...">
+<!ENTITY attachPageCmd.label "Web Page...">
 <!ENTITY attachPageCmd.accesskey "W">
+<!--LOCALIZATION NOTE attachVCardCmd.label Don't translate the term 'vCard' -->
+<!ENTITY attachVCardCmd.label "Personal Card (vCard)">
+<!ENTITY attachVCardCmd.accesskey "P">
 <!ENTITY closeCmd.label "Close">
 <!ENTITY closeCmd.key "W">
 <!ENTITY closeCmd.accesskey "c">
@@ -110,9 +115,15 @@
 <!ENTITY optionsMenu.accesskey "p">
 <!ENTITY checkSpellingCmd.label "Check Spelling...">
 <!ENTITY checkSpellingCmd.key "K">
+<!ENTITY checkSpellingCmd.key2 "VK_F7">
 <!ENTITY checkSpellingCmd.accesskey "S">
 <!ENTITY quoteCmd.label "Quote Message">
 <!ENTITY quoteCmd.accesskey "Q">
+
+<!--LOCALIZATION NOTE attachVCard.label Don't translate the term 'vCard' -->
+<!ENTITY attachVCard.label "Attach Personal Card (vCard)">
+<!ENTITY attachVCard.accesskey "v">
+
 <!ENTITY returnReceiptMenu.label "Return Receipt">
 <!ENTITY returnReceiptMenu.accesskey "t">
 <!ENTITY outputFormatMenu.label "Format">
@@ -156,6 +167,13 @@
 <!ENTITY preferencesCmd.key "O">
 <!ENTITY preferencesCmd.accesskey "O">
 
+<!--  Mac OS X Window Menu -->
+<!ENTITY minimizeWindow.key "m">
+<!ENTITY minimizeWindow.label "Minimize Window">
+<!ENTITY bringAllToFront.label "Bring All to Front">
+<!ENTITY zoomWindow.label "Zoom Window"> 
+<!ENTITY windowMenu.label "Window"> 
+
 <!-- Help Menu -->
 <!ENTITY helpMenu.label "Help">
 <!ENTITY helpMenu.accesskey "H"> 
@@ -179,9 +197,12 @@
 <!ENTITY sendlaterButton.tooltip "Send this message later"> 
 <!ENTITY quoteButton.tooltip "Quote the previous message"> 
 <!ENTITY addressButton.tooltip "Select a recipient from an Address Book"> 
-<!ENTITY attachButton.tooltip "Attach a file to this message"> 
+<!ENTITY attachButton.tooltip "Include an attachment"> 
 <!ENTITY saveButton.tooltip "Save this message"> 
 <!ENTITY throbber.tooltip "Go to the &vendorShortName; home page">
+<!ENTITY cutButton.tooltip              "Cut">
+<!ENTITY copyButton.tooltip             "Copy">
+<!ENTITY pasteButton.tooltip            "Paste">
 
 <!-- Headers -->
 <!ENTITY fromAddr.label "From:">
@@ -235,8 +256,10 @@
 <!ENTITY delete.accesskey "D">
 <!ENTITY selectAll.label "Select All">
 <!ENTITY selectAll.accesskey "A">
-<!ENTITY addAttachment.label "Add Attachment">
-<!ENTITY addAttachment.accesskey "t">
+<!ENTITY attachFile.label "Attach File(s)...">
+<!ENTITY attachFile.accesskey "F">
+<!ENTITY attachPage.label "Attach Web Page...">
+<!ENTITY attachPage.accesskey "W">
 
 <!-- Title for the address picker panel -->
 <!ENTITY addressesSidebarTitle.label "Contacts">

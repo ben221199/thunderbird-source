@@ -108,6 +108,7 @@ function quoteEnabling()
   var quotebox = document.getElementById("thenBox");
   var placebox = document.getElementById("placeBox");
   var quotecheck = document.getElementById("identity.autoQuote");
+
   if (quotecheck.checked && !quotecheck.disabled &&
       document.getElementById("identity.attachSignature").checked &&
       (document.getElementById("identity.replyOnTop").value == 1)) {

@@ -230,14 +230,14 @@ StyleRulesViewer.prototype =
     }
 
     this.mPropsBoxObject.beginUpdateBatch();
-    var style = this.getSelectedRule().style;
+    var style = this.getSelectedDec();
     style.setProperty(propName.value, propValue.value, "");
     this.mPropsBoxObject.endUpdateBatch();
   },
   
   cmdEditSelectedProperty: function()
   {
-    var style = this.getSelectedRule().style;
+    var style = this.getSelectedDec();
     var propname = this.getSelectedProp();
     var propval = style.getPropertyValue(propname);
     var priority = style.getPropertyPriority(propname);
@@ -261,7 +261,7 @@ StyleRulesViewer.prototype =
   cmdDeleteSelectedProperty: function()
   {
     this.mPropsBoxObject.beginUpdateBatch();
-    var style = this.getSelectedRule().style;
+    var style = this.getSelectedDec();
     var propname = this.getSelectedProp();
     style.removeProperty(propname);
     this.mPropsBoxObject.endUpdateBatch();
@@ -269,7 +269,7 @@ StyleRulesViewer.prototype =
 
   cmdToggleSelectedImportant: function()
   {
-    var style = this.getSelectedRule().style;
+    var style = this.getSelectedDec();
     var propname = this.getSelectedProp();
     var propval = style.getPropertyValue(propname);
 
@@ -285,23 +285,23 @@ StyleRulesViewer.prototype =
   ////////////////////////////////////////////////////////////////////////////
   //// Uncategorized
 
-  getSelectedRule: function()
+  getSelectedDec: function()
   {
     var idx = this.mRuleTree.currentIndex;
-    return this.mRuleView.getRuleAt(idx);
+    return this.mRuleView.getDecAt(idx);
   },
 
   getSelectedProp: function()
   {
-    var rule = this.getSelectedRule();
+    var dec = this.getSelectedDec();
     var idx = this.mPropsTree.currentIndex;
-    return rule.style.item(idx);
+    return dec.item(idx);
   },
   
   onRuleSelect: function()
   {
-    var rule = this.getSelectedRule();
-    this.mPropsView = new StylePropsView(rule);
+    var dec = this.getSelectedDec();
+    this.mPropsView = new StylePropsView(dec);
     this.mPropsBoxObject.view = this.mPropsView;
   },
 
@@ -311,28 +311,22 @@ StyleRulesViewer.prototype =
 
 };
 
-function doesQI(aObject, aInterface)
-{
-  if (!("QueryInterface" in aObject)) return false;
-  
-  try {
-    var result = aObject.QueryInterface(Components.interfaces[aInterface]);
-    return true;
-  } catch (ex) {
-    return false;
-  }
-}
-
 ////////////////////////////////////////////////////////////////////////////
 //// StyleRuleView
 
 function StyleRuleView(aObject)
 {
   this.mDOMUtils = XPCU.getService("@mozilla.org/inspector/dom-utils;1", "inIDOMUtils");
-  if (doesQI(aObject, "nsIDOMCSSStyleSheet")) {
+  if (aObject instanceof Components.interfaces.nsIDOMCSSStyleSheet) {
     this.mSheetRules = aObject.cssRules;
   } else {
     this.mRules = this.mDOMUtils.getCSSStyleRules(aObject);
+    if (aObject.hasAttribute("style")) {
+      try {
+        this.mStyleAttribute =
+          new XPCNativeWrapper(aObject, "style").style;
+      } catch (ex) {}
+    }
   }
 }
 
@@ -340,11 +334,13 @@ StyleRuleView.prototype = new inBaseTreeView();
 
 StyleRuleView.prototype.mSheetRules = null;
 StyleRuleView.prototype.mRules = null;
+StyleRuleView.prototype.mStyleAttribute = null;
 
 StyleRuleView.prototype.__defineGetter__("rowCount",
 function() 
 {
-  return this.mRules ? this.mRules.Count() : this.mSheetRules ? this.mSheetRules.length : 0;
+  return this.mRules ? this.mRules.Count() + (this.mStyleAttribute ? 1 : 0)
+                     : this.mSheetRules ? this.mSheetRules.length : 0;
 });
 
 StyleRuleView.prototype.getRuleAt = 
@@ -357,14 +353,48 @@ function(aRow)
     } catch (ex) {
       return null;
     }
-  } else
-    return this.mSheetRules[aRow];
+  }
+  return this.mSheetRules[aRow];
+}
+
+StyleRuleView.prototype.getDecAt = 
+function(aRow) 
+{
+  if (this.mRules) {
+    if (this.mStyleAttribute && aRow + 1 == this.rowCount) {
+      return this.mStyleAttribute;
+    }
+    var rule = this.mRules.GetElementAt(aRow);
+    try {
+      return XPCU.QI(rule, "nsIDOMCSSStyleRule").style;
+    } catch (ex) {
+      return null;
+    }
+  }
+  return this.mSheetRules[aRow].style;
 }
 
 StyleRuleView.prototype.getCellText = 
 function(aRow, aColId) 
 {
   if (aRow > this.rowCount) return "";
+
+  // special case for the style attribute
+  if (this.mStyleAttribute && aRow + 1 == this.rowCount) {
+    if (aColId == "olcRule") {
+      return 'style=""';
+    }
+
+    if (aColId == "olcFileURL") {
+      // we ought to be able to get to the URL...
+      return "";
+    }
+
+    if (aColId == "olcLine") {
+      return "";
+    }
+    return "";
+  }
   
   var rule = this.getRuleAt(aRow);
   if (!rule) return "";
@@ -395,9 +425,9 @@ function(aRow, aColId)
 ////////////////////////////////////////////////////////////////////////////
 //// StylePropsView
 
-function StylePropsView(aRule)
+function StylePropsView(aDec)
 {
-  this.mDec = aRule.style;
+  this.mDec = aDec;
 }
 
 StylePropsView.prototype = new inBaseTreeView();

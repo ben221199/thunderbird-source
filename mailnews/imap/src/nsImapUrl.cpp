@@ -862,15 +862,20 @@ NS_IMETHODIMP nsImapUrl::AddOnlineDirectoryIfNecessary(const char *onlineMailbox
       }
       if (ns && (PL_strlen(ns->GetPrefix()) != 0) && !onlineDirWithDelimiter.Equals(ns->GetPrefix()))
       {
-        // The namespace for this mailbox is the root ("").
-        // Prepend the online server directory
-        int finalLen = onlineDirWithDelimiter.Length() +
-          strlen(onlineMailboxName) + 1;
-        newOnlineName = (char *)PR_Malloc(finalLen);
-        if (newOnlineName)
+        // check that onlineMailboxName doesn't start with the namespace. If that's the case,
+        // we don't want to prepend the online dir.
+        if (PL_strncmp(onlineMailboxName, ns->GetPrefix(), PL_strlen(ns->GetPrefix())))
         {
-          PL_strcpy(newOnlineName, onlineDirWithDelimiter.get());
-          PL_strcat(newOnlineName, onlineMailboxName);
+          // The namespace for this mailbox is the root ("").
+          // Prepend the online server directory
+          int finalLen = onlineDirWithDelimiter.Length() +
+            strlen(onlineMailboxName) + 1;
+          newOnlineName = (char *)PR_Malloc(finalLen);
+          if (newOnlineName)
+          {
+            PL_strcpy(newOnlineName, onlineDirWithDelimiter.get());
+            PL_strcat(newOnlineName, onlineMailboxName);
+          }
         }
       }
       // just prepend the online server directory if it doesn't start with it already
@@ -1342,41 +1347,6 @@ NS_IMETHODIMP nsImapUrl::SetMsgLoadingFromCache(PRBool loadingFromCache)
 {
   nsresult rv = NS_OK;
   m_msgLoadingFromCache = loadingFromCache;
-  if (loadingFromCache)
-  {
-    nsCOMPtr<nsIMsgFolder> folder;
-    nsMsgKey key;
-
-    nsCAutoString folderURI;
-    rv = nsParseImapMessageURI(mURI.get(), folderURI, &key, nsnull);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    if (m_imapAction != nsImapMsgFetch) // only do this on msg fetch, i.e., if user is reading msg.
-      return rv;
-    rv = GetMsgFolder(getter_AddRefs(folder));
-
-    nsCOMPtr <nsIMsgDatabase> database;
-    if (folder && NS_SUCCEEDED(folder->GetMsgDatabase(nsnull, getter_AddRefs(database))) && database)
-    {
-      PRBool msgRead = PR_TRUE;
-      database->IsRead(key, &msgRead);
-      if (!msgRead)
-      {
-        nsCOMPtr<nsISupportsArray> messages;
-        rv = NS_NewISupportsArray(getter_AddRefs(messages));
-        if (NS_FAILED(rv)) 
-          return rv;
-        nsCOMPtr<nsIMsgDBHdr> message;
-        GetMsgDBHdrFromURI(mURI.get(), getter_AddRefs(message));
-        nsCOMPtr<nsISupports> msgSupport(do_QueryInterface(message, &rv));
-        if (msgSupport)
-        {
-          messages->AppendElement(msgSupport);
-          folder->MarkMessagesRead(messages, PR_TRUE);
-        }
-      }
-    }
-  }
   return rv;
 }
 

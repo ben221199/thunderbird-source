@@ -1,3 +1,10 @@
-/.cvsignore/1.1/Thu Feb  3 00:58:38 2000//TTHUNDERBIRD_0_3_BRANCH
-/Makefile.in/1.12/Thu Feb  6 20:54:52 2003//TTHUNDERBIRD_0_3_BRANCH
-D
+/.cvsignore/1.1/Thu Feb  3 00:58:38 2000//TTHUNDERBIRD_0_4_BRANCH
+/Makefile.in/1.12/Thu Feb  6 20:54:52 2003//TTHUNDERBIRD_0_4_BRANCH
+D/activex////
+D/build////
+D/chrome////
+D/cocoa////
+D/gtk////
+D/photon////
+D/powerplant////
+D/webBrowser////

@@ -32,6 +32,7 @@
 
 <script type="application/x-javascript" src="chrome://editor/content/editorUtilities.js"/>
 <script type="application/x-javascript" src="chrome://editor/content/ComposerCommands.js"/>
+<script type="application/x-javascript" src="chrome://communicator/content/XPCNativeWrapper.js"/>
 
   <keyset id="editorKeys">
     <!-- defined in globalOverlay -->
@@ -339,7 +340,7 @@
       <menuitem id="previewInBrowser" label="&previewCmd.label;"  accesskey="&filepreview.accesskey;" observes="cmd_preview"/>
       <!-- menuitem id="menu_SendPage" is merged here from mailEditorOverlay.xul,
            where "position" is assumed to be just after 'previewInBrowser'  -->
-      <!--Page setup gets overlaid here from platformGlobalOverlay.xul / -->
+      <menuitem id="printSetupMenuItem" accesskey="&fileprintsetup.accesskey;" label="&printSetupCmd.label;" command="cmd_printSetup"/>
       <menuitem id="printMenuItem" accesskey="&fileprint.accesskey;" key="printkb" observes="cmd_print" label="&printCmd.label;"/>
       <!-- The Exit/Quit item is merged from platformGlobalOverlay.xul -->
     </menupopup>
@@ -884,7 +885,6 @@
   <menuitem id="menu_pasteQuote" accesskey="&editpastequotation.accesskey;" observes="cmd_pasteQuote"/>
 
   <!-- DEBUG only -->
-  <!--
   <menu id="debugMenu" label="&debugMenu.label;">
   <menupopup>
     <menuitem label="&newEditorTestPage.label;" oncommand="window.openDialog('chrome://editor/content','_blank','chrome,all,dialog=no','chrome://editor/content/EditorInitPage.html')"/>
@@ -955,7 +955,6 @@
             oncommand="window.focus()"/>
   </menupopup>
   </menu>
-  -->
   <!-- end DEBUG only -->
 
 </overlay>

@@ -19,7 +19,7 @@
 # the Initial Developer. All Rights Reserved.
 #
 # Contributor(s):
-#  Brian Ryner <bryner@netscape.com>
+#  Brian Ryner <bryner@brianryner.com>
 #
 # Alternatively, the contents of this file may be used under the terms of
 # either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -104,22 +104,74 @@ RCFLAGS += -DMOZ_THUNDERBIRD --include-dir $(srcdir)
 endif
 endif
 
+ifeq ($(OS_ARCH),OS2)
+RESFILE=splashos2.res
+endif
+
 include $(topsrcdir)/config/rules.mk
+
+ifeq ($(OS_ARCH),WINNT)
+#
+# Control the default heap size.
+# This is the heap returned by GetProcessHeap().
+# As we use the CRT heap, the default size is too large and wastes VM.
+#
+# The default heap size is 1MB on Win32.
+# The heap will grow if need be.
+#
+# Set it to 256k.  See bug 127069.
+#
+ifndef GNU_CC
+LDFLAGS += /HEAP:0x40000
+endif
+# Get rid of console window
+ifdef GNU_CC
+LDFLAGS += -mwindows
+endif
+endif
 
 $(PROGRAM): $(DIST)/lib/$(LIB_PREFIX)xulapp_s.$(LIB_SUFFIX)
 
-DESKTOP_ICONS := \
-	abcardWindow.ico \
-	addressbookWindow.ico \
-	messengerWindow.ico \
-	msgcomposeWindow.ico \
+ifneq (,$(filter windows os2 gtk gtk2,$(MOZ_WIDGET_TOOLKIT)))
+ifneq (,$(filter windows os2,$(MOZ_WIDGET_TOOLKIT)))
+ICON_SUFFIX=.ico
+else
+ICON_SUFFIX=.xpm
+endif
+
+ifeq ($(MOZ_WIDGET_TOOLKIT),gtk2)
+ICON_DIR=gtk
+else
+ICON_DIR=$(MOZ_WIDGET_TOOLKIT)
+endif
+
+DESKTOP_ICONS = \
+	abcardWindow \
+	addressbookWindow \
+	messengerWindow \
+	msgcomposeWindow \
 	$(NULL) 
 
-libs:: $(DESKTOP_ICONS)
+ifeq ($(ICON_DIR),gtk)
+DESKTOP_ICONS_SMALL=$(patsubst %,%16,$(DESKTOP_ICONS))
+endif
+
+DESKTOP_ICON_FILES = $(addsuffix $(ICON_SUFFIX), $(DESKTOP_ICONS) $(DESKTOP_ICONS_SMALL))
+
+libs:: $(addprefix icons/$(ICON_DIR)/,$(DESKTOP_ICON_FILES))
 	$(INSTALL) $^ $(DIST)/bin/chrome/icons/default
 
-install:: $(DESKTOP_ICONS)
+install:: $(addprefix icons/$(ICON_DIR)/,$(DESKTOP_ICON_FILES))
 	$(SYSINSTALL) $(IFLAGS1) $^ $(DESTDIR)$(mozappdir)/chrome/icons/default
+endif
+
+ifeq ($(MOZ_WIDGET_TOOLKIT),gtk2)
+libs::
+	$(INSTALL) $(srcdir)/default.xpm $(DIST)/bin/chrome/icons
+
+install::
+	$(SYSINSTALL) $(IFLAGS1) $(srcdir)/default.xpm $(DESTDIR)$(mozappdir)/icons
+endif
 
 ifneq (,$(filter-out OS2 WINNT Darwin,$(OS_ARCH)))
 thunderbird:: mozilla.in Makefile.in Makefile $(DEPTH)/config/autoconf.mk
@@ -137,6 +189,22 @@ install:: thunderbird
 GARBAGE += thunderbird
 endif
 
+ifneq (,$(filter gtk gtk2,$(MOZ_WIDGET_TOOLKIT)))
+ICON_FILES	= \
+		$(srcdir)/mozicon50.xpm \
+		$(srcdir)/mozicon16.xpm \
+		$(NULL)
+
+libs::
+	$(INSTALL) $(ICON_FILES) $(DIST)/bin/icons
+
+install::
+	$(SYSINSTALL) $(IFLAGS1) $(ICON_FILES) $(DESTDIR)$(mozappdir)/icons
+endif
+
+libs::
+	touch $(DIST)/bin/.autoreg
+
 ifneq (,$(filter mac cocoa,$(MOZ_WIDGET_TOOLKIT)))
 
 ifdef MOZ_DEBUG
@@ -150,7 +218,7 @@ libs:: $(PROGRAM)
 	rsync -a $(srcdir)/macbuild/Contents $(DIST)/$(APP_NAME).app
 	rsync -aL $(DIST)/bin/ $(DIST)/$(APP_NAME).app/Contents/MacOS
 	cp -RL $(srcdir)/macbuild/mach.icns $(DIST)/$(APP_NAME).app/Contents/Resources/mach.icns
-	echo -n APPLMOZZ > $(DIST)/$(APP_NAME).app/Contents/PkgInfo
+	echo -n APPLMOZM > $(DIST)/$(APP_NAME).app/Contents/PkgInfo
 
 clean clobber::
 	rm -rf $(DIST)/$(APP_NAME).app

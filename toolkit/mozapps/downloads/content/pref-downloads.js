@@ -35,7 +35,7 @@
 # 
 # ***** END LICENSE BLOCK *****
 
-var _elementIDs = ["askOnSave", "downloadFolderList", "downloadFolder"];
+var _elementIDs = ["askOnSave", "downloadFolderList", "downloadFolder", "showWhenStarting", "closeWhenDone"];
 
 #if 0
   , "showWhenStarting", "closeWhenDone"
@@ -49,7 +49,7 @@ var gEditFileHandler, gRemoveFileHandler, gHandlersList;
 var downloadDirPref = "browser.download.dir"; 
 var downloadModePref = "browser.download.folderList";
 const nsILocalFile = Components.interfaces.nsILocalFile;
-    
+
 function selectFolder()
 { 
   const nsIFilePicker = Components.interfaces.nsIFilePicker;
@@ -57,6 +57,7 @@ function selectFolder()
                       .createInstance(nsIFilePicker);
   var pref = Components.classes["@mozilla.org/preferences-service;1"]
                       .getService(Components.interfaces.nsIPrefBranch);
+
   var bundle = document.getElementById("strings");
   var description = bundle.getString("selectDownloadDir");
   fp.init(window, description, nsIFilePicker.modeGetFolder);
@@ -159,6 +160,8 @@ function Startup()
   showFolder.parentNode.insertBefore(downloadFolderList, showFolder);
   downloadFolderList.hidden = false;
   
+  toggleDMPrefUI(document.getElementById("showWhenStarting"));
+  
   setTimeout("postStart()", 0);
 }
 
@@ -197,13 +200,15 @@ function updateSaveToFolder()
   // user chooses to have all files auto-download to a specific folder.
   if (data.askOnSave.value == "true") {
     var fileLocator = Components.classes["@mozilla.org/file/directory_service;1"].getService(Components.interfaces.nsIProperties);
-
+    var bundle = document.getElementById("strings");
+    var description = bundle.getString("myDownloads");
     var targetFolder = null;
+
     switch (parseInt(data.downloadFolderList.value)) {
     case 1:
       targetFolder = fileLocator.get(parent.hPrefWindow.getSpecialFolderKey("Documents"), 
                                      Components.interfaces.nsIFile);
-      targetFolder.append("My Downloads"); // XXXben localize
+      targetFolder.append(description);
       break;
     case 2:
       targetFolder = prefs.getComplexValue(downloadDirPref, 
@@ -287,7 +292,7 @@ function getSpecialFolderKey(aFolderType)
   return aFolderType == "Desktop" ? "DeskV" : "Pers";
 #endif
 #ifdef XP_MACOSX
-  return aFolderType == "Desktop" ? "Desk" : "UsrDocs";
+  return aFolderType == "Desktop" ? "UsrDsk" : "UsrDocs";
 #endif
   return "Home";
 }
@@ -297,8 +302,10 @@ function getDownloadsFolder(aFolder)
   var fileLocator = Components.classes["@mozilla.org/file/directory_service;1"].getService(Components.interfaces.nsIProperties);
 
   var dir = fileLocator.get(getSpecialFolderKey(aFolder), Components.interfaces.nsILocalFile);
+  var bundle = document.getElementById("strings");
+  var description = bundle.getString("myDownloads");
   if (aFolder != "Desktop")
-    dir.append("My Downloads"); // XXXben localize
+    dir.append(description);
     
   return dir;
 }
@@ -320,8 +327,8 @@ function fileHandlerListSelectionChanged(aEvent)
     
     for (var j = min.value; j <= max.value; ++j) {
       var item = cv.getItemAtIndex(j);
-      var editable = getLiteralValue(item.id, "editable") == "true";
-      var handleInternal = getLiteralValue(item.id, "handleInternal");
+      var editable = gHelperApps.getLiteralValue(item.id, "editable") == "true";
+      var handleInternal = gHelperApps.getLiteralValue(item.id, "handleInternal");
       
       if (!editable || handleInternal) 
         canRemove = false;
@@ -339,9 +346,10 @@ function removeFileHandler()
   const nsIPS = Components.interfaces.nsIPromptService;
   var ps = Components.classes["@mozilla.org/embedcomp/prompt-service;1"].getService(nsIPS);
   
-  // XXXben LOCALIZE!
-  var title = "Remove Actions";
-  var msg = "The selected Actions will no longer be performed when files of the affected types are downloaded. Are you sure you want to remove these Actions?";
+  var bundle = document.getElementById("strings");
+  var title = bundle.getString("removeActions");
+  var msg = bundle.getString("removeActionsMsg");
+
   var buttons = (nsIPS.BUTTON_TITLE_YES * nsIPS.BUTTON_POS_0) + (nsIPS.BUTTON_TITLE_NO * nsIPS.BUTTON_POS_1);
 
   if (ps.confirmEx(window, title, msg, buttons, "", "", "", "", { }) == 1) 
@@ -420,5 +428,13 @@ function editFileHandler()
 function showPlugins()
 {
   openDialog("chrome://browser/content/pref/plugins.xul", "", "modal=yes");
+}
+
+function toggleDMPrefUI(aCheckbox)
+{
+  if (aCheckbox.checked) 
+    document.getElementById("closeWhenDone").removeAttribute("disabled");
+  else
+    document.getElementById("closeWhenDone").setAttribute("disabled", "true");
 }
 

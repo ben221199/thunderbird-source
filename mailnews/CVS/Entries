@@ -1,5 +1,18 @@
-/.cvsignore/1.1/Mon Dec 21 22:16:01 1998//TTHUNDERBIRD_0_3_BRANCH
-/Makefile.in/1.38/Sun Apr 20 20:55:28 2003//TTHUNDERBIRD_0_3_BRANCH
-/jar.mn/1.67/Mon Sep  1 03:45:43 2003//TTHUNDERBIRD_0_3_BRANCH
-/makefiles/1.75/Sun Apr 20 20:55:29 2003//TTHUNDERBIRD_0_3_BRANCH
-D
+/.cvsignore/1.1/Mon Dec 21 22:16:01 1998//TTHUNDERBIRD_0_4_BRANCH
+/Makefile.in/1.38/Sun Apr 20 20:55:28 2003//TTHUNDERBIRD_0_4_BRANCH
+/jar.mn/1.67/Mon Sep  1 03:45:43 2003//TTHUNDERBIRD_0_4_BRANCH
+/makefiles/1.77/Tue Oct 21 22:13:52 2003//TTHUNDERBIRD_0_4_BRANCH
+D/addrbook////
+D/base////
+D/build////
+D/compose////
+D/db////
+D/extensions////
+D/imap////
+D/import////
+D/local////
+D/mapi////
+D/mime////
+D/movemail////
+D/news////
+D/public////

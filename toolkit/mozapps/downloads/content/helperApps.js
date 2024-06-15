@@ -201,8 +201,11 @@ HelperApps.prototype = {
       types = types.QueryInterface(Components.interfaces.nsIRDFLiteral);
       types = types.Value.split(", ");
       
-      var mimeSvc = Components.classes["@mozilla.org/mime;1"].getService(Components.interfaces.nsIMIMEService);
-      return mimeSvc.GetFromTypeAndExtension(types[0], "");
+      // We're using helper app service as our MIME Service here because the helper app service
+      // talks to OS Specific hooks that on some platforms (MacOS X) are required to get a 
+      // fully populated MIME Info object. Thus it is this object that we return. 
+      mimeSvc = Components.classes["@mozilla.org/uriloader/external-helper-app-service;1"].getService(Components.interfaces.nsIMIMEService);
+      return mimeSvc.getFromTypeAndExtension(types[0], null);
     }
     
     return null;
@@ -252,7 +255,6 @@ HelperApps.prototype = {
             }
           }     
           
-          // XXXben LOCALIZE!
           var openWith2 = bundle.getFormattedString("openWith", [typeInfo.defaultDescription]);
           return gRDF.GetLiteral(openWith2);
         }
@@ -456,34 +458,6 @@ HandlerOverride.prototype = {
   {
     this.changeMIMEStuff(MIME_URI(this.mimeType), "editable", aIsEditableString);
     return aIsEditableString;
-  },
-  
-  get largeIconURL()
-  {
-    var url = this.getLiteralForContentType(this.URI, "largeIcon");
-    if (!url)
-      url = "chrome://communicator/skin/content-large.gif";
-    return url;
-  },
-  
-  set largeIconURL(aLargeIconURL)
-  {
-    this.changeMIMEStuff(MIME_URI(this.mimeType), "largeIcon", aLargeIconURL);
-    return aLargeIconURL;
-  },
-  
-  get smallIconURL()
-  {
-    var url = this.getLiteralForContentType(this.URI, "smallIcon");
-    if (!url)
-      url = "chrome://communicator/skin/content-small.gif";
-    return url;
-  },
-  
-  set smallIconURL(aSmallIconURL)
-  {
-    this.changeMIMEStuff(MIME_URI(this.mimeType), "smallIcon", aSmallIconURL);
-    return aSmallIconURL;
   },
 
   get extensions()

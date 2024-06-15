@@ -717,14 +717,27 @@ var BookmarksToolbar =
 
   resizeFunc: function(event) 
   { 
+    if (!event) // timer callback case
+      BookmarksToolbarRDFObserver._overflowTimerInEffect = false;
+    else if (event.target != document)
+      return; // only interested in chrome resizes
+
     var buttons = document.getElementById("bookmarks-ptf");
     if (!buttons)
       return;
+
     var chevron = document.getElementById("bookmarks-chevron");
-    var width = buttons.boxObject.x + buttons.boxObject.width;
+    if (!buttons.firstChild) {
+      // No bookmarks means no chevron
+      chevron.collapsed = true;
+      return;
+    }
+
     chevron.collapsed = false;
     var chevronWidth = chevron.boxObject.width;
     chevron.collapsed = true;
+
+    var remainingWidth = buttons.boxObject.width;
     var overflowed = false;
 
     for (var i=0; i<buttons.childNodes.length; i++) {
@@ -733,7 +746,8 @@ var BookmarksToolbar =
       
       if (i == buttons.childNodes.length - 1)
         chevronWidth = 0;
-      if (button.boxObject.x + button.boxObject.width + chevronWidth > width) {
+      remainingWidth -= button.boxObject.width;
+      if (remainingWidth < chevronWidth) {
         overflowed = true;
         // This button doesn't fit. Show it in the menu. Hide it in the toolbar.
         if (!button.collapsed)
@@ -743,7 +757,6 @@ var BookmarksToolbar =
         }
       }
     }
-    BookmarksToolbarRDFObserver._overflowTimerInEffect = false;
   },
 
   // Fill in tooltips for personal toolbar
@@ -795,7 +808,7 @@ var BookmarksToolbarRDFObserver =
     if (this._overflowTimerInEffect)
       return;
     this._overflowTimerInEffect = true;
-    setTimeout(BookmarksToolbar.resizeFunc, 0);
+    setTimeout(BookmarksToolbar.resizeFunc, 0, null);
   },
 
   _overflowTimerInEffect: false,
@@ -806,6 +819,6 @@ var BookmarksToolbarRDFObserver =
     if (aSource.Value != "NC:PersonalToolbarFolder" || aProperty.Value == NC_NS+"LastModifiedDate")
       return;
     this._overflowTimerInEffect = true;
-    setTimeout(BookmarksToolbar.resizeFunc, 0);
+    setTimeout(BookmarksToolbar.resizeFunc, 0, null);
   }
 }

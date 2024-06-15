@@ -35,12 +35,16 @@
 #define PKINSS3HACK_H
 
 #ifdef DEBUG
-static const char PKINSS3HACK_CVS_ID[] = "@(#) $RCSfile: pki3hack.h,v $ $Revision: 1.13 $ $Date: 2003/01/08 21:48:43 $ $Name:  $";
+static const char PKINSS3HACK_CVS_ID[] = "@(#) $RCSfile: pki3hack.h,v $ $Revision: 1.15 $ $Date: 2003/09/12 19:38:04 $ $Name:  $";
 #endif /* DEBUG */
 
 #ifndef NSSDEVT_H
 #include "nssdevt.h"
 #endif /* NSSDEVT_H */
+
+#ifndef DEVT_H
+#include "devt.h"
+#endif /* DEVT_H */
 
 #ifndef NSSPKIT_H
 #include "nsspkit.h"
@@ -107,7 +111,12 @@ nssPKIX509_GetIssuerAndSerialFromDER(NSSDER *der, NSSArena *arena,
                                      NSSDER *issuer, NSSDER *serial);
 
 NSS_EXTERN char *
-STAN_GetCERTCertificateName(NSSCertificate *c);
+STAN_GetCERTCertificateName(PLArenaPool *arenaOpt, NSSCertificate *c);
+
+NSS_EXTERN char *
+STAN_GetCERTCertificateNameForInstance(PLArenaPool *arenaOpt,
+                                       NSSCertificate *c,
+                                       nssCryptokiInstance *instance);
 
 /* exposing this */
 NSS_EXTERN NSSCertificate *

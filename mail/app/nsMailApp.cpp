@@ -20,7 +20,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- *  Brian Ryner <bryner@netscape.com>
+ *  Brian Ryner <bryner@brianryner.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -55,7 +55,7 @@ int main(int argc, char* argv[])
 char* splash_xpm[] = {0};
 #endif
 
-#ifdef XP_WIN
+#if defined( XP_WIN ) && defined( WIN32 ) && !defined(__GNUC__)
 // We need WinMain in order to not be a console app.  This function is
 // unused if we are a console application.
 int WINAPI WinMain( HINSTANCE, HINSTANCE, LPSTR args, int )

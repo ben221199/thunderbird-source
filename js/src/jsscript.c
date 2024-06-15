@@ -1,36 +1,41 @@
 /* -*- Mode: C; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
  *
- * The contents of this file are subject to the Netscape Public
- * License Version 1.1 (the "License"); you may not use this file
- * except in compliance with the License. You may obtain a copy of
- * the License at http://www.mozilla.org/NPL/
+ * ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * Software distributed under the License is distributed on an "AS
- * IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
- * implied. See the License for the specific language governing
- * rights and limitations under the License.
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
+ *
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+ * for the specific language governing rights and limitations under the
+ * License.
  *
  * The Original Code is Mozilla Communicator client code, released
  * March 31, 1998.
  *
- * The Initial Developer of the Original Code is Netscape
- * Communications Corporation.  Portions created by Netscape are
- * Copyright (C) 1998 Netscape Communications Corporation. All
- * Rights Reserved.
+ * The Initial Developer of the Original Code is
+ * Netscape Communications Corporation.
+ * Portions created by the Initial Developer are Copyright (C) 1998
+ * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
  *
- * Alternatively, the contents of this file may be used under the
- * terms of the GNU Public License (the "GPL"), in which case the
- * provisions of the GPL are applicable instead of those above.
- * If you wish to allow use of your version of this file only
- * under the terms of the GPL and not to allow others to use your
- * version of this file under the NPL, indicate your decision by
- * deleting the provisions above and replace them with the notice
- * and other provisions required by the GPL.  If you do not delete
- * the provisions above, a recipient may use your version of this
- * file under either the NPL or the GPL.
- */
+ * Alternatively, the contents of this file may be used under the terms of
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK ***** */
 
 /*
  * JS script operations.
@@ -174,8 +179,8 @@ script_compile(JSContext *cx, JSObject *obj, uintN argc, jsval *argv,
 
     /* Compile using the caller's scope chain, which js_Invoke passes to fp. */
     fp = cx->fp;
-    caller = fp->down;
-    JS_ASSERT(fp->scopeChain == caller->scopeChain);
+    caller = JS_GetScriptedCaller(cx, fp);
+    JS_ASSERT(!caller || fp->scopeChain == caller->scopeChain);
 
     scopeobj = NULL;
     if (argc >= 2) {
@@ -183,18 +188,21 @@ script_compile(JSContext *cx, JSObject *obj, uintN argc, jsval *argv,
             return JS_FALSE;
         argv[1] = OBJECT_TO_JSVAL(scopeobj);
     }
-    if (!scopeobj)
-        scopeobj = caller->scopeChain;
+    if (caller) {
+        if (!scopeobj)
+            scopeobj = caller->scopeChain;
 
-    if (caller->script) {
         file = caller->script->filename;
         line = js_PCToLineNumber(cx, caller->script, caller->pc);
-        principals = caller->script->principals;
+        principals = JS_EvalFramePrincipals(cx, fp, caller);
     } else {
         file = NULL;
         line = 0;
         principals = NULL;
     }
+
+    /* XXXbe set only for the compiler, which does not currently test it */
+    fp->flags |= JSFRAME_EVAL;
 
     /* Compile the new script using the caller's scope chain, a la eval(). */
     script = JS_CompileUCScriptForPrincipals(cx, scopeobj, principals,
@@ -242,13 +250,10 @@ script_exec(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 
     /* Emulate eval() by using caller's this, scope chain, and sharp array. */
     fp = cx->fp;
-    caller = fp->down;
-    if (!scopeobj)
-      scopeobj = caller->scopeChain;
-    fp->thisp = caller->thisp;
-    JS_ASSERT(fp->scopeChain == caller->scopeChain);
-    fp->sharpArray = caller->sharpArray;
-    return js_Execute(cx, scopeobj, script, fp, 0, rval);
+    caller = JS_GetScriptedCaller(cx, fp);
+    if (caller && !scopeobj)
+        scopeobj = caller->scopeChain;
+    return js_Execute(cx, scopeobj, script, caller, JSFRAME_EVAL, rval);
 }
 
 #if JS_HAS_XDR
@@ -563,11 +568,11 @@ js_XDRScript(JSXDRState *xdr, JSScript **scriptp, JSBool *hasMagic)
     return JS_FALSE;
 }
 
-#ifndef MOZILLA_CLIENT
+#if JS_HAS_XDR_FREEZE_THAW
 /*
  * These cannot be exposed to web content, and chrome does not need them, so
- * we take them out of the Mozilla client altogether.  Script.thaw is a hole
- * wide enough that you could hack your own native function and call it!
+ * we take them out of the Mozilla client altogether.  Fortunately, there is
+ * no way to serialize a native function (see fun_xdrObject in jsfun.c).
  */
 
 static JSBool
@@ -718,7 +723,7 @@ out:
 
 static const char js_thaw_str[] = "thaw";
 
-#endif /* !defined MOZILLA_CLIENT */
+#endif /* JS_HAS_XDR_FREEZE_THAW */
 #endif /* JS_HAS_XDR */
 
 static JSFunctionSpec script_methods[] = {
@@ -728,10 +733,10 @@ static JSFunctionSpec script_methods[] = {
     {js_toString_str,   script_toString,        0,0,0},
     {"compile",         script_compile,         2,0,0},
     {"exec",            script_exec,            1,0,0},
-#if JS_HAS_XDR && !defined MOZILLA_CLIENT
+#if JS_HAS_XDR_FREEZE_THAW
     {"freeze",          script_freeze,          0,0,0},
     {js_thaw_str,       script_thaw,            1,0,0},
-#endif /* JS_HAS_XDR */
+#endif /* JS_HAS_XDR_FREEZE_THAW */
     {0,0,0,0,0}
 };
 
@@ -791,7 +796,7 @@ Script(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
     return script_compile(cx, obj, argc, argv, rval);
 }
 
-#if JS_HAS_XDR && !defined MOZILLA_CLIENT
+#if JS_HAS_XDR_FREEZE_THAW
 
 static JSBool
 script_static_thaw(JSContext *cx, JSObject *obj, uintN argc, jsval *argv,
@@ -811,11 +816,11 @@ static JSFunctionSpec script_static_methods[] = {
     {0,0,0,0,0}
 };
 
-#else  /* !JS_HAS_XDR || defined MOZILLA_CLIENT */
+#else  /* !JS_HAS_XDR_FREEZE_THAW */
 
 #define script_static_methods   NULL
 
-#endif /* !JS_HAS_XDR || defined MOZILLA_CLIENT */
+#endif /* !JS_HAS_XDR_FREEZE_THAW */
 
 JSObject *
 js_InitScriptClass(JSContext *cx, JSObject *obj)
@@ -859,8 +864,9 @@ typedef struct ScriptFilenameEntry {
 JS_STATIC_DLL_CALLBACK(JSHashEntry *)
 js_alloc_entry(void *priv, const void *key)
 {
-    return (JSHashEntry *)
-           malloc(offsetof(ScriptFilenameEntry, filename) + strlen(key) + 1);
+    size_t nbytes = offsetof(ScriptFilenameEntry, filename) + strlen(key) + 1;
+
+    return (JSHashEntry *) malloc(JS_MAX(nbytes, sizeof(JSHashEntry)));
 }
 
 JS_STATIC_DLL_CALLBACK(void)
@@ -927,7 +933,6 @@ js_SaveScriptFilename(JSContext *cx, const char *filename)
     JSHashNumber hash;
     JSHashEntry **hep;
     ScriptFilenameEntry *sfe;
-    const char *result;
 
     JS_ACQUIRE_LOCK(script_filename_table_lock);
     table = script_filename_table;
@@ -939,6 +944,7 @@ js_SaveScriptFilename(JSContext *cx, const char *filename)
         sft_savings += strlen(sfe->filename);
 #endif
     if (!sfe) {
+        /* XXX this assumes NULL puns as JS_FALSE in the mark byte... */
         sfe = (ScriptFilenameEntry *)
               JS_HashTableRawAdd(table, hep, hash, filename, NULL);
         if (sfe)
@@ -946,9 +952,8 @@ js_SaveScriptFilename(JSContext *cx, const char *filename)
         else
             JS_ReportOutOfMemory(cx);
     }
-    result = sfe ? sfe->filename : NULL;
     JS_RELEASE_LOCK(script_filename_table_lock);
-    return result;
+    return sfe ? sfe->filename : NULL;
 }
 
 void

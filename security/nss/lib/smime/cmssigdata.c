@@ -34,7 +34,7 @@
 /*
  * CMS signedData methods.
  *
- * $Id: cmssigdata.c,v 1.17.2.1 2003/08/14 20:12:28 wtc%netscape.com Exp $
+ * $Id: cmssigdata.c,v 1.18 2003/07/31 00:16:27 nelsonb%netscape.com Exp $
  */
 
 #include "cmslocal.h"

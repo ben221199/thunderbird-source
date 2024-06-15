@@ -53,7 +53,7 @@ var sNameProperty = null;
    in the other js file.
 */
 var msgWindow = Components.classes["@mozilla.org/messenger/msgwindow;1"].createInstance();
-
+msgWindow = msgWindow.QueryInterface(Components.interfaces.nsIMsgWindow);
 
 /**
  * Global variables, need to be re-initialized every time mostly because we need to release them when the window close
@@ -94,6 +94,7 @@ var gCharsetConvertManager;
 
 var gLastWindowToHaveFocus;
 var gReceiptOptionChanged;
+var gAttachVCardOptionChanged;
 
 var gMailSession;
 
@@ -138,6 +139,7 @@ function InitializeGlobalVariables()
 
   gLastWindowToHaveFocus = null;
   gReceiptOptionChanged = false;
+  gAttachVCardOptionChanged = false;
 }
 InitializeGlobalVariables();
 
@@ -593,6 +595,7 @@ function updateComposeItems() {
 }
 
 function updateEditItems() {
+  goUpdateCommand("cmd_pasteNoFormatting");
   goUpdateCommand("cmd_pasteQuote");
   goUpdateCommand("cmd_delete");
   goUpdateCommand("cmd_selectAll");
@@ -1086,7 +1089,7 @@ function GetArgs(originalData)
       args[argname] = argvalue.substring(1, argvalue.length - 1);
     else
       try {
-        args[argname] = unescape(argvalue);
+        args[argname] = decodeURIComponent(argvalue);
       } catch (e) {args[argname] = argvalue;}
     dump("[" + argname + "=" + args[argname] + "]\n");
   }
@@ -1240,6 +1243,8 @@ function ComposeStartup(recycled, aParams)
       }
       document.getElementById("returnReceiptMenu").setAttribute('checked', 
                                          gMsgCompose.compFields.returnReceipt);
+      document.getElementById("cmd_attachVCard").setAttribute('checked', 
+                                         gMsgCompose.compFields.attachVCard);
 
       // If recycle, editor is already created
       if (!recycled) 
@@ -1273,9 +1278,10 @@ function ComposeStartup(recycled, aParams)
           {
             var cleanBody;
             try {
-              cleanBody = unescape(body);
+              cleanBody = decodeURI(body);
             } catch(e) { cleanBody = body;}
 
+            // XXX : need html-escaping here
             msgCompFields.body = "<BR><A HREF=\"" + body + "\">" + cleanBody + "</A><BR>";
           }
           else
@@ -1704,7 +1710,9 @@ function GenericSendMessage( msgType )
           progress.registerListener(progressListener);
           gSendOrSaveOperationInProgress = true;
         }
-        gMsgCompose.SendMsg(msgType, getCurrentIdentity(), progress);
+        msgWindow.SetDOMWindow(window);
+
+        gMsgCompose.SendMsg(msgType, getCurrentIdentity(), msgWindow, progress);
       }
       catch (ex) {
         dump("failed to SendMsg: " + ex + "\n");
@@ -1771,6 +1779,9 @@ function Save()
 function SaveAsFile(saveAs)
 {
   dump("SaveAsFile from XUL\n");
+  var subject = document.getElementById('msgSubject').value; 
+  GetCurrentEditor().setDocumentTitle(subject); 
+
   if (gMsgCompose.bodyConvertible() == nsIMsgCompConvertible.Plain)
     SaveDocument(saveAs, false, "text/plain");
   else
@@ -1896,6 +1907,17 @@ function ToggleReturnReceipt(target)
         msgCompFields.returnReceipt = ! msgCompFields.returnReceipt;
         target.setAttribute('checked', msgCompFields.returnReceipt);
         gReceiptOptionChanged = true;
+    }
+}
+
+function ToggleAttachVCard(target)
+{
+    var msgCompFields = gMsgCompose.compFields;
+    if (msgCompFields)
+    {
+        msgCompFields.attachVCard = ! msgCompFields.attachVCard;
+        target.setAttribute('checked', msgCompFields.attachVCard);
+        gAttachVCardOptionChanged = true;
     }
 }
 
@@ -2212,7 +2234,7 @@ function AddAttachment(attachment)
     item.setAttribute("label", attachment.name);    //use for display only
     item.attachment = attachment;   //full attachment object stored here
     try {
-      item.setAttribute("tooltiptext", unescape(attachment.url));
+      item.setAttribute("tooltiptext", decodeURI(attachment.url));
     } catch(e) {
       item.setAttribute("tooltiptext", attachment.url);
     }
@@ -2263,6 +2285,9 @@ function AttachPage()
         var attachment = Components.classes["@mozilla.org/messengercompose/attachment;1"].createInstance(Components.interfaces.nsIMsgAttachment);
         attachment.url = result.value;
         AddAttachment(attachment);
+        var attachmentBox = document.getElementById("attachments-box");
+        attachmentBox.hidden = false;
+        document.getElementById("attachmentbucket-sizer").hidden=false;
       }
    }
 }
@@ -2345,15 +2370,10 @@ function FocusOnFirstAttachment()
 
 function AttachmentElementHasItems()
 {
-  var element = document.getElementById("bucketList");
+  var element = document.getElementById("attachmentBucket");
 
   return element ? element.childNodes.length : 0;
 }  
-
-function AttachVCard()
-{
-  dump("AttachVCard()\n");
-}
 
 function DetermineHTMLAction(convertible)
 {
@@ -2469,6 +2489,7 @@ function LoadIdentity(startup)
           var prevReplyTo = prevIdentity.replyTo;
           var prevBcc = "";
           var prevReceipt = prevIdentity.requestReturnReceipt;
+          var prevAttachVCard = prevIdentity.attachVCard;
 
           if (prevIdentity.doBcc)
             prevBcc += prevIdentity.doBccList;
@@ -2476,6 +2497,8 @@ function LoadIdentity(startup)
           var newReplyTo = gCurrentIdentity.replyTo;
           var newBcc = "";
           var newReceipt = gCurrentIdentity.requestReturnReceipt;
+          var newAttachVCard = gCurrentIdentity.attachVCard;
+
           if (gCurrentIdentity.doBcc)
             newBcc += gCurrentIdentity.doBccList;          
 
@@ -2490,6 +2513,13 @@ function LoadIdentity(startup)
             document.getElementById("returnReceiptMenu").setAttribute('checked',msgCompFields.returnReceipt);
           }
 
+          if (!gAttachVCardOptionChanged &&
+              prevAttachVCard == msgCompFields.attachVCard &&
+              prevAttachVCard != newAttachVCard)
+          {
+            msgCompFields.attachVCard = newAttachVCard;
+            document.getElementById("cmd_attachVCard").setAttribute('checked',msgCompFields.attachVCard);
+          }
 
           if (newReplyTo != prevReplyTo)
           {
@@ -2596,18 +2626,10 @@ function subjectKeyPress(event)
   }
 }
 
-function editorKeyPress(event)
-{
-  if (event.keyCode == 9) {
-    if (event.shiftKey && !event.getPreventDefault()) {
-      document.getElementById('msgSubject').focus();
-      event.preventDefault();
-    }
-  }
-}
-
 function AttachmentBucketClicked(event)
 {
+  event.currentTarget.focus();
+
   if (event.button != 0)
     return;
 

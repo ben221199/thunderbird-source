@@ -43,7 +43,7 @@ VPATH   = @srcdir@
 include $(DEPTH)/config/autoconf.mk
 
 ifdef MOZ_THUNDERBIRD
-DIRS = console filepicker
+DIRS = console filepicker printing
 else
 DIRS = 		\
 	autocomplete \
@@ -55,8 +55,14 @@ DIRS = 		\
 	satchel \
 	viewconfig \
 	viewsource \
-	build \
 	$(NULL)
+
+ifeq ($(OS_ARCH),WINNT)
+DIRS += alerts
+endif
+
+DIRS += downloads build
+
 endif
 
 

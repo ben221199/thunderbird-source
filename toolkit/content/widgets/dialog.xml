@@ -11,7 +11,7 @@
     </resources>
   </binding>
   
-  <binding id="dialog" extends="chrome://global/content/widgets/dialog.xml#dialog-base">
+  <binding id="dialog" extends="chrome://global/content/bindings/dialog.xml#dialog-base">
     <content>
       <xul:vbox class="box-inherit dialog-content-box" flex="1">
         <children/>
@@ -129,7 +129,7 @@
 
       <constructor>
       <![CDATA[
-        this._configureButtons(this.getAttribute("buttons"));
+        this._configureButtons(this.buttons);
 
         // listen for when window is closed via native close buttons
         window.addEventListener("close", this._closeHandler, false);
@@ -170,7 +170,7 @@
             var stringBundleService = Components.classes["@mozilla.org/intl/stringbundle;1"]
                                   .getService(Components.interfaces.nsIStringBundleService);
             var bundleURL = "chrome://global/locale/dialog.properties";
-            this._mStrBundle = stringBundleService.createBundle(bundleURL, localeService.GetApplicationLocale());
+            this._mStrBundle = stringBundleService.createBundle(bundleURL, localeService.getApplicationLocale());
           }
           return this._mStrBundle;
         ]]></getter>
@@ -228,12 +228,8 @@
               shown[list[i].replace(/ /g, "")] = true;
             
             // hide/show the buttons we want
-            for (dlgtype in shown) {
-              if (shown[dlgtype])
-                buttons[dlgtype].hidden = false;
-              else
-                buttons[dlgtype].hidden = true;
-            }
+            for (dlgtype in buttons) 
+              buttons[dlgtype].hidden = !shown[dlgtype];
           }
         ]]>
         </body>
@@ -344,10 +340,9 @@
 
   </binding>
 
-  <binding id="dialogheader" extends="chrome://global/content/widgets/dialog.xml#dialog-base">
+  <binding id="dialogheader" extends="chrome://global/content/bindings/dialog.xml#dialog-base">
     <content>
-      <xul:label class="dialogheader-title" xbl:inherits="value=title"/>
-      <xul:spacer flex="1"/>
+      <xul:label class="dialogheader-title" xbl:inherits="value=title,crop" crop="right" flex="1"/>
       <xul:label class="dialogheader-description" xbl:inherits="value=description"/>
     </content>
   </binding>

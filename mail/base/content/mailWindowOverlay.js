@@ -20,7 +20,7 @@
 # Contributors: timeless
 #               slucy@objectivesw.co.uk
 #               Håkan Waara <hwaara@chello.se>
-#               Jan Varga <varga@utcru.sk>
+#               Jan Varga <varga@nixcorp.com>
 #               Seth Spitzer <sspitzer@netscape.com>
 #               David Bienvenu <bienvenu@netscape.com>
 
@@ -43,6 +43,7 @@ var gWindowManagerInterface;
 var gPrefs = Components.classes["@mozilla.org/preferences-service;1"].getService(Components.interfaces.nsIPrefBranch);
 var gPrintSettings = null;
 var gWindowReuse  = 0;
+var gMarkViewedMessageAsReadTimer = null; // if the user has configured the app to mark a message as read if it is viewed for more than n seconds
 
 var gTimelineService = null;
 var gTimelineEnabled = ("@mozilla.org;timeline-service;1" in Components.classes);
@@ -244,21 +245,10 @@ function InitViewSortByMenu()
     setSortByMenuItemCheckState("sortByUnreadMenuitem", (sortType == nsMsgViewSortType.byUnread));
     setSortByMenuItemCheckState("sortByLabelMenuitem", (sortType == nsMsgViewSortType.byLabel));
     setSortByMenuItemCheckState("sortByJunkStatusMenuitem", (sortType == nsMsgViewSortType.byJunkStatus));
- 
-    // the Sender / Recipient menu is dynamic
-    setSortByMenuItemCheckState("sortBySenderOrRecipientMenuitem", (sortType == nsMsgViewSortType.byAuthor) || (sortType == nsMsgViewSortType.byRecipient));
-    var senderOrRecipientMenuitem = document.getElementById("sortBySenderOrRecipientMenuitem");
-    if (senderOrRecipientMenuitem) {
-    	var currentFolder = gDBView.msgFolder;
-	if (IsSpecialFolder(currentFolder, MSG_FOLDER_FLAG_SENTMAIL | MSG_FOLDER_FLAG_DRAFTS | MSG_FOLDER_FLAG_QUEUE)) {
-	  senderOrRecipientMenuitem.setAttribute('label',gMessengerBundle.getString('recipientColumnHeader'));
-	  senderOrRecipientMenuitem.setAttribute('accesskey',gMessengerBundle.getString('recipientAccessKey'));
-        }
-        else {
-	  senderOrRecipientMenuitem.setAttribute('label',gMessengerBundle.getString('senderColumnHeader'));
-	  senderOrRecipientMenuitem.setAttribute('accesskey',gMessengerBundle.getString('senderAccessKey'));
-	}
-    }
+    setSortByMenuItemCheckState("sortBySenderMenuitem", (sortType == nsMsgViewSortType.byAuthor));
+    setSortByMenuItemCheckState("sortByRecipientMenuitem", (sortType == nsMsgViewSortType.byRecipient)); 
+    setSortByMenuItemCheckState("sortByAttachmentsMenuitem", (sortType == nsMsgViewSortType.byAttachments)); 	
+
     var sortOrder = gDBView.sortOrder;
 
     setSortByMenuItemCheckState("sortAscending", (sortOrder == nsMsgViewSortOrder.ascending));
@@ -425,6 +415,23 @@ function InitMessageMenu()
   var copyMenu = document.getElementById("copyMenu");
   if(copyMenu)
       copyMenu.setAttribute("disabled", !aMessage);
+
+  // Disable Forward as/Label menu items if no message is selected
+  var forwardAsMenu = document.getElementById("forwardAsMenu");
+  if(forwardAsMenu)
+      forwardAsMenu.setAttribute("disabled", !aMessage);
+
+  var labelMenu = document.getElementById("labelMenu");
+  if(labelMenu)
+      labelMenu.setAttribute("disabled", !aMessage);
+
+  // Disable mark menu when we're not in a folder
+  var markMenu = document.getElementById("markMenu");
+  if(markMenu)
+  {
+      var msgFolder = GetLoadedMsgFolder();
+      markMenu.setAttribute("disabled", !msgFolder);
+  }
 
   document.commandDispatcher.updateCommands('create-menu-message');
 }
@@ -1690,7 +1697,6 @@ function SetUpToolbarButtons(uri)
     // pop, and news.  for now, just tweak it based on if it is news or not.
     var forNews = isNewsURI(uri);
 
-    if(!gMarkButton) gMarkButton = document.getElementById("button-mark");
     if(!gDeleteButton) gDeleteButton = document.getElementById("button-delete");
 
     var buttonToHide = null;
@@ -1698,10 +1704,8 @@ function SetUpToolbarButtons(uri)
 
     if (forNews) {
         buttonToHide = gDeleteButton;
-        buttonToShow = gMarkButton;
     }
     else {
-        buttonToHide = gMarkButton;
         buttonToShow = gDeleteButton;
     }
 
@@ -1928,7 +1932,7 @@ function GetMessagesForAllAuthenticatedAccounts()
       var currentServer = allServers.GetElementAt(i).QueryInterface(Components.interfaces.nsIMsgIncomingServer);
       var protocolinfo = Components.classes["@mozilla.org/messenger/protocol/info;1?type=" +
                            currentServer.type].getService(Components.interfaces.nsIMsgProtocolInfo);
-      if (protocolinfo.canGetMessages && currentServer.isAuthenticated) {
+      if (protocolinfo.canGetMessages && !currentServer.passwordPromptRequired) {
         // Get new messages now
         GetMessagesForInboxOnServer(currentServer);
       }
@@ -2069,6 +2073,36 @@ function SetUpJunkBar(aMsgHdr)
   goUpdateCommand('button_junk');
 }
 
+function MarkCurrentMessageAsRead()
+{
+  var msgURI = GetLoadedMessage();
+  
+  if (msgURI)
+  {
+    var msgService = messenger.messageServiceFromURI(msgURI);
+    if (msgService)
+    {
+      var msgHdr = msgService.messageURIToMsgHdr(msgURI);
+
+      if (msgHdr)
+      {    
+        var headers = Components.classes["@mozilla.org/supports-array;1"].createInstance( Components.interfaces.nsISupportsArray );
+        headers.AppendElement( msgHdr );
+        msgHdr.folder.markMessagesRead(headers, true);
+      }
+    }
+  }
+}
+
+function ClearPendingReadTimer()
+{
+  if (gMarkViewedMessageAsReadTimer)
+  {
+    clearTimeout(gMarkViewedMessageAsReadTimer);
+    gMarkViewedMessageAsReadTimer = null;
+  }
+}
+
 function OnMsgLoaded(aUrl)
 {
     if (!aUrl)
@@ -2076,6 +2110,7 @@ function OnMsgLoaded(aUrl)
 
     var folder = aUrl.folder;
     var msgURI = GetLoadedMessage();
+    var msgHdr = null;
     
     if (!folder || !msgURI)
       return;
@@ -2084,8 +2119,22 @@ function OnMsgLoaded(aUrl)
       SetUpJunkBar(null);
     else
     {
-      var msgHdr = messenger.messageServiceFromURI(msgURI).messageURIToMsgHdr(msgURI);
+      msgHdr = messenger.messageServiceFromURI(msgURI).messageURIToMsgHdr(msgURI);
       SetUpJunkBar(msgHdr);
+    }
+
+    // we just finished loading a message. set a timer to actually mark the message is read after n seconds
+    // where n can be configured by the user.
+
+    var markReadOnADelay = gPrefs.getBoolPref("mailnews.mark_message_read.delay");
+
+    if (msgHdr && !msgHdr.isRead)
+    {
+      var wintype = document.firstChild.getAttribute('windowtype');
+      if (markReadOnADelay && wintype == "mail:3pane") // only use the timer if viewing using the 3-pane preview pane and the user has set the pref
+        gMarkViewedMessageAsReadTimer = setTimeout(MarkCurrentMessageAsRead, gPrefs.getIntPref("mailnews.mark_message_read.delay.interval") * 1000);
+      else
+        MarkCurrentMessageAsRead();
     }
 
     // See if MDN was requested but has not been sent.
@@ -2150,8 +2199,17 @@ function HandleMDNResponse(aUrl)
 	if (IsNewsMessage(msgURI))
 		return;
 
+  // if the message is marked as junk, do NOT attempt to process a return receipt
+  // in order to better protect the user
+  if (SelectedMessagesAreJunk())
+    return;
+
   var msgHdr = messenger.messageServiceFromURI(msgURI).messageURIToMsgHdr(msgURI);
-  var mimeHdr = aUrl.mimeHeaders;
+  var mimeHdr;
+  
+  try {
+    mimeHdr = aUrl.mimeHeaders;  
+  } catch (ex) { return 0;}
     
   // If we didn't get the message id when we downloaded the message header,
   // we cons up an md5: message id. If we've done that, we'll try to extract

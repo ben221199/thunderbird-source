@@ -1,3 +1,5 @@
-/.cvsignore/1.1/Sat Dec  5 09:02:42 1998//TTHUNDERBIRD_0_3_BRANCH
-/Makefile.in/1.10/Thu Oct 25 01:08:21 2001//TTHUNDERBIRD_0_3_BRANCH
-D
+/.cvsignore/1.1/Sat Dec  5 09:02:42 1998//TTHUNDERBIRD_0_4_BRANCH
+/Makefile.in/1.10/Thu Oct 25 01:08:21 2001//TTHUNDERBIRD_0_4_BRANCH
+D/public////
+D/src////
+D/tests////

@@ -820,9 +820,9 @@ getUILangCountry(nsAString& aUILang, nsAString& aCountry)
   nsCOMPtr<nsILocaleService> localeService = do_GetService(NS_LOCALESERVICE_CONTRACTID, &result);
   NS_ASSERTION(NS_SUCCEEDED(result),"getUILangCountry: get locale service failed");
 
-  nsXPIDLString uiLang;
-  result = localeService->GetLocaleComponentForUserAgent(getter_Copies(uiLang));
-  aUILang = uiLang;
+  result = localeService->GetLocaleComponentForUserAgent(aUILang);
+  NS_ASSERTION(NS_SUCCEEDED(result),
+          "getUILangCountry: get locale componet for user agent failed");
   result = getCountry(aUILang, aCountry);
   return result;
 }
@@ -942,10 +942,11 @@ static void ShowOSAlertFromFile(int argc, char **argv, const char *alert_filenam
 
   directoryService = do_GetService(NS_DIRECTORY_SERVICE_CONTRACTID, &rv);
   if (NS_SUCCEEDED(rv)) {
-    rv = directoryService->Get(NS_APP_RES_DIR,
+    rv = directoryService->Get(NS_GRE_DIR,
                                NS_GET_IID(nsIFile),
                                getter_AddRefs(fileName));
     if (NS_SUCCEEDED(rv) && fileName) {
+      fileName->AppendNative(NS_LITERAL_CSTRING("res"));
       fileName->AppendNative(nsDependentCString(alert_filename));
       PRFileDesc* fd = 0;
       fileName->OpenNSPRFileDesc(PR_RDONLY, 0664, &fd);
@@ -1399,6 +1400,19 @@ static nsresult DumpVersion(char *appname)
   return rv;
 }
 
+/* Temporary hack until quicklaunch is removed for real.
+ * This prevents firebird from getting into a broken
+ * state from which you can't quit.
+ */
+static nsresult DumpTurbo(char *appname)
+{
+  nsresult rv = NS_OK;
+
+  printf("Quick Launch is not supported in Mozilla Firebird.");
+
+  return rv;
+}
+
 #ifdef MOZ_ENABLE_XREMOTE
 // use int here instead of a PR type since it will be returned
 // from main - just to keep types consistent
@@ -1476,6 +1490,16 @@ static PRBool HandleDumpArguments(int argc, char* argv[])
       DumpVersion(argv[0]);
       return PR_TRUE;
     }
+#ifdef MOZ_PHOENIX
+	if ((PL_strcasecmp(argv[i], "/turbo") == 0)
+		|| (PL_strcasecmp(argv[i], "-turbo") == 0)
+		|| (PL_strcasecmp(argv[i], "/server") == 0)
+		|| (PL_strcasecmp(argv[i], "-server") == 0)
+	) {
+	  DumpTurbo(argv[0]);
+	  return PR_TRUE;
+	}
+#endif
   }
 
   return PR_FALSE;

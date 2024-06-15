@@ -34,7 +34,7 @@
 /*
  * CMS decoding.
  *
- * $Id: cmsdecode.c,v 1.4.80.1 2003/05/14 23:31:11 relyea%netscape.com Exp $
+ * $Id: cmsdecode.c,v 1.6 2003/05/14 22:34:21 relyea%netscape.com Exp $
  */
 
 #include "cmslocal.h"

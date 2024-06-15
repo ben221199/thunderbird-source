@@ -1205,7 +1205,7 @@
             this.refreshList();
             if (val == Components.interfaces.nsMsgSearchAttrib.OtherHeader)
             {
-              window.openDialog('chrome://messenger/content/CustomHeaders.xul', "", 'modal,titlebar,chrome', null);
+              window.openDialog('chrome://messenger/content/CustomHeaders.xul', "", 'modal,centerscreen,resizable,titlebar,chrome', null);
               UpdateAfterCustomHeaderChange();
             }
             return val;
@@ -1515,9 +1515,6 @@
         <body>
           <![CDATA[
             this.fillStringsForChildren(menulist.firstChild, bundle);
-
-            // to work around bug #78429
-            menulist.setAttribute("label", menulist.selectedItem.getAttribute('label'));           
           ]]>
         </body>
       </method>

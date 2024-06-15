@@ -283,7 +283,7 @@
             var stringBundleService = Components.classes["@mozilla.org/intl/stringbundle;1"]
                                   .getService(Components.interfaces.nsIStringBundleService);
             var bundleURL = "chrome://global/locale/tabbrowser.properties";
-            this._mStrBundle = stringBundleService.createBundle(bundleURL, localeService.GetApplicationLocale());
+            this._mStrBundle = stringBundleService.createBundle(bundleURL, localeService.getApplicationLocale());
           }
           return this._mStrBundle;
         ]]></getter>
@@ -524,8 +524,9 @@
        <body>
          <![CDATA[
            if (!node) return false;
-           if (node.nodeName == "A" || node.nodeName == "INPUT" || node.nodeName == "TEXTAREA" ||
-               node.nodeName == "AREA") {
+           var tagName = node.nodeName.toUpperCase();
+           if (tagName == "A" || tagName == "INPUT" || tagName == "TEXTAREA" ||
+               tagName == "AREA") {
              return true;
            }
            
@@ -559,9 +560,9 @@
            // marker
            var el = this._clientFrameDoc.createElementNS("http://www.w3.org/1999/xhtml", "img");
            
-           var scrollImages  = new Array("chrome://global/content/widgets/autoscroll_all.png",
-                                         "chrome://global/content/widgets/autoscroll_v.png",
-                                         "chrome://global/content/widgets/autoscroll_h.png");
+           var scrollImages  = new Array("chrome://global/content/bindings/autoscroll_all.png",
+                                         "chrome://global/content/bindings/autoscroll_v.png",
+                                         "chrome://global/content/bindings/autoscroll_h.png");
            
            el.src = scrollImages[scrollType];         
            el.style.position = "fixed";
@@ -577,6 +578,47 @@
          ]]>
        </body>
      </method>
+
+     <field name="_findInstData">null</field>
+     <property name="findInstData" readonly="true">
+        <getter>
+          <![CDATA[
+            if (!this._findInstData) {
+              this._findInstData = new nsFindInstData();
+              this._findInstData.browser = this;
+              // defaults for rootSearchWindow and currentSearchWindow are fine here
+            }
+            return this._findInstData;
+          ]]>
+        </getter>
+     </property>
+
+     <property name="canFindAgain" readonly="true" onget="return canFindAgainInPage();"/>
+
+     <method name="find">
+       <body>
+         <![CDATA[
+           findInPage(this.findInstData)
+         ]]>
+       </body>
+     </method>
+
+     <method name="findAgain">
+       <body>
+         <![CDATA[
+           findAgainInPage(this.findInstData, false)
+         ]]>
+       </body>
+     </method>
+
+     <method name="findPrevious">
+       <body>
+         <![CDATA[
+           findAgainInPage(this.findInstData, true)
+         ]]>
+       </body>
+     </method>
+
     </implementation>
 
     <handlers>

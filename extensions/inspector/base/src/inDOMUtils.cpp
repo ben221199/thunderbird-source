@@ -178,7 +178,8 @@ inDOMUtils::GetCSSStyleRules(nsIDOMElement *aElement,
     cssRule = do_QueryInterface(srule);
     if (cssRule) {
       cssRule->GetDOMRule(getter_AddRefs(domRule));
-      rules->InsertElementAt(domRule, 0);
+      if (domRule)
+        rules->InsertElementAt(domRule, 0);
     }
   }
 
@@ -218,8 +219,7 @@ inDOMUtils::GetBindingURLs(nsIDOMElement *aElement, nsISimpleEnumerator **_retva
   if (!doc1) return NS_OK;
   
   nsCOMPtr<nsIDocument> doc = do_QueryInterface(doc1);
-  nsCOMPtr<nsIBindingManager> bindingManager;
-  doc->GetBindingManager(getter_AddRefs(bindingManager));
+  nsIBindingManager *bindingManager = doc->GetBindingManager();
   if (!bindingManager) return NS_OK;
   
   nsCOMPtr<nsIContent> content = do_QueryInterface(aElement);
@@ -229,7 +229,7 @@ inDOMUtils::GetBindingURLs(nsIDOMElement *aElement, nsISimpleEnumerator **_retva
   nsCOMPtr<nsIXBLBinding> tempBinding;
   while (binding) {
     nsCAutoString uri;
-    binding->GetBindingURI(uri);
+    binding->BindingURI()->GetSpec(uri);
 
     nsCOMPtr<nsIAtom> atom = do_GetAtom(uri.get());
     urls->AppendElement(atom);

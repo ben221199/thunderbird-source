@@ -29,6 +29,7 @@
 <!ENTITY getAllNewMsgCmd.label "Get All New Messages">
 <!ENTITY getAllNewMsgCmd.key "t">
 <!ENTITY getNextNMsgCmd.label "Get Next 500 News Messages">
+<!ENTITY getNextNMsgCmd.accesskey "t">
 <!ENTITY sendUnsentCmd.label "Send Unsent Messages">
 <!ENTITY sendUnsentCmd.accesskey "d">
 <!ENTITY loadFirstDraft.label			"Load First Draft Message">
@@ -36,6 +37,7 @@
 <!ENTITY subscribeCmd.accesskey "b">
 <!ENTITY renameFolder.label "Rename Folder...">
 <!ENTITY renameFolder.accesskey "R">
+<!ENTITY renameFolder.key "VK_F2"> 
 <!ENTITY compactFolders.label "Compact Folders">
 <!ENTITY compactFolder.accesskey		"F">
 <!ENTITY emptyTrashCmd.label "Empty Trash">
@@ -125,6 +127,8 @@
 <!ENTITY sortByDateCmd.accesskey "e">
 <!ENTITY sortByFlagCmd.label "Flag">
 <!ENTITY sortByFlagCmd.accesskey "F">
+<!ENTITY sortByAttachmentsCmd.label "Attachments">
+<!ENTITY sortByAttachmentsCmd.accesskey "A">
 <!ENTITY sortByPriorityCmd.label "Priority">
 <!ENTITY sortByPriorityCmd.accesskey "P">
 <!ENTITY sortBySizeCmd.label "Size">
@@ -137,7 +141,10 @@
 <!ENTITY sortByJunkStatusCmd.accesskey "J">
 <!ENTITY sortBySubjectCmd.label "Subject">
 <!ENTITY sortBySubjectCmd.accesskey "S">
-<!-- Sender / Recipient lives in messenger.properties, since that item is dynamic -->
+<!ENTITY sortBySenderCmd.label "Sender">
+<!ENTITY sortBySenderCmd.accesskey "n">
+<!ENTITY sortByRecipientCmd.label "Recipient">
+<!ENTITY sortByRecipientCmd.accesskey "c">
 <!ENTITY sortByUnreadCmd.label "Read">
 <!ENTITY sortByUnreadCmd.accesskey "R">
 <!ENTITY sortByThreadCmd.label "Thread">
@@ -337,11 +344,17 @@
 <!ENTITY markFlaggedCmd.accesskey "F">
 <!ENTITY markAsJunkCmd.label "As Junk">
 <!ENTITY markAsJunkCmd.accesskey "J">
+<!ENTITY markAsJunkCmd.key "j">
 <!ENTITY markAsNotJunkCmd.label "As Not Junk">
 <!ENTITY markAsNotJunkCmd.accesskey "N">
+<!ENTITY markAsNotJunkCmd.key "j">
 <!ENTITY openMessageWindowCmd.label "Open Message">
 <!ENTITY openMessageWindowCmd.accesskey "O">
 <!ENTITY openMessageWindowCmd.key "o">
+
+<!-- Windows Menu -->
+<!ENTITY windowMenu.label "Window">
+<!ENTITY windowMenu.accesskey "W">
 
 <!-- Tools Menu -->
 <!ENTITY tasksMenu.label "Tools">
@@ -468,6 +481,7 @@
 <!-- Thread Pane -->
 <!ENTITY threadColumn.label "Thread">
 <!ENTITY senderColumn.label "Sender">
+<!ENTITY recipientColumn.label "Recipient">
 <!ENTITY subjectColumn.label "Subject">
 <!ENTITY dateColumn.label "Date">
 <!ENTITY priorityColumn.label "Priority">
@@ -482,11 +496,13 @@
 <!ENTITY flagColumn.label "Flag">
 <!ENTITY locationColumn.label "Location">
 <!ENTITY idColumn.label "Order Received">
+<!ENTITY attachmentColumn.label "Attachments">
 
 <!-- Thread Pane Tooltips -->
 <!ENTITY columnChooser.tooltip "Click to select columns to display">
 <!ENTITY threadColumn.tooltip "Click to display message threads"> 
 <!ENTITY senderColumn.tooltip "Click to sort by sender">
+<!ENTITY recipientColumn.tooltip "Click to sort by recipient">
 <!ENTITY subjectColumn.tooltip "Click to sort by subject">
 <!ENTITY dateColumn.tooltip "Click to sort by date">
 <!ENTITY priorityColumn.tooltip "Click to sort by priority">
@@ -500,6 +516,7 @@
 <!ENTITY flagColumn.tooltip "Click to sort by flag">
 <!ENTITY locationColumn.tooltip "Click to sort by location">
 <!ENTITY idColumn.tooltip "Click to sort by order received">
+<!ENTITY attachmentColumn.tooltip "Click to sort by attachments">
 
 <!-- Thread Pane Context Menu -->
 <!ENTITY contextOpenNewWindow.label "Open Message in New Window">
@@ -553,3 +570,9 @@
 <!ENTITY statusText.label "Done">
 <!ENTITY unreadCountText.label "Unread: ">
 <!ENTITY totalCountText.label " Total: ">
+
+<!--  Mac OS X Window Menu -->
+<!ENTITY minimizeWindow.key "m">
+<!ENTITY minimizeWindow.label "Minimize Window">
+<!ENTITY bringAllToFront.label "Bring All to Front">
+<!ENTITY zoomWindow.label "Zoom Window">

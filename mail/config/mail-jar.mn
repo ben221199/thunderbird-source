@@ -39,6 +39,7 @@ content/communicator/platformBrowserBindings.xul,     comm/content/communicator/
 content/communicator/platformEditorBindings.xul,      comm/content/communicator/platformEditorBindings.xul 
 content/communicator/platformCommunicatorOverlay.xul, comm/content/communicator/platformCommunicatorOverlay.xul 
 content/communicator/contentAreaUtils.js,             comm/content/communicator/contentAreaUtils.js 
+content/communicator/builtinURLs.js,                  comm/content/communicator/builtinURLs.js
 content/communicator/contentAreaDD.js,                comm/content/communicator/contentAreaDD.js 
 content/communicator/contentAreaClick.js,             comm/content/communicator/contentAreaClick.js 
 content/communicator/contentAreaContextOverlay.xul,   comm/content/communicator/contentAreaContextOverlay.xul 
@@ -48,10 +49,9 @@ content/communicator/viewZoomOverlay.js,              comm/content/communicator/
 content/communicator/askViewZoom.xul,                 comm/content/communicator/askViewZoom.xul
 content/communicator/askViewZoom.js,                  comm/content/communicator/askViewZoom.js
 content/communicator/findUtils.js,                    comm/content/communicator/findUtils.js
-content/communicator/printPageSetup.js,               comm/content/communicator/printPageSetup.js
-content/communicator/printPageSetup.xul,              comm/content/communicator/printPageSetup.xul
 content/communicator/printPreviewBindings.xml,        comm/content/communicator/printPreviewBindings.xml
 content/communicator/printing.js,                     comm/content/communicator/printing.js
+content/communicator/XPCNativeWrapper.js,             comm/content/communicator/XPCNativeWrapper.js
 
 # from xpfe\components jar.mn
 content/communicator/alerts,                          comm/content/communicator/alerts
@@ -75,7 +75,7 @@ content/communicator/pref/pref-languages.js,          comm/content/communicator/
 content/communicator/pref/pref-proxies.js,            comm/content/communicator/pref/pref-proxies.js
 content/communicator/pref/pref-policies.xul,          comm/content/communicator/pref/pref-policies.xul
 content/communicator/pref/pref-proxies.xul,           comm/content/communicator/pref/pref-proxies.xul
-content/communicator/pref/pref.xul,                   comm/content/communicator/pref//pref.xul
+content/communicator/pref/pref.xul,                   comm/content/communicator/pref/pref.xul
 content/communicator/pref/nsPrefWindow.js,            comm/content/communicator/pref/nsPrefWindow.js
 content/communicator/pref/pref-applications-edit.xul, comm/content/communicator/pref/pref-applications-edit.xul
 content/communicator/pref/pref-calibrate-screen.xul,  comm/content/communicator/pref/pref-calibrate-screen.xul
@@ -129,10 +129,6 @@ content/global/selectDialog.js,                       toolkit/content/global/sel
 content/global/selectDialog.xul,                      toolkit/content/global/selectDialog.xul 
 content/global/nsWidgetStateManager.js,               toolkit/content/global/nsWidgetStateManager.js 
 content/global/widgetStateManager.js,                 toolkit/content/global/widgetStateManager.js 
-content/global/wizardHandlerSet.js,                   toolkit/content/global/wizardHandlerSet.js 
-content/global/wizardManager.js,                      toolkit/content/global/wizardManager.js 
-content/global/wizardOverlay.js,                      toolkit/content/global/wizardOverlay.js 
-content/global/wizardOverlay.xul,                     toolkit/content/global/wizardOverlay.xul 
 content/global/nsTreeController.js,                   toolkit/content/global/nsTreeController.js 
 content/global/nsTreeSorting.js,                      toolkit/content/global/nsTreeSorting.js 
 content/global/nsClipboard.js,                        toolkit/content/global/nsClipboard.js 
@@ -146,11 +142,15 @@ content/global/printProgress.xul,                     toolkit/content/global/pri
 content/global/printProgress.js,                      toolkit/content/global/printProgress.js
 content/global/printPreviewProgress.xul,              toolkit/content/global/printPreviewProgress.xul
 content/global/printPreviewProgress.js,               toolkit/content/global/printPreviewProgress.js
+content/global/printPageSetup.js,                     toolkit/content/global/printPageSetup.js
+content/global/printPageSetup.xul,                    toolkit/content/global/printPageSetup.xul
 content/global/MPL-1.1.html,                          toolkit/content/global/MPL-1.1.html
 content/global/NPL-1.1.html,                          toolkit/content/global/NPL-1.1.html
 content/global/customizeToolbar.xul,                  toolkit/content/global/customizeToolbar.xul
 content/global/customizeToolbar.js,                   toolkit/content/global/customizeToolbar.js
 content/global/customizeToolbar.css,                  toolkit/content/global/customizeToolbar.css
+content/global/customizeCharset.xul,                  toolkit/content/global/customizeCharset.xul
+content/global/customizeCharset.js,                   toolkit/content/global/customizeCharset.js
 
 #from mozapps
 content/mozapps/downloads,                            toolkit/content/mozapps/downloads
@@ -182,3 +182,8 @@ content/pipnss/contents.rdf,                          pipnss/content/pipnss/cont
 content/pippki,                                       pippki/content/pippki
 
 
+#################################################################################################
+# files needed by the optional pref extension. These files may not necessarily exist if the extension
+# was not built. That's ok.
+#################################################################################################
+content/autoconfig/contents.rdf,                      comm/content/autoconfig/contents.rdf
