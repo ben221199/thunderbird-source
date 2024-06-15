@@ -30,7 +30,7 @@
 # may use your version of this file under either the MPL or the
 # GPL.
 #
-CVS_ID "@(#) $RCSfile: certdata.txt,v $ $Revision: 1.28 $ $Date: 2003/06/05 00:53:27 $ $Name: FIREFOX_0_9_1_RELEASE $"
+CVS_ID "@(#) $RCSfile: certdata.txt,v $ $Revision: 1.28 $ $Date: 2003/06/05 00:53:27 $ $Name: THUNDERBIRD_0_7_2_RELEASE $"
 
 #
 # certdata.txt

@@ -32,7 +32,7 @@
  */
 
 #ifdef DEBUG
-static const char BUILTINS_CVS_ID[] = "@(#) $RCSfile: builtins.h,v $ $Revision: 1.3 $ $Date: 2002/02/08 00:10:05 $ $Name: FIREFOX_0_9_1_RELEASE $";
+static const char BUILTINS_CVS_ID[] = "@(#) $RCSfile: builtins.h,v $ $Revision: 1.3 $ $Date: 2002/02/08 00:10:05 $ $Name: THUNDERBIRD_0_7_2_RELEASE $";
 #endif /* DEBUG */
 
 #include "nssckmdt.h"

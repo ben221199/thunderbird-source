@@ -1,7 +1,7 @@
-/.cvsignore/1.1/Wed Nov  6 21:20:55 2002//TFIREFOX_0_9_1_RELEASE
-/Makefile.in/1.5/Wed Jan  7 13:36:36 2004//TFIREFOX_0_9_1_RELEASE
-/jar.mn/1.2/Wed Feb  4 14:24:02 2004//TFIREFOX_0_9_1_RELEASE
-/mailviews.pkg/1.2/Wed Jan  7 01:21:50 2004//TFIREFOX_0_9_1_RELEASE
+/.cvsignore/1.1/Wed Nov  6 21:20:55 2002//TTHUNDERBIRD_0_7_2_RELEASE
+/Makefile.in/1.5/Wed Jan  7 13:36:36 2004//TTHUNDERBIRD_0_7_2_RELEASE
+/jar.mn/1.2/Wed Feb  4 14:24:02 2004//TTHUNDERBIRD_0_7_2_RELEASE
+/mailviews.pkg/1.2/Wed Jan  7 01:21:50 2004//TTHUNDERBIRD_0_7_2_RELEASE
 D/build////
 D/public////
 D/resources////

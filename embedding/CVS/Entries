@@ -1,6 +1,6 @@
-/.cvsignore/1.1/Thu Feb  3 00:58:36 2000//TFIREFOX_0_9_1_RELEASE
-/Makefile.in/1.14/Wed Jan  7 13:36:21 2004//TFIREFOX_0_9_1_RELEASE
-/embed.pkg/1.2/Wed Jan  7 01:21:21 2004//TFIREFOX_0_9_1_RELEASE
+/.cvsignore/1.1/Thu Feb  3 00:58:36 2000//TTHUNDERBIRD_0_7_2_RELEASE
+/Makefile.in/1.14/Wed Jan  7 13:36:21 2004//TTHUNDERBIRD_0_7_2_RELEASE
+/embed.pkg/1.2/Wed Jan  7 01:21:21 2004//TTHUNDERBIRD_0_7_2_RELEASE
 D/base////
 D/browser////
 D/componentlib////

@@ -35,7 +35,7 @@
 #define DEVM_H
 
 #ifdef DEBUG
-static const char DEVM_CVS_ID[] = "@(#) $RCSfile: devm.h,v $ $Revision: 1.9 $ $Date: 2002/05/20 23:21:34 $ $Name: FIREFOX_0_9_1_RELEASE $";
+static const char DEVM_CVS_ID[] = "@(#) $RCSfile: devm.h,v $ $Revision: 1.9 $ $Date: 2002/05/20 23:21:34 $ $Name: THUNDERBIRD_0_7_2_RELEASE $";
 #endif /* DEBUG */
 
 #ifndef BASE_H

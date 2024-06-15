@@ -1,6 +1,6 @@
-/Makefile.in/1.2/Mon Oct 27 10:10:59 2003//TFIREFOX_0_9_1_RELEASE
-/nsSystemPref.cpp/1.4.6.1/Mon May 17 18:32:11 2004//TFIREFOX_0_9_1_RELEASE
-/nsSystemPref.h/1.3/Mon Jun  9 08:29:59 2003//TFIREFOX_0_9_1_RELEASE
-/nsSystemPrefFactory.cpp/1.1/Tue Apr 15 02:28:25 2003//TFIREFOX_0_9_1_RELEASE
-/nsSystemPrefLog.h/1.1/Tue Apr 15 02:28:25 2003//TFIREFOX_0_9_1_RELEASE
+/Makefile.in/1.2/Mon Oct 27 10:10:59 2003//TTHUNDERBIRD_0_7_2_RELEASE
+/nsSystemPref.cpp/1.4.6.1/Mon May 17 18:32:11 2004//TTHUNDERBIRD_0_7_2_RELEASE
+/nsSystemPref.h/1.3/Mon Jun  9 08:29:59 2003//TTHUNDERBIRD_0_7_2_RELEASE
+/nsSystemPrefFactory.cpp/1.1/Tue Apr 15 02:28:25 2003//TTHUNDERBIRD_0_7_2_RELEASE
+/nsSystemPrefLog.h/1.1/Tue Apr 15 02:28:25 2003//TTHUNDERBIRD_0_7_2_RELEASE
 D/gconf////

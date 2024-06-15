@@ -30,7 +30,7 @@
 # may use your version of this file under either the MPL or the
 # GPL.
 #
-MANIFEST_CVS_ID = "@(#) $RCSfile: manifest.mn,v $ $Revision: 1.5 $ $Date: 2002/09/06 16:37:52 $ $Name: FIREFOX_0_9_1_RELEASE $"
+MANIFEST_CVS_ID = "@(#) $RCSfile: manifest.mn,v $ $Revision: 1.5 $ $Date: 2002/09/06 16:37:52 $ $Name: THUNDERBIRD_0_7_2_RELEASE $"
 
 CORE_DEPTH = ../../..
 

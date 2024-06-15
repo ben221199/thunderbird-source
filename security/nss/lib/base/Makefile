@@ -30,7 +30,7 @@
 # may use your version of this file under either the MPL or the
 # GPL.
 #
-MAKEFILE_CVS_ID = "@(#) $RCSfile: Makefile,v $ $Revision: 1.2 $ $Date: 2000/09/06 22:11:57 $ $Name: FIREFOX_0_9_1_RELEASE $"
+MAKEFILE_CVS_ID = "@(#) $RCSfile: Makefile,v $ $Revision: 1.2 $ $Date: 2000/09/06 22:11:57 $ $Name: THUNDERBIRD_0_7_2_RELEASE $"
 
 include manifest.mn
 include $(CORE_DEPTH)/coreconf/config.mk

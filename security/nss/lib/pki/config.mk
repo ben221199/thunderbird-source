@@ -30,7 +30,7 @@
 # may use your version of this file under either the MPL or the
 # GPL.
 #
-CONFIG_CVS_ID = "@(#) $RCSfile: config.mk,v $ $Revision: 1.4 $ $Date: 2002/04/05 19:08:29 $ $Name: FIREFOX_0_9_1_RELEASE $"
+CONFIG_CVS_ID = "@(#) $RCSfile: config.mk,v $ $Revision: 1.4 $ $Date: 2002/04/05 19:08:29 $ $Name: THUNDERBIRD_0_7_2_RELEASE $"
 
 ifdef BUILD_IDG
 DEFINES += -DNSSDEBUG
