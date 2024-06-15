@@ -31,7 +31,7 @@
 # may use your version of this file under either the MPL or the
 # GPL.
 #
-$cvs_id = '@(#) $RCSfile: oidgen.perl,v $ $Revision: 1.2 $ $Date: 2001/11/08 00:15:25 $ $Name: THUNDERBIRD_1_0_2_RELEASE $';
+$cvs_id = '@(#) $RCSfile: oidgen.perl,v $ $Revision: 1.2 $ $Date: 2001/11/08 00:15:25 $ $Name: AVIARY_1_0_1_20050124_BRANCH $';
 $cfile = shift;
 $hfile = shift;
 $count = -1;

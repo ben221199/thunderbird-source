@@ -460,6 +460,9 @@ ConvertDocShellLoadInfoToLoadType(nsDocShellInfoLoadType aDocShellLoadType)
     case nsIDocShellLoadInfo::loadNormalReplace:
         loadType = LOAD_NORMAL_REPLACE;
         break;
+    case nsIDocShellLoadInfo::loadNormalExternal:
+        loadType = LOAD_NORMAL_EXTERNAL;
+        break;
     case nsIDocShellLoadInfo::loadHistory:
         loadType = LOAD_HISTORY;
         break;
@@ -503,6 +506,9 @@ nsDocShell::ConvertLoadTypeToDocShellLoadInfo(PRUint32 aLoadType)
         break;
     case LOAD_NORMAL_REPLACE:
         docShellLoadType = nsIDocShellLoadInfo::loadNormalReplace;
+        break;
+    case LOAD_NORMAL_EXTERNAL:
+        docShellLoadType = nsIDocShellLoadInfo::loadNormalExternal;
         break;
     case LOAD_HISTORY:
         docShellLoadType = nsIDocShellLoadInfo::loadHistory;
@@ -615,7 +621,9 @@ nsDocShell::LoadURI(nsIURI * aURI,
                 if (mCurrentURI == nsnull) {
                     // This is a newly created frame. Check for exception cases first. 
                     // By default the subframe will inherit the parent's loadType.
-                    if (shEntry && (parentLoadType == LOAD_NORMAL || parentLoadType == LOAD_LINK)) {
+                    if (shEntry && (parentLoadType == LOAD_NORMAL ||
+                                    parentLoadType == LOAD_LINK   ||
+                                    parentLoadType == LOAD_NORMAL_EXTERNAL)) {
                         // The parent was loaded normally. In this case, this *brand new* child really shouldn't
                         // have a SHEntry. If it does, it could be because the parent is replacing an
                         // existing frame with a new frame, in the onLoadHandler. We don't want this
@@ -4700,6 +4708,29 @@ nsDocShell::CreateAboutBlankContentViewer()
 
   mCreatingDocument = PR_TRUE;
 
+  if (mContentViewer) {
+    // We've got a content viewer already. Make sure the user
+    // permits us to discard the current document and replace it
+    // with about:blank. And also ensure we fire the unload events
+    // in the current document.
+
+    PRBool okToUnload;
+    rv = mContentViewer->PermitUnload(&okToUnload);
+
+    if (NS_SUCCEEDED(rv) && !okToUnload) {
+      // The user chose not to unload the page, interrupt the load.
+      return NS_ERROR_FAILURE;
+    }
+
+    // Notify the current document that it is about to be unloaded!!
+    //
+    // It is important to fire the unload() notification *before* any state
+    // is changed within the DocShell - otherwise, javascript will get the
+    // wrong information :-(
+    //
+    (void) FireUnloadNotification();
+  }
+
   // one helper factory, please
   nsCOMPtr<nsICategoryManager> catMan(do_GetService(NS_CATEGORYMANAGER_CONTRACTID));
   if (!catMan)
@@ -5494,6 +5525,25 @@ nsDocShell::InternalLoad(nsIURI * aURI,
     //
     if (mIsBeingDestroyed) {
         return NS_ERROR_FAILURE;
+    }
+
+    // Before going any further vet loads initiated by external programs.
+    if (aLoadType == LOAD_NORMAL_EXTERNAL) {
+        // Disallow external chrome: loads targetted at content windows
+        PRBool isChrome = PR_FALSE;
+        if (NS_SUCCEEDED(aURI->SchemeIs("chrome", &isChrome)) && isChrome) {
+            NS_WARNING("blocked external chrome: url -- use '-chrome' option");
+            return NS_ERROR_FAILURE;
+        }
+
+        // clear the decks to prevent context bleed-through (bug 298255)
+        rv = CreateAboutBlankContentViewer();
+        if (NS_FAILED(rv))
+            return NS_ERROR_FAILURE;
+
+        // reset loadType so we don't have to add lots of tests for
+        // LOAD_NORMAL_EXTERNAL after this point
+        aLoadType = LOAD_NORMAL;
     }
 
     rv = CheckLoadingPermissions();
@@ -6649,6 +6699,26 @@ nsDocShell::LoadHistoryEntry(nsISHEntry * aEntry, PRUint32 aLoadType)
     NS_ENSURE_SUCCESS(aEntry->GetPostData(getter_AddRefs(postData)),
                       NS_ERROR_FAILURE);
     NS_ENSURE_SUCCESS(aEntry->GetContentType(contentType), NS_ERROR_FAILURE);
+
+    PRBool isJavaScript, isViewSource, isData;
+    if ((NS_SUCCEEDED(uri->SchemeIs("javascript", &isJavaScript)) &&
+         isJavaScript) ||
+        (NS_SUCCEEDED(uri->SchemeIs("view-source", &isViewSource)) &&
+         isViewSource) ||
+        (NS_SUCCEEDED(uri->SchemeIs("data", &isData)) && isData)) {
+        // We're loading a javascript:, view-source: or data: URL from
+        // session history. Replace the current document with about:blank
+        // to prevent anything from the current document from leaking
+        // into any JavaScript code in the URL.
+        rv = CreateAboutBlankContentViewer();
+
+        if (NS_FAILED(rv)) {
+            // The creation of the intermittent about:blank content
+            // viewer failed for some reason (potentially because the
+            // user prevented it). Interrupt the history load.
+            return NS_OK;
+        }
+    }
 
     /* If there is a valid postdata *and* the user pressed
      * reload or shift-reload, take user's permission before we  

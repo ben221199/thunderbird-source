@@ -1,5 +1,6 @@
-/.cvsignore/1.1/Sat Dec  5 09:01:30 1998//TTHUNDERBIRD_1_0_2_RELEASE
-/Makefile.in/1.7/Tue Feb 24 03:22:31 2004//TTHUNDERBIRD_1_0_2_RELEASE
+/.cvsignore/1.1/Sat Dec  5 09:01:30 1998//TAVIARY_1_0_1_20050124_BRANCH
+/Makefile.in/1.7.16.1/Sat Jul  2 00:39:22 2005//TAVIARY_1_0_1_20050124_BRANCH
 D/base////
 D/events////
 D/jsurl////
+D/res////

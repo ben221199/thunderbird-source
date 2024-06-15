@@ -121,6 +121,17 @@ inline void SetPendingException(JSContext *cx, const PRUnichar *aMsg)
         JS_SetPendingException(cx, STRING_TO_JSVAL(str));
 }
 
+// DomainPolicy members
+#ifdef DEBUG_CAPS_DomainPolicyLifeCycle
+PRUint32 DomainPolicy::sObjects=0;
+void DomainPolicy::_printPopulationInfo()
+{
+    printf("CAPS.DomainPolicy: Gen. %d, %d DomainPolicy objects.\n",
+        sGeneration, sObjects);
+}
+#endif
+PRUint32 DomainPolicy::sGeneration = 0;
+
 // Helper class to get stuff from the ClassInfo and not waste extra time with
 // virtual method calls for things it has already gotten
 class ClassInfoData
@@ -451,11 +462,8 @@ nsScriptSecurityManager::CheckObjectAccess(JSContext *cx, JSObject *obj,
     //    a different trust domain.
     // 2. A user-defined getter or setter function accessible on another
     //    trust domain's window or document object.
-    // If *vp is not a primitive, some new JS engine call to this hook was
-    // added, but we can handle that case too -- if a primitive value in a
-    // property of obj is being accessed, we should use obj as the target
+    // *vp can be a primitive, in that case, we use obj as the target
     // object.
-    NS_ASSERTION(!JSVAL_IS_PRIMITIVE(*vp), "unexpected target property value");
     JSObject* target = JSVAL_IS_PRIMITIVE(*vp) ? obj : JSVAL_TO_OBJECT(*vp);
 
     // Do the same-origin check -- this sets a JS exception if the check fails.
@@ -1127,50 +1135,44 @@ nsScriptSecurityManager::GetBaseURIScheme(nsIURI* aURI, char** aScheme)
        return NS_ERROR_FAILURE;
 
     nsresult rv;
-    nsCOMPtr<nsIURI> uri(aURI);
 
     //-- get the source scheme
     nsCAutoString scheme;
-    rv = uri->GetScheme(scheme);
+    rv = aURI->GetScheme(scheme);
     if (NS_FAILED(rv)) return rv;
 
-    //-- If uri is a view-source URI, drill down to the base URI
+    //-- If aURI is a view-source URI, drill down to the base URI
     nsCAutoString path;
-    while(PL_strcmp(scheme.get(), "view-source") == 0)
+    if (PL_strcmp(scheme.get(), "view-source") == 0)
     {
-        rv = uri->GetPath(path);
+        rv = aURI->GetPath(path);
         if (NS_FAILED(rv)) return rv;
-        rv = NS_NewURI(getter_AddRefs(uri), path, nsnull, nsnull, sIOService);
+        nsCOMPtr<nsIURI> innerURI;
+        rv = NS_NewURI(getter_AddRefs(innerURI), path, nsnull, nsnull,
+                       sIOService);
         if (NS_FAILED(rv)) return rv;
-        rv = uri->GetScheme(scheme);
-        if (NS_FAILED(rv)) return rv;
+        return nsScriptSecurityManager::GetBaseURIScheme(innerURI, aScheme);
     }
 
-    //-- If uri is a jar URI, drill down again
-    nsCOMPtr<nsIJARURI> jarURI;
-    PRBool isJAR = PR_FALSE;
-    while((jarURI = do_QueryInterface(uri)))
+    //-- If aURI is a jar URI, drill down again
+    nsCOMPtr<nsIJARURI> jarURI = do_QueryInterface(aURI);
+    if (jarURI)
     {
-        jarURI->GetJARFile(getter_AddRefs(uri));
-        isJAR = PR_TRUE;
-    }
-    if (!uri) return NS_ERROR_FAILURE;
-    if (isJAR)
-    {
-        rv = uri->GetScheme(scheme);
-        if (NS_FAILED(rv)) return rv;
+        nsCOMPtr<nsIURI> innerURI;
+        jarURI->GetJARFile(getter_AddRefs(innerURI));
+        if (!innerURI) return NS_ERROR_FAILURE;
+        return nsScriptSecurityManager::GetBaseURIScheme(innerURI, aScheme);
     }
 
-    //-- if uri is an about uri, distinguish 'safe' and 'unsafe' about URIs
+    //-- if aURI is an about uri, distinguish 'safe' and 'unsafe' about URIs
     static const char aboutScheme[] = "about";
     if(nsCRT::strcasecmp(scheme.get(), aboutScheme) == 0)
     {
         nsCAutoString spec;
-        if(NS_FAILED(uri->GetAsciiSpec(spec)))
+        if(NS_FAILED(aURI->GetAsciiSpec(spec)))
             return NS_ERROR_FAILURE;
         const char* page = spec.get() + sizeof(aboutScheme);
         if ((strcmp(page, "blank") == 0)   ||
-            (strcmp(page, "") == 0)        ||
             (strcmp(page, "mozilla") == 0) ||
             (strcmp(page, "logo") == 0)    ||
             (strcmp(page, "credits") == 0))
@@ -1188,6 +1190,15 @@ NS_IMETHODIMP
 nsScriptSecurityManager::CheckLoadURI(nsIURI *aSourceURI, nsIURI *aTargetURI,
                                       PRUint32 aFlags)
 {
+    // If someone passes a flag that we don't understand, we should
+    // fail, because they may need a security check that we don't
+    // provide.
+    NS_ENSURE_FALSE(aFlags & ~(nsIScriptSecurityManager::DISALLOW_FROM_MAIL |
+                               nsIScriptSecurityManager::ALLOW_CHROME |
+                               nsIScriptSecurityManager::DISALLOW_SCRIPT |
+                               nsIScriptSecurityManager::DISALLOW_SCRIPT_OR_DATA),
+                    NS_ERROR_UNEXPECTED);
+
     nsresult rv;
     //-- get the source scheme
     nsXPIDLCString sourceScheme;
@@ -1215,8 +1226,11 @@ nsScriptSecurityManager::CheckLoadURI(nsIURI *aSourceURI, nsIURI *aTargetURI,
     }
 
     //-- Some callers do not allow loading javascript: or data: URLs
-    if ((aFlags & nsIScriptSecurityManager::DISALLOW_SCRIPT_OR_DATA) &&
-        (targetScheme.Equals("javascript") || targetScheme.Equals("data")))
+    if (((aFlags & (nsIScriptSecurityManager::DISALLOW_SCRIPT |
+                    nsIScriptSecurityManager::DISALLOW_SCRIPT_OR_DATA)) &&
+         targetScheme.Equals("javascript")) ||
+        ((aFlags & nsIScriptSecurityManager::DISALLOW_SCRIPT_OR_DATA) &&
+         targetScheme.Equals("data")))
     {
        return NS_ERROR_DOM_BAD_URI;
     }
@@ -1366,9 +1380,13 @@ nsScriptSecurityManager::ReportError(JSContext* cx, const nsAString& messageTag,
 }
 
 NS_IMETHODIMP
-nsScriptSecurityManager::CheckLoadURIStr(const char* aSourceURIStr, const char* aTargetURIStr,
+nsScriptSecurityManager::CheckLoadURIStr(const char* aSourceURIStr,
+                                         const char* aTargetURIStr,
                                          PRUint32 aFlags)
 {
+    NS_ENSURE_ARG_POINTER(aSourceURIStr);
+    NS_ENSURE_ARG_POINTER(aTargetURIStr);
+
     nsCOMPtr<nsIURI> source;
     nsresult rv = NS_NewURI(getter_AddRefs(source),
                             nsDependentCString(aSourceURIStr),
@@ -1388,7 +1406,7 @@ nsScriptSecurityManager::CheckFunctionAccess(JSContext *aCx, void *aFunObj,
 {
     //-- This check is called for event handlers
     nsCOMPtr<nsIPrincipal> subject;
-    nsresult rv = GetFunctionObjectPrincipal(aCx, (JSObject *)aFunObj,
+    nsresult rv = GetFunctionObjectPrincipal(aCx, (JSObject *)aFunObj, nsnull,
                                              getter_AddRefs(subject));
     //-- If subject is null, get a principal from the function object's scope.
     if (NS_SUCCEEDED(rv) && !subject)
@@ -1789,15 +1807,35 @@ nsScriptSecurityManager::GetScriptPrincipal(JSContext *cx,
 nsresult
 nsScriptSecurityManager::GetFunctionObjectPrincipal(JSContext *cx,
                                                     JSObject *obj,
+                                                    JSStackFrame *fp,
                                                     nsIPrincipal **result)
 {
     JSFunction *fun = (JSFunction *) JS_GetPrivate(cx, obj);
-    JSScript *script = JS_GetFunctionScript(cx, fun);
+    JSScript *funScript = JS_GetFunctionScript(cx, fun);
 
     nsCOMPtr<nsIPrincipal> scriptPrincipal;
-    if (script)
+    if (funScript)
     {
-        if (JS_GetFunctionObject(fun) != obj)
+        JSScript *frameScript = nsnull;
+
+        if (fp) {
+            frameScript = JS_GetFrameScript(cx, fp);
+        }
+
+        nsresult rv;
+        if (frameScript && frameScript != funScript) {
+            // There is a frame script, and it's different than the
+            // function script. In this case we're dealing with either
+            // an eval or a Script object, and in those cases the
+            // principal we want is in the frame's script, not in the
+            // function's script. The function's script is where the
+            // function came from, not where the eval came from, and
+            // we want the principal for the source of the eval
+            // function object or new Script object.
+            rv = GetScriptPrincipal(cx, frameScript,
+                                    getter_AddRefs(scriptPrincipal));
+        }
+        else if (JS_GetFunctionObject(fun) != obj)
         {
             // Function is a clone, its prototype was precompiled from
             // brutally shared chrome. For this case only, get the
@@ -1805,11 +1843,14 @@ nsScriptSecurityManager::GetFunctionObjectPrincipal(JSContext *cx,
             // reliable principals compiled into the function.
             return doGetObjectPrincipal(cx, obj, result);
         }
+        else
+        {
+            rv = GetScriptPrincipal(cx, funScript,
+                                    getter_AddRefs(scriptPrincipal));
+        }
 
-        if (NS_FAILED(GetScriptPrincipal(cx, script,
-                                         getter_AddRefs(scriptPrincipal))))
+        if (NS_FAILED(rv))
             return NS_ERROR_FAILURE;
-
     }
 
     NS_IF_ADDREF(*result = scriptPrincipal);
@@ -1830,7 +1871,7 @@ nsScriptSecurityManager::GetFramePrincipal(JSContext *cx,
         return GetScriptPrincipal(cx, script, result);
     }
 
-    nsresult rv = GetFunctionObjectPrincipal(cx, obj, result);
+    nsresult rv = GetFunctionObjectPrincipal(cx, obj, fp, result);
 
 #ifdef DEBUG
     if (NS_SUCCEEDED(rv) && !*result)
@@ -2957,25 +2998,36 @@ nsScriptSecurityManager::SystemPrincipalSingletonConstructor()
 nsresult
 nsScriptSecurityManager::InitPolicies()
 {
-    // Reset the "dirty" flag
-    mPolicyPrefsChanged = PR_FALSE;
-
     // Clear any policies cached on XPConnect wrappers
     NS_ENSURE_STATE(sXPConnect);
     nsresult rv = sXPConnect->ClearAllWrappedNativeSecurityPolicies();
     if (NS_FAILED(rv)) return rv;
 
-    //-- Reset mOriginToPolicyMap
+    //-- Clear mOriginToPolicyMap: delete mapped DomainEntry items,
+    //-- whose dtor decrements refcount of stored DomainPolicy object
     delete mOriginToPolicyMap;
+    
+    //-- Marks all the survivor DomainPolicy objects (those cached
+    //-- by nsPrincipal objects) as invalid: they will be released
+    //-- on first nsPrincipal::GetSecurityPolicy() attempt.
+    DomainPolicy::InvalidateAll();
+    
+    //-- Release old default policy
+    if(mDefaultPolicy)
+        mDefaultPolicy->Drop();
+    
+    //-- Initialize a new mOriginToPolicyMap
     mOriginToPolicyMap =
       new nsObjectHashtable(nsnull, nsnull, DeleteDomainEntry, nsnull);
-
-    //-- Reset and initialize the default policy
-    delete mDefaultPolicy;
-    mDefaultPolicy = new DomainPolicy();
-    if (!mOriginToPolicyMap || !mDefaultPolicy)
+    if (!mOriginToPolicyMap)
         return NS_ERROR_OUT_OF_MEMORY;
 
+    //-- Create, refcount and initialize a new default policy 
+    mDefaultPolicy = new DomainPolicy();
+    if (!mDefaultPolicy)
+        return NS_ERROR_OUT_OF_MEMORY;
+
+    mDefaultPolicy->Hold();
     if (!mDefaultPolicy->Init())
         return NS_ERROR_UNEXPECTED;
 
@@ -3105,6 +3157,9 @@ nsScriptSecurityManager::InitPolicies()
         if (NS_FAILED(rv))
             return rv;
     }
+
+    // Reset the "dirty" flag
+    mPolicyPrefsChanged = PR_FALSE;
 
 #ifdef DEBUG_CAPS_HACKER
     PrintPolicyDB();

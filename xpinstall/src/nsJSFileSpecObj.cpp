@@ -36,12 +36,27 @@ extern PRBool ConvertJSValToBool(PRBool* aProp,
                                 JSContext* aContext,
                                 jsval aValue);
 
-extern PRBool ConvertJSValToObj(nsISupports** aSupports,
-                               REFNSIID aIID,
-                               const nsString& aTypeName,
-                               JSContext* aContext,
-                               jsval aValue);
 
+
+static void PR_CALLBACK
+FileSpecObjectCleanup(JSContext *cx, JSObject *obj);
+
+/***********************************************************************/
+//
+// class for FileObj
+//
+JSClass FileSpecObjectClass = {
+  "FileSpecObject",
+  JSCLASS_HAS_PRIVATE,
+  JS_PropertyStub,
+  JS_PropertyStub,
+  JS_PropertyStub,
+  JS_PropertyStub,
+  JS_EnumerateStub,
+  JS_ResolveStub,
+  JS_ConvertStub,
+  FileSpecObjectCleanup
+};
 
 
 /***********************************************************************************/
@@ -53,17 +68,15 @@ extern PRBool ConvertJSValToObj(nsISupports** aSupports,
 PR_STATIC_CALLBACK(JSBool)
 fso_ToString(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 {
+  nsInstallFolder *nativeThis =
+    (nsInstallFolder*)JS_GetInstancePrivate(cx, obj, &FileSpecObjectClass,
+                                            argv);
+  if (!nativeThis)
+    return JS_FALSE;
 
-  nsInstallFolder *nativeThis = (nsInstallFolder*)JS_GetPrivate(cx, obj);
   nsAutoString stringReturned;
 
   *rval = JSVAL_NULL;
-
-  // If there's no private data, this must be the prototype, so ignore
-  if(nsnull == nativeThis)
-  {
-    return JS_TRUE;
-  }
 
   if(NS_FAILED( nativeThis->ToString(&stringReturned)))
     return JS_TRUE;
@@ -96,28 +109,10 @@ fso_AppendPath(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rva
  */
 static void PR_CALLBACK FileSpecObjectCleanup(JSContext *cx, JSObject *obj)
 {
-    nsInstallFolder *nativeThis = (nsInstallFolder*)JS_GetPrivate(cx, obj);
-    if (nativeThis != nsnull)
-       delete nativeThis;
+  nsInstallFolder *nativeThis = (nsInstallFolder*)JS_GetPrivate(cx, obj);
+  if (nativeThis != nsnull)
+    delete nativeThis;
 }
-
-/***********************************************************************/
-//
-// class for FileObj
-//
-JSClass FileSpecObjectClass = {
-  "FileSpecObject",
-  JSCLASS_HAS_PRIVATE,
-  JS_PropertyStub,
-  JS_PropertyStub,
-  JS_PropertyStub,
-  JS_PropertyStub,
-  JS_EnumerateStub,
-  JS_ResolveStub,
-  JS_ConvertStub,
-  FileSpecObjectCleanup
-};
-
 
 //
 // FileObj class methods

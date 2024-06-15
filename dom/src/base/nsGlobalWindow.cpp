@@ -55,6 +55,7 @@
 #include "jsdbgapi.h"           // for JS_ClearWatchPointsForObject
 #include "nsReadableUtils.h"
 #include "nsDOMClassInfo.h"
+#include "nsContentUtils.h"
 
 // Other Classes
 #include "nsIEventListenerManager.h"
@@ -140,6 +141,8 @@
 #include "nsGlobalWindowCommands.h"
 #include "nsAutoPtr.h"
 #include "nsIPrincipalObsolete.h"
+#include "nsIURIFixup.h"
+#include "nsCDefaultURIFixup.h"
 
 #include "plbase64.h"
 
@@ -343,6 +346,7 @@ NS_INTERFACE_MAP_BEGIN(GlobalWindowImpl)
   NS_INTERFACE_MAP_ENTRY(nsIDOMEventReceiver)
   NS_INTERFACE_MAP_ENTRY(nsIDOMEventTarget)
   NS_INTERFACE_MAP_ENTRY(nsIDOM3EventTarget)
+  NS_INTERFACE_MAP_ENTRY(nsIDOMNSEventTarget)
   NS_INTERFACE_MAP_ENTRY(nsPIDOMWindow)
   NS_INTERFACE_MAP_ENTRY(nsIDOMViewCSS)
   NS_INTERFACE_MAP_ENTRY(nsIDOMAbstractView)
@@ -819,6 +823,9 @@ GlobalWindowImpl::HandleDOMEvent(nsIPresContext* aPresContext,
                                  PRUint32 aFlags,
                                  nsEventStatus* aEventStatus)
 {
+  // Make sure to tell the event that dispatch has started.
+  NS_MARK_EVENT_DISPATCH_STARTED(aEvent);
+
   nsresult ret = NS_OK;
   PRBool externalDOMEvent = PR_FALSE;
   nsIDOMEvent *domEvent = nsnull;
@@ -968,7 +975,7 @@ GlobalWindowImpl::HandleDOMEvent(nsIPresContext* aPresContext,
       // onload event for the frame element.
 
       nsEventStatus status = nsEventStatus_eIgnore;
-      nsEvent event(NS_PAGE_LOAD);
+      nsEvent event(NS_IS_TRUSTED_EVENT(aEvent), NS_PAGE_LOAD);
 
       // Most of the time we could get a pres context to pass in here,
       // but not always (i.e. if this window is not shown there won't
@@ -998,6 +1005,10 @@ GlobalWindowImpl::HandleDOMEvent(nsIPresContext* aPresContext,
       }
       aDOMEvent = nsnull;
     }
+
+    // Now that we're done with this event, remove the flag that says
+    // we're in the process of dispatching this event.
+    NS_MARK_EVENT_DISPATCH_DONE(aEvent);
   }
 
   mCurrentEvent = oldEvent;
@@ -2409,28 +2420,76 @@ GlobalWindowImpl::MakeScriptDialogTitle(const nsAString &aInTitle, nsAString &aO
 {
   aOutTitle.Truncate(0);
 
-  // Load the string to be prepended to titles for script
-  // confirm/alert/prompt boxes.
+  // Try to get a host from the running principal -- this will do the right
+  // thing for javascript: and data: documents.
 
-  nsresult rv;
-  nsCOMPtr<nsIStringBundleService> stringBundleService =
-     do_GetService(kCStringBundleServiceCID, &rv);
+  nsresult rv = NS_OK;
+  nsCOMPtr<nsIPrincipal> principal;
+  NS_WARN_IF_FALSE(sSecMan, "Global Window has no security manager!");
+  if (sSecMan) {
+    rv = sSecMan->GetSubjectPrincipal(getter_AddRefs(principal));
 
-  if (NS_SUCCEEDED(rv) && stringBundleService) {
-    nsCOMPtr<nsIStringBundle> stringBundle;
-    rv = stringBundleService->CreateBundle(kDOMBundleURL,
-       getter_AddRefs(stringBundle));
+    if (NS_SUCCEEDED(rv) && principal) {
+      nsCOMPtr<nsIURI> uri;
+      rv = principal->GetURI(getter_AddRefs(uri));
+      if (NS_SUCCEEDED(rv) && uri) {
 
-    if (stringBundle) {
-      nsAutoString inTitle(aInTitle);
-      nsXPIDLString tempString;
-      const PRUnichar *formatStrings[1];
-      formatStrings[0] = inTitle.get();
-      rv = stringBundle->FormatStringFromName(
-        NS_LITERAL_STRING("ScriptDlgTitle").get(),
-        formatStrings, 1, getter_Copies(tempString));
-      if (tempString)
-        aOutTitle = tempString.get();
+        // remove user:pass for privacy and spoof prevention
+
+        nsCOMPtr<nsIURIFixup> fixup(do_GetService(NS_URIFIXUP_CONTRACTID));
+        if (fixup) {
+          nsCOMPtr<nsIURI> fixedURI;
+          nsresult rv = fixup->CreateExposableURI(uri, getter_AddRefs(fixedURI));
+          if (NS_SUCCEEDED(rv) && fixedURI) {
+            nsCAutoString host;
+            fixedURI->GetHost(host);
+
+            if (!host.IsEmpty()) {
+
+              // if this URI has a host we'll show it. For other schemes
+              // (e.g. file:) we fall back to the localized generic string
+
+              nsCAutoString prepath;
+              fixedURI->GetPrePath(prepath);
+
+              aOutTitle = NS_ConvertUTF8toUTF16(prepath);
+              if (!aInTitle.IsEmpty())
+                aOutTitle.Append(NS_LITERAL_STRING(" - ") + aInTitle);
+            }
+          }
+        }
+      }
+    }
+    else { // failed to get subject principal
+      NS_WARNING("No script principal? Who is calling alert/confirm/prompt?!");
+    }
+  }
+
+  if (aOutTitle.IsEmpty()) {
+
+    // We didn't find a host so use the generic title modifier.
+    // Load the string to be prepended to titles for script
+    // confirm/alert/prompt boxes.
+
+    nsCOMPtr<nsIStringBundleService> stringBundleService =
+       do_GetService(kCStringBundleServiceCID, &rv);
+
+    if (NS_SUCCEEDED(rv) && stringBundleService) {
+      nsCOMPtr<nsIStringBundle> stringBundle;
+      rv = stringBundleService->CreateBundle(kDOMBundleURL,
+         getter_AddRefs(stringBundle));
+
+      if (stringBundle) {
+        nsAutoString inTitle(aInTitle);
+        nsXPIDLString tempString;
+        const PRUnichar *formatStrings[1];
+        formatStrings[0] = inTitle.get();
+        rv = stringBundle->FormatStringFromName(
+          NS_LITERAL_STRING("ScriptDlgTitle").get(),
+          formatStrings, 1, getter_Copies(tempString));
+        if (tempString)
+          aOutTitle = tempString.get();
+      }
     }
   }
 
@@ -4233,7 +4292,10 @@ GlobalWindowImpl::AddEventListener(const nsAString& aType,
                                    nsIDOMEventListener* aListener,
                                    PRBool aUseCapture)
 {
-  return AddGroupedEventListener(aType, aListener, aUseCapture, nsnull);
+  nsCOMPtr<nsIDocument> doc(do_QueryInterface(mDocument));
+
+  return AddEventListener(aType, aListener, aUseCapture,
+                          !nsContentUtils::IsChromeDoc(doc));
 }
 
 NS_IMETHODIMP
@@ -4314,6 +4376,25 @@ GlobalWindowImpl::IsRegisteredHere(const nsAString & type, PRBool *_retval)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
+
+NS_IMETHODIMP
+GlobalWindowImpl::AddEventListener(const nsAString& aType,
+                                 nsIDOMEventListener *aListener,
+                                 PRBool aUseCapture, PRBool aWantsUntrusted)
+{
+  nsCOMPtr<nsIEventListenerManager> manager;
+  nsresult rv = GetListenerManager(getter_AddRefs(manager));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  PRInt32 flags = aUseCapture ? NS_EVENT_FLAG_CAPTURE : NS_EVENT_FLAG_BUBBLE;
+
+  if (aWantsUntrusted) {
+    flags |= NS_PRIV_EVENT_UNTRUSTED_PERMITTED;
+  }
+
+  return manager->AddEventListenerByType(aListener, aType, flags, nsnull);
+}
+
 
 //*****************************************************************************
 // GlobalWindowImpl::nsIDOMEventReceiver
@@ -4561,7 +4642,7 @@ GlobalWindowImpl::Activate()
 
   nsEventStatus status;
 
-  nsGUIEvent guiEvent(NS_ACTIVATE, widget);
+  nsGUIEvent guiEvent(PR_TRUE, NS_ACTIVATE, widget);
   guiEvent.time = PR_IntervalNow();
 
   vm->DispatchEvent(&guiEvent, &status);
@@ -4589,7 +4670,7 @@ GlobalWindowImpl::Deactivate()
 
   nsEventStatus status;
 
-  nsGUIEvent guiEvent(NS_DEACTIVATE, widget);
+  nsGUIEvent guiEvent(PR_TRUE, NS_DEACTIVATE, widget);
   guiEvent.time = PR_IntervalNow();
 
   vm->DispatchEvent(&guiEvent, &status);
@@ -4981,12 +5062,16 @@ GlobalWindowImpl::OpenInternal(const nsAString& aUrl,
 
         if (argc) {
           nsCOMPtr<nsPIWindowWatcher> pwwatch(do_QueryInterface(wwatch));
-          NS_ENSURE_TRUE(pwwatch, NS_ERROR_UNEXPECTED);
+          if (pwwatch) {
+            PRUint32 extraArgc = argc >= 3 ? argc - 3 : 0;
+            rv = pwwatch->OpenWindowJS(this, url.get(), name_ptr, options_ptr,
+                                       aDialog, extraArgc, argv + 3,
+                                       getter_AddRefs(domReturn));
+          } else {
+            NS_ERROR("WindowWatcher service not a nsPIWindowWatcher!");
 
-          PRUint32 extraArgc = argc >= 3 ? argc - 3 : 0;
-          rv = pwwatch->OpenWindowJS(this, url.get(), name_ptr, options_ptr,
-                                     aDialog, extraArgc, argv + 3,
-                                     getter_AddRefs(domReturn));
+            rv = NS_ERROR_UNEXPECTED;
+          }
         } else {
           rv = wwatch->OpenWindow(this, url.get(), name_ptr, options_ptr,
                                   aExtraArgument, getter_AddRefs(domReturn));

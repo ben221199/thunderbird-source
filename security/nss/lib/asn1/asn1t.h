@@ -35,7 +35,7 @@
 #define ASN1T_H
 
 #ifdef DEBUG
-static const char ASN1T_CVS_ID[] = "@(#) $RCSfile: asn1t.h,v $ $Revision: 1.2 $ $Date: 2001/01/07 08:12:46 $ $Name: THUNDERBIRD_1_0_2_RELEASE $";
+static const char ASN1T_CVS_ID[] = "@(#) $RCSfile: asn1t.h,v $ $Revision: 1.2 $ $Date: 2001/01/07 08:12:46 $ $Name: AVIARY_1_0_1_20050124_BRANCH $";
 #endif /* DEBUG */
 
 /*

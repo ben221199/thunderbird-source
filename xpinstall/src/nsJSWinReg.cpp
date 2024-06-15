@@ -58,18 +58,29 @@ extern PRBool ConvertJSValToBool(PRBool* aProp,
                                 JSContext* aContext,
                                 jsval aValue);
 
-extern PRBool ConvertJSValToObj(nsISupports** aSupports,
-                               REFNSIID aIID,
-                               const nsString& aTypeName,
-                               JSContext* aContext,
-                               jsval aValue);
-
 
 static void PR_CALLBACK WinRegCleanup(JSContext *cx, JSObject *obj)
 {
     nsWinReg *nativeThis = (nsWinReg*)JS_GetPrivate(cx, obj);
     delete nativeThis;
 }
+
+/***********************************************************************/
+//
+// class for WinReg
+//
+JSClass WinRegClass = {
+  "WinReg",
+  JSCLASS_HAS_PRIVATE,
+  JS_PropertyStub,
+  JS_PropertyStub,
+  JS_PropertyStub,
+  JS_PropertyStub,
+  JS_EnumerateStub,
+  JS_ResolveStub,
+  JS_ConvertStub,
+  WinRegCleanup
+};
 
 /***********************************************************************************/
 // Native mothods for WinReg functions
@@ -80,16 +91,14 @@ static void PR_CALLBACK WinRegCleanup(JSContext *cx, JSObject *obj)
 PR_STATIC_CALLBACK(JSBool)
 WinRegSetRootKey(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 {
-  nsWinReg *nativeThis  = (nsWinReg*)JS_GetPrivate(cx, obj);
+  nsWinReg *nativeThis =
+    (nsWinReg*)JS_GetInstancePrivate(cx, obj, &WinRegClass, argv);
+  if (!nativeThis)
+    return JS_FALSE;
+
   PRInt32  b0;
 
   *rval = JSVAL_NULL;
-
-  // If there's no private data, this must be the prototype, so ignore
-  if(nsnull == nativeThis)
-  {
-    return JS_TRUE;
-  }
 
   if(argc >= 1)
   {
@@ -118,17 +127,15 @@ WinRegSetRootKey(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *r
 PR_STATIC_CALLBACK(JSBool)
 WinRegKeyExists(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 {
-  nsWinReg *nativeThis = (nsWinReg*)JS_GetPrivate(cx, obj);
+  nsWinReg *nativeThis =
+    (nsWinReg*)JS_GetInstancePrivate(cx, obj, &WinRegClass, argv);
+  if (!nativeThis)
+    return JS_FALSE;
+
   PRBool nativeRet;
   nsAutoString b0;
 
   *rval = JSVAL_FALSE;
-
-  // If there's no private data, this must be the prototype, so ignore
-  if(nsnull == nativeThis)
-  {
-    return JS_TRUE;
-  }
 
   if(argc >= 1)
   {
@@ -159,18 +166,16 @@ WinRegKeyExists(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rv
 PR_STATIC_CALLBACK(JSBool)
 WinRegValueExists(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 {
-  nsWinReg *nativeThis = (nsWinReg*)JS_GetPrivate(cx, obj);
+  nsWinReg *nativeThis =
+    (nsWinReg*)JS_GetInstancePrivate(cx, obj, &WinRegClass, argv);
+  if (!nativeThis)
+    return JS_FALSE;
+
   PRBool nativeRet;
   nsAutoString b0;
   nsAutoString b1;
 
   *rval = JSVAL_FALSE;
-
-  // If there's no private data, this must be the prototype, so ignore
-  if(nsnull == nativeThis)
-  {
-    return JS_TRUE;
-  }
 
   if(argc >= 2)
   {
@@ -199,17 +204,15 @@ WinRegValueExists(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *
 PR_STATIC_CALLBACK(JSBool)
 WinRegIsKeyWritable(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 {
-  nsWinReg *nativeThis = (nsWinReg*)JS_GetPrivate(cx, obj);
+  nsWinReg *nativeThis =
+    (nsWinReg*)JS_GetInstancePrivate(cx, obj, &WinRegClass, argv);
+  if (!nativeThis)
+    return JS_FALSE;
+
   PRInt32 nativeRet;
   nsAutoString b0;
 
   *rval = JSVAL_FALSE;
-
-  // If there's no private data, this must be the prototype, so ignore
-  if(nsnull == nativeThis)
-  {
-    return JS_TRUE;
-  }
 
   if(argc >= 1)
   {
@@ -236,18 +239,16 @@ WinRegIsKeyWritable(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval
 PR_STATIC_CALLBACK(JSBool)
 WinRegCreateKey(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 {
-  nsWinReg *nativeThis = (nsWinReg*)JS_GetPrivate(cx, obj);
+  nsWinReg *nativeThis =
+    (nsWinReg*)JS_GetInstancePrivate(cx, obj, &WinRegClass, argv);
+  if (!nativeThis)
+    return JS_FALSE;
+
   PRInt32 nativeRet;
   nsAutoString b0;
   nsAutoString b1;
 
   *rval = INT_TO_JSVAL(nsInstall::UNEXPECTED_ERROR);
-
-  // If there's no private data, this must be the prototype, so ignore
-  if(nsnull == nativeThis)
-  {
-    return JS_TRUE;
-  }
 
   if(argc >= 2)                             
   {
@@ -276,17 +277,15 @@ WinRegCreateKey(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rv
 PR_STATIC_CALLBACK(JSBool)
 WinRegDeleteKey(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 {
-  nsWinReg *nativeThis = (nsWinReg*)JS_GetPrivate(cx, obj);
+  nsWinReg *nativeThis =
+    (nsWinReg*)JS_GetInstancePrivate(cx, obj, &WinRegClass, argv);
+  if (!nativeThis)
+    return JS_FALSE;
+
   PRInt32 nativeRet;
   nsAutoString b0;
 
   *rval = INT_TO_JSVAL(nsInstall::UNEXPECTED_ERROR);
-
-  // If there's no private data, this must be the prototype, so ignore
-  if(nsnull == nativeThis)
-  {
-    return JS_TRUE;
-  }
 
   if(argc >= 1)                             
   {
@@ -314,18 +313,16 @@ WinRegDeleteKey(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rv
 PR_STATIC_CALLBACK(JSBool)
 WinRegDeleteValue(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 {
-  nsWinReg *nativeThis = (nsWinReg*)JS_GetPrivate(cx, obj);
+  nsWinReg *nativeThis =
+    (nsWinReg*)JS_GetInstancePrivate(cx, obj, &WinRegClass, argv);
+  if (!nativeThis)
+    return JS_FALSE;
+
   PRInt32 nativeRet;
   nsString b0;
   nsString b1;
 
   *rval = INT_TO_JSVAL(nsInstall::UNEXPECTED_ERROR);
-
-  // If there's no private data, this must be the prototype, so ignore
-  if(nsnull == nativeThis)
-  {
-    return JS_TRUE;
-  }
 
   if(argc >= 2)                             
   {
@@ -354,19 +351,17 @@ WinRegDeleteValue(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *
 PR_STATIC_CALLBACK(JSBool)
 WinRegSetValueString(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 {
-  nsWinReg *nativeThis = (nsWinReg*)JS_GetPrivate(cx, obj);
+  nsWinReg *nativeThis =
+    (nsWinReg*)JS_GetInstancePrivate(cx, obj, &WinRegClass, argv);
+  if (!nativeThis)
+    return JS_FALSE;
+
   PRInt32 nativeRet;
   nsAutoString b0;
   nsAutoString b1;
   nsAutoString b2;
 
   *rval = INT_TO_JSVAL(nsInstall::UNEXPECTED_ERROR);
-
-  // If there's no private data, this must be the prototype, so ignore
-  if(nsnull == nativeThis)
-  {
-    return JS_TRUE;
-  }
 
   if(argc >= 3)
   {
@@ -397,18 +392,16 @@ WinRegSetValueString(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsva
 PR_STATIC_CALLBACK(JSBool)
 WinRegGetValueString(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 {
-  nsWinReg*    nativeThis = (nsWinReg*)JS_GetPrivate(cx, obj);
+  nsWinReg *nativeThis =
+    (nsWinReg*)JS_GetInstancePrivate(cx, obj, &WinRegClass, argv);
+  if (!nativeThis)
+    return JS_FALSE;
+
   nsString     nativeRet;
   nsAutoString b0;
   nsAutoString b1;
 
   *rval = JSVAL_NULL;
-
-  // If there's no private data, this must be the prototype, so ignore
-  if(nsnull == nativeThis)
-  {
-    return JS_TRUE;
-  }
 
   if(argc >= 2)                             
   {
@@ -437,18 +430,16 @@ WinRegGetValueString(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsva
 PR_STATIC_CALLBACK(JSBool)
 WinRegEnumValueNames(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 {
-  nsWinReg*      nativeThis = (nsWinReg*)JS_GetPrivate(cx, obj);
+  nsWinReg *nativeThis =
+    (nsWinReg*)JS_GetInstancePrivate(cx, obj, &WinRegClass, argv);
+  if (!nativeThis)
+    return JS_FALSE;
+
   nsAutoString   nativeRet;
   nsAutoString   b0;
   int32          b1;
 
   *rval = JSVAL_NULL;
-
-  // If there's no private data, this must be the prototype, so ignore
-  if(nsnull == nativeThis)
-  {
-    return JS_TRUE;
-  }
 
   if(argc >= 2)                             
   {
@@ -484,18 +475,16 @@ WinRegEnumValueNames(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsva
 PR_STATIC_CALLBACK(JSBool)
 WinRegEnumKeys(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 {
-  nsWinReg*      nativeThis = (nsWinReg*)JS_GetPrivate(cx, obj);
+  nsWinReg *nativeThis =
+    (nsWinReg*)JS_GetInstancePrivate(cx, obj, &WinRegClass, argv);
+  if (!nativeThis)
+    return JS_FALSE;
+
   nsAutoString   nativeRet;
   nsAutoString   b0;
   int32          b1;
 
   *rval = JSVAL_NULL;
-
-  // If there's no private data, this must be the prototype, so ignore
-  if(nsnull == nativeThis)
-  {
-    return JS_TRUE;
-  }
 
   if(argc >= 2)                             
   {
@@ -531,19 +520,17 @@ WinRegEnumKeys(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rva
 PR_STATIC_CALLBACK(JSBool)
 WinRegSetValueNumber(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 {
-  nsWinReg *nativeThis = (nsWinReg*)JS_GetPrivate(cx, obj);
+  nsWinReg *nativeThis =
+    (nsWinReg*)JS_GetInstancePrivate(cx, obj, &WinRegClass, argv);
+  if (!nativeThis)
+    return JS_FALSE;
+
   PRInt32 nativeRet;
   nsAutoString b0;
   nsAutoString b1;
   int32        ib2;
 
   *rval = INT_TO_JSVAL(nsInstall::UNEXPECTED_ERROR);
-
-  // If there's no private data, this must be the prototype, so ignore
-  if(nsnull == nativeThis)
-  {
-    return JS_TRUE;
-  }
 
   if(argc >= 3)
   {
@@ -577,18 +564,16 @@ WinRegSetValueNumber(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsva
 PR_STATIC_CALLBACK(JSBool)
 WinRegGetValueNumber(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 {
-  nsWinReg*    nativeThis = (nsWinReg*)JS_GetPrivate(cx, obj);
+  nsWinReg *nativeThis =
+    (nsWinReg*)JS_GetInstancePrivate(cx, obj, &WinRegClass, argv);
+  if (!nativeThis)
+    return JS_FALSE;
+
   PRInt32      nativeRet;
   nsAutoString b0;
   nsAutoString b1;
 
   *rval = JSVAL_NULL;
-
-  // If there's no private data, this must be the prototype, so ignore
-  if(nsnull == nativeThis)
-  {
-    return JS_TRUE;
-  }
 
   if(argc >= 2)                             
   {
@@ -617,17 +602,15 @@ WinRegGetValueNumber(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsva
 PR_STATIC_CALLBACK(JSBool)
 WinRegSetValue(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 {
-  nsWinReg *nativeThis = (nsWinReg*)JS_GetPrivate(cx, obj);
+  nsWinReg *nativeThis =
+    (nsWinReg*)JS_GetInstancePrivate(cx, obj, &WinRegClass, argv);
+  if (!nativeThis)
+    return JS_FALSE;
+
   nsAutoString b0;
   nsAutoString b1;
 
   *rval = INT_TO_JSVAL(nsInstall::UNEXPECTED_ERROR);
-
-  // If there's no private data, this must be the prototype, so ignore
-  if(nsnull == nativeThis)
-  {
-    return JS_TRUE;
-  }
 
   if(argc >= 3)
   {
@@ -663,18 +646,16 @@ WinRegSetValue(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rva
 PR_STATIC_CALLBACK(JSBool)
 WinRegGetValue(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 {
-  nsWinReg      *nativeThis = (nsWinReg*)JS_GetPrivate(cx, obj);
+  nsWinReg *nativeThis =
+    (nsWinReg*)JS_GetInstancePrivate(cx, obj, &WinRegClass, argv);
+  if (!nativeThis)
+    return JS_FALSE;
+
   nsWinRegValue *nativeRet;
   nsAutoString  b0;
   nsAutoString  b1;
 
   *rval = JSVAL_NULL;
-
-  // If there's no private data, this must be the prototype, so ignore
-  if(nsnull == nativeThis)
-  {
-    return JS_TRUE;
-  }
 
   if(argc >= 2)                             
   {
@@ -707,23 +688,6 @@ WinReg(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
   return JS_FALSE;
 }
 
-
-/***********************************************************************/
-//
-// class for WinReg
-//
-JSClass WinRegClass = {
-  "WinReg",
-  JSCLASS_HAS_PRIVATE,
-  JS_PropertyStub,
-  JS_PropertyStub,
-  JS_PropertyStub,
-  JS_PropertyStub,
-  JS_EnumerateStub,
-  JS_ResolveStub,
-  JS_ConvertStub,
-  WinRegCleanup
-};
 
 static JSConstDoubleSpec winreg_constants[] = 
 {

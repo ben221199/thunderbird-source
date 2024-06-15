@@ -35,6 +35,7 @@
  * the terms of any one of the NPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
+
 #include "nscore.h"
 #include "nsCOMPtr.h"
 #include "nsReadableUtils.h"
@@ -52,7 +53,7 @@
 #include "nsIDOMHTMLSelectElement.h" 
 #include "nsIDOMNSHTMLSelectElement.h" 
 #include "nsIDOMHTMLOptionElement.h" 
-#include "nsIComboboxControlFrame.h"
+#include "nsComboboxControlFrame.h"
 #include "nsIViewManager.h"
 #include "nsIScrollableView.h"
 #include "nsIDOMHTMLOptGroupElement.h"
@@ -1654,6 +1655,14 @@ nsListControlFrame::HandleListSelection(nsIDOMEvent* aEvent,
 NS_IMETHODIMP
 nsListControlFrame::CaptureMouseEvents(nsIPresContext* aPresContext, PRBool aGrabMouseEvents)
 {
+  // Currently cocoa widgets use a native popup widget which tracks clicks synchronously,
+  // so we never want to do mouse capturing. Note that we only bail if the list
+  // is in drop-down mode, and the caller is requesting capture (we let release capture
+  // requests go through to ensure that we can release capture requested via other
+  // code paths, if any exist).
+  if (aGrabMouseEvents && IsInDropDownMode() && nsComboboxControlFrame::ToolkitHasNativePopup())
+    return NS_OK;
+
   nsIView* view = nsnull;
   if (IsInDropDownMode()) {
     view = GetView();
@@ -2054,13 +2063,6 @@ nsListControlFrame::GetFormControlType() const
 }
 
 
-//---------------------------------------------------------
-void
-nsListControlFrame::MouseClicked(nsIPresContext* aPresContext)
-{
-}
-
-
 NS_IMETHODIMP
 nsListControlFrame::OnContentReset()
 {
@@ -2220,7 +2222,7 @@ nsListControlFrame::GetSelectedIndex(PRInt32 * aIndex)
 PRBool 
 nsListControlFrame::IsInDropDownMode() const
 {
-  return((nsnull == mComboboxFrame) ? PR_FALSE : PR_TRUE);
+  return (mComboboxFrame != nsnull);
 }
 
 //---------------------------------------------------------
@@ -2463,7 +2465,7 @@ nsListControlFrame::FireOnChange()
 
   // Dispatch the NS_FORM_CHANGE event
   nsEventStatus status = nsEventStatus_eIgnore;
-  nsEvent event(NS_FORM_CHANGE);
+  nsEvent event(PR_TRUE, NS_FORM_CHANGE);
 
   nsIPresShell *presShell = mPresContext->GetPresShell();
   if (presShell) {
@@ -2608,7 +2610,7 @@ nsListControlFrame::AboutToRollup()
   // - IF the combobox is different from the index when it was popped down,
   //   we fire onChange() since it has changed.
 
-  if (IsInDropDownMode() == PR_TRUE) {
+  if (IsInDropDownMode()) {
     PRInt32 index;
     mComboboxFrame->GetIndexOfDisplayArea(&index);
     ComboboxFinish(index);
@@ -2622,7 +2624,7 @@ nsListControlFrame::DidReflow(nsIPresContext*           aPresContext,
                               const nsHTMLReflowState*  aReflowState,
                               nsDidReflowStatus         aStatus)
 {
-  if (PR_TRUE == IsInDropDownMode()) 
+  if (IsInDropDownMode()) 
   {
     //SyncViewWithFrame();
     mState &= ~NS_FRAME_SYNC_FRAME_AND_VIEW;
@@ -2724,7 +2726,7 @@ nsListControlFrame::MouseUp(nsIDOMEvent* aMouseEvent)
   // if a right button click is on the combobox itself
   // or on the select when in listbox mode, then let the click through
   if (!IsLeftButton(aMouseEvent)) {
-    if (IsInDropDownMode() == PR_TRUE) {
+    if (IsInDropDownMode()) {
       if (!IsClickingInCombobox(aMouseEvent)) {
         aMouseEvent->PreventDefault();
 
@@ -2796,7 +2798,7 @@ nsListControlFrame::MouseUp(nsIDOMEvent* aMouseEvent)
       mouseEvent->clickCount = 1;
     } else {
       // the click was out side of the select or its dropdown
-      mouseEvent->clickCount = IsClickingInCombobox(aMouseEvent)?1:0;
+      mouseEvent->clickCount = IsClickingInCombobox(aMouseEvent) ? 1 : 0;
     }
   } else {
     REFLOW_DEBUG_MSG(">>>>>> Didn't find");
@@ -2854,6 +2856,10 @@ nsListControlFrame::FireMenuItemActiveEvent()
   if (manager &&
       NS_SUCCEEDED(manager->CreateEvent(mPresContext, nsnull, NS_LITERAL_STRING("Events"), getter_AddRefs(event)))) {
     event->InitEvent(NS_LITERAL_STRING("DOMMenuItemActive"), PR_TRUE, PR_TRUE);
+
+    nsCOMPtr<nsIPrivateDOMEvent> privateEvent(do_QueryInterface(event));
+    privateEvent->SetTrusted(PR_TRUE);
+
     PRBool noDefault;
     mPresContext->EventStateManager()->DispatchNewEvent(mContent, event,
                                                         &noDefault);
@@ -2898,7 +2904,6 @@ nsListControlFrame::GetIndexFromDOMEvent(nsIDOMEvent* aMouseEvent,
   } else {
     rv = NS_ERROR_FAILURE;
   }
-
 
   return rv;
 }
@@ -2954,12 +2959,14 @@ nsListControlFrame::MouseDown(nsIDOMEvent* aMouseEvent)
         return NS_OK;
       }
 
-      PRBool isDroppedDown;
-      mComboboxFrame->IsDroppedDown(&isDroppedDown);
-      mComboboxFrame->ShowDropDown(!isDroppedDown);
-
-      if (isDroppedDown) {
-        CaptureMouseEvents(mPresContext, PR_FALSE);
+       if (!nsComboboxControlFrame::ToolkitHasNativePopup())
+       {
+         PRBool isDroppedDown;
+         mComboboxFrame->IsDroppedDown(&isDroppedDown);
+         mComboboxFrame->ShowDropDown(!isDroppedDown);
+         if (isDroppedDown) {
+           CaptureMouseEvents(GetPresContext(), PR_FALSE);
+         }
       }
     }
   }
@@ -2976,7 +2983,7 @@ nsListControlFrame::MouseMove(nsIDOMEvent* aMouseEvent)
   NS_ASSERTION(aMouseEvent, "aMouseEvent is null.");
   //REFLOW_DEBUG_MSG("MouseMove\n");
 
-  if (IsInDropDownMode() == PR_TRUE) { 
+  if (IsInDropDownMode()) { 
     PRBool isDroppedDown = PR_FALSE;
     mComboboxFrame->IsDroppedDown(&isDroppedDown);
     if (isDroppedDown) {
@@ -3005,7 +3012,7 @@ nsListControlFrame::DragMove(nsIDOMEvent* aMouseEvent)
   NS_ASSERTION(aMouseEvent, "aMouseEvent is null.");
   //REFLOW_DEBUG_MSG("DragMove\n");
 
-  if (IsInDropDownMode() == PR_FALSE) { 
+  if (!IsInDropDownMode()) { 
     PRInt32 selectedIndex;
     if (NS_SUCCEEDED(GetIndexFromDOMEvent(aMouseEvent, selectedIndex))) {
       // Don't waste cycles if we already dragged over this item
@@ -3232,7 +3239,9 @@ nsListControlFrame::GetIncrementalString()
 void
 nsListControlFrame::DropDownToggleKey(nsIDOMEvent* aKeyEvent)
 {
-  if (IsInDropDownMode()) {
+  // Cocoa widgets do native popups, so don't try to show
+  // dropdowns there.
+  if (IsInDropDownMode() && !nsComboboxControlFrame::ToolkitHasNativePopup()) {
     PRBool isDroppedDown;
     mComboboxFrame->IsDroppedDown(&isDroppedDown);
     mComboboxFrame->ShowDropDown(!isDroppedDown);
@@ -3498,7 +3507,7 @@ nsListControlFrame::KeyPress(nsIDOMEvent* aKeyEvent)
     // XXX - Are we cover up a problem here???
     // Why aren't they getting flushed each time?
     // because this isn't needed for Gfx
-    if (IsInDropDownMode() == PR_TRUE) {
+    if (IsInDropDownMode()) {
       mPresContext->PresShell()->FlushPendingNotifications(PR_FALSE);
     }
     REFLOW_DEBUG_MSG2("  After: %d\n", newIndex);

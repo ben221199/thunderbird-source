@@ -30,7 +30,7 @@
 # may use your version of this file under either the MPL or the
 # GPL.
 #
-MAKEFILE_CVS_ID = "@(#) $RCSfile: Makefile,v $ $Revision: 1.1 $ $Date: 2000/05/15 20:39:53 $ $Name: THUNDERBIRD_1_0_2_RELEASE $"
+MAKEFILE_CVS_ID = "@(#) $RCSfile: Makefile,v $ $Revision: 1.1 $ $Date: 2000/05/15 20:39:53 $ $Name: AVIARY_1_0_1_20050124_BRANCH $"
 
 include manifest.mn
 include config.mk

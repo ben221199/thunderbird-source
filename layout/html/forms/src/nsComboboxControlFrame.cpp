@@ -578,7 +578,8 @@ nsComboboxControlFrame::ShowPopup(PRBool aShowPopup)
 
   // fire a popup dom event
   nsEventStatus status = nsEventStatus_eIgnore;
-  nsMouseEvent event(aShowPopup ? NS_XUL_POPUP_SHOWING : NS_XUL_POPUP_HIDING);
+  nsMouseEvent event(PR_TRUE, aShowPopup ?
+                     NS_XUL_POPUP_SHOWING : NS_XUL_POPUP_HIDING, nsnull);
 
   nsIPresShell *shell = mPresContext->GetPresShell();
   if (shell) 
@@ -623,15 +624,6 @@ nsComboboxControlFrame::ShowList(nsIPresContext* aPresContext, PRBool aShowList)
 
 }
 
-
-//-------------------------------------------------------------
-// this is in response to the MouseClick from the containing browse button
-// XXX: TODO still need to get filters from accept attribute
-void 
-nsComboboxControlFrame::MouseClicked(nsIPresContext* aPresContext)
-{
-   //ToggleList(aPresContext);
-}
 
 nsresult
 nsComboboxControlFrame::ReflowComboChildFrame(nsIFrame* aFrame, 
@@ -2360,8 +2352,7 @@ nsComboboxControlFrame::Paint(nsIPresContext*     aPresContext,
     // If all of the nsITheme implementations are fixed to draw the focus border correctly,
     // this #ifdef should be replaced with a -moz-appearance / ThemeSupportsWidget() check.
 
-#ifndef MOZ_WIDGET_COCOA
-    if (mDisplayFrame) {
+    if (!ToolkitHasNativePopup() && mDisplayFrame) {
       aRenderingContext.PushState();
       PRBool clipEmpty;
       nsRect clipRect = mDisplayFrame->GetRect();
@@ -2402,7 +2393,6 @@ nsComboboxControlFrame::Paint(nsIPresContext*     aPresContext,
       /////////////////////
       aRenderingContext.PopState(clipEmpty);
     }
-#endif
   }
   
   // Call to the base class to draw selection borders when appropriate
@@ -2511,3 +2501,22 @@ nsComboboxControlFrame::RestoreState(nsIPresContext* aPresContext,
   rv = stateful->RestoreState(aPresContext, aState);
   return rv;
 }
+
+
+//
+// Some toolkits (just Cocoa at this point) use a native widget
+// for the combobox popup, which affects drawing and event
+// handling here and in nsListControlFrame.
+// 
+
+/* static */
+PRBool
+nsComboboxControlFrame::ToolkitHasNativePopup()
+{
+#ifdef MOZ_WIDGET_COCOA
+  return PR_TRUE;
+#else
+  return PR_FALSE;
+#endif
+}
+

@@ -1,9 +1,9 @@
-/.cvsignore/1.1/Sat Feb 24 06:22:16 2001//TTHUNDERBIRD_1_0_2_RELEASE
-/Makefile.in/1.11.90.2/Fri Sep 10 08:11:25 2004//TTHUNDERBIRD_1_0_2_RELEASE
-/browser-base.inc/1.1.2.1/Fri Sep 10 08:11:25 2004//TTHUNDERBIRD_1_0_2_RELEASE
-/editor-base.inc/1.1.2.2/Mon Sep 13 22:37:55 2004//TTHUNDERBIRD_1_0_2_RELEASE
-/input-fields-base.inc/1.1.2.2/Mon Sep 13 22:37:55 2004//TTHUNDERBIRD_1_0_2_RELEASE
-/textareas-base.inc/1.1.2.2/Mon Sep 13 22:37:55 2004//TTHUNDERBIRD_1_0_2_RELEASE
+/.cvsignore/1.1/Sat Feb 24 06:22:16 2001//TAVIARY_1_0_1_20050124_BRANCH
+/Makefile.in/1.11.90.2.2.1/Thu Jun 30 18:03:32 2005//TAVIARY_1_0_1_20050124_BRANCH
+/browser-base.inc/1.1.2.1/Fri Sep 10 08:11:25 2004//TAVIARY_1_0_1_20050124_BRANCH
+/editor-base.inc/1.1.2.2/Mon Sep 13 22:37:55 2004//TAVIARY_1_0_1_20050124_BRANCH
+/input-fields-base.inc/1.1.2.2/Mon Sep 13 22:37:55 2004//TAVIARY_1_0_1_20050124_BRANCH
+/textareas-base.inc/1.1.2.2/Mon Sep 13 22:37:55 2004//TAVIARY_1_0_1_20050124_BRANCH
 D/gtk2////
 D/mac////
 D/unix////

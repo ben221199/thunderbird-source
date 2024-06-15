@@ -403,6 +403,12 @@ js_AllocStack(JSContext *cx, uintN nslots, void **markp)
         sp += 2;
     }
 
+    /*
+     * Store JSVAL_NULL using memset, to let compilers optimize as they see
+     * fit, in case a caller allocates and pushes GC-things one by one, which
+     * could nest a last-ditch GC that will scan this segment.
+     */
+    memset(sp, 0, nslots * sizeof(jsval));
     return sp;
 }
 
@@ -1055,7 +1061,7 @@ out:
     return ok;
 }
 
-JSBool
+extern JS_FRIEND_API(JSBool)
 js_InternalGetOrSet(JSContext *cx, JSObject *obj, jsid id, jsval fval,
                     JSAccessMode mode, uintN argc, jsval *argv, jsval *rval)
 {

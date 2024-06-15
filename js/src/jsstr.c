@@ -1171,20 +1171,29 @@ match_or_replace(JSContext *cx, JSObject *obj, uintN argc, jsval *argv,
              * vs. non-null return value, optimize away the array object that
              * would normally be returned in *rval.
              */
-            JS_ASSERT(*cx->fp->down->pc == JSOP_CALL ||
-                      *cx->fp->down->pc == JSOP_NEW);
-            JS_ASSERT(js_CodeSpec[*cx->fp->down->pc].length == 3);
-            switch (cx->fp->down->pc[3]) {
-              case JSOP_POP:
-              case JSOP_IFEQ:
-              case JSOP_IFNE:
-              case JSOP_IFEQX:
-              case JSOP_IFNEX:
-                test = JS_TRUE;
-                break;
-              default:
-                test = JS_FALSE;
-                break;
+            JSStackFrame *fp = cx->fp->down;
+
+            /* Skip Function.prototype.call and .apply frames. */
+            while (fp && !fp->pc) {
+                JS_ASSERT(!fp->script);
+                fp = fp->down;
+            }
+
+            /* Assume a full array result is required, then prove otherwise. */
+            test = JS_FALSE;
+            if (fp) {
+                JS_ASSERT(*fp->pc == JSOP_CALL || *fp->pc == JSOP_NEW);
+                JS_ASSERT(js_CodeSpec[*fp->pc].length == 3);
+                switch (fp->pc[3]) {
+                  case JSOP_POP:
+                  case JSOP_IFEQ:
+                  case JSOP_IFNE:
+                  case JSOP_IFEQX:
+                  case JSOP_IFNEX:
+                    test = JS_TRUE;
+                    break;
+                  default:;
+                }
             }
         }
         ok = js_ExecuteRegExp(cx, re, str, &index, test, rval);
@@ -1378,11 +1387,13 @@ find_replen(JSContext *cx, ReplaceData *rdata, size_t *sizep)
         JSBool ok;
 
         /*
-         * Save the rightContext from the current regexp, since it
-         * gets stuck at the end of the replacement string and may
-         * be clobbered by a RegExp usage in the lambda function.
+         * Save the regExpStatics from the current regexp, since they may be
+         * clobbered by a RegExp usage in the lambda function.  Note that all
+         * members of JSRegExpStatics are JSSubStrings, so not GC roots, save
+         * input, which is rooted otherwise via argv[-1] in str_replace.
          */
-        JSSubString saveRightContext = cx->regExpStatics.rightContext;
+        JSRegExpStatics save = cx->regExpStatics;
+        JSBool freeMoreParens = JS_FALSE;
 
         /*
          * In the lambda case, not only do we find the replacement string's
@@ -1425,6 +1436,14 @@ find_replen(JSContext *cx, ReplaceData *rdata, size_t *sizep)
         for (j = 0; i < m; i++, j++)
             PUSH_REGEXP_STATIC(moreParens[j]);
 
+        /*
+         * We need to clear moreParens in the top-of-stack cx->regExpStatics
+         * to it won't be possibly realloc'ed, leaving the bottom-of-stack
+         * moreParens pointing to freed memory.
+         */
+        cx->regExpStatics.moreParens = NULL;
+        freeMoreParens = JS_TRUE;
+
 #undef PUSH_REGEXP_STATIC
 
         /* Make sure to push undefined for any unmatched parens. */
@@ -1460,7 +1479,9 @@ find_replen(JSContext *cx, ReplaceData *rdata, size_t *sizep)
 
       lambda_out:
         js_FreeStack(cx, mark);
-        cx->regExpStatics.rightContext = saveRightContext;
+        if (freeMoreParens)
+            JS_free(cx, cx->regExpStatics.moreParens);
+        cx->regExpStatics = save;
         return ok;
     }
 #endif /* JS_HAS_REPLACE_LAMBDA */

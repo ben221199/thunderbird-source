@@ -1,9 +1,9 @@
-/.cvsignore/1.1/Sun Jul 18 00:26:01 1999//TTHUNDERBIRD_1_0_2_RELEASE
-/Makefile.in/1.16.20.1/Sun Oct 24 12:04:32 2004//TTHUNDERBIRD_1_0_2_RELEASE
-/nsIPrincipal.idl/1.29.18.1/Sun Oct 24 12:04:32 2004//TTHUNDERBIRD_1_0_2_RELEASE
-/nsIPrincipalObsolete.idl/1.1.2.1/Sun Oct 24 12:04:32 2004//TTHUNDERBIRD_1_0_2_RELEASE
-/nsIScriptSecurityManager.idl/1.61.8.1/Sun Oct 24 12:04:32 2004//TTHUNDERBIRD_1_0_2_RELEASE
-/nsIScriptSecurityManagerObsolete.idl/1.1.2.1/Sun Oct 24 12:04:32 2004//TTHUNDERBIRD_1_0_2_RELEASE
-/nsISecurityCheckedComponent.idl/1.5/Tue Sep 25 01:03:51 2001//TTHUNDERBIRD_1_0_2_RELEASE
-/nsISignatureVerifier.idl/1.6/Tue Sep 25 01:03:51 2001//TTHUNDERBIRD_1_0_2_RELEASE
+/.cvsignore/1.1/Sun Jul 18 00:26:01 1999//TAVIARY_1_0_1_20050124_BRANCH
+/Makefile.in/1.16.20.1/Sun Oct 24 12:04:32 2004//TAVIARY_1_0_1_20050124_BRANCH
+/nsIPrincipal.idl/1.29.18.1.2.1/Sat Jul  9 01:48:08 2005//TAVIARY_1_0_1_20050124_BRANCH
+/nsIPrincipalObsolete.idl/1.1.2.1/Sun Oct 24 12:04:32 2004//TAVIARY_1_0_1_20050124_BRANCH
+/nsIScriptSecurityManager.idl/1.61.8.1.2.1/Mon May  9 20:30:21 2005//TAVIARY_1_0_1_20050124_BRANCH
+/nsIScriptSecurityManagerObsolete.idl/1.1.2.1/Sun Oct 24 12:04:32 2004//TAVIARY_1_0_1_20050124_BRANCH
+/nsISecurityCheckedComponent.idl/1.5/Tue Sep 25 01:03:51 2001//TAVIARY_1_0_1_20050124_BRANCH
+/nsISignatureVerifier.idl/1.6/Tue Sep 25 01:03:51 2001//TAVIARY_1_0_1_20050124_BRANCH
 D

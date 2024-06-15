@@ -35,7 +35,7 @@
 #define NSSDEV_H
 
 #ifdef DEBUG
-static const char NSSDEV_CVS_ID[] = "@(#) $RCSfile: nssdev.h,v $ $Revision: 1.1 $ $Date: 2002/04/04 20:00:23 $ $Name: THUNDERBIRD_1_0_2_RELEASE $";
+static const char NSSDEV_CVS_ID[] = "@(#) $RCSfile: nssdev.h,v $ $Revision: 1.1 $ $Date: 2002/04/04 20:00:23 $ $Name: AVIARY_1_0_1_20050124_BRANCH $";
 #endif /* DEBUG */
 /*
  * nssdev.h
