@@ -1,4 +1,5 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set sw=2 ts=2 et tw=80: */
 /* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -346,10 +347,6 @@ nsresult CNavDTD::WillBuildModel(const CParserContext& aParserContext,
 
   if(!aParserContext.mPrevContext && aSink) {
 
-#ifdef DEBUG
-    mBodyContext->ResetCounters();
-#endif
-
     STOP_TIMER();
     MOZ_TIMER_DEBUGLOG(("Stop: Parse Time: CNavDTD::WillBuildModel(), this=%p\n", this));
     
@@ -536,7 +533,7 @@ nsresult CNavDTD::DidBuildModel(nsresult anErrorCode,
   if (aParser && aNotifySink) { 
     if (NS_OK == anErrorCode) {
       if (eHTMLTag_unknown != mSkipTarget) {
-        // Looks like there is an open target ( ex. <title>, <textarea> ).
+        // Looks like there is an open target ( ex. <title> ).
         // Create a matching target to handle the unclosed target.
         result = BuildNeglectedTarget(mSkipTarget, eToken_end, aParser, aSink);
         NS_ENSURE_SUCCESS(result , result);
@@ -907,13 +904,17 @@ nsresult CNavDTD::HandleToken(CToken* aToken,nsIParser* aParser){
                   // wrong. So we collect the whole tag as misplaced in one
                   // gulp. Note that the tokenizer guarantees that there will
                   // be an end tag.
-                  while (aToken->GetTokenType() != eToken_end ||
-                         aToken->GetTypeID() != theTag) {
-                    aToken = NS_STATIC_CAST(CHTMLToken *, mTokenizer->PopToken());
-                    PushIntoMisplacedStack(aToken);
+                  CToken *current = aToken;
+                  while (current->GetTokenType() != eToken_end ||
+                         current->GetTypeID() != theTag) {
+                    current = NS_STATIC_CAST(CToken *, mTokenizer->PopToken());
+                    NS_ASSERTION(current, "The tokenizer is not creating good "
+                                          "alternate tags");
+                    PushIntoMisplacedStack(current);
                   }
 
-                  return result;
+                  // XXX Add code to also collect incorrect attributes on the
+                  // end tag.
                 }
 
                 if(DoesRequireBody(aToken,mTokenizer)) {
@@ -1004,12 +1005,6 @@ nsresult CNavDTD::HandleToken(CToken* aToken,nsIParser* aParser){
 nsresult CNavDTD::DidHandleStartTag(nsIParserNode& aNode,eHTMLTags aChildTag){
   nsresult result=NS_OK;
 
-#if 0
-    // XXX --- Ignore this: it's just rickg debug testing...
-  nsAutoString theStr;
-  aNode.GetSource(theStr);
-#endif
-
   switch(aChildTag){
 
     case eHTMLTag_pre:
@@ -1026,52 +1021,6 @@ nsresult CNavDTD::DidHandleStartTag(nsIParserNode& aNode,eHTMLTags aChildTag){
         }//if
       }
       break;
-#ifdef DEBUG
-    case eHTMLTag_counter:
-      {
-        PRInt32   theCount=mBodyContext->GetCount();
-        eHTMLTags theGrandParentTag=mBodyContext->TagAt(theCount-1);
-        
-        nsAutoString  theNumber;
-        
-        mBodyContext->IncrementCounter(theGrandParentTag,aNode,theNumber);
-
-        CTextToken theToken(theNumber);
-        nsCParserNode theNode(&theToken, 0 /*stack token*/);
-        result=mSink->AddLeaf(theNode);
-      }
-      break;
-
-    case eHTMLTag_meta:
-      {
-          //we should only enable user-defined entities in debug builds...
-
-        PRInt32 theCount=aNode.GetAttributeCount();
-        const nsAString* theNamePtr=0;
-        const nsAString* theValuePtr=0;
-
-        if(theCount) {
-          PRInt32 theIndex=0;
-          for(theIndex=0;theIndex<theCount;++theIndex){
-            const nsAString& theKey = aNode.GetKeyAt(theIndex);
-            if(theKey.LowerCaseEqualsLiteral("entity")) {
-              const nsAString& theName=aNode.GetValueAt(theIndex);
-              theNamePtr=&theName;
-            }
-            else if(theKey.LowerCaseEqualsLiteral("value")) {
-              //store the named enity with the context...
-              const nsAString& theValue=aNode.GetValueAt(theIndex);
-              theValuePtr=&theValue;
-            }
-          }
-        }
-        if(theNamePtr && theValuePtr) {
-          mBodyContext->RegisterEntity(*theNamePtr,*theValuePtr);
-        }
-      }
-      break; 
-#endif
-
     default:
       break;
   }//switch 
@@ -1703,8 +1652,12 @@ nsresult CNavDTD::HandleStartToken(CToken* aToken) {
 
       if(!isTokenHandled) {
         if(theHeadIsParent &&
-            (isExclusive || (mFlags & NS_DTD_FLAG_HAS_OPEN_HEAD))) {
+            (isExclusive || !(mFlags & NS_DTD_FLAG_HAD_BODY))) {
           // These tokens prefer to be in the head.
+          // Note: I changed the above test to be against NS_DTD_FLAG_HAD_BODY
+          // instead of NS_DTD_FLAG_HAS_OPEN_HEAD because if neither the body
+          // nor the head have been opened, we should assume the tag wants to
+          // be in the head.
           result = AddHeadLeaf(theNode);
         }
         else {
@@ -1891,7 +1844,6 @@ nsresult CNavDTD::HandleEndToken(CToken* aToken) {
     case eHTMLTag_style:
     case eHTMLTag_link:
     case eHTMLTag_meta:
-    case eHTMLTag_textarea:
     case eHTMLTag_title:
       break;
 
@@ -1958,10 +1910,27 @@ nsresult CNavDTD::HandleEndToken(CToken* aToken) {
               // Ex. <html><body>Hello</P>There</body></html>
               PRBool theParentContains=-1; //set to -1 to force canomit to recompute.
               if(!CanOmit(theParentTag,theChildTag,theParentContains)) {
-                IF_HOLD(aToken);
-                mTokenizer->PushTokenFront(aToken); //put this end token back...
-                CHTMLToken* theToken = NS_STATIC_CAST(CHTMLToken*,mTokenAllocator->CreateTokenOfType(eToken_start,theChildTag));
-                mTokenizer->PushTokenFront(theToken); //put this new token onto stack...
+                CHTMLToken* theStartToken = NS_STATIC_CAST(CHTMLToken*,mTokenAllocator->CreateTokenOfType(eToken_start,theChildTag));
+
+                // This check for NS_DTD_FLAG_IN_MISPLACED_CONTENT was added
+                // to fix bug 142965.
+                if (!(mFlags & NS_DTD_FLAG_IN_MISPLACED_CONTENT)) {
+                  // We're not handling misplaced content right now, just push
+                  // these new tokens back on the stack and handle them in the
+                  // regular flow of HandleToken.
+                  IF_HOLD(aToken);
+                  mTokenizer->PushTokenFront(aToken); //put this end token back...
+                  mTokenizer->PushTokenFront(theStartToken); //put the new token onto the stack...
+                }
+                else {
+                  // Oops, we're in misplaced content. Handle these tokens 
+                  // directly instead of trying to push them onto the tokenizer
+                  // stack.
+                  result = HandleToken(theStartToken, mParser);
+                  NS_ENSURE_SUCCESS(result, result);
+
+                  result = HandleToken(aToken, mParser);
+                }
               }
             }
             return result;
@@ -2103,24 +2072,15 @@ nsresult CNavDTD::HandleEntityToken(CToken* aToken) {
   const nsSubstring& theStr = aToken->GetStringValue();
 
   if((kHashsign!=theStr.First()) && (-1==nsHTMLEntities::EntityToUnicode(theStr))){
+    //if you're here we have a bogus entity.
+    //convert it into a text token.
     CToken *theToken=0;
-#ifdef DEBUG
-    //before we just toss this away as a bogus entity, let's check...
-    CNamedEntity *theEntity=mBodyContext->GetEntity(theStr);
-    if(theEntity) {
-      theToken = NS_STATIC_CAST(CTextToken*,mTokenAllocator->CreateTokenOfType(eToken_text,eHTMLTag_text,theEntity->mValue));
-    }
-    else {
-#endif
-      //if you're here we have a bogus entity.
-      //convert it into a text token.
-      nsAutoString entityName;
-      entityName.AssignLiteral("&");
-      entityName.Append(theStr); //should append the entity name; fix bug 51161.
-      theToken = mTokenAllocator->CreateTokenOfType(eToken_text,eHTMLTag_text,entityName);
-#ifdef DEBUG
-    }
-#endif
+
+    nsAutoString entityName;
+    entityName.AssignLiteral("&");
+    entityName.Append(theStr); //should append the entity name; fix bug 51161.
+    theToken = mTokenAllocator->CreateTokenOfType(eToken_text,eHTMLTag_text,entityName);
+
     return HandleToken(theToken,mParser); //theToken should get recycled automagically...
   }
 
@@ -2388,8 +2348,8 @@ CNavDTD::CollectSkippedContent(PRInt32 aTag, nsAString& aContent, PRInt32 &aLine
   
   InPlaceConvertLineEndings(aContent);
 
-  // Note: TEXTAREA content is PCDATA and hence the newlines are already accounted for.
-  mLineNumber += (aTag != eHTMLTag_textarea) ? aContent.CountChar(kNewLine) : 0;
+  // Note: TITLE content is PCDATA and hence the newlines are already accounted for.
+  mLineNumber += (aTag != eHTMLTag_title) ? aContent.CountChar(kNewLine) : 0;
   
   return NS_OK;
 }
@@ -2431,40 +2391,6 @@ PRBool CNavDTD::CanContain(PRInt32 aParent,PRInt32 aChild) const
 
   return result;
 } 
-
-/**
- * Give rest of world access to our tag enums, so that CanContain(), etc,
- * become useful.
- */
-NS_IMETHODIMP CNavDTD::StringTagToIntTag(const nsAString &aTag,
-                                         PRInt32* aIntTag) const
-{
-  *aIntTag = nsHTMLTags::LookupTag(aTag);
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP_(const PRUnichar *)
-CNavDTD::IntTagToStringTag(PRInt32 aIntTag) const
-{
-  const PRUnichar *str_ptr = nsHTMLTags::GetStringValue((nsHTMLTag)aIntTag);
-
-  NS_ASSERTION(str_ptr, "Bad tag enum passed to CNavDTD::IntTagToStringTag()"
-               "!!");
-
-  return str_ptr;
-}
-
-NS_IMETHODIMP_(nsIAtom *)
-CNavDTD::IntTagToAtom(PRInt32 aIntTag) const
-{
-  nsIAtom *atom = nsHTMLTags::GetAtom((nsHTMLTag)aIntTag);
-
-  NS_ASSERTION(atom, "Bad tag enum passed to CNavDTD::IntTagToAtom()"
-               "!!");
-
-  return atom;
-}
 
 /**
  *  This method is called to determine whether or not
@@ -2794,7 +2720,7 @@ eHTMLTags CNavDTD::GetTopNode() const {
  * @param   tag of the container just opened
  * @return  0 (for now)
  */
-nsresult CNavDTD::OpenTransientStyles(eHTMLTags aChildTag){
+nsresult CNavDTD::OpenTransientStyles(eHTMLTags aChildTag, PRBool aCloseInvalid){
   nsresult result=NS_OK;
 
   // No need to open transient styles in head context - Fix for 41427
@@ -2853,7 +2779,7 @@ nsresult CNavDTD::OpenTransientStyles(eHTMLTags aChildTag){
                   result = OpenContainer(theNode,theNodeTag,PR_FALSE,theStack);
                 }
               }
-              else {
+              else if (aCloseInvalid) {
                 //if the node tag can't contain the child tag, then remove the child tag from the style stack
                 nsCParserNode* node=theStack->Remove(sindex,theNodeTag);
                 IF_FREE(node, &mNodeAllocator);
@@ -3251,7 +3177,7 @@ CNavDTD::OpenContainer(const nsCParserNode *aNode,
      *
      ***********************************************************************/
 
-    OpenTransientStyles(aTag); 
+    OpenTransientStyles(aTag, !li_tag); 
   }
 
   switch (aTag) {
@@ -3275,15 +3201,8 @@ CNavDTD::OpenContainer(const nsCParserNode *aNode,
       }
       break;
 
-    case eHTMLTag_counter: //drop it on the floor.
-      break;
-
     case eHTMLTag_style:
     case eHTMLTag_title:
-      break;
-
-    case eHTMLTag_textarea:
-      result = AddLeaf(aNode);
       break;
 
     case eHTMLTag_map:
@@ -3370,7 +3289,6 @@ CNavDTD::CloseContainer(const eHTMLTags aTag, eHTMLTags aTarget,PRBool aClosedBy
       result=CloseHTML(); break;
 
     case eHTMLTag_style:
-    case eHTMLTag_textarea:
       break;
 
     case eHTMLTag_head:

@@ -268,7 +268,7 @@ nsBlockReflowContext::AlignBlockHorizontally(nscoord                 aWidth,
           aAlign.mXOffset += remainingSpace;
         } else if (styleText->mTextAlign == NS_STYLE_TEXT_ALIGN_MOZ_CENTER) {
           aAlign.mXOffset += remainingSpace / 2;
-        } else {
+        } else if (styleText->mTextAlign != NS_STYLE_TEXT_ALIGN_MOZ_LEFT) {
           // If we don't have a special text-align value indicating
           // HTML alignment, then use the CSS rules.
 
@@ -549,6 +549,9 @@ nsBlockReflowContext::ReflowBlock(const nsRect&       aSpace,
     nscoord oldComputedWidth = aFrameRS.mComputedWidth;
 
     aFrameRS.availableWidth = NS_UNCONSTRAINEDSIZE;
+    // XXX Is this really correct? This means we don't compute the
+    // correct maximum width if the element's width is determined by
+    // its 'width' style
     aFrameRS.mComputedWidth = NS_UNCONSTRAINEDSIZE;
     rv = mFrame->Reflow(mPresContext, mMetrics, aFrameRS, aFrameReflowStatus);
 

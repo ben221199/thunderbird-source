@@ -1,4 +1,5 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set sw=2 ts=2 et tw=80: */
 /* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -125,6 +126,7 @@ public:
   NS_IMETHOD SetTargetDocument(nsIDocument* aDocument);
   NS_IMETHOD WillBuildContent();
   NS_IMETHOD DidBuildContent();
+  NS_IMETHOD IgnoreFirstContainer();
 
   nsIContent* GetCurrentContent();
   PRInt32 PushContent(nsIContent *aContent);
@@ -146,6 +148,7 @@ public:
   PRPackedBool mAllContent;
   PRPackedBool mProcessing;
   PRPackedBool mSeenBody;
+  PRPackedBool mIgnoreContainer;
 
   nsCOMPtr<nsIContent> mRoot;
   nsCOMPtr<nsIParser> mParser;
@@ -197,6 +200,7 @@ nsHTMLFragmentContentSink::nsHTMLFragmentContentSink(PRBool aAllContent)
   : mAllContent(aAllContent),
     mProcessing(aAllContent),
     mSeenBody(!aAllContent),
+    mIgnoreContainer(PR_FALSE),
     mContentStack(nsnull),
     mText(nsnull),
     mTextLength(0),
@@ -443,7 +447,7 @@ nsHTMLFragmentContentSink::OpenContainer(const nsIParserNode& aNode)
 
   nsresult result = NS_OK;
 
-  if (mProcessing) {
+  if (mProcessing && !mIgnoreContainer) {
     FlushText();
 
     nsHTMLTag nodeType = nsHTMLTag(aNode.GetNodeType());
@@ -462,15 +466,11 @@ nsHTMLFragmentContentSink::OpenContainer(const nsIParserNode& aNode)
       if (!parserService)
         return NS_ERROR_OUT_OF_MEMORY;
 
-      const PRUnichar *name = nsnull;
-
-      parserService->HTMLIdToStringTag(nodeType, &name);
+      nsIAtom *name = parserService->HTMLIdToAtomTag(nodeType);
       NS_ASSERTION(name, "This should not happen!");
 
-      result =
-        mNodeInfoManager->GetNodeInfo(nsDependentString(name), nsnull,
-                                      kNameSpaceID_None,
-                                      getter_AddRefs(nodeInfo));
+      result = mNodeInfoManager->GetNodeInfo(name, nsnull, kNameSpaceID_None,
+                                             getter_AddRefs(nodeInfo));
     }
 
     NS_ENSURE_SUCCESS(result, result);
@@ -500,6 +500,9 @@ nsHTMLFragmentContentSink::OpenContainer(const nsIParserNode& aNode)
         || nodeType == eHTMLTag_th)
       // XXX if navigator_quirks_mode (only body in html supports background)
       AddBaseTagInfo(content); 
+  }
+  else if (mProcessing && mIgnoreContainer) {
+    mIgnoreContainer = PR_FALSE;
   }
 
   return result;
@@ -565,14 +568,12 @@ nsHTMLFragmentContentSink::AddLeaf(const nsIParserNode& aNode)
                                           kNameSpaceID_None,
                                           getter_AddRefs(nodeInfo));
         } else {
-          const PRUnichar *name = nsnull;
-          result = parserService->HTMLIdToStringTag(nodeType, &name);
+          nsIAtom *name = parserService->HTMLIdToAtomTag(nodeType);
           NS_ASSERTION(name, "This should not happen!");
 
-          result =
-            mNodeInfoManager->GetNodeInfo(nsDependentString(name), nsnull,
-                                          kNameSpaceID_None,
-                                          getter_AddRefs(nodeInfo));
+          result = mNodeInfoManager->GetNodeInfo(name, nsnull,
+                                                 kNameSpaceID_None,
+                                                 getter_AddRefs(nodeInfo));
         }
 
         NS_ENSURE_SUCCESS(result, result);
@@ -595,7 +596,6 @@ nsHTMLFragmentContentSink::AddLeaf(const nsIParserNode& aNode)
 
           if(nodeType == eHTMLTag_script    ||
              nodeType == eHTMLTag_style     ||
-             nodeType == eHTMLTag_textarea  ||
              nodeType == eHTMLTag_server) {
 
             // Create a text node holding the content
@@ -727,6 +727,13 @@ nsHTMLFragmentContentSink::DidBuildContent()
     mProcessing = PR_FALSE;
   }
 
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsHTMLFragmentContentSink::IgnoreFirstContainer()
+{
+  mIgnoreContainer = PR_TRUE;
   return NS_OK;
 }
 

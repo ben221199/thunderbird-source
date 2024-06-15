@@ -211,7 +211,8 @@ private:
                                 nsIFrame*                      aParentFrame,
                                 nsStyleContext*                aStyleContext,
                                 nsIFrame*                      aPrevInFlow,
-                                nsIFrame*                      aNewFrame);
+                                nsIFrame*                      aNewFrame,
+                                PRBool                         aAllowCounters = PR_TRUE);
 
   already_AddRefed<nsStyleContext>
   ResolveStyleContext(nsIFrame*         aParentFrame,
@@ -329,10 +330,6 @@ private:
                                    nsIFrame*&               aNewCellOuterFrame,
                                    nsIFrame*&               aNewCellInnerFrame,
                                    PRBool&                  aIsPseudoParent);
-
-  PRBool MustGeneratePseudoParent(nsIAtom*         aTag,
-                                  nsIContent*      aContent,
-                                  nsStyleContext*  aContext);
 
   /**
    * ConstructTableForeignFrame constructs the frame for a non-table-element
@@ -978,6 +975,20 @@ protected:
   nsCOMPtr<nsIEventQueue>        mRestyleEventQueue;
   
 private:
+#ifdef ACCESSIBILITY
+  // If the frame is visible, return the frame type
+  // If the frame is invisible, return nsnull
+  nsIAtom *GetRenderedFrameType(nsIFrame *aFrame);
+  
+  // Using the rendered frame type from GetRenderedFrameType(), which is nsnull
+  // for invisible frames, compare the previous rendering and new rendering, to
+  // determine if the tree of accessibility objects may change. If it might,
+  // notify the accessibility module of the change, and whether it is a generic
+  // change, something is being made visible or something is being made hidden.
+  void NotifyAccessibleChange(nsIAtom *aPreviousFrameType, nsIAtom *aFrameType,
+                              nsIContent *aContent);
+#endif
+
   nsIDocument*        mDocument;  // Weak ref
   nsIPresShell*       mPresShell; // Weak ref
 

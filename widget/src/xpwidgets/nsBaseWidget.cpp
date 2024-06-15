@@ -490,7 +490,8 @@ NS_METHOD nsBaseWidget::SetCursor(nsCursor aCursor)
   return NS_OK;
 }
 
-NS_IMETHODIMP nsBaseWidget::SetCursor(imgIContainer* aCursor)
+NS_IMETHODIMP nsBaseWidget::SetCursor(imgIContainer* aCursor,
+                                      PRUint32 aHotspotX, PRUint32 aHotspotY)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -600,6 +601,9 @@ nsIRenderingContext* nsBaseWidget::GetRenderingContext()
 {
   nsresult                      rv;
   nsCOMPtr<nsIRenderingContext> renderingCtx;
+
+  if (mOnDestroyCalled)
+    return nsnull;
 
   rv = mContext->CreateRenderingContextInstance(*getter_AddRefs(renderingCtx));
   if (NS_SUCCEEDED(rv)) {

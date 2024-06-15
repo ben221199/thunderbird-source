@@ -248,7 +248,7 @@ function removePopupPermListener(observer)
 * one listener that calls all real handlers.
 */
 
-function loadEventHandlers(event)
+function pageShowEventHandlers(event)
 {
   // Filter out events that are not about the document load we are interested in
   if (event.originalTarget == content.document) {
@@ -438,6 +438,17 @@ function nsBrowserAccess() {
 
 nsBrowserAccess.prototype = {
   openURI: function openURI(aURI, aOpener, aWhere, aContext) {
+    var isExternal = (aContext == nsIBrowserDOMWindow.OPEN_EXTERNAL);
+
+    if (isExternal && aURI && aURI.schemeIs("chrome")) {
+      dump("use -chrome command-line option to load external chrome urls\n");
+      return null;
+    }
+
+    var loadflags = isExternal ?
+                      nsIWebNavigation.LOAD_FLAGS_FROM_EXTERNAL :
+                      nsIWebNavigation.LOAD_FLAGS_NONE;
+
     if (aWhere == nsIBrowserDOMWindow.OPEN_DEFAULTWINDOW)
       if (aContext == nsIBrowserDOMWindow.OPEN_EXTERNAL)
         aWhere = pref.getIntPref("browser.link.open_external");
@@ -457,20 +468,19 @@ nsBrowserAccess.prototype = {
           gBrowser.selectedTab = newTab;
         var browser = gBrowser.getBrowserForTab(newTab);
         try {
-          browser.loadURI(uri, referrer);
+          browser.loadURIWithFlags(uri, loadflags, referrer);
         } catch (e) {}
         return browser.contentWindow;
       default:
         if (!aOpener) {
-          loadURI(uri);
+          gBrowser.loadURIWithFlags(uri, loadflags);
           return content;
         }
         aOpener = new XPCNativeWrapper(aOpener, "top").top;
         try {
           aOpener.QueryInterface(nsIInterfaceRequestor)
                  .getInterface(nsIWebNavigation)
-                 .loadURI(uri, nsIWebNavigation.LOAD_FLAGS_NONE,
-                          referrer, null, null);
+                 .loadURI(uri, loadflags, referrer, null, null);
         } catch (e) {}
         return aOpener;
     }
@@ -554,7 +564,7 @@ function Startup()
   // (rjc note: not the entire window, otherwise we'll get sidebar pane loads too!)
   //  so we'll be notified when onloads complete.
   var contentArea = document.getElementById("appcontent");
-  contentArea.addEventListener("load", loadEventHandlers, true);
+  contentArea.addEventListener("PageShow", pageShowEventHandlers, true);
   contentArea.addEventListener("focus", contentAreaFrameFocus, true);
 
   var turboMode = false;
@@ -653,6 +663,15 @@ function Startup()
     browser.popupDomain = null;
     browser.popupUrls = [];
     browser.popupFeatures = [];
+
+    try {
+      if (makeURI(uriToLoad).schemeIs("chrome")) {
+        dump("*** Preventing external load of chrome: URI into browser window\n");
+        dump("    Use -chrome <uri> instead\n");
+        window.close();
+        return;
+      }
+    } catch (e) {}
 
     if (uriToLoad != "about:blank") {
       gURLBar.value = uriToLoad;
@@ -911,6 +930,18 @@ function BrowserForward()
   }
   catch(ex) {
   }
+}
+
+function BrowserHandleShiftBackspace()
+{
+  switch (pref.getIntPref("browser.backspace_action")) {
+  case 0:
+    BrowserForward();
+    break;
+  case 1:
+    goDoCommand("cmd_scrollPageDown");
+    break;
+  } 
 }
 
 function SetGroupHistory(popupMenu, direction)

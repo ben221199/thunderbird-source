@@ -60,6 +60,7 @@ class nsIDOMEvent;
 #define NS_NAMESPACE_XHTML               "http://www.w3.org/1999/xhtml"
 #define NS_NAMESPACE_XML_SCHEMA          "http://www.w3.org/2001/XMLSchema"
 #define NS_NAMESPACE_XML_SCHEMA_INSTANCE "http://www.w3.org/2001/XMLSchema-instance"
+#define NS_NAMESPACE_MOZ_XFORMS_TYPE     "http://www.mozilla.org/projects/xforms/2005/type"
 
 /**
  * XForms event types
@@ -111,7 +112,8 @@ enum nsXFormsEvent {
   eEvent_BindingException,
   eEvent_LinkException,
   eEvent_LinkError,
-  eEvent_ComputeException
+  eEvent_ComputeException,
+  eEvent_MozHintOff
 };
 
 struct EventData
@@ -121,7 +123,7 @@ struct EventData
   PRBool      canBubble;
 };
 
-extern const EventData sXFormsEventsEntries[41];
+extern const EventData sXFormsEventsEntries[42];
 
 /**
  * @todo The attribute names used on the elements to reflect the pseudo class
@@ -245,7 +247,7 @@ public:
    * to section 8.1.1 of the XForms specification.
    */
   static NS_HIDDEN_(void) GetNodeValue(nsIDOMNode *aDataNode,
-                                       nsString   &aNodeValue);
+                                       nsAString  &aNodeValue);
 
   /**
    * Given a node in the instance data and a string, store the value according
@@ -409,6 +411,14 @@ public:
     {
       nsXFormsUtils::ReportError(aMessageName, nsnull, 0, aElement, aElement, aErrorFlag);
     }
+
+  /**
+   * Returns whether the aDocument is ready to bind data (all instance documents
+   * loaded).
+   *
+   * @param aDocument      Document to check
+   */
+  static NS_HIDDEN_(PRBool) IsDocumentReadyForBind(nsIDOMDocument *aDocument);
 
 };
 

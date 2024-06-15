@@ -53,18 +53,6 @@ interface nsIDOMElement;
 interface nsIXFormsControl : nsIXFormsContextControl
 {
   /**
-   * This tells the form control to update its node binding based on the
-   * current instance data.
-   */
-  void bind();
-
-  /**
-   * This tells the form control to update its state based on the current
-   * instance data.
-   */
-  void refresh();
-
-  /**
    * Tries to move focus to form control and returns true if succeeded.
    */
   boolean tryFocus();

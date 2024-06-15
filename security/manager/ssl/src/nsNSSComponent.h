@@ -50,15 +50,19 @@
 #include "nsIEntropyCollector.h"
 #include "nsString.h"
 #include "nsIStringBundle.h"
+#include "nsIDOMEventTarget.h"
 #include "nsIPrefBranch.h"
 #include "nsIObserver.h"
 #include "nsIObserverService.h"
 #include "nsWeakReference.h"
 #include "nsIScriptSecurityManager.h"
+#include "nsSmartCardMonitor.h"
 #include "nsITimer.h"
 #include "nsNetUtil.h"
 #include "nsHashtable.h"
 #include "prlock.h"
+#include "nsICryptoHash.h"
+#include "hasht.h"
 
 #include "nsNSSHelper.h"
 
@@ -78,6 +82,10 @@
 
 #define NS_PSMCONTENTLISTEN_CID {0xc94f4a30, 0x64d7, 0x11d4, {0x99, 0x60, 0x00, 0xb0, 0xd0, 0x23, 0x54, 0xa0}}
 #define NS_PSMCONTENTLISTEN_CONTRACTID "@mozilla.org/security/psmdownload;1"
+
+#define NS_CRYPTO_HASH_CLASSNAME "Mozilla Cryto Hash Function Component"
+#define NS_CRYPTO_HASH_CONTRACTID "@mozilla.org/security/hash;1"
+#define NS_CRYPTO_HASH_CID {0x36a1d3b3, 0xd886, 0x4317, {0x96, 0xff, 0x87, 0xb0, 0x00, 0x5c, 0xfe, 0xf7}}
 
 //--------------------------------------------
 // Now we need a content listener to register 
@@ -141,7 +149,28 @@ class NS_NO_VTABLE nsINSSComponent : public nsISupports {
   NS_IMETHOD DownloadCRLDirectly(nsAutoString, nsAutoString) = 0;
   
   NS_IMETHOD LogoutAuthenticatedPK11() = 0;
+
+  NS_IMETHOD LaunchSmartCardThread(SECMODModule *module) = 0;
+
+  NS_IMETHOD ShutdownSmartCardThread(SECMODModule *module) = 0;
+
+  NS_IMETHOD PostEvent(const nsAString &eventType, const nsAString &token) = 0;
+
+  NS_IMETHOD DispatchEvent(const nsAString &eventType, const nsAString &token) = 0;
   
+};
+
+class nsCryptoHash : public nsICryptoHash
+{
+public:
+  NS_DECL_ISUPPORTS
+  NS_DECL_NSICRYPTOHASH
+
+  nsCryptoHash();
+
+private:
+  ~nsCryptoHash();
+  HASHContext* mHashContext;
 };
 
 struct PRLock;
@@ -186,6 +215,11 @@ public:
   NS_IMETHOD RememberCert(CERTCertificate *cert);
   static nsresult GetNSSCipherIDFromPrefString(const nsACString &aPrefString, PRUint16 &aCipherId);
 
+  NS_IMETHOD LaunchSmartCardThread(SECMODModule *module);
+  NS_IMETHOD ShutdownSmartCardThread(SECMODModule *module);
+  NS_IMETHOD PostEvent(const nsAString &eventType, const nsAString &token);
+  NS_IMETHOD DispatchEvent(const nsAString &eventType, const nsAString &token);
+
 private:
 
   nsresult InitializeNSS(PRBool showWarningBox);
@@ -204,6 +238,8 @@ private:
   
   void ShowAlert(AlertIdentifier ai);
   void InstallLoadableRoots();
+  void LaunchSmartCardThreads();
+  void ShutdownSmartCardThreads();
   nsresult InitializePIPNSSBundle();
   nsresult ConfigureInternalPKCS11Token();
   nsresult RegisterPSMContentListener();
@@ -211,6 +247,7 @@ private:
   nsresult DownloadCrlSilently();
   nsresult PostCRLImportEvent(nsCAutoString *urlString, PSMContentDownloader *psmDownloader);
   nsresult getParamsForNextCrlToDownload(nsAutoString *url, PRTime *time, nsAutoString *key);
+  nsresult DispatchEventToWindow(nsIDOMWindow *domWin, const nsAString &eventType, const nsAString &token);
   PRLock *mutex;
   
   nsCOMPtr<nsIScriptSecurityManager> mScriptSecurityManager;
@@ -229,6 +266,7 @@ private:
   PRBool mUpdateTimerInitialized;
   static int mInstanceCount;
   nsNSSShutDownList *mShutdownObjectList;
+  SmartCardThreadList *mThreadList;
 };
 
 class PSMContentListener : public nsIURIContentListener,

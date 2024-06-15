@@ -274,52 +274,55 @@ IsEventHandler(nsIAtom* aName)
         return PR_FALSE;
     }
     
-    return aName == nsLayoutAtoms::onclick         ||
-           aName == nsLayoutAtoms::ondblclick      ||
-           aName == nsLayoutAtoms::onmousedown     ||
-           aName == nsLayoutAtoms::onmouseup       ||
-           aName == nsLayoutAtoms::onmouseover     ||
-           aName == nsLayoutAtoms::onmouseout      ||
-           aName == nsLayoutAtoms::onmousemove     ||
+    return aName == nsLayoutAtoms::onclick            ||
+           aName == nsLayoutAtoms::ondblclick         ||
+           aName == nsLayoutAtoms::onmousedown        ||
+           aName == nsLayoutAtoms::onmouseup          ||
+           aName == nsLayoutAtoms::onmouseover        ||
+           aName == nsLayoutAtoms::onmouseout         ||
+           aName == nsLayoutAtoms::onmousemove        ||
 
-           aName == nsLayoutAtoms::onkeydown       ||
-           aName == nsLayoutAtoms::onkeyup         ||
-           aName == nsLayoutAtoms::onkeypress      ||
+           aName == nsLayoutAtoms::onkeydown          ||
+           aName == nsLayoutAtoms::onkeyup            ||
+           aName == nsLayoutAtoms::onkeypress         ||
 
-           aName == nsLayoutAtoms::onload          ||
-           aName == nsLayoutAtoms::onunload        ||
-           aName == nsLayoutAtoms::onabort         ||
-           aName == nsLayoutAtoms::onerror         ||
+           aName == nsLayoutAtoms::oncompositionstart ||
+           aName == nsLayoutAtoms::oncompositionend   ||
 
-           aName == nsLayoutAtoms::onpopupshowing  ||
-           aName == nsLayoutAtoms::onpopupshown    ||
-           aName == nsLayoutAtoms::onpopuphiding   ||
-           aName == nsLayoutAtoms::onpopuphidden   ||
-           aName == nsLayoutAtoms::onclose         ||
-           aName == nsLayoutAtoms::oncommand       ||
-           aName == nsLayoutAtoms::onbroadcast     ||
-           aName == nsLayoutAtoms::oncommandupdate ||
+           aName == nsLayoutAtoms::onload             ||
+           aName == nsLayoutAtoms::onunload           ||
+           aName == nsLayoutAtoms::onabort            ||
+           aName == nsLayoutAtoms::onerror            ||
 
-           aName == nsLayoutAtoms::onoverflow      ||
-           aName == nsLayoutAtoms::onunderflow     ||
-           aName == nsLayoutAtoms::onoverflowchanged ||
+           aName == nsLayoutAtoms::onpopupshowing     ||
+           aName == nsLayoutAtoms::onpopupshown       ||
+           aName == nsLayoutAtoms::onpopuphiding      ||
+           aName == nsLayoutAtoms::onpopuphidden      ||
+           aName == nsLayoutAtoms::onclose            ||
+           aName == nsLayoutAtoms::oncommand          ||
+           aName == nsLayoutAtoms::onbroadcast        ||
+           aName == nsLayoutAtoms::oncommandupdate    ||
 
-           aName == nsLayoutAtoms::onfocus         ||
-           aName == nsLayoutAtoms::onblur          ||
+           aName == nsLayoutAtoms::onoverflow         ||
+           aName == nsLayoutAtoms::onunderflow        ||
+           aName == nsLayoutAtoms::onoverflowchanged  ||
 
-           aName == nsLayoutAtoms::onsubmit        ||
-           aName == nsLayoutAtoms::onreset         ||
-           aName == nsLayoutAtoms::onchange        ||
-           aName == nsLayoutAtoms::onselect        ||
-           aName == nsLayoutAtoms::oninput         ||
+           aName == nsLayoutAtoms::onfocus            ||
+           aName == nsLayoutAtoms::onblur             ||
 
-           aName == nsLayoutAtoms::onpaint         ||
+           aName == nsLayoutAtoms::onsubmit           ||
+           aName == nsLayoutAtoms::onreset            ||
+           aName == nsLayoutAtoms::onchange           ||
+           aName == nsLayoutAtoms::onselect           ||
+           aName == nsLayoutAtoms::oninput            ||
 
-           aName == nsLayoutAtoms::ondragenter     ||
-           aName == nsLayoutAtoms::ondragover      ||
-           aName == nsLayoutAtoms::ondragexit      ||
-           aName == nsLayoutAtoms::ondragdrop      ||
-           aName == nsLayoutAtoms::ondraggesture   ||
+           aName == nsLayoutAtoms::onpaint            ||
+
+           aName == nsLayoutAtoms::ondragenter        ||
+           aName == nsLayoutAtoms::ondragover         ||
+           aName == nsLayoutAtoms::ondragexit         ||
+           aName == nsLayoutAtoms::ondragdrop         ||
+           aName == nsLayoutAtoms::ondraggesture      ||
 
            aName == nsLayoutAtoms::oncontextmenu;
 }
@@ -659,19 +662,8 @@ nsXULElement::AddScriptEventListener(nsIAtom* aName, const nsAString& aValue)
 
     if (NS_FAILED(rv)) return rv;
 
-    nsIURI *uri = doc->GetDocumentURI();
-    PRBool isChromeElement;
-
-    if (uri) {
-        if (NS_FAILED(uri->SchemeIs("chrome", &isChromeElement))) {
-            isChromeElement = PR_FALSE;
-        }
-    } else {
-        isChromeElement = PR_FALSE;
-    }
-
     return manager->AddScriptEventListener(target, aName, aValue, defer,
-                                           !isChromeElement);
+                                           !nsContentUtils::IsChromeDoc(doc));
 }
 
 nsresult
@@ -1689,8 +1681,18 @@ nsXULElement::UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aName, PRBool aNotify)
         GetAttributeNode(attrName, getter_AddRefs(attrNode));
     }
 
+    nsDOMSlots *slots = GetExistingDOMSlots();
+    if (slots && slots->mAttributeMap) {
+      slots->mAttributeMap->DropAttribute(aNameSpaceID, aName);
+    }
+
     rv = mAttrsAndChildren.RemoveAttrAt(index);
     NS_ENSURE_SUCCESS(rv, rv);
+
+    // XXX if the RemoveAttrAt() call fails, we might end up having removed
+    // the attribute from the attribute map even though the attribute is still
+    // on the element
+    // https://bugzilla.mozilla.org/show_bug.cgi?id=296205
 
     // Deal with modification of magical attributes that side-effect
     // other things.
@@ -1999,6 +2001,9 @@ nsXULElement::HandleDOMEvent(nsPresContext* aPresContext, nsEvent* aEvent,
                              nsIDOMEvent** aDOMEvent, PRUint32 aFlags,
                              nsEventStatus* aEventStatus)
 {
+    // Make sure to tell the event that dispatch has started.
+    NS_MARK_EVENT_DISPATCH_STARTED(aEvent);
+
     nsresult ret = NS_OK;
 
     PRBool retarget = PR_FALSE;
@@ -2032,10 +2037,10 @@ nsXULElement::HandleDOMEvent(nsPresContext* aPresContext, nsEvent* aEvent,
         }
         if (aDOMEvent) {
             if (*aDOMEvent)
-              externalDOMEvent = PR_TRUE;
+                externalDOMEvent = PR_TRUE;
         }
         else
-          aDOMEvent = &domEvent;
+            aDOMEvent = &domEvent;
 
         aEvent->flags |= aFlags;
         aFlags &= ~(NS_EVENT_FLAG_CANT_BUBBLE | NS_EVENT_FLAG_CANT_CANCEL);
@@ -2078,21 +2083,21 @@ nsXULElement::HandleDOMEvent(nsPresContext* aPresContext, nsEvent* aEvent,
                 // menu), then that breaks.
                 nsCOMPtr<nsIPrivateDOMEvent> privateEvent = do_QueryInterface(domEvent);
                 if (privateEvent) {
-                  nsCOMPtr<nsIDOMEventTarget> target(do_QueryInterface(NS_STATIC_CAST(nsIContent *, this)));
-                  privateEvent->SetTarget(target);
+                    nsCOMPtr<nsIDOMEventTarget> target(do_QueryInterface(NS_STATIC_CAST(nsIContent *, this)));
+                    privateEvent->SetTarget(target);
                 }
                 else
-                  return NS_ERROR_FAILURE;
+                    return NS_ERROR_FAILURE;
 
                 // if we are a XUL click, we have the private event set.
                 // now switch to a left mouse click for the duration of the event
                 if (aEvent->message == NS_XUL_CLICK)
-                  aEvent->message = NS_MOUSE_LEFT_CLICK;
+                    aEvent->message = NS_MOUSE_LEFT_CLICK;
             }
         }
     }
     else if (aEvent->message == NS_IMAGE_LOAD)
-      return NS_OK; // Don't let these events bubble or be captured.  Just allow them
+        return NS_OK; // Don't let these events bubble or be captured.  Just allow them
                     // on the target image.
 
     // Find out whether we're anonymous.
@@ -2130,60 +2135,62 @@ nsXULElement::HandleDOMEvent(nsPresContext* aPresContext, nsEvent* aEvent,
     }
 
     if (retarget || (parent != GetParent())) {
-      if (!*aDOMEvent) {
-        // We haven't made a DOMEvent yet.  Force making one now.
-        nsCOMPtr<nsIEventListenerManager> listenerManager;
-        if (NS_FAILED(ret = GetListenerManager(getter_AddRefs(listenerManager)))) {
-          return ret;
-        }
-        nsAutoString empty;
-        if (NS_FAILED(ret = listenerManager->CreateEvent(aPresContext, aEvent, empty, aDOMEvent)))
-          return ret;
-
         if (!*aDOMEvent) {
+            // We haven't made a DOMEvent yet.  Force making one now.
+            nsCOMPtr<nsIEventListenerManager> listenerManager;
+            if (NS_FAILED(ret = GetListenerManager(getter_AddRefs(listenerManager)))) {
+                return ret;
+            }
+            nsAutoString empty;
+            if (NS_FAILED(ret = listenerManager->CreateEvent(aPresContext, aEvent, empty, aDOMEvent)))
+                return ret;
+
+            if (!*aDOMEvent) {
+                return NS_ERROR_FAILURE;
+            }
+        }
+
+        nsCOMPtr<nsIPrivateDOMEvent> privateEvent =
+            do_QueryInterface(*aDOMEvent);
+        if (!privateEvent) {
             return NS_ERROR_FAILURE;
         }
-      }
 
-      nsCOMPtr<nsIPrivateDOMEvent> privateEvent = do_QueryInterface(*aDOMEvent);
-      if (!privateEvent) {
-        return NS_ERROR_FAILURE;
-      }
+        (*aDOMEvent)->GetTarget(getter_AddRefs(oldTarget));
 
-      (*aDOMEvent)->GetTarget(getter_AddRefs(oldTarget));
+        PRBool hasOriginal;
+        privateEvent->HasOriginalTarget(&hasOriginal);
 
-      PRBool hasOriginal;
-      privateEvent->HasOriginalTarget(&hasOriginal);
+        if (!hasOriginal)
+            privateEvent->SetOriginalTarget(oldTarget);
 
-      if (!hasOriginal)
-        privateEvent->SetOriginalTarget(oldTarget);
-
-      if (retarget) {
-          nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(GetParent());
-          privateEvent->SetTarget(target);
+        if (retarget) {
+            nsCOMPtr<nsIDOMEventTarget> target =
+                do_QueryInterface(GetParent());
+            privateEvent->SetTarget(target);
       }
     }
 
     //Capturing stage evaluation
     if (NS_EVENT_FLAG_CAPTURE & aFlags) {
-      //Initiate capturing phase.  Special case first call to document
-      if (parent) {
-        parent->HandleDOMEvent(aPresContext, aEvent, aDOMEvent, aFlags & NS_EVENT_CAPTURE_MASK, aEventStatus);
-      }
-      else if (doc) {
-          ret = doc->HandleDOMEvent(aPresContext, aEvent, aDOMEvent,
-                                    aFlags & NS_EVENT_CAPTURE_MASK,
-                                    aEventStatus);
-      }
+        //Initiate capturing phase.  Special case first call to document
+        if (parent) {
+            parent->HandleDOMEvent(aPresContext, aEvent, aDOMEvent, aFlags & NS_EVENT_CAPTURE_MASK, aEventStatus);
+        }
+        else if (doc) {
+            ret = doc->HandleDOMEvent(aPresContext, aEvent, aDOMEvent,
+                                      aFlags & NS_EVENT_CAPTURE_MASK,
+                                      aEventStatus);
+        }
     }
 
 
     if (retarget) {
-      // The event originated beneath us, and we performed a retargeting.
-      // We need to restore the original target of the event.
-      nsCOMPtr<nsIPrivateDOMEvent> privateEvent = do_QueryInterface(*aDOMEvent);
-      if (privateEvent)
-        privateEvent->SetTarget(oldTarget);
+        // The event originated beneath us, and we performed a retargeting.
+        // We need to restore the original target of the event.
+        nsCOMPtr<nsIPrivateDOMEvent> privateEvent = do_QueryInterface(*aDOMEvent);
+        if (privateEvent)
+            privateEvent->SetTarget(oldTarget);
     }
 
     //Local handling stage
@@ -2195,12 +2202,14 @@ nsXULElement::HandleDOMEvent(nsPresContext* aPresContext, nsEvent* aEvent,
     }
 
     if (retarget) {
-      // The event originated beneath us, and we need to perform a retargeting.
-      nsCOMPtr<nsIPrivateDOMEvent> privateEvent = do_QueryInterface(*aDOMEvent);
-      if (privateEvent) {
-        nsCOMPtr<nsIDOMEventTarget> parentTarget(do_QueryInterface(GetParent()));
-        privateEvent->SetTarget(parentTarget);
-      }
+        // The event originated beneath us, and we need to perform a
+        // retargeting.
+        nsCOMPtr<nsIPrivateDOMEvent> privateEvent = do_QueryInterface(*aDOMEvent);
+        if (privateEvent) {
+            nsCOMPtr<nsIDOMEventTarget> parentTarget =
+                do_QueryInterface(GetParent());
+            privateEvent->SetTarget(parentTarget);
+        }
     }
 
     //Bubbling stage
@@ -2208,7 +2217,7 @@ nsXULElement::HandleDOMEvent(nsPresContext* aPresContext, nsEvent* aEvent,
         if (parent != nsnull) {
             // We have a parent. Let them field the event.
             ret = parent->HandleDOMEvent(aPresContext, aEvent, aDOMEvent,
-                                          aFlags & NS_EVENT_BUBBLE_MASK, aEventStatus);
+                                         aFlags & NS_EVENT_BUBBLE_MASK, aEventStatus);
       }
         else if (IsInDoc()) {
         // We must be the document root. The event should bubble to the
@@ -2219,33 +2228,37 @@ nsXULElement::HandleDOMEvent(nsPresContext* aPresContext, nsEvent* aEvent,
     }
 
     if (retarget) {
-      // The event originated beneath us, and we performed a retargeting.
-      // We need to restore the original target of the event.
-      nsCOMPtr<nsIPrivateDOMEvent> privateEvent = do_QueryInterface(*aDOMEvent);
-      if (privateEvent)
-        privateEvent->SetTarget(oldTarget);
+        // The event originated beneath us, and we performed a retargeting.
+        // We need to restore the original target of the event.
+        nsCOMPtr<nsIPrivateDOMEvent> privateEvent = do_QueryInterface(*aDOMEvent);
+        if (privateEvent)
+            privateEvent->SetTarget(oldTarget);
     }
 
     if (NS_EVENT_FLAG_INIT & aFlags) {
-      // We're leaving the DOM event loop so if we created a DOM event,
-      // release here.  If externalDOMEvent is set the event was passed in
-      // and we don't own it
-      if (*aDOMEvent && !externalDOMEvent) {
-        nsrefcnt rc;
-        NS_RELEASE2(*aDOMEvent, rc);
-        if (0 != rc) {
-          // Okay, so someone in the DOM loop (a listener, JS object)
-          // still has a ref to the DOM Event but the internal data
-          // hasn't been malloc'd.  Force a copy of the data here so the
-          // DOM Event is still valid.
-          nsCOMPtr<nsIPrivateDOMEvent> privateEvent =
-            do_QueryInterface(*aDOMEvent);
-          if (privateEvent) {
-            privateEvent->DuplicatePrivateData();
-          }
+        // We're leaving the DOM event loop so if we created a DOM event,
+        // release here.  If externalDOMEvent is set the event was passed in
+        // and we don't own it
+        if (*aDOMEvent && !externalDOMEvent) {
+            nsrefcnt rc;
+            NS_RELEASE2(*aDOMEvent, rc);
+            if (0 != rc) {
+                // Okay, so someone in the DOM loop (a listener, JS object)
+                // still has a ref to the DOM Event but the internal data
+                // hasn't been malloc'd.  Force a copy of the data here so the
+                // DOM Event is still valid.
+                nsCOMPtr<nsIPrivateDOMEvent> privateEvent =
+                    do_QueryInterface(*aDOMEvent);
+                if (privateEvent) {
+                    privateEvent->DuplicatePrivateData();
+                }
+            }
+            aDOMEvent = nsnull;
         }
-        aDOMEvent = nsnull;
-      }
+
+        // Now that we're done with this event, remove the flag that says
+        // we're in the process of dispatching this event.
+        NS_MARK_EVENT_DISPATCH_DONE(aEvent);
     }
 
     return ret;
@@ -3167,8 +3180,8 @@ nsXULPrototypeElement::Deserialize(nsIObjectInputStream* aStream,
                                          aNodeInfos);
                 break;
             case eType_Script: {
-                // language version obtained during deserialization.
-                nsXULPrototypeScript* script = new nsXULPrototypeScript(0, nsnull);
+                // language version/options obtained during deserialization.
+                nsXULPrototypeScript* script = new nsXULPrototypeScript(0, nsnull, PR_FALSE);
                 if (! script)
                     return NS_ERROR_OUT_OF_MEMORY;
                 child = script;
@@ -3176,10 +3189,9 @@ nsXULPrototypeElement::Deserialize(nsIObjectInputStream* aStream,
 
                 rv |= aStream->Read8(&script->mOutOfLine);
                 if (! script->mOutOfLine) {
-                    rv |= script->Deserialize(aStream, aContext,
-                                              aDocumentURI, aNodeInfos);
-                }
-                else {
+                    rv |= script->Deserialize(aStream, aContext, aDocumentURI,
+                                              aNodeInfos);
+                } else {
                     rv |= aStream->ReadObject(PR_TRUE, getter_AddRefs(script->mSrcURI));
 
                     rv |= script->DeserializeOutOfLine(aStream, aContext);
@@ -3264,11 +3276,12 @@ nsXULPrototypeElement::SetAttrAt(PRUint32 aPos, const nsAString& aValue,
 // nsXULPrototypeScript
 //
 
-nsXULPrototypeScript::nsXULPrototypeScript(PRUint16 aLineNo, const char *aVersion)
+nsXULPrototypeScript::nsXULPrototypeScript(PRUint32 aLineNo, const char *aVersion, PRBool aHasE4XOption)
     : nsXULPrototypeNode(eType_Script),
       mLineNo(aLineNo),
       mSrcLoading(PR_FALSE),
       mOutOfLine(PR_TRUE),
+      mHasE4XOption(aHasE4XOption),
       mSrcLoadWaiters(nsnull),
       mJSObject(nsnull),
       mLangVersion(aVersion)
@@ -3297,7 +3310,7 @@ nsXULPrototypeScript::Serialize(nsIObjectOutputStream* aStream,
     nsresult rv;
 
     // Write basic prototype data
-    aStream->Write16(mLineNo);
+    aStream->Write32(mLineNo);
 
     JSContext* cx = NS_REINTERPRET_CAST(JSContext*,
                                         aContext->GetNativeContext());
@@ -3364,7 +3377,7 @@ nsXULPrototypeScript::SerializeOutOfLine(nsIObjectOutputStream* aStream,
 
     nsresult rv = NS_OK;
     if (!fastLoadService)
-        return rv;
+        return NS_ERROR_NOT_AVAILABLE;
 
     nsCAutoString urispec;
     rv = mSrcURI->GetAsciiSpec(urispec);
@@ -3373,15 +3386,23 @@ nsXULPrototypeScript::SerializeOutOfLine(nsIObjectOutputStream* aStream,
 
     PRBool exists = PR_FALSE;
     fastLoadService->HasMuxedDocument(urispec.get(), &exists);
+    /* return will be NS_OK from GetAsciiSpec.
+     * that makes no sense.
+     * nor does returning NS_OK from HasMuxedDocument.
+     * XXX return something meaningful.
+     */
     if (exists)
-        return rv;
+        return NS_OK;
 
     // Allow callers to pass null for aStream, meaning
     // "use the FastLoad service's default output stream."
     // See nsXULDocument.cpp for one use of this.
     nsCOMPtr<nsIObjectOutputStream> objectOutput = aStream;
-    if (! objectOutput)
+    if (! objectOutput) {
         fastLoadService->GetOutputStream(getter_AddRefs(objectOutput));
+        if (! objectOutput)
+            return NS_ERROR_NOT_AVAILABLE;
+    }
 
     rv = fastLoadService->
          StartMuxedDocument(mSrcURI, urispec.get(),
@@ -3415,7 +3436,7 @@ nsXULPrototypeScript::Deserialize(nsIObjectInputStream* aStream,
     nsresult rv;
 
     // Read basic prototype data
-    aStream->Read16(&mLineNo);
+    aStream->Read32(&mLineNo);
 
     NS_ASSERTION(!mSrcLoading || mSrcLoadWaiters != nsnull || !mJSObject,
                  "prototype script not well-initialized when deserializing?!");
@@ -3598,7 +3619,7 @@ nsresult
 nsXULPrototypeScript::Compile(const PRUnichar* aText,
                               PRInt32 aTextLength,
                               nsIURI* aURI,
-                              PRUint16 aLineNo,
+                              PRUint32 aLineNo,
                               nsIDocument* aDocument,
                               nsIXULPrototypeDocument* aPrototypeDocument)
 {
@@ -3615,7 +3636,7 @@ nsXULPrototypeScript::Compile(const PRUnichar* aText,
     nsresult rv;
 
     // Use the prototype document's special context
-    nsIScriptContext *context = nsnull;
+    nsIScriptContext *context;
 
     {
         nsCOMPtr<nsIScriptGlobalObjectOwner> globalOwner =
@@ -3642,6 +3663,23 @@ nsXULPrototypeScript::Compile(const PRUnichar* aText,
     aURI->GetSpec(urlspec);
 
     // Ok, compile it to create a prototype script object!
+
+    // XXXbe violate nsIScriptContext layering because its version parameter
+    // is mis-typed as const char * -- if it were uint32, we could more easily
+    // extend version to include compile-time option, as the JS engine does.
+    // It'd also be more efficient than converting to and from a C string.
+
+    JSContext* cx = NS_REINTERPRET_CAST(JSContext*,
+                                        context->GetNativeContext());
+    uint32 options = ::JS_GetOptions(cx);
+    JSBool changed = (mHasE4XOption ^ !!(options & JSOPTION_XML));
+    if (changed) {
+        ::JS_SetOptions(cx,
+                        mHasE4XOption
+                        ? options | JSOPTION_XML
+                        : options & ~JSOPTION_XML);
+    }
+
     rv = context->CompileScript(aText,
                                 aTextLength,
                                 nsnull,
@@ -3651,6 +3689,9 @@ nsXULPrototypeScript::Compile(const PRUnichar* aText,
                                 mLangVersion,
                                 (void**)&mJSObject);
 
+    if (changed) {
+        ::JS_SetOptions(cx, options);
+    }
     return rv;
 }
 

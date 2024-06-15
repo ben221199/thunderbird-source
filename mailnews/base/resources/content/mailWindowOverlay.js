@@ -110,16 +110,11 @@ function menu_new_init()
                          .getService(Components.interfaces.nsIIOService);
   var showNew = ((serverType != 'nntp') && canCreateNew) || isInbox;
   ShowMenuItem("menu_newFolder", showNew);
+  ShowMenuItem("menu_newVirtualFolder", showNew);
   EnableMenuItem("menu_newFolder", !isIMAPFolder || !ioService.offline);
+  EnableMenuItem("menu_newVirtualFolder", true);
   if (showNew)
-  {
-    if (isServer || isInbox)
-      SetMenuItemLabel("menu_NewFolder",
-        gMessengerBundle.getString("newFolder"));
-    else
-      SetMenuItemLabel("menu_NewFolder",
-        gMessengerBundle.getString("newSubfolder"));
-  }
+    SetMenuItemLabel("menu_newFolder", gMessengerBundle.getString((isServer || isInbox) ? "newFolderMenuItem" : "newSubfolderMenuItem"));
 }
 
 function goUpdateMailMenuItems(commandset)
@@ -521,32 +516,8 @@ function InitMessageLabel(menuType)
 
     try
     {
-        var msgFolder = GetLoadedMsgFolder();
-        var msgDatabase = msgFolder.getMsgDatabase(msgWindow);
-        var numSelected = GetNumSelectedMessages();
-        var indices = GetSelectedIndices(gDBView);
         var isChecked = true;
-        var checkedLabel;
-        var msgKey;
-
-        if (numSelected > 0) {
-            msgKey = gDBView.getKeyAt(indices[0]);
-            checkedLabel = msgDatabase.GetMsgHdrForKey(msgKey).label;
-            if (numSelected > 1) {
-                for (var i = 1; i < indices.length; i++)
-                {
-                    msgKey = gDBView.getKeyAt(indices[i]);
-                    if (msgDatabase.GetMsgHdrForKey(msgKey).label == checkedLabel) {
-                        continue;
-                    }
-                    isChecked = false;
-                    break;
-                }
-            }
-        }
-        else {
-            isChecked = false;
-        }
+        var checkedLabel = gDBView.hdrForFirstSelectedMessage.label;
     }
     catch(ex)
     {

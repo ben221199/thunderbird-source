@@ -49,6 +49,14 @@ FORCE_USE_PIC = 1
 FORCE_SHARED_LIB = 1
 MOZILLA_INTERNAL_API = 1
 
+ifeq ($(OS_ARCH),Darwin)
+# This is going to be a framework named "XUL", not an ordinary library named
+# "libxul.dylib"
+LIBRARY_NAME=XUL
+DLL_PREFIX=
+DLL_SUFFIX=
+endif
+
 REQUIRES = \
 	xpcom \
 	string \
@@ -244,6 +252,7 @@ SHARED_LIBRARY_LIBS = \
 
 EXTRA_DSO_LDOPTS += \
 	$(MOZ_FIX_LINK_PATHS) \
+	$(LIBS_DIR) \
 	$(JPEG_LIBS) \
 	$(PNG_LIBS) \
 	$(MOZ_JS_LIBS) \
@@ -257,6 +266,10 @@ endif
 
 ifdef GC_LEAK_DETECTOR
 EXTRA_DSO_LIBS += boehm
+endif
+
+ifdef NS_TRACE_MALLOC
+EXTRA_DSO_LIBS += tracemalloc
 endif
 
 ifneq (,$(filter mac cocoa,$(MOZ_WIDGET_TOOLKIT)))

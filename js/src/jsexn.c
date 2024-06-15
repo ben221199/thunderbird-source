@@ -426,7 +426,8 @@ InitExceptionObject(JSContext *cx, JSObject *obj, JSString *message,
         if (checkAccess) {
             v = (fp->fun && fp->argv) ? fp->argv[-2] : JSVAL_NULL;
             if (!JSVAL_IS_PRIMITIVE(v)) {
-                ok = checkAccess(cx, fp->fun->object, callerid, JSACC_READ, &v);
+                ok = checkAccess(cx, JSVAL_TO_OBJECT(fp->argv[-2]), callerid,
+                                 JSACC_READ, &v /* ignored */);
                 if (!ok) {
                     ok = JS_TRUE;
                     break;
@@ -1082,8 +1083,9 @@ js_ReportUncaughtException(JSContext *cx)
     reportp = NULL;
 #endif
 
+    /* XXX L10N angels cry once again (see also jsemit.c, /L10N gaffes/) */
     str = js_ValueToString(cx, exn);
-    bytes = str ? js_GetStringBytes(str) : "null";
+    bytes = str ? js_GetStringBytes(str) : "unknown (can't convert to string)";
     ok = JS_TRUE;
 
     if (!reportp &&

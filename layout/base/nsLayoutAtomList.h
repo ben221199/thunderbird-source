@@ -69,7 +69,6 @@ LAYOUT_ATOM(tty, "tty")
 LAYOUT_ATOM(tv, "tv")
 
   // Alphabetical list of standard name space prefixes
-LAYOUT_ATOM(htmlNameSpace, "html")
 LAYOUT_ATOM(xmlNameSpace, "xml")
 LAYOUT_ATOM(xmlnsNameSpace, "xmlns")
 
@@ -85,9 +84,10 @@ LAYOUT_ATOM(overflowList, "Overflow-list")
 LAYOUT_ATOM(overflowOutOfFlowList, "OverflowOutOfFlow-list")
 LAYOUT_ATOM(popupList, "Popup-list")
 
-LAYOUT_ATOM(commentTagName, "__moz_comment")
-LAYOUT_ATOM(textTagName, "__moz_text")
-LAYOUT_ATOM(processingInstructionTagName, "__moz_pi")
+LAYOUT_ATOM(commentTagName, "#comment")
+LAYOUT_ATOM(textTagName, "#text")
+LAYOUT_ATOM(cdataTagName, "#cdata-section")
+LAYOUT_ATOM(processingInstructionTagName, "#processing-instruction")
 LAYOUT_ATOM(documentFragmentNodeName, "#document-fragment")
 
   // Alphabetical list of frame types
@@ -165,7 +165,6 @@ LAYOUT_ATOM(oncontextmenu, "oncontextmenu")
 LAYOUT_ATOM(onDOMActivate, "onDOMActivate")
 LAYOUT_ATOM(onDOMFocusIn, "onDOMFocusIn")
 LAYOUT_ATOM(onDOMFocusOut, "onDOMFocusOut")
-LAYOUT_ATOM(onDOMPageRestore, "onDOMPageRestore")
 LAYOUT_ATOM(ondblclick, "ondblclick")
 LAYOUT_ATOM(ondragdrop, "ondragdrop")
 LAYOUT_ATOM(ondragenter, "ondragenter")
@@ -212,6 +211,10 @@ LAYOUT_ATOM(onDOMNodeInsertedIntoDocument, "onDOMNodeInsertedIntoDocument")
 LAYOUT_ATOM(onDOMAttrModified, "onDOMAttrModified")
 LAYOUT_ATOM(onDOMCharacterDataModified, "onDOMCharacterDataModified")
 
+// pagetransition events
+LAYOUT_ATOM(onPageShow, "onPageShow")
+LAYOUT_ATOM(onPageHide, "onPageHide")
+
   // Alphabetical list of languages for lang-specific transforms
 LAYOUT_ATOM(Japanese, "ja")
 LAYOUT_ATOM(Chinese, "zh-CN")
@@ -245,7 +248,9 @@ LAYOUT_ATOM(svgCircleFrame,"SVGCircleFrame")
 LAYOUT_ATOM(svgClipPathFrame,"SVGClipPathFrame")
 LAYOUT_ATOM(svgDefsFrame,"SVGDefsFrame")
 LAYOUT_ATOM(svgEllipseFrame,"SVGEllipseFrame")
+#ifdef MOZ_SVG_FOREIGNOBJECT
 LAYOUT_ATOM(svgForeignObjectFrame,"SVGForeignObjectFrame")
+#endif
 LAYOUT_ATOM(svgGenericContainerFrame,"SVGGenericContainerFrame")
 LAYOUT_ATOM(svgGFrame,"SVGGFrame")
 LAYOUT_ATOM(svgGlyphFrame,"SVGGlyphFrame")

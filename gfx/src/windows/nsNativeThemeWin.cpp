@@ -1102,6 +1102,10 @@ nsNativeThemeWin::ClassicGetWidgetBorder(nsIDeviceContext* aContext,
     case NS_THEME_TOOLTIP:
       (*aResult).top = (*aResult).left = (*aResult).bottom = (*aResult).right = 1;
       break;
+    case NS_THEME_PROGRESSBAR:
+    case NS_THEME_PROGRESSBAR_VERTICAL:
+      (*aResult).top = (*aResult).left = (*aResult).bottom = (*aResult).right = 1;
+      break;
     default:
       (*aResult).top = (*aResult).bottom = (*aResult).left = (*aResult).right = 0;
       break;
@@ -1164,13 +1168,14 @@ nsNativeThemeWin::ClassicGetMinimumWidgetSize(nsIRenderingContext* aContext, nsI
     case NS_THEME_TAB_PANELS:
       // no minimum widget size
       break;
-#ifndef WINCE
     case NS_THEME_RESIZER: {     
+#ifndef WINCE
       NONCLIENTMETRICS nc;
       nc.cbSize = sizeof(nc);
       if (SystemParametersInfo(SPI_GETNONCLIENTMETRICS, sizeof(nc), &nc, 0))
         (*aResult).width = (*aResult).height = abs(nc.lfStatusFont.lfHeight) + 4;
       else
+#endif
         (*aResult).width = (*aResult).height = 15;
       break;
     case NS_THEME_SCROLLBAR_THUMB_VERTICAL:        
@@ -1187,7 +1192,6 @@ nsNativeThemeWin::ClassicGetMinimumWidgetSize(nsIRenderingContext* aContext, nsI
       (*aResult).width = ::GetSystemMetrics(SM_CXHTHUMB) << 1;
       break;
     }
-#endif
     default:
       return NS_ERROR_FAILURE;
   }  
@@ -1381,12 +1385,10 @@ nsresult nsNativeThemeWin::ClassicGetThemePartAndState(nsIFrame* aFrame, PRUint8
 
       return NS_OK;    
     }
-#ifndef WINCE
     case NS_THEME_RESIZER:    
       aPart = DFC_SCROLL;
       aState = DFCS_SCROLLSIZEGRIP;
       return NS_OK;
-#endif
   }
   return NS_ERROR_FAILURE;
 }
@@ -1583,9 +1585,13 @@ nsresult nsNativeThemeWin::ClassicDrawWidgetBackground(nsIRenderingContext* aCon
       ::FillRect(hdc, &widgetRect, (HBRUSH) (COLOR_INFOBK+1));
       return NS_OK;
     // Draw 3D face background controls
-    case NS_THEME_TAB_PANEL:    
     case NS_THEME_PROGRESSBAR:
     case NS_THEME_PROGRESSBAR_VERTICAL:
+      // Draw 3D border
+      ::DrawEdge(hdc, &widgetRect, BDR_SUNKENOUTER, BF_RECT | BF_MIDDLE);
+      InflateRect(&widgetRect, -1, -1);
+      // fall through
+    case NS_THEME_TAB_PANEL:
     case NS_THEME_STATUSBAR:
     case NS_THEME_STATUSBAR_RESIZER_PANEL: {
       ::FillRect(hdc, &widgetRect, (HBRUSH) (COLOR_BTNFACE+1));

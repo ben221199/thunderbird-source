@@ -510,7 +510,11 @@ function UpdateStatusMessageCounts(folder)
   var totalElement = GetTotalCountElement();
   if(folder && unreadElement && totalElement)
   {
-    var numUnread =
+    var numSelected = GetNumSelectedMessages();
+
+    var numUnread = (numSelected > 1) ?
+            gMessengerBundle.getFormattedString("selectedMsgStatus",
+                                                [numSelected]) :
             gMessengerBundle.getFormattedString("unreadMsgStatus",
                                                 [ folder.getNumUnread(false)]);
     var numTotal =
@@ -1033,21 +1037,6 @@ function RemoveMailOfflineObserver()
 {
   var observerService = Components.classes["@mozilla.org/observer-service;1"].getService(Components.interfaces.nsIObserverService); 
   observerService.removeObserver(mailOfflineObserver,"network:offline-status-changed");
-}
-
-function getViewName(okCallbackFunc, defaultViewName) 
-{
-  var preselectedURI = GetSelectedFolderURI();
-  var folderTree = GetFolderTree();
-
-  var name = GetFolderNameFromUri(preselectedURI, folderTree);
-  name += defaultViewName + "-view";
-  var dialog = window.openDialog(
-                          "chrome://messenger/content/virtualFolderName.xul",
-                          "newFolder",
-                          "chrome,titlebar,modal",
-                          {siblingFolderURI: preselectedURI, searchFolderURIs: preselectedURI, 
-                          okCallback: okCallbackFunc, name: name});
 }
 
 function getSearchTermString(searchTerms)

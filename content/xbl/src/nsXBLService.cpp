@@ -234,7 +234,6 @@ public:
   NS_IMETHOD Unload(nsIDOMEvent* aEvent) { return NS_OK; }
   NS_IMETHOD Abort(nsIDOMEvent* aEvent) { return NS_OK; }
   NS_IMETHOD Error(nsIDOMEvent* aEvent) { return NS_OK; }
-  NS_IMETHOD PageRestore(nsIDOMEvent* aEvent) { return NS_OK; }
   NS_IMETHOD HandleEvent(nsIDOMEvent* aEvent) { return NS_OK; }
 
 #ifdef MOZ_XUL
@@ -639,7 +638,8 @@ nsXBLService::LoadBindings(nsIContent* aContent, nsIURI* aURL, PRBool aAugmentFl
   newBinding->InstallEventHandlers();
 
   // Set up our properties
-  newBinding->InstallImplementation();
+  rv = newBinding->InstallImplementation();
+  NS_ENSURE_SUCCESS(rv, rv);
 
   // Figure out if we need to execute a constructor.
   *aBinding = newBinding->GetFirstBindingWithConstructor();

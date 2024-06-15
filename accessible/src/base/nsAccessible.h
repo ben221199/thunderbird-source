@@ -40,10 +40,12 @@
 #define _nsAccessible_H_
 
 #include "nsAccessNodeWrap.h"
+#include "nsAccessibilityAtoms.h"
 #include "nsIAccessible.h"
 #include "nsPIAccessible.h"
-#include "nsWeakReference.h"
 #include "nsIDOMNodeList.h"
+#include "nsINameSpaceManager.h"
+#include "nsWeakReference.h"
 #include "nsString.h"
 
 struct nsRect;
@@ -64,9 +66,14 @@ struct nsStateMapEntry
 };
 
 enum ENameRule {
-  eNoName,
-  eNameFromSubtree,  // Collect name from text & img descendents; use title if resulting name is "".
-  eNameFromTitle     // Use the title attribute for a name
+  eNameLabelOrTitle,     // Collect name if explicitly specified from 
+                         // 1) content subtree pointed to by labelledby
+                         //    which contains the ID for the label content, or
+                         // 2) title attribute if specified
+  eNameOkFromChildren    // Collect name from
+                         // 1) labelledby attribute if specified, or
+                         // 2) text & img descendents, or
+                         // 3) title attribute if specified
 };
 
 enum EValueRule {
@@ -95,6 +102,8 @@ struct nsRoleMapEntry
   nsStateMapEntry attributeMap3;
   nsStateMapEntry attributeMap4;
   nsStateMapEntry attributeMap5;
+  nsStateMapEntry attributeMap6;
+  nsStateMapEntry attributeMap7;
 };
 
 class nsAccessible : public nsAccessNodeWrap, 
@@ -136,10 +145,19 @@ protected:
   virtual nsIFrame* GetBoundsFrame();
   virtual void GetBoundsRect(nsRect& aRect, nsIFrame** aRelativeFrame);
   PRBool IsPartiallyVisible(PRBool *aIsOffscreen); 
-  static nsIContent *GetLabelForId(nsIContent *aLookContent, nsIAtom *forAttrib,
-                                const nsAString *aId);
-  static nsIContent *GetXULLabelContent(nsIContent *aForNode);
+  nsresult GetTextFromRelationID(nsIAtom *aIDAttrib, nsString &aName);
+
+  static nsIContent *GetContentPointingTo(const nsAString *aId,
+                                          nsIContent *aLookContent,
+                                          nsIAtom *forAttrib,
+                                          PRUint32 aForAttribNamespace = kNameSpaceID_None,
+                                          nsIAtom *aTagType = nsAccessibilityAtoms::label);
+  static nsIContent *GetXULLabelContent(nsIContent *aForNode,
+                                        nsIAtom *aLabelType = nsAccessibilityAtoms::label);
   static nsIContent *GetHTMLLabelContent(nsIContent *aForNode);
+  static nsIContent *GetLabelContent(nsIContent *aForNode);
+  static nsIContent *GetRoleContent(nsIDOMNode *aDOMNode);
+
   nsresult GetHTMLName(nsAString& _retval, PRBool aCanAggregateSubtree = PR_TRUE);
   nsresult GetXULName(nsAString& aName, PRBool aCanAggregateSubtree = PR_TRUE);
   // For accessibles that are not lists of choices, the name of the subtree should be the 

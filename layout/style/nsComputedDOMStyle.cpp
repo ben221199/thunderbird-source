@@ -110,7 +110,7 @@ GetContainingBlockFor(nsIFrame* aFrame) {
 }
 
 nsComputedDOMStyle::nsComputedDOMStyle()
-  : mInner(this), mPresShellWeak(nsnull), mT2P(0.0f)
+  : mInner(this), mDocumentWeak(nsnull), mT2P(0.0f)
 {
 }
 
@@ -170,7 +170,7 @@ nsComputedDOMStyle::Init(nsIDOMElement *aElement,
   NS_ENSURE_ARG_POINTER(aElement);
   NS_ENSURE_ARG_POINTER(aPresShell);
 
-  mPresShellWeak = do_GetWeakReference(aPresShell);
+  mDocumentWeak = do_GetWeakReference(aPresShell->GetDocument());
 
   mContent = do_QueryInterface(aElement);
   if (!mContent) {
@@ -295,14 +295,17 @@ nsComputedDOMStyle::GetPropertyCSSValue(const nsAString& aPropertyName,
   NS_ENSURE_ARG_POINTER(aReturn);
   *aReturn = nsnull;
 
-  nsCOMPtr<nsIPresShell> presShell = do_QueryReferent(mPresShellWeak);
+  nsCOMPtr<nsIDocument> document = do_QueryReferent(mDocumentWeak);
+  NS_ENSURE_TRUE(document, NS_ERROR_NOT_AVAILABLE);
 
-  NS_ENSURE_TRUE(presShell, NS_ERROR_FAILURE);
+  // Flush _before_ getting the presshell, since that could create a new
+  // presshell.  Also note that we want to flush the style on the document
+  // we're computing style in, not on the document mContent is in -- the two
+  // may be different.
+  document->FlushPendingNotifications(Flush_Style);
 
-  nsIDocument* document = mContent->GetDocument();
-  if (document) {
-    document->FlushPendingNotifications(Flush_Style);
-  }
+  nsIPresShell* presShell = document->GetShellAt(0);
+  NS_ENSURE_TRUE(presShell, NS_ERROR_NOT_AVAILABLE);
 
   nsIFrame *frame = nsnull;
   presShell->GetPrimaryFrameFor(mContent, &frame);
@@ -720,7 +723,9 @@ nsComputedDOMStyle::GetFontFamily(nsIFrame *aFrame,
   GetStyleData(eStyleStruct_Font, (const nsStyleStruct*&)font, aFrame);
 
   if (font) {
-    nsCOMPtr<nsIPresShell> presShell = do_QueryReferent(mPresShellWeak);
+    nsCOMPtr<nsIDocument> doc = do_QueryReferent(mDocumentWeak);
+    NS_ASSERTION(doc, "document is required");
+    nsIPresShell* presShell = doc->GetShellAt(0);
     NS_ASSERTION(presShell, "pres shell is required");
     nsPresContext *presContext = presShell->GetPresContext();
     NS_ASSERTION(presContext, "pres context is required");
@@ -2122,21 +2127,43 @@ nsComputedDOMStyle::GetCursor(nsIFrame *aFrame,
   GetStyleData(eStyleStruct_UserInterface, (const nsStyleStruct*&)ui, aFrame);
 
   if (ui) {
-    PRInt32 count = ui->mCursorArray.Count();
-    for (PRInt32 i = 0; i < count; i++) {
+    for (nsCursorImage *item = ui->mCursorArray,
+                   *item_end = ui->mCursorArray + ui->mCursorArrayLength;
+         item < item_end; ++item) {
+      nsDOMCSSValueList *itemList = GetROCSSValueList(PR_FALSE);
+      if (!itemList || !valueList->AppendCSSValue(itemList)) {
+        delete itemList;
+        delete valueList;
+        return NS_ERROR_OUT_OF_MEMORY;
+      }
+
       nsCOMPtr<nsIURI> uri;
-      ui->mCursorArray[i]->GetURI(getter_AddRefs(uri));
+      item->mImage->GetURI(getter_AddRefs(uri));
 
       nsROCSSPrimitiveValue *val = GetROCSSPrimitiveValue();
-      if (!val) {
+      if (!val || !itemList->AppendCSSValue(val)) {
+        delete val;
         delete valueList;
         return NS_ERROR_OUT_OF_MEMORY;
       }
       val->SetURI(uri);
-      if (!valueList->AppendCSSValue(val)) {
-        delete valueList;
-        delete val;
-        return NS_ERROR_OUT_OF_MEMORY;
+
+      if (item->mHaveHotspot) {
+        nsROCSSPrimitiveValue *valX = GetROCSSPrimitiveValue();
+        if (!valX || !itemList->AppendCSSValue(valX)) {
+          delete valX;
+          delete valueList;
+          return NS_ERROR_OUT_OF_MEMORY;
+        }
+        nsROCSSPrimitiveValue *valY = GetROCSSPrimitiveValue();
+        if (!valY || !itemList->AppendCSSValue(valY)) {
+          delete valY;
+          delete valueList;
+          return NS_ERROR_OUT_OF_MEMORY;
+        }
+
+        valX->SetNumber(item->mHotspotX);
+        valY->SetNumber(item->mHotspotY);
       }
     }
 
@@ -3251,7 +3278,7 @@ void
 nsComputedDOMStyle::FlushPendingReflows()
 {
   // Flush all pending notifications so that our frames are up to date
-  nsIDocument* document = mContent->GetDocument();
+  nsCOMPtr<nsIDocument> document = mContent->GetDocument();
   if (document) {
     document->FlushPendingNotifications(Flush_Layout);
   }
@@ -3267,9 +3294,11 @@ nsComputedDOMStyle::GetStyleData(nsStyleStructID aID,
   } else if (mStyleContextHolder) {
     aStyleStruct = mStyleContextHolder->GetStyleData(aID);    
   } else {
-    nsCOMPtr<nsIPresShell> presShell = do_QueryReferent(mPresShellWeak);
+    nsCOMPtr<nsIDocument> doc = do_QueryReferent(mDocumentWeak);
+    NS_ENSURE_TRUE(doc, NS_ERROR_NOT_AVAILABLE);
 
-    NS_ENSURE_TRUE(presShell, NS_ERROR_FAILURE);
+    nsIPresShell* presShell = doc->GetShellAt(0);
+    NS_ENSURE_TRUE(presShell, NS_ERROR_NOT_AVAILABLE);
 
     mStyleContextHolder =
       nsInspectorCSSUtils::GetStyleContextForContent(mContent,

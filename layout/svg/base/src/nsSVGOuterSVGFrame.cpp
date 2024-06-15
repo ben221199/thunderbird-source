@@ -351,7 +351,7 @@ AlertMissingGDIPlus()
     return;
 
   nsCOMPtr<nsIStringBundle> sb;
-  sbs->CreateBundle("resource://gre/res/svg.properties", getter_AddRefs(sb));
+  sbs->CreateBundle("chrome://global/locale/svg.properties", getter_AddRefs(sb));
   if (!sb)
     return;
 
@@ -1135,14 +1135,17 @@ nsSVGOuterSVGFrame::GetCanvasTM()
     PRUint16 val;
     mZoomAndPan->GetIntegerValue(val);
     if (val == nsIDOMSVGZoomAndPan::SVG_ZOOMANDPAN_MAGNIFY) {
+      nsCOMPtr<nsIDOMSVGMatrix> zoomPanMatrix;
+      nsCOMPtr<nsIDOMSVGMatrix> temp;
       float scale, x, y;
       mCurrentScale->GetValue(&scale);
       mCurrentTranslate->GetX(&x);
       mCurrentTranslate->GetY(&y);
-
-      nsCOMPtr<nsIDOMSVGMatrix> tmp;
-      mCanvasTM->Translate(x, y, getter_AddRefs(tmp));
-      tmp->Scale(scale, getter_AddRefs(mCanvasTM));
+      svgElement->CreateSVGMatrix(getter_AddRefs(zoomPanMatrix));
+      zoomPanMatrix->Translate(x, y, getter_AddRefs(temp));
+      temp->Scale(scale, getter_AddRefs(zoomPanMatrix));
+      zoomPanMatrix->Multiply(mCanvasTM, getter_AddRefs(temp));
+      temp.swap(mCanvasTM);
     }
   }
   nsIDOMSVGMatrix* retval = mCanvasTM.get();

@@ -1158,7 +1158,7 @@ NS_IMETHODIMP nsMsgDatabase::Open(nsIFileSpec *aFolderName, PRBool aCreate, PRBo
     }
   }
   if (err == NS_OK || err == NS_MSG_ERROR_FOLDER_SUMMARY_MISSING)
-    GetDBCache()->AppendElement(this);
+    AddToCache(this);
   return (summaryFileExists) ? err : NS_MSG_ERROR_FOLDER_SUMMARY_MISSING;
 }
 
@@ -1242,8 +1242,8 @@ nsresult nsMsgDatabase::OpenMDB(const char *dbName, PRBool create)
         if (ret == 0 && outDone)
         {
           ret = myMDBFactory->ThumbToOpenStore(m_mdbEnv, thumb, &m_mdbStore);
-          if (ret == NS_OK && m_mdbStore)
-            ret = InitExistingDB();
+          if (ret == NS_OK)
+            ret = (m_mdbStore) ? InitExistingDB() : NS_ERROR_FAILURE;
         }
 #ifdef DEBUG_bienvenu1
         DumpContents();
@@ -1266,7 +1266,7 @@ nsresult nsMsgDatabase::OpenMDB(const char *dbName, PRBool create)
             ret = myMDBFactory->CreateNewFileStore(m_mdbEnv, dbHeap,
               newFile, &inOpenPolicy, &m_mdbStore);
             if (ret == NS_OK)
-              ret = InitNewDB();
+              ret = (m_mdbStore) ? InitNewDB() : NS_ERROR_FAILURE;
           }
           NS_RELEASE(newFile); // always release our file ref, store has own
         }
@@ -1275,6 +1275,9 @@ nsresult nsMsgDatabase::OpenMDB(const char *dbName, PRBool create)
       nsCRT::free(nativeFileName);
     }
   }
+#ifdef DEBUG_David_Bienvenu
+  NS_ASSERTION(NS_SUCCEEDED(ret), "failed opening mdb");
+#endif
   return ret;
 }
 
@@ -1504,13 +1507,10 @@ nsresult nsMsgDatabase::InitNewDB()
   err = InitMDBInfo();
   if (err == NS_OK)
   {
-    // why is this bad? dbFolderInfo is tightly tightly bound to nsMsgDatabase. It will
-    // never be provided by someone else. It could be strictly embedded inside nsMsgDatabase
-    // but I wanted to keep nsMsgDatabase a little bit smaller
-    nsDBFolderInfo *dbFolderInfo = new nsDBFolderInfo(this); // this is bad!! Should go through component manager
+    nsDBFolderInfo *dbFolderInfo = new nsDBFolderInfo(this); 
     if (dbFolderInfo)
     {
-      NS_ADDREF(dbFolderInfo); // mscott: shouldn't have to do this...go through c. manager
+      NS_ADDREF(dbFolderInfo); 
       err = dbFolderInfo->AddToNewMDB();
       dbFolderInfo->SetVersion(GetCurVersion());
       nsIMdbStore *store = GetStore();
@@ -1589,6 +1589,8 @@ nsresult nsMsgDatabase::InitExistingDB()
     else
       err = NS_ERROR_FAILURE;
     
+    NS_ASSERTION(NS_SUCCEEDED(err), "failed initing existing db");
+    NS_ENSURE_SUCCESS(err, err);
     // create new all msg hdrs table, if it doesn't exist.
     if (NS_SUCCEEDED(err) && !m_mdbAllMsgHeadersTable)
     {
@@ -2745,13 +2747,15 @@ NS_IMETHODIMP nsMsgDatabase::ListAllKeys(nsMsgKeyArray &outputKeys)
   return err;
 }
 
-class nsMsgDBThreadEnumerator : public nsISimpleEnumerator
+class nsMsgDBThreadEnumerator : public nsISimpleEnumerator, public nsIDBChangeListener
 {
 public:
     NS_DECL_ISUPPORTS
 
     // nsISimpleEnumerator methods:
     NS_DECL_NSISIMPLEENUMERATOR
+
+    NS_DECL_NSIDBCHANGELISTENER
 
     // nsMsgDBEnumerator methods:
     typedef nsresult (*nsMsgDBThreadEnumeratorFilter)(nsIMsgThread* thread);
@@ -2776,17 +2780,63 @@ nsMsgDBThreadEnumerator::nsMsgDBThreadEnumerator(nsMsgDatabase* db,
       mFilter(filter)
 {
     NS_ADDREF(mDB);
+    mDB->AddListener(this);
     mNextPrefetched = PR_FALSE;
 }
 
 nsMsgDBThreadEnumerator::~nsMsgDBThreadEnumerator()
 {
   mTableCursor->Release();
-	NS_IF_RELEASE(mResultThread);
-    NS_RELEASE(mDB);
+  NS_IF_RELEASE(mResultThread);
+  NS_IF_RELEASE(mDB);
 }
 
-NS_IMPL_ISUPPORTS1(nsMsgDBThreadEnumerator, nsISimpleEnumerator)
+NS_IMPL_ISUPPORTS2(nsMsgDBThreadEnumerator, nsISimpleEnumerator, nsIDBChangeListener)
+
+
+/* void onHdrChange (in nsIMsgDBHdr aHdrChanged, in unsigned long aOldFlags, in unsigned long aNewFlags, in nsIDBChangeListener aInstigator); */
+NS_IMETHODIMP nsMsgDBThreadEnumerator::OnHdrChange(nsIMsgDBHdr *aHdrChanged, PRUint32 aOldFlags, PRUint32 aNewFlags, nsIDBChangeListener *aInstigator)
+{
+    return NS_OK;
+}
+
+/* void onHdrDeleted (in nsIMsgDBHdr aHdrChanged, in nsMsgKey aParentKey, in long aFlags, in nsIDBChangeListener aInstigator); */
+NS_IMETHODIMP nsMsgDBThreadEnumerator::OnHdrDeleted(nsIMsgDBHdr *aHdrChanged, nsMsgKey aParentKey, PRInt32 aFlags, nsIDBChangeListener *aInstigator)
+{
+    return NS_OK;
+}
+
+/* void onHdrAdded (in nsIMsgDBHdr aHdrChanged, in nsMsgKey aParentKey, in long aFlags, in nsIDBChangeListener aInstigator); */
+NS_IMETHODIMP nsMsgDBThreadEnumerator::OnHdrAdded(nsIMsgDBHdr *aHdrChanged, nsMsgKey aParentKey, PRInt32 aFlags, nsIDBChangeListener *aInstigator)
+{
+    return NS_OK;
+}
+
+/* void onParentChanged (in nsMsgKey aKeyChanged, in nsMsgKey oldParent, in nsMsgKey newParent, in nsIDBChangeListener aInstigator); */
+NS_IMETHODIMP nsMsgDBThreadEnumerator::OnParentChanged(nsMsgKey aKeyChanged, nsMsgKey oldParent, nsMsgKey newParent, nsIDBChangeListener *aInstigator)
+{
+    return NS_OK;
+}
+
+/* void onAnnouncerGoingAway (in nsIDBChangeAnnouncer instigator); */
+NS_IMETHODIMP nsMsgDBThreadEnumerator::OnAnnouncerGoingAway(nsIDBChangeAnnouncer *instigator)
+{
+  mDB->RemoveListener(this);
+  mDB = nsnull;
+  return NS_OK;
+}
+
+/* void onReadChanged (in nsIDBChangeListener aInstigator); */
+NS_IMETHODIMP nsMsgDBThreadEnumerator::OnReadChanged(nsIDBChangeListener *aInstigator)
+{
+    return NS_OK;
+}
+
+/* void onJunkScoreChanged (in nsIDBChangeListener aInstigator); */
+NS_IMETHODIMP nsMsgDBThreadEnumerator::OnJunkScoreChanged(nsIDBChangeListener *aInstigator)
+{
+    return NS_OK;
+}
 
 nsresult nsMsgDBThreadEnumerator::GetTableCursor(void)
 {
@@ -2828,7 +2878,10 @@ nsresult nsMsgDBThreadEnumerator::PrefetchNext()
 {
   nsresult rv;
   nsIMdbTable *table = nsnull;
-  
+
+  if (!mDB)
+    return NS_ERROR_NULL_POINTER;
+
   if (!mTableCursor)
   {
     rv = GetTableCursor();
@@ -4169,6 +4222,7 @@ NS_IMETHODIMP nsMsgDatabase::SetMsgRetentionSettings(nsIMsgRetentionSettings *re
     PRBool keepUnreadMessagesOnly;
     PRUint32 daysToKeepBodies;
     PRBool cleanupBodiesByDays;
+    PRBool useServerDefaults;
 
     rv = retentionSettings->GetRetainByPreference(&retainByPreference);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -4180,7 +4234,8 @@ NS_IMETHODIMP nsMsgDatabase::SetMsgRetentionSettings(nsIMsgRetentionSettings *re
     NS_ENSURE_SUCCESS(rv, rv);
     rv = retentionSettings->GetDaysToKeepBodies(&daysToKeepBodies);
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = retentionSettings->GetCleanupBodiesByDays(&cleanupBodiesByDays);
+    (void) retentionSettings->GetCleanupBodiesByDays(&cleanupBodiesByDays);
+    (void) retentionSettings->GetUseServerDefaults(&useServerDefaults);
     // need to write this to the db. We'll just use the dbfolderinfo to write properties.
     m_dbFolderInfo->SetUint32Property("retainBy", retainByPreference);
     m_dbFolderInfo->SetUint32Property("daysToKeepHdrs", daysToKeepHdrs);
@@ -4188,7 +4243,9 @@ NS_IMETHODIMP nsMsgDatabase::SetMsgRetentionSettings(nsIMsgRetentionSettings *re
     m_dbFolderInfo->SetUint32Property("daysToKeepBodies", daysToKeepBodies);
     m_dbFolderInfo->SetUint32Property("keepUnreadOnly", (keepUnreadMessagesOnly) ? 1 : 0);
     m_dbFolderInfo->SetBooleanProperty("cleanupBodies", cleanupBodiesByDays);
+    m_dbFolderInfo->SetBooleanProperty("useServerDefaults", useServerDefaults);
   }
+  Commit(nsMsgDBCommitType::kLargeCommit);
   return NS_OK;
 }
 
@@ -4293,17 +4350,24 @@ NS_IMETHODIMP nsMsgDatabase::GetMsgDownloadSettings(nsIMsgDownloadSettings **dow
   return NS_OK;
 }
 
-NS_IMETHODIMP nsMsgDatabase::ApplyRetentionSettings(nsIMsgRetentionSettings *msgRetentionSettings)
+NS_IMETHODIMP nsMsgDatabase::ApplyRetentionSettings(nsIMsgRetentionSettings *aMsgRetentionSettings,
+                                                    PRBool aDeleteViaFolder)
 {
-  NS_ENSURE_ARG_POINTER(msgRetentionSettings);
+  NS_ENSURE_ARG_POINTER(aMsgRetentionSettings);
   nsresult rv = NS_OK;
 
+  nsCOMPtr <nsISupportsArray> msgHdrsToDelete;
+  if (aDeleteViaFolder)
+  {
+    msgHdrsToDelete = do_CreateInstance(NS_SUPPORTSARRAY_CONTRACTID, &rv);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
   nsMsgRetainByPreference retainByPreference;
   PRUint32 daysToKeepHdrs = 0;
   PRUint32 numHeadersToKeep = 0;
   PRBool keepUnreadMessagesOnly = PR_FALSE;
-  msgRetentionSettings->GetRetainByPreference(&retainByPreference);
-  msgRetentionSettings->GetKeepUnreadMessagesOnly(&keepUnreadMessagesOnly);
+  aMsgRetentionSettings->GetRetainByPreference(&retainByPreference);
+  aMsgRetentionSettings->GetKeepUnreadMessagesOnly(&keepUnreadMessagesOnly);
 
   switch (retainByPreference)
   {
@@ -4312,20 +4376,41 @@ NS_IMETHODIMP nsMsgDatabase::ApplyRetentionSettings(nsIMsgRetentionSettings *msg
     {
       mdb_count numHdrs = 0;
       m_mdbAllMsgHeadersTable->GetCount(GetEnv(), &numHdrs);
-      return PurgeExcessMessages(numHdrs, PR_TRUE);
+      rv = PurgeExcessMessages(numHdrs, PR_TRUE, msgHdrsToDelete);
     }
     break;
   case nsIMsgRetentionSettings::nsMsgRetainByAge:
-    msgRetentionSettings->GetDaysToKeepHdrs(&daysToKeepHdrs);
-    return PurgeMessagesOlderThan(daysToKeepHdrs, keepUnreadMessagesOnly);
+    aMsgRetentionSettings->GetDaysToKeepHdrs(&daysToKeepHdrs);
+    rv = PurgeMessagesOlderThan(daysToKeepHdrs, keepUnreadMessagesOnly, msgHdrsToDelete);
+    break;
   case nsIMsgRetentionSettings::nsMsgRetainByNumHeaders:
-    msgRetentionSettings->GetNumHeadersToKeep(&numHeadersToKeep);
-    return PurgeExcessMessages(numHeadersToKeep, keepUnreadMessagesOnly);
+    aMsgRetentionSettings->GetNumHeadersToKeep(&numHeadersToKeep);
+    rv = PurgeExcessMessages(numHeadersToKeep, keepUnreadMessagesOnly, msgHdrsToDelete);
+    break;
+  }
+  if (m_folder)
+  {
+    // update the time we attempted to purge this folder
+    char dateBuf[100];
+    dateBuf[0] = '\0';
+    PRExplodedTime exploded;
+    PR_ExplodeTime(PR_Now(), PR_LocalTimeParameters, &exploded);
+    PR_FormatTimeUSEnglish(dateBuf, sizeof(dateBuf), "%a %b %d %H:%M:%S %Y", &exploded);
+    m_folder->SetStringProperty("LastPurgeTime", dateBuf);
+  }
+  if (msgHdrsToDelete)
+  {
+    PRUint32 count;
+    msgHdrsToDelete->Count(&count);
+    if (count > 0)
+      rv = m_folder->DeleteMessages(msgHdrsToDelete, nsnull, PR_TRUE, PR_FALSE, nsnull, PR_FALSE);
   }
   return rv;
 }
 
-nsresult nsMsgDatabase::PurgeMessagesOlderThan(PRUint32 daysToKeepHdrs, PRBool keepUnreadMessagesOnly)
+nsresult nsMsgDatabase::PurgeMessagesOlderThan(PRUint32 daysToKeepHdrs, 
+                                               PRBool keepUnreadMessagesOnly,
+                                               nsISupportsArray *hdrsToDelete)
 {
   nsresult rv = NS_OK;
   nsMsgHdr		*pHeader;
@@ -4377,20 +4462,26 @@ nsresult nsMsgDatabase::PurgeMessagesOlderThan(PRUint32 daysToKeepHdrs, PRBool k
       nsMsgKey msgKey;
       pHeader->GetMessageKey(&msgKey);
       keysToDelete.Add(msgKey);
+      if (hdrsToDelete)
+        hdrsToDelete->AppendElement(pHeader);
     }
     NS_RELEASE(pHeader);
   }
   
-  DeleteMessages(&keysToDelete, nsnull);
+  if (!hdrsToDelete)
+  {
+    DeleteMessages(&keysToDelete, nsnull);
   
-  if (keysToDelete.GetSize() > 10)	// compress commit if we deleted more than 10
-    Commit(nsMsgDBCommitType::kCompressCommit);
-  else if (keysToDelete.GetSize() > 0)
-    Commit(nsMsgDBCommitType::kLargeCommit);
+    if (keysToDelete.GetSize() > 10)	// compress commit if we deleted more than 10
+      Commit(nsMsgDBCommitType::kCompressCommit);
+    else if (keysToDelete.GetSize() > 0)
+      Commit(nsMsgDBCommitType::kLargeCommit);
+  }
   return rv;
 }
 
-nsresult nsMsgDatabase::PurgeExcessMessages(PRUint32 numHeadersToKeep, PRBool keepUnreadMessagesOnly)
+nsresult nsMsgDatabase::PurgeExcessMessages(PRUint32 numHeadersToKeep, PRBool keepUnreadMessagesOnly,
+                                            nsISupportsArray *hdrsToDelete)
 {
   nsresult rv = NS_OK;
   nsMsgHdr		*pHeader;
@@ -4433,18 +4524,23 @@ nsresult nsMsgDatabase::PurgeExcessMessages(PRUint32 numHeadersToKeep, PRBool ke
       pHeader->GetMessageKey(&msgKey);
       keysToDelete.Add(msgKey);
       numHdrs--;
+      if (hdrsToDelete)
+        hdrsToDelete->AppendElement(pHeader);
     }
     NS_RELEASE(pHeader);
   }
   
-  PRInt32 numKeysToDelete = keysToDelete.GetSize();
-  if (numKeysToDelete > 0)
+  if (!hdrsToDelete)
   {
-    DeleteMessages(&keysToDelete, nsnull);
-    if (numKeysToDelete > 10)	// compress commit if we deleted more than 10
-      Commit(nsMsgDBCommitType::kCompressCommit);
-    else
-      Commit(nsMsgDBCommitType::kLargeCommit);
+    PRInt32 numKeysToDelete = keysToDelete.GetSize();
+    if (numKeysToDelete > 0)
+    {
+      DeleteMessages(&keysToDelete, nsnull);
+      if (numKeysToDelete > 10)	// compress commit if we deleted more than 10
+        Commit(nsMsgDBCommitType::kCompressCommit);
+      else
+        Commit(nsMsgDBCommitType::kLargeCommit);
+    }
   }
   return rv;
 }

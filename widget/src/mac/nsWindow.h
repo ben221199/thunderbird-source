@@ -180,6 +180,8 @@ public:
 
     virtual void          StartDraw(nsIRenderingContext* aRenderingContext = nsnull);
     virtual void          EndDraw();
+    PRBool                IsDrawing() const { return mDrawing; }
+    
     NS_IMETHOD            Update();
     virtual void          UpdateWidget(nsRect& aRect, nsIRenderingContext* aContext);
     
@@ -267,7 +269,6 @@ protected:
   RgnHandle         mVisRegion;
   WindowPtr         mWindowPtr;
 
-  PRPackedBool      mDestroyCalled;
   PRPackedBool      mDestructorCalled;
 
   PRPackedBool      mAcceptFocusOnClick;

@@ -483,12 +483,15 @@ SyncFrameViewGeometryDependentProperties(nsPresContext*  aPresContext,
   // view's contents should be repainted and not bitblt'd
   vm->SetViewBitBltEnabled(aView, !fixedBackground);
 
+  const nsStyleDisplay* display = aStyleContext->GetStyleDisplay();
   // If the frame has a solid background color, 'background-clip:border',
   // and it's a kind of frame that paints its background, and rounded borders aren't
   // clipping the background, then it's opaque.
+  // If the frame has a native theme appearance then its background
+  // color is actually not relevant.
   PRBool  viewHasTransparentContent =
     !(hasBG && !(bg->mBackgroundFlags & NS_STYLE_BG_COLOR_TRANSPARENT) &&
-      bg->mBackgroundClip == NS_STYLE_BG_CLIP_BORDER &&
+      !display->mAppearance && bg->mBackgroundClip == NS_STYLE_BG_CLIP_BORDER &&
       aFrame->CanPaintBackground() &&
       !HasNonZeroBorderRadius(aStyleContext));
 
@@ -547,9 +550,7 @@ SyncFrameViewGeometryDependentProperties(nsPresContext*  aPresContext,
   }
   // XXX we should also set widget transparency for XUL popups
 
-  const nsStyleDisplay* display = aStyleContext->GetStyleDisplay();
   nsFrameState kidState = aFrame->GetStateBits();
-  
   PRBool isBlockLevel =
     display->IsBlockLevel() || (kidState & NS_FRAME_OUT_OF_FLOW);
   
@@ -778,21 +779,25 @@ nsContainerFrame::SyncFrameViewProperties(nsPresContext*  aPresContext,
 
   // See if the frame is being relatively positioned or absolutely
   // positioned
-  PRBool isTopMostView = display->IsPositioned();
-
-  // Make sure z-index is correct
-  const nsStylePosition* position = aStyleContext->GetStylePosition();
+  PRBool isPositioned = display->IsPositioned();
 
   PRInt32 zIndex = 0;
   PRBool  autoZIndex = PR_FALSE;
 
-  if (position->mZIndex.GetUnit() == eStyleUnit_Integer) {
-    zIndex = position->mZIndex.GetIntValue();
-  } else if (position->mZIndex.GetUnit() == eStyleUnit_Auto) {
+  if (!isPositioned) {
     autoZIndex = PR_TRUE;
+  } else {
+    // Make sure z-index is correct
+    const nsStylePosition* position = aStyleContext->GetStylePosition();
+
+    if (position->mZIndex.GetUnit() == eStyleUnit_Integer) {
+      zIndex = position->mZIndex.GetIntValue();
+    } else if (position->mZIndex.GetUnit() == eStyleUnit_Auto) {
+      autoZIndex = PR_TRUE;
+    }
   }
 
-  vm->SetViewZIndex(aView, autoZIndex, zIndex, isTopMostView);
+  vm->SetViewZIndex(aView, autoZIndex, zIndex, isPositioned);
 
   SyncFrameViewGeometryDependentProperties(aPresContext, aFrame, aStyleContext, aView, aFlags);
 }

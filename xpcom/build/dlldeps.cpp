@@ -39,6 +39,7 @@
 // the dll that are located in the .lib files we link with
 
 #include <windows.h>
+#include "nsXPCOMGlue.h"
 #include "nsVoidArray.h"
 #include "nsValueArray.h"
 #include "nsIAtom.h"
@@ -99,6 +100,7 @@
 
 void XXXNeverCalled()
 {
+    GRE_GetGREPathForVersion(nsnull, nsnull, 0);
     nsTextFormatter::snprintf(nsnull,0,nsnull);
     nsTextFormatter::smprintf(nsnull, nsnull);
     nsTextFormatter::smprintf_free(nsnull);
@@ -127,7 +129,8 @@ void XXXNeverCalled()
     a.Alloc(0);
     a.Free(0, 0);
     nsIThread::GetCurrent(nsnull);
-    nsDeque(nsnull);
+    nsDeque d(nsnull);
+    nsDequeIterator di(d);
     nsTraceRefcnt::LogAddCOMPtr(nsnull, nsnull);
     nsTraceRefcntImpl::DumpStatistics();
     NS_NewEmptyEnumerator(nsnull);

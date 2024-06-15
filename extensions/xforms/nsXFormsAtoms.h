@@ -36,6 +36,9 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#ifndef nsXFormsAtoms_h_
+#define nsXFormsAtoms_h_
+
 #include "nsStaticAtom.h"
 
 /**
@@ -66,9 +69,12 @@ class nsXFormsAtoms
   static NS_HIDDEN_(nsIAtom *) clazz;
   static NS_HIDDEN_(nsIAtom *) deferredBindListProperty;
   static NS_HIDDEN_(nsIAtom *) readyForBindProperty;
+  static NS_HIDDEN_(nsIAtom *) accesskey;
 
   static NS_HIDDEN_(void) InitAtoms();
 
  private:
   static NS_HIDDEN_(const nsStaticAtom) Atoms_info[];
 };
+
+#endif

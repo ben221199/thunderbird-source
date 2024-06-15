@@ -198,8 +198,9 @@ nsTextBoxFrame::AlwaysAppendAccessKey()
   {
     gAccessKeyPrefInitialized = PR_TRUE;
 
-    gAlwaysAppendAccessKey =
-        nsContentUtils::GetCharPref("intl.menuitems.alwaysappendaccesskeys").Equals("true");
+    const char* prefName = "intl.menuitems.alwaysappendaccesskeys";
+    nsAdoptingString val = nsContentUtils::GetLocalizedStringPref(prefName);
+    gAlwaysAppendAccessKey = val.Equals(NS_LITERAL_STRING("true"));
   }
   return gAlwaysAppendAccessKey;
 }
@@ -707,7 +708,7 @@ nsTextBoxFrame::UpdateAccessTitle()
                 || AlwaysAppendAccessKey()) 
             {
                 nsAutoString tmpstring;
-                if (!mTitle.IsEmpty() && !isspace(mTitle.Last())) {
+                if (!mTitle.IsEmpty() && !NS_IS_SPACE(mTitle.Last())) {
                   tmpstring += ' ';
                 }
                 tmpstring += '(';

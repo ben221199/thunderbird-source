@@ -280,7 +280,7 @@ function onDownloadRemove(aEvent)
 {
   if (aEvent.target.removable) {
     gDownloadManager.removeDownload(aEvent.target.id);
-    
+
     gDownloadViewController.onCommandUpdate();
   }
 }
@@ -604,7 +604,7 @@ var XPInstallDownloadManager = {
       if (!iconURL) 
         iconURL = "chrome://mozapps/skin/xpinstall/xpinstallItemGeneric.png";
       
-      var targetUrl = makeFileURL(localTarget);
+      var targetUrl = makeFileURI(localTarget);
       var download = gDownloadManager.addDownload(Components.interfaces.nsIXPInstallManagerUI.DOWNLOAD_TYPE_INSTALL, 
                                                   uri, targetUrl, displayName, iconURL, mimeInfo, 0, null);
       
@@ -631,14 +631,14 @@ var gContextMenus = [
 function buildContextMenu(aEvent)
 {
   if (aEvent.target.id != "downloadContextMenu")
-    return;
+    return false;
     
   var popup = document.getElementById("downloadContextMenu");
   while (popup.hasChildNodes())
     popup.removeChild(popup.firstChild);
   
-  if (gDownloadsView.selected) {
-    var idx = parseInt(gDownloadsView.selected.getAttribute("state"));
+  if (gDownloadsView.selectedItem) {
+    var idx = parseInt(gDownloadsView.selectedItem.getAttribute("state"));
     if (idx < 0)
       idx = 0;
     
@@ -731,8 +731,8 @@ function onDownloadShowOptions()
 
 function onDownloadShowInfo()
 {
-  if (gDownloadsView.selected)
-    fireEventForElement(gDownloadsView.selected, "properties");
+  if (gDownloadsView.selectedItem)
+    fireEventForElement(gDownloadsView.selectedItem, "properties");
 }
 
 function initAutoDownloadDisplay()
@@ -782,11 +782,11 @@ function initAutoDownloadDisplay()
     }
 
     var displayName = null;
+    var folder;
     switch (pref.getIntPref("browser.download.folderList")) {
     case 0:
       folder = getDownloadsFolder("Desktop");
-      var strings = document.getElementById("downloadStrings");
-      displayName = strings.getString("displayNameDesktop");
+      displayName = document.getElementById("downloadStrings").getString("displayNameDesktop");
       break;
     case 1:
       folder = getDownloadsFolder("Downloads");
@@ -881,7 +881,7 @@ function getLocalFileFromNativePathOrUrl(aPathOrUrl)
   } else {
 
     // if it's a pathname, create the nsILocalFile directly
-    f = Components.classes["@mozilla.org/file/local;1"].
+    var f = Components.classes["@mozilla.org/file/local;1"].
       createInstance(Components.interfaces.nsILocalFile);
     f.initWithPath(aPathOrUrl);
 

@@ -463,6 +463,13 @@ var messageHeaderSink = {
     setSecurityInfo: function(aSecurityInfo)
     {
       this.mSecurityInfo = aSecurityInfo;
+    },
+
+    mDummyHeader: null,
+    getDummyMsgHeader: function() {
+      if (!this.mDummyHeader)
+        this.mDummyHeader = { messageSize: 0, folder: null };
+      return this.mDummyHeader;
     }
 };
 
@@ -835,7 +842,7 @@ function updateEmailAddressNode(emailAddressNode, emailAddress, fullAddress, dis
     emailAddressNode.setAttribute("label", displayName);
     emailAddressNode.setAttribute("tooltiptext", emailAddress);
   } else {
-    emailAddressNode.setAttribute("label", fullAddress);
+    emailAddressNode.setAttribute("label", fullAddress || displayName);
     emailAddressNode.removeAttribute("tooltiptext");
   }
   emailAddressNode.setTextAttribute("emailAddress", emailAddress);
@@ -920,10 +927,17 @@ function createNewAttachmentInfo(contentType, url, displayName, uri, isExternalA
 
 createNewAttachmentInfo.prototype.saveAttachment = function saveAttachment()
 {
-  messenger.saveAttachment(this.contentType, 
-                           this.url, 
-                           encodeURIComponent(this.displayName), 
-                           this.uri, false);
+  if (this.isExternalAttachment)
+    internalSave(this.url, null,
+                 this.displayName, null,
+                 this.contentType, false,
+                 "SaveAttachmentTitle", null, null);
+  else
+    messenger.saveAttachment(this.contentType, 
+                             this.url, 
+                             encodeURIComponent(this.displayName), 
+                             this.uri,
+                             false);
 }
 
 createNewAttachmentInfo.prototype.openAttachment = function openAttachment()
@@ -931,7 +945,8 @@ createNewAttachmentInfo.prototype.openAttachment = function openAttachment()
   messenger.openAttachment(this.contentType, 
                            this.url, 
                            encodeURIComponent(this.displayName), 
-                           this.uri, false);
+                           this.uri,
+                           this.isExternalAttachment);
 }
 
 createNewAttachmentInfo.prototype.printAttachment = function printAttachment()

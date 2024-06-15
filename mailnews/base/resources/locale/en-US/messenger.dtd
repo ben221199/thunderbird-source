@@ -46,11 +46,11 @@
 <!ENTITY newMessage.accesskey "N">
 <!ENTITY newFolderCmd.label "Folder...">
 <!ENTITY newFolderCmd.accesskey "F">
+<!ENTITY newVirtualFolderCmd.label "Saved Search...">
+<!ENTITY newVirtualFolderCmd.accesskey "S">
 <!ENTITY newAccountCmd.label "Account...">
 <!ENTITY newAccountCmd.accesskey "A">
 <!ENTITY openMessageMenu.label "Open">
-<!ENTITY openMessageWindowCmd.label "Open Message">
-<!ENTITY openMessageWindowCmd.accesskey "s">
 <!ENTITY openMessageFileCmd.label "Open File...">
 <!ENTITY openMessageFileCmd.accesskey "O">
 <!ENTITY openAttachmentCmd.label "Attachments">
@@ -566,7 +566,6 @@
 <!ENTITY SearchNameOrEmail.accesskey "N">
 <!ENTITY advancedButton.label "Advanced...">
 <!ENTITY advancedButton.accesskey "A">
-<!ENTITY saveAsVirtualFolderMenu.label "Save as Virtual Folder">
 
 <!ENTITY clearButton.label "Clear">
 <!ENTITY clearButton.accesskey "C">
@@ -588,6 +587,6 @@
 
 <!-- junk bar -->
 <!ENTITY junkBarMessage.label "&brandShortName; thinks this message is junk mail">
-<!ENTITY notJunkButton.label "This is Not Junk">
+<!ENTITY junkBarButton.label "This is Not Junk">
 <!ENTITY junkInfoButton.label "?">
 

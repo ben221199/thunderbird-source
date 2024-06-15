@@ -973,6 +973,21 @@ fun_getProperty(JSContext *cx, JSObject *obj, jsval id, jsval *vp)
 }
 
 static JSBool
+fun_enumerate(JSContext *cx, JSObject *obj)
+{
+    jsid prototypeId;
+    JSObject *pobj;
+    JSProperty *prop;
+
+    prototypeId = ATOM_TO_JSID(cx->runtime->atomState.classPrototypeAtom);
+    if (!OBJ_LOOKUP_PROPERTY(cx, obj, prototypeId, &pobj, &prop))
+        return JS_FALSE;
+    JS_ASSERT(prop);
+    OBJ_DROP_PROPERTY(cx, pobj, prop);
+    return JS_TRUE;
+}
+
+static JSBool
 fun_resolve(JSContext *cx, JSObject *obj, jsval id, uintN flags,
             JSObject **objp)
 {
@@ -1199,7 +1214,7 @@ fun_xdrObject(JSXDRState *xdr, JSObject **objp)
             JSPropertyOp getter, setter;
 
             for (i = n; i != 0; i--) {
-                uintN attrs = JSPROP_ENUMERATE | JSPROP_PERMANENT;
+                uintN attrs = JSPROP_PERMANENT;
 
                 if (!JS_XDRUint32(xdr, &type) ||
                     !JS_XDRUint32(xdr, &userid) ||
@@ -1349,7 +1364,7 @@ JS_FRIEND_DATA(JSClass) js_FunctionClass = {
     JSCLASS_HAS_PRIVATE | JSCLASS_NEW_RESOLVE | JSCLASS_HAS_RESERVED_SLOTS(2),
     JS_PropertyStub,  JS_PropertyStub,
     fun_getProperty,  JS_PropertyStub,
-    JS_EnumerateStub, (JSResolveOp)fun_resolve,
+    fun_enumerate,    (JSResolveOp)fun_resolve,
     fun_convert,      fun_finalize,
     NULL,             NULL,
     NULL,             NULL,
@@ -1793,8 +1808,7 @@ Function(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
                 if (!js_AddHiddenProperty(cx, fun->object, ATOM_TO_JSID(atom),
                                           js_GetArgument, js_SetArgument,
                                           SPROP_INVALID_SLOT,
-                                          JSPROP_ENUMERATE | JSPROP_PERMANENT |
-                                          JSPROP_SHARED,
+                                          JSPROP_PERMANENT | JSPROP_SHARED,
                                           dupflag | SPROP_HAS_SHORTID,
                                           fun->nargs)) {
                     goto bad_formal;

@@ -434,8 +434,26 @@ nsScriptLoader::ProcessScriptElement(nsIScriptElement *aElement,
                                      mimeType);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    isJavaScript = mimeType.LowerCaseEqualsLiteral("text/javascript") ||
-                   mimeType.LowerCaseEqualsLiteral("application/x-javascript");
+    // Table ordered from most to least likely JS MIME types.
+    // See bug 62485, feel free to add <script type="..."> survey data to it,
+    // or to a new bug once 62485 is closed.
+    static const char *jsTypes[] = {
+      "text/javascript",
+      "text/ecmascript",
+      "application/javascript",
+      "application/ecmascript",
+      "application/x-javascript",
+      nsnull
+    };
+
+    isJavaScript = PR_FALSE;
+    for (PRInt32 i = 0; jsTypes[i]; i++) {
+      if (mimeType.LowerCaseEqualsASCII(jsTypes[i])) {
+        isJavaScript = PR_TRUE;
+        break;
+      }
+    }
+
     if (isJavaScript) {
       JSVersion jsVersion = JSVERSION_DEFAULT;
       nsAutoString value;
@@ -580,6 +598,17 @@ nsScriptLoader::ProcessScriptElement(nsIScriptElement *aElement,
 }
 
 nsresult
+nsScriptLoader::GetCurrentScript(nsIScriptElement **aElement)
+{
+  NS_ENSURE_ARG_POINTER(aElement);
+  *aElement = mCurrentScript;
+
+  NS_IF_ADDREF(*aElement);
+
+  return NS_OK;
+}
+
+nsresult
 nsScriptLoader::FireErrorNotification(nsresult aResult,
                                       nsIScriptElement* aElement,
                                       nsIScriptLoaderObserver* aObserver)
@@ -715,10 +744,17 @@ nsScriptLoader::EvaluateScript(nsScriptLoadRequest* aRequest,
     ::JS_SetOptions(cx, options | JSOPTION_XML);
   }
 
+  // Update our current script.
+  nsCOMPtr<nsIScriptElement> oldCurrent = mCurrentScript;
+  mCurrentScript = aRequest->mElement;
+
   PRBool isUndefined;
   context->EvaluateString(aScript, nsnull, principal, url.get(),
                           aRequest->mLineNo, aRequest->mJSVersion, nsnull,
                           &isUndefined);
+
+  // Put the old script back in case it wants to do anything else.
+  mCurrentScript = oldCurrent;
 
   ::JS_ReportPendingException(cx);
   if (needE4X) {
@@ -790,6 +826,94 @@ DetectByteOrderMark(const unsigned char* aBytes, PRInt32 aLen, nsCString& oChars
   return !oCharset.IsEmpty();
 }
 
+/* static */ nsresult
+nsScriptLoader::ConvertToUTF16(nsIChannel* aChannel, const PRUint8* aData,
+                               PRUint32 aLength, const nsString& aHintCharset,
+                               nsIDocument* aDocument, nsString& aString)
+{
+  if (!aLength) {
+    aString.Truncate();
+    return NS_OK;
+  }
+
+  nsCAutoString characterSet;
+
+  nsresult rv = NS_OK;
+  if (aChannel) {
+    rv = aChannel->GetContentCharset(characterSet);
+  }
+
+  if (!aHintCharset.IsEmpty() && (NS_FAILED(rv) || characterSet.IsEmpty())) {
+    // charset name is always ASCII.
+    LossyCopyUTF16toASCII(aHintCharset, characterSet);
+  }
+
+  if (NS_FAILED(rv) || characterSet.IsEmpty()) {
+    DetectByteOrderMark(aData, aLength, characterSet);
+  }
+
+  if (characterSet.IsEmpty()) {
+    // charset from document default
+    characterSet = aDocument->GetDocumentCharacterSet();
+  }
+
+  if (characterSet.IsEmpty()) {
+    // fall back to ISO-8859-1, see bug 118404
+    characterSet.AssignLiteral("ISO-8859-1");
+  }
+
+  nsCOMPtr<nsICharsetConverterManager> charsetConv =
+    do_GetService(kCharsetConverterManagerCID, &rv);
+
+  nsCOMPtr<nsIUnicodeDecoder> unicodeDecoder;
+
+  if (NS_SUCCEEDED(rv) && charsetConv) {
+    rv = charsetConv->GetUnicodeDecoder(characterSet.get(),
+                                        getter_AddRefs(unicodeDecoder));
+    if (NS_FAILED(rv)) {
+      // fall back to ISO-8859-1 if charset is not supported. (bug 230104)
+      rv = charsetConv->GetUnicodeDecoderRaw("ISO-8859-1",
+                                             getter_AddRefs(unicodeDecoder));
+    }
+  }
+
+  // converts from the charset to unicode
+  if (NS_SUCCEEDED(rv)) {
+    PRInt32 unicodeLength = 0;
+
+    rv = unicodeDecoder->GetMaxLength(NS_REINTERPRET_CAST(const char*, aData),
+                                      aLength, &unicodeLength);
+    if (NS_SUCCEEDED(rv)) {
+      aString.SetLength(unicodeLength);
+      PRUnichar *ustr = aString.BeginWriting();
+
+      PRInt32 consumedLength = 0;
+      PRInt32 originalLength = aLength;
+      PRInt32 convertedLength = 0;
+      PRInt32 bufferLength = unicodeLength;
+      do {
+        rv = unicodeDecoder->Convert(NS_REINTERPRET_CAST(const char*, aData),
+                                     (PRInt32 *) &aLength, ustr,
+                                     &unicodeLength);
+        if (NS_FAILED(rv)) {
+          // if we failed, we consume one byte, replace it with U+FFFD
+          // and try the conversion again.
+          ustr[unicodeLength++] = (PRUnichar)0xFFFD;
+          ustr += unicodeLength;
+
+          unicodeDecoder->Reset();
+        }
+        aData += ++aLength;
+        consumedLength += aLength;
+        aLength = originalLength - consumedLength;
+        convertedLength += unicodeLength;
+        unicodeLength = bufferLength - convertedLength;
+      } while (NS_FAILED(rv) && (originalLength > consumedLength) && (bufferLength > convertedLength));
+      aString.SetLength(convertedLength);
+    }
+  }
+  return rv;
+}
 
 NS_IMETHODIMP
 nsScriptLoader::OnStreamComplete(nsIStreamLoader* aLoader,
@@ -840,90 +964,13 @@ nsScriptLoader::OnStreamComplete(nsIStreamLoader* aLoader,
     }
   }
 
+  nsCOMPtr<nsIChannel> channel = do_QueryInterface(req);
   if (stringLen) {
-    nsCAutoString characterSet;
-    nsCOMPtr<nsIChannel> channel;
-
-    channel = do_QueryInterface(req);
-    if (channel) {
-      rv = channel->GetContentCharset(characterSet);
-    }
-
-    if (NS_FAILED(rv) || characterSet.IsEmpty()) {
-      // Check the charset attribute to determine script charset.
-      nsAutoString charset;
-      request->mElement->GetScriptCharset(charset);
-      if (!charset.IsEmpty()) {
-        // charset name is always ASCII.
-        LossyCopyUTF16toASCII(charset, characterSet);
-      }
-    }
-
-    if (NS_FAILED(rv) || characterSet.IsEmpty()) {
-      DetectByteOrderMark(string, stringLen, characterSet);
-    }
-
-    if (characterSet.IsEmpty()) {
-      // charset from document default
-      characterSet = mDocument->GetDocumentCharacterSet();
-    }
-
-    if (characterSet.IsEmpty()) {
-      // fall back to ISO-8859-1, see bug 118404
-      characterSet.AssignLiteral("ISO-8859-1");
-    }
-
-    nsCOMPtr<nsICharsetConverterManager> charsetConv =
-      do_GetService(kCharsetConverterManagerCID, &rv);
-
-    nsCOMPtr<nsIUnicodeDecoder> unicodeDecoder;
-
-    if (NS_SUCCEEDED(rv) && charsetConv) {
-      rv = charsetConv->GetUnicodeDecoder(characterSet.get(),
-                                          getter_AddRefs(unicodeDecoder));
-      if (NS_FAILED(rv)) {
-        // fall back to ISO-8859-1 if charset is not supported. (bug 230104)
-        rv = charsetConv->GetUnicodeDecoderRaw("ISO-8859-1",
-                                               getter_AddRefs(unicodeDecoder));
-      }
-    }
-
-    // converts from the charset to unicode
-    if (NS_SUCCEEDED(rv)) {
-      PRInt32 unicodeLength = 0;
-
-      rv = unicodeDecoder->GetMaxLength(NS_REINTERPRET_CAST(const char*, string), stringLen, &unicodeLength);
-      if (NS_SUCCEEDED(rv)) {
-        nsString tempStr;
-        tempStr.SetLength(unicodeLength);
-        PRUnichar *ustr;
-        tempStr.BeginWriting(ustr);
-
-        PRInt32 consumedLength = 0;
-        PRInt32 originalLength = stringLen;
-        PRInt32 convertedLength = 0;
-        PRInt32 bufferLength = unicodeLength;
-        do {
-          rv = unicodeDecoder->Convert(NS_REINTERPRET_CAST(const char*, string), (PRInt32 *) &stringLen, ustr,
-                                       &unicodeLength);
-          if (NS_FAILED(rv)) {
-            // if we failed, we consume one byte, replace it with U+FFFD
-            // and try the conversion again.
-            ustr[unicodeLength++] = (PRUnichar)0xFFFD;
-            ustr += unicodeLength;
-
-            unicodeDecoder->Reset();
-          }
-          string += ++stringLen;
-          consumedLength += stringLen;
-          stringLen = originalLength - consumedLength;
-          convertedLength += unicodeLength;
-          unicodeLength = bufferLength - convertedLength;
-        } while (NS_FAILED(rv) && (originalLength > consumedLength) && (bufferLength > convertedLength));
-        tempStr.SetLength(convertedLength);
-        request->mScriptText = tempStr;
-      }
-    }
+    // Check the charset attribute to determine script charset.
+    nsAutoString hintCharset;
+    request->mElement->GetScriptCharset(hintCharset);
+    rv = ConvertToUTF16(channel, string, stringLen, hintCharset, mDocument,
+                        request->mScriptText);
 
     NS_ASSERTION(NS_SUCCEEDED(rv),
                  "Could not convert external JavaScript to Unicode!");

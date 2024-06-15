@@ -120,6 +120,7 @@
 #include "nsIUTF8ConverterService.h"
 #include "nsUConvCID.h"
 #include "nsIUnicodeNormalizer.h"                                               
+#include "nsIMsgProgress.h"
 
 // Defines....
 static NS_DEFINE_CID(kDateTimeFormatCID, NS_DATETIMEFORMAT_CID);
@@ -869,7 +870,7 @@ nsresult nsMsgCompose::_SendMsg(MSG_DeliverMode deliverMode, nsIMsgIdentity *ide
                                       nsnull, &isAsciiOnly);
           if (NS_SUCCEEDED(rv)) 
           {
-            if (m_compFields->GetForceMsgEncoding());
+            if (m_compFields->GetForceMsgEncoding())
               isAsciiOnly = PR_FALSE;
               
             m_compFields->SetBodyIsAsciiOnly(isAsciiOnly);
@@ -4252,6 +4253,11 @@ nsresult nsMsgCompose::TagConvertible(nsIDOMNode *node,  PRInt32 *_retval)
 
     *_retval = nsIMsgCompConvertible::No;
 
+    PRUint16 nodeType;
+    rv = node->GetNodeType(&nodeType);
+    if (NS_FAILED(rv))
+      return rv;
+
     nsAutoString element;
     rv = node->GetNodeName(element);
     if (NS_FAILED(rv))
@@ -4259,7 +4265,7 @@ nsresult nsMsgCompose::TagConvertible(nsIDOMNode *node,  PRInt32 *_retval)
 
     nsCOMPtr<nsIDOMNode> pItem;
     if      (
-              element.LowerCaseEqualsLiteral("#text") ||
+              nodeType == nsIDOMNode::TEXT_NODE ||
               element.LowerCaseEqualsLiteral("br") ||
               element.LowerCaseEqualsLiteral("p") ||
               element.LowerCaseEqualsLiteral("pre") ||

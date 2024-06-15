@@ -32,13 +32,19 @@
 
 <!-- Update -->
 <!ENTITY softwareupdateinfo.label       "Periodically check for updates to:">
-<!ENTITY enableSmartUpdate.label        "&brandShortName;">
-<!ENTITY enableSmartUpdate.accesskey    "T">
+<!ENTITY enableAppUpdate.label          "&brandShortName;">
+<!ENTITY enableAppUpdate.accesskey      "T">
+<!ENTITY enableAutoInstall.label        "Automatically Download and Install updates">
+<!ENTITY enableAutoInstall.accesskey    "A">
+<!ENTITY autoInstallOptions.label       "Advanced...">
+<!ENTITY autoInstallOptions.accesskey   "d">
 <!ENTITY enableExtensionUpdate.label    "My Extensions and Themes">
 <!ENTITY enableExtensionUpdate.accesskey "M">
 <!ENTITY checkNow.label                 "Check Now...">
 <!ENTITY appCheckNow.accesskey          "k">
 <!ENTITY extensionsCheckNow.accesskey   "h">
+<!ENTITY showUpdates.label              "Show Update History">
+<!ENTITY showUpdates.accesskey          "U">
 
 <!-- Offline and Disk Space -->
 <!ENTITY offline.label  "Offline">

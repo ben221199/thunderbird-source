@@ -108,6 +108,8 @@ function initHandlers()
     node = document.getElementById("multiline-input");
     node.addEventListener("keypress", onMultilineInputKeyPress, false);
     node.active = false;
+    node = document.getElementById("security-button");
+    node.addEventListener("dblclick", onSecurityIconDblClick, false);
 
     window.onkeypress = onWindowKeyPress;
 
@@ -258,6 +260,12 @@ function onSortCol(sortColName)
     return false;
 }
 
+function onSecurityIconDblClick(e)
+{
+    if (e.button == 0)
+        displayCertificateInfo();
+}
+
 function onMultilineInputKeyPress (e)
 {
     if ((e.ctrlKey || e.metaKey) && e.keyCode == 13)
@@ -315,33 +323,6 @@ function onTooltip(event)
     }
 
     return false;
-}
-
-var _nicknamePopupHandlersInstalled = false;
-function onNicknamePopup(e)
-{
-    function onNicknamePopupOpening(e)
-    {
-        button.setAttribute("open", "true");
-    };
-
-    function onNicknamePopupClosing(e)
-    {
-        button.removeAttribute("open");
-    };
-
-    var button = document.getElementById("nickname-button");
-    var popup = document.getElementById("context:nickname");
-    if (!_nicknamePopupHandlersInstalled)
-    {
-        popup.addEventListener("popupshowing", onNicknamePopupOpening, false);
-        popup.addEventListener("popuphiding", onNicknamePopupClosing, false);
-        _nicknamePopupHandlersInstalled = true;
-    }
-    if (button.getAttribute("open") == "true")
-        popup.hidePopup();
-    else
-        popup.showPopup(button, -1, -1, "popup", "bottomleft", "topleft");
 }
 
 function onInputKeyPress (e)
@@ -550,15 +531,22 @@ function onWindowKeyPress (e)
         case 119:
         case 120:
         case 121: /* F10 */
+            var modifier = (e.ctrlKey || e.shiftKey || e.Altkey || e.metaKey);
             var idx = code - 112;
-            if ((idx in client.viewsArray) && client.viewsArray[idx].source)
-                dispatch("set-current-view", { view: client.viewsArray[idx].source });
+            if (!modifier && (idx in client.viewsArray) &&
+                client.viewsArray[idx].source)
+            {
+                var newView = client.viewsArray[idx].source;
+                dispatch("set-current-view", { view: newView });
+                e.preventDefault();
+            }
             break;
 
         case 33: /* pgup */
             if (e.ctrlKey)
             {
                 cycleView(-1);
+                e.preventDefault();
                 break;
             }
 
@@ -578,6 +566,7 @@ function onWindowKeyPress (e)
             if (e.ctrlKey)
             {
                 cycleView(1);
+                e.preventDefault();
                 break;
             }
 
@@ -952,6 +941,7 @@ function my_showtonet (e)
             updateTitle(this);
             this.updateHeader();
             client.updateHeader();
+            updateSecurityIcon();
             updateStalkExpression(this);
 
             // Do this after the JOINs, so they are quicker.
@@ -1725,6 +1715,8 @@ function my_netdisconnect (e)
     dispatch("sync-header");
     updateTitle();
     updateProgress();
+    updateSecurityIcon();
+
     if ("userClose" in client && client.userClose &&
         client.getConnectionCount() == 0)
         window.close();

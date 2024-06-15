@@ -58,6 +58,9 @@
 #include "nsIDOMNSDocument.h"
 #include "nsIDOMLocation.h"
 #include "nsIDOMSerializer.h"
+#include "nsIContent.h"
+#include "nsIAttribute.h"
+#include "nsXFormsAtoms.h"
 
 #include "nsIXFormsContextControl.h"
 #include "nsIDOMDocumentEvent.h"
@@ -69,7 +72,7 @@
 #include "nsXFormsXPathAnalyzer.h"
 #include "nsXFormsXPathParser.h"
 #include "nsXFormsXPathNode.h"
-#include "nsIDOMXPathExpression.h"
+#include "nsIDOMNSXPathExpression.h"
 #include "nsArray.h"
 
 #include "nsIScriptSecurityManager.h"
@@ -83,11 +86,13 @@
 #include "nsIDOMNSEvent.h"
 #include "nsIURI.h"
 #include "nsIPrivateDOMEvent.h"
+#include "nsIDOMNamedNodeMap.h"
+#include "nsIParserService.h"
 
 #define CANCELABLE 0x01
 #define BUBBLES    0x02
 
-const EventData sXFormsEventsEntries[41] = {
+const EventData sXFormsEventsEntries[42] = {
   { "xforms-model-construct",      PR_FALSE, PR_TRUE  },
   { "xforms-model-construct-done", PR_FALSE, PR_TRUE  },
   { "xforms-ready",                PR_FALSE, PR_TRUE  },
@@ -128,7 +133,8 @@ const EventData sXFormsEventsEntries[41] = {
   { "xforms-binding-exception",    PR_FALSE, PR_TRUE  },
   { "xforms-link-exception",       PR_FALSE, PR_TRUE  },
   { "xforms-link-error",           PR_FALSE, PR_TRUE  },
-  { "xforms-compute-exception",    PR_FALSE, PR_TRUE  }
+  { "xforms-compute-exception",    PR_FALSE, PR_TRUE  },
+  { "xforms-moz-hint-off",         PR_FALSE, PR_TRUE  }
 };
 
 static const EventData sEventDefaultsEntries[] = {
@@ -263,13 +269,19 @@ nsXFormsUtils::GetNodeContext(nsIDOMElement           *aElement,
                               PRBool                  *aOuterBind,
                               nsIDOMNode             **aContextNode,
                               PRInt32                 *aContextPosition,
-                              PRInt32                  *aContextSize)
+                              PRInt32                 *aContextSize)
 {
   NS_ENSURE_ARG(aElement);
   NS_ENSURE_ARG(aOuterBind);
   NS_ENSURE_ARG_POINTER(aContextNode);
   NS_ENSURE_ARG_POINTER(aBindElement);
   *aBindElement = nsnull;
+
+  // Set default context size and position
+  if (aContextSize)
+    *aContextSize = 1;
+  if (aContextPosition)
+    *aContextPosition = 1;
 
   // Find correct model element
   nsCOMPtr<nsIDOMDocument> domDoc;
@@ -289,12 +301,6 @@ nsXFormsUtils::GetNodeContext(nsIDOMElement           *aElement,
       DispatchEvent(aElement, eEvent_BindingException);
       return NS_ERROR_ABORT;
     }
-
-    // Context size and position are always 1
-    if (aContextSize)
-      *aContextSize = 1;
-    if (aContextPosition)
-      *aContextPosition = 1;
 
     *aOuterBind = GetParentModel(*aBindElement, aModel);
     NS_ENSURE_STATE(*aModel);
@@ -400,7 +406,7 @@ nsXFormsUtils::EvaluateXPath(const nsAString        &aExpression,
            do_CreateInstance("@mozilla.org/dom/xforms-xpath-evaluator;1");
   NS_ENSURE_TRUE(eval, nsnull);
 
-  nsCOMPtr<nsIDOMXPathExpression> expression;
+  nsCOMPtr<nsIDOMNSXPathExpression> expression;
   eval->CreateExpression(aExpression,
                          aResolverNode,
                          getter_AddRefs(expression));
@@ -412,13 +418,13 @@ nsXFormsUtils::EvaluateXPath(const nsAString        &aExpression,
     return nsnull;
   }
   
-  ///
-  /// @todo Evaluate() should use aContextPosition and aContextSize
   nsCOMPtr<nsISupports> supResult;
-  nsresult rv = expression->Evaluate(aContextNode,
-                                     aResultType,
-                                     nsnull,
-                                     getter_AddRefs(supResult));
+  nsresult rv = expression->EvaluateWithContext(aContextNode,
+                                                aContextPosition,
+                                                aContextSize,
+                                                aResultType,
+                                                nsnull,
+                                                getter_AddRefs(supResult));
 
   nsIDOMXPathResult *result = nsnull;
   if (NS_SUCCEEDED(rv) && supResult) {
@@ -433,7 +439,9 @@ nsXFormsUtils::EvaluateXPath(const nsAString        &aExpression,
                             xNode,
                             expression,
                             &aExpression,
-                            aSet);
+                            aSet,
+                            aContextPosition,
+                            aContextSize);
       NS_ENSURE_SUCCESS(rv, nsnull);
 
       if (aIndexesUsed) 
@@ -524,10 +532,77 @@ nsXFormsUtils::EvaluateNodeBinding(nsIDOMElement           *aElement,
                                                   contextNode,
                                                   aElement,
                                                   aResultType,
-                                                  contextSize,
                                                   contextPosition,
+                                                  contextSize,
                                                   aDeps,
                                                   aIndexesUsed);
+
+  // If the evaluation failed because the node wasn't there and we should be
+  // lazy authoring, then create it (if the situation qualifies, of course).
+  // Novell only allows lazy authoring of single bound nodes.
+  if (aResultType == nsIDOMXPathResult::FIRST_ORDERED_NODE_TYPE) {
+    if (res) {
+      nsCOMPtr<nsIDOMNode> node;
+      rv = res->GetSingleNodeValue(getter_AddRefs(node));
+      if (NS_SUCCEEDED(rv) && !node) {
+        PRBool lazy = PR_FALSE;
+        if (*aModel)
+          (*aModel)->GetLazyAuthored(&lazy);
+        if (lazy) {
+          // according to sec 4.2.2 in the spec, "An instance data element node
+          // will be created using the binding expression from the user
+          // interface control as the name. If the name is not a valid QName, 
+          // processing halts with an exception (xforms-binding-exception)"
+          nsCOMPtr<nsIParserService> parserService =
+                                    do_GetService(NS_PARSERSERVICE_CONTRACTID);
+          if (NS_SUCCEEDED(rv) && parserService) {
+            const PRUnichar* colon;
+            rv = parserService->CheckQName(expr, PR_TRUE, &colon);
+            if (NS_SUCCEEDED(rv)) {
+              nsAutoString namespaceURI(EmptyString());
+
+              // if we detect a namespace, we'll add it to the node, otherwise
+              // we'll use the empty namespace.  If we should have gotten a
+              // namespace and didn't, then we might as well give up.
+              if (colon) {
+                nsCOMPtr<nsIDOM3Node> dom3node = do_QueryInterface(aElement);
+                rv = dom3node->LookupNamespaceURI(Substring(expr.get(), colon), 
+                                                  namespaceURI);
+                NS_ENSURE_SUCCESS(rv, rv);
+              }
+
+              if (NS_SUCCEEDED(rv)) {
+                nsCOMArray<nsIInstanceElementPrivate> *instList = nsnull;
+                (*aModel)->GetInstanceList(&instList);
+                nsCOMPtr<nsIInstanceElementPrivate> instance = 
+                  instList->ObjectAt(0);
+                nsCOMPtr<nsIDOMDocument> domdoc;
+                instance->GetDocument(getter_AddRefs(domdoc));
+                nsCOMPtr<nsIDOMElement> instanceDataEle;
+                nsCOMPtr<nsIDOMNode> childReturn;
+                rv = domdoc->CreateElementNS(namespaceURI, expr,
+                                             getter_AddRefs(instanceDataEle));
+                NS_ENSURE_SUCCESS(rv, rv);
+                nsCOMPtr<nsIDOMElement> instanceRoot;
+                rv = domdoc->GetDocumentElement(getter_AddRefs(instanceRoot));
+                rv = instanceRoot->AppendChild(instanceDataEle, 
+                                               getter_AddRefs(childReturn));
+                NS_ENSURE_SUCCESS(rv, rv);
+              }
+
+              // now that we inserted the lazy authored node, try to bind
+              // again
+              res = EvaluateXPath(expr, contextNode, aElement, aResultType,
+                                  contextPosition, contextSize, aDeps,
+                                  aIndexesUsed);
+            } else {
+              nsXFormsUtils::DispatchEvent(aElement, eEvent_BindingException);
+            }
+          }
+        }
+      }
+    }
+  }
 
   res.swap(*aResult); // exchanges ref
 
@@ -535,7 +610,7 @@ nsXFormsUtils::EvaluateNodeBinding(nsIDOMElement           *aElement,
 }
 
 /* static */ void
-nsXFormsUtils::GetNodeValue(nsIDOMNode* aDataNode, nsString& aNodeValue)
+nsXFormsUtils::GetNodeValue(nsIDOMNode* aDataNode, nsAString& aNodeValue)
 {
   PRUint16 nodeType;
   aDataNode->GetNodeType(&nodeType);
@@ -1109,99 +1184,96 @@ nsXFormsUtils::GetInstanceNodeForData(nsIDOMNode             *aInstanceDataNode,
     instanceDoc = do_QueryInterface(aInstanceDataNode);
   NS_ENSURE_TRUE(instanceDoc, NS_ERROR_UNEXPECTED);
 
-  nsCOMPtr<nsIDOMElement> modelElem = do_QueryInterface(aModel);
-  NS_ENSURE_STATE(modelElem);
-  nsCOMPtr<nsIDOMNodeList> nodeList;
-  nsresult rv = modelElem->GetElementsByTagNameNS(NS_LITERAL_STRING(NS_NAMESPACE_XFORMS),
-                                                  NS_LITERAL_STRING("instance"),
-                                                  getter_AddRefs(nodeList));
-  NS_ENSURE_SUCCESS(rv, rv);
+  nsCOMArray<nsIInstanceElementPrivate> *instList = nsnull;
+  aModel->GetInstanceList(&instList);
+  NS_ENSURE_TRUE(instList, NS_ERROR_FAILURE);
 
-  PRUint32 childCount = 0;
-  nodeList->GetLength(&childCount);
   PRUint32 i;
+  PRUint32 childCount = instList->Count();
   for (i = 0; i < childCount; ++i) {
-    nodeList->Item(i, aInstanceNode);
-    nsCOMPtr<nsIInstanceElementPrivate> instPriv = do_QueryInterface(*aInstanceNode);
-    if (!instPriv)
-      continue;
+    nsCOMPtr<nsIInstanceElementPrivate> instPriv = instList->ObjectAt(i); 
 
     nsCOMPtr<nsIDOMDocument> tmpDoc;
     instPriv->GetDocument(getter_AddRefs(tmpDoc));
 
-    if (tmpDoc == instanceDoc)
-      break;
+    if (tmpDoc == instanceDoc) {
+      // ok, so we found the instance element that contains the provided
+      // aInstanceDataNode.  Now set the return value.
+      nsCOMPtr<nsIDOMElement> instanceElement;
+      instPriv->GetElement(getter_AddRefs(instanceElement));
+      if (instanceElement) {
+        nsCOMPtr<nsIDOMNode> node = do_QueryInterface(instanceElement);
+        node.swap(*aInstanceNode);
+        return NS_OK;
+      }
+
+    }
   }
 
-  if (!childCount || i == childCount)
-    // No instance nodes in model or instance node not found?
-    // Doesn't make sense!
-    return NS_ERROR_ABORT;
-
-  return NS_OK;
+  // Two possibilities.  No instance nodes in model (which should never happen)
+  // or instance node not found.
+  return NS_ERROR_ABORT;
 }
 
 /* static */ nsresult
 nsXFormsUtils::ParseTypeFromNode(nsIDOMNode *aInstanceData,
                                  nsAString &aType, nsAString &aNSPrefix)
 {
-  nsresult rv;
+  nsresult rv = NS_OK;
 
   // aInstanceData could be an instance data node or it could be an attribute
   // on an instance data node (basically the node that a control is bound to).
-  // So first checking to see if it is a proper element node.  If it isn't,
-  // making sure that it is at least an attribute.  
-  //
-  // XXX - Once node type is set as a property on the element or attribute node,
-  // then we can treat elements and attributes the same.  For now we are using
-  // an attribute on the instance data node to store the type.  If we bind
-  // to an attribute on the instance data node there is nothing we can do but
-  // hope that it doesn't have a bound type until we get properties on 
-  // attributes working. (bug 283004)
-  nsCOMPtr<nsIDOMElement> nodeElem = do_QueryInterface(aInstanceData, &rv);
-  if (NS_FAILED(rv)) {
-    nsCOMPtr<nsIDOMAttr> attrNode = do_QueryInterface(aInstanceData, &rv);
-    if(NS_SUCCEEDED(rv)){
-      // right now we can't handle having a 'type' property on attribute nodes.
-      // For now we'll treat this condition as not having a 'type' property
-      // on the given node at all.  This will allow a lot of testcases to still
-      // work ok as the caller will usually assign a default type of 
-      // 'xsd:string' when we return NS_ERROR_NOT_AVAILABLE here.
-      return NS_ERROR_NOT_AVAILABLE;
-    } else {
-      // can't have a 'type' property on anything other than an element or an
-      // attribute.  Return failure
-      return NS_ERROR_FAILURE;
+
+  nsAutoString *typeVal = nsnull;
+
+  // Get type stored directly on instance node
+  nsAutoString typeAttribute;
+  nsCOMPtr<nsIDOMElement> nodeElem(do_QueryInterface(aInstanceData));
+  if (nodeElem) {
+    nodeElem->GetAttributeNS(NS_LITERAL_STRING(NS_NAMESPACE_XML_SCHEMA_INSTANCE),
+                             NS_LITERAL_STRING("type"), typeAttribute);
+    if (!typeAttribute.IsEmpty()) {
+      typeVal = &typeAttribute;
     }
   }
 
-  // right now type is stored as an attribute on the instance node.  In the
-  // future it will be a property.
-  PRBool typeExists = PR_FALSE;
-  NS_NAMED_LITERAL_STRING(schemaInstanceURI, NS_NAMESPACE_XML_SCHEMA_INSTANCE);
-  NS_NAMED_LITERAL_STRING(type, "type");
-  nodeElem->HasAttributeNS(schemaInstanceURI, type, &typeExists);
-  if (!typeExists) {
+  if (!typeVal) {
+    // Get MIP type bound to node
+    nsCOMPtr<nsIContent> nodeContent(do_QueryInterface(aInstanceData));
+    if (nodeContent) {
+      typeVal =
+        NS_STATIC_CAST(nsAutoString*,
+                       nodeContent->GetProperty(nsXFormsAtoms::type, &rv));
+    } else {
+      nsCOMPtr<nsIAttribute> nodeAttribute(do_QueryInterface(aInstanceData));
+      if (!nodeAttribute)
+        // node is neither content or attribute!
+        return NS_ERROR_FAILURE;
+
+      typeVal =
+        NS_STATIC_CAST(nsAutoString*,
+                       nodeAttribute->GetProperty(nsXFormsAtoms::type, &rv));
+    }
+  }
+
+  if (NS_FAILED(rv) || !typeVal) {
     return NS_ERROR_NOT_AVAILABLE;
   }
 
-  nsAutoString typeAttribute;
-  nodeElem->GetAttributeNS(schemaInstanceURI, type, typeAttribute);
-
   // split type (ns:type) into namespace and type.
-  PRInt32 separator = typeAttribute.FindChar(':');
-  if ((PRUint32) separator == (typeAttribute.Length() - 1)) {
-    const PRUnichar *strings[] = { typeAttribute.get() };
+  PRInt32 separator = typeVal->FindChar(':');
+  if ((PRUint32) separator == (typeVal->Length() - 1)) {
+    const PRUnichar *strings[] = { typeVal->get() };
     // XXX: get an element from the document this came from
     ReportError(NS_LITERAL_STRING("missingTypeName"), strings, 1, nsnull, nsnull);
     return NS_ERROR_UNEXPECTED;
   } else if (separator == kNotFound) {
     // no namespace prefix, which is valid;
     aNSPrefix.AssignLiteral("");
-    aType.Assign(typeAttribute);
+    aType.Assign(*typeVal);
   } else {
-    aNSPrefix.Assign(Substring(typeAttribute, 0, separator));
-    aType.Assign(Substring(typeAttribute, ++separator, typeAttribute.Length()));
+    aNSPrefix.Assign(Substring(*typeVal, 0, separator));
+    aType.Assign(Substring(*typeVal, ++separator, typeVal->Length()));
   }
 
   return NS_OK;
@@ -1250,17 +1322,39 @@ nsXFormsUtils::ReportError(const nsString& aMessageName, const PRUnichar **aPara
     return;
   }
 
-  // if a context was defined, we clone (not deep) it, serialize it and append
-  // to the message.
+  // if a context was defined, serialize it and append to the message.
   if (aContext) {
-    nsCOMPtr<nsIDOMSerializer> ds = do_GetService(NS_XMLSERIALIZER_CONTRACTID);
-    if (ds) {
-      nsAutoString contextMsg;
-      nsCOMPtr<nsIDOMNode> tmpNode;
-      // SerializeToString always does a deep serialize, so we do a non-deep
-      // clone so that we don't serialize any children.
-      aContext->CloneNode(PR_FALSE, getter_AddRefs(tmpNode));
-      ds->SerializeToString(tmpNode, srcLine);
+    nsCOMPtr<nsIDOMElement> element(do_QueryInterface(aContext));
+    if (element) {
+      srcLine.AppendLiteral("<");
+    }
+
+    // For other than element nodes nodeName should be enough.
+    nsAutoString tmp;
+    aContext->GetNodeName(tmp);
+    srcLine.Append(tmp);
+    
+    if (element) {
+      nsCOMPtr<nsIDOMNamedNodeMap> attrs;
+      element->GetAttributes(getter_AddRefs(attrs));
+      if (attrs) {
+        PRUint32 len = 0;
+        attrs->GetLength(&len);
+        for (PRUint32 i = 0; i < len; ++i) {
+          nsCOMPtr<nsIDOMNode> attr;
+          attrs->Item(i, getter_AddRefs(attr));
+          if (attr) {
+            srcLine.AppendLiteral(" ");
+            attr->GetNodeName(tmp);
+            srcLine.Append(tmp);
+            srcLine.AppendLiteral("=\"");
+            attr->GetNodeValue(tmp);
+            srcLine.Append(tmp);
+            srcLine.AppendLiteral("\"");
+          }
+        }
+      }
+      srcLine.AppendLiteral("/>");
     }
   }
 
@@ -1295,5 +1389,15 @@ nsXFormsUtils::ReportError(const nsString& aMessageName, const PRUnichar **aPara
   if (NS_SUCCEEDED(rv)) {
     consoleService->LogMessage(errorObject);
   }
+}
+
+/* static */ PRBool
+nsXFormsUtils::IsDocumentReadyForBind(nsIDOMDocument *aDocument)
+{
+  nsCOMPtr<nsIDocument> doc = do_QueryInterface(aDocument);
+
+  nsIDocument *test = NS_STATIC_CAST(nsIDocument *,
+                        doc->GetProperty(nsXFormsAtoms::readyForBindProperty));
+  return test ? PR_TRUE : PR_FALSE;
 }
 

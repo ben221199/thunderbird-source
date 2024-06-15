@@ -41,6 +41,7 @@
 
 
 #include "nsAppRunner.h"
+#include "nsUpdateDriver.h"
 #include "nsBuildID.h"
 
 #ifdef XP_MACOSX
@@ -440,10 +441,42 @@ nsXULAppInfo::GetGeckoBuildID(nsACString& aResult)
 }
 
 NS_IMETHODIMP
+nsXULAppInfo::GetLogConsoleErrors(PRBool *aResult)
+{
+  *aResult = gLogConsoleErrors;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsXULAppInfo::SetLogConsoleErrors(PRBool aValue)
+{
+  gLogConsoleErrors = aValue;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsXULAppInfo::GetInSafeMode(PRBool *aResult)
 {
   *aResult = gSafeMode;
   return NS_OK;
+}
+
+NS_IMETHODIMP
+nsXULAppInfo::GetOS(nsACString& aResult)
+{
+  aResult.AssignLiteral(OS_TARGET);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsXULAppInfo::GetXPCOMABI(nsACString& aResult)
+{
+#ifdef TARGET_XPCOM_ABI
+  aResult.AssignLiteral(TARGET_XPCOM_ABI);
+  return NS_OK;
+#else
+  return NS_ERROR_NOT_AVAILABLE;
+#endif
 }
 
 NS_IMETHODIMP
@@ -463,6 +496,24 @@ nsXULAppInfo::LockFactory(PRBool aLock)
 }
 
 static const nsXULAppInfo kAppInfo;
+PRBool gLogConsoleErrors
+#ifdef DEBUG
+         = PR_TRUE;
+#else
+         = PR_FALSE;
+#endif
+
+#define NS_ENSURE_TRUE_LOG(x, ret)               \
+  PR_BEGIN_MACRO                                 \
+  if (NS_UNLIKELY(!(x))) {                       \
+    NS_WARNING("NS_ENSURE_TRUE(" #x ") failed"); \
+    gLogConsoleErrors = PR_TRUE;                 \
+    return ret;                                  \
+  }                                              \
+  PR_END_MACRO
+
+#define NS_ENSURE_SUCCESS_LOG(res, ret)          \
+  NS_ENSURE_TRUE_LOG(NS_SUCCEEDED(res), ret)
 
 /**
  * Because we're starting/stopping XPCOM several times in different scenarios,
@@ -491,6 +542,8 @@ ScopedXPCOMStartup::~ScopedXPCOMStartup()
 {
   if (mServiceManager) {
     gDirServiceProvider->DoShutdown();
+
+    WriteConsoleLog();
 
     NS_ShutdownXPCOM(mServiceManager);
     mServiceManager = nsnull;
@@ -829,7 +882,7 @@ VerifyInstallation(nsIFile* aAppDir)
 static void
 DumpVersion()
 {
-  printf("%s %s %s, %s\n", gAppData->vendor, gAppData->name, gAppData->version, gAppData->copyright);
+  printf("%s %s %s, %s\n", gAppData->vendor ? gAppData->vendor : "", gAppData->name, gAppData->version, gAppData->copyright);
 }
 
 #ifdef MOZ_ENABLE_XREMOTE
@@ -936,13 +989,59 @@ RemoteCommandLine()
 }
 #endif // MOZ_ENABLE_XREMOTE
 
-#if defined(XP_UNIX) && !defined(XP_MACOSX)
-char gBinaryPath[MAXPATHLEN];
-
-static PRBool
-GetBinaryPath(const char* argv0)
+nsresult
+XRE_GetBinaryPath(const char* argv0, nsILocalFile* *aResult)
 {
+  nsresult rv;
+  nsCOMPtr<nsILocalFile> lf;
+
+  // We need to use platform-specific hackery to find the
+  // path of this executable. This is copied, with some modifications, from
+  // nsGREDirServiceProvider.cpp
+
+#ifdef XP_WIN
+  char exePath[MAXPATHLEN];
+
+  if (!::GetModuleFileName(0, exePath, MAXPATHLEN))
+    return NS_ERROR_FAILURE;
+
+  rv = NS_NewNativeLocalFile(nsDependentCString(exePath), PR_TRUE,
+                             getter_AddRefs(lf));
+  if (NS_FAILED(rv))
+    return rv;
+
+#elif defined(XP_MACOSX)
+  NS_NewNativeLocalFile(EmptyCString(), PR_TRUE, getter_AddRefs(lf));
+  nsCOMPtr<nsILocalFileMac> lfm (do_QueryInterface(lf));
+  if (!lfm)
+    return NS_ERROR_FAILURE;
+
+  // Works even if we're not bundled.
+  CFBundleRef appBundle = CFBundleGetMainBundle();
+  if (!appBundle)
+    return NS_ERROR_FAILURE;
+
+  CFURLRef bundleURL = CFBundleCopyExecutableURL(appBundle);
+  if (!bundleURL)
+    return NS_ERROR_FAILURE;
+
+  FSRef fileRef;
+  if (!CFURLGetFSRef(bundleURL, &fileRef)) {
+    CFRelease(bundleURL);
+    return NS_ERROR_FAILURE;
+  }
+
+  rv = lfm->InitWithFSRef(&fileRef);
+  CFRelease(bundleURL);
+
+  if (NS_FAILED(rv))
+    return rv;
+
+#elif defined(XP_UNIX)
   struct stat fileStat;
+  char exePath[MAXPATHLEN];
+
+  rv = NS_ERROR_FAILURE;
 
   // on unix, there is no official way to get the path of the current binary.
   // instead of using the MOZILLA_FIVE_HOME hack, which doesn't scale to
@@ -957,87 +1056,59 @@ GetBinaryPath(const char* argv0)
 
 // #ifdef __linux__
 #if 0
-  int r = readlink("/proc/self/exe", gBinaryPath, MAXPATHLEN);
+  int r = readlink("/proc/self/exe", exePath, MAXPATHLEN);
 
   // apparently, /proc/self/exe can sometimes return weird data... check it
-  if (r > 0 && r < MAXPATHLEN && stat(gBinaryPath, &fileStat) == 0)
-    return PR_TRUE;
+  if (r > 0 && r < MAXPATHLEN && stat(exePath, &fileStat) == 0) {
+    rv = NS_OK;
+  }
+
 #endif
+  if (NS_FAILED(rv) &&
+      realpath(argv0, exePath) && stat(exePath, &fileStat) == 0) {
+    rv = NS_OK;
+  }
 
-  if (realpath(argv0, gBinaryPath) && stat(gBinaryPath, &fileStat) == 0)
-    return PR_TRUE;
+  if (NS_FAILED(rv)) {
+    const char *path = getenv("PATH");
+    if (!path)
+      return NS_ERROR_FAILURE;
 
-  const char *path = getenv("PATH");
-  if (!path) return PR_FALSE;
+    char *pathdup = strdup(path);
+    if (!pathdup)
+      return NS_ERROR_OUT_OF_MEMORY;
 
-  char *pathdup = strdup(path);
-  if (!pathdup) return PR_FALSE;
-
-  PRBool found = PR_FALSE;
-  char *newStr = pathdup;
-  char *token;
-  while ( (token = nsCRT::strtok(newStr, ":", &newStr)) ) {
-    sprintf(gBinaryPath, "%s/%s", token, argv0);
-    if (stat(gBinaryPath, &fileStat) == 0) {
-      found = PR_TRUE;
-      break;
+    PRBool found = PR_FALSE;
+    char *newStr = pathdup;
+    char *token;
+    while ( (token = nsCRT::strtok(newStr, ":", &newStr)) ) {
+      sprintf(exePath, "%s/%s", token, argv0);
+      if (stat(exePath, &fileStat) == 0) {
+        found = PR_TRUE;
+        break;
+      }
     }
-  }
-  free(pathdup);
-  return found;
-}
-#endif
-
-#define NS_ERROR_LAUNCHED_CHILD_PROCESS NS_ERROR_GENERATE_FAILURE(NS_ERROR_MODULE_PROFILE, 200)
-
-static nsresult LaunchChild(nsINativeAppSupport* aNative)
-{
-  aNative->Quit(); // release DDE mutex, if we're holding it
-
-  // We need to use platform-specific hackery to find the
-  // path of this executable. This is copied, with some modifications, from
-  // nsGREDirServiceProvider.cpp
-#ifdef XP_WIN
-  // We must shorten the path to a 8.3 path, since that's all _execv can
-  // handle (otherwise segments after any spaces that might exist in the path
-  // will be converted into parameters, and really weird things will happen)
-  char exePath[MAXPATHLEN];
-  if (!::GetModuleFileName(0, exePath, MAXPATHLEN) ||
-      !::GetShortPathName(exePath, exePath, sizeof(exePath)))
-    return NS_ERROR_FAILURE;
-  gRestartArgv[0] = (char*)exePath;
-
-#elif defined(XP_MACOSX)
-  // Works even if we're not bundled.
-  CFBundleRef appBundle = CFBundleGetMainBundle();
-  if (!appBundle) return NS_ERROR_FAILURE;
-
-  CFURLRef bundleURL = CFBundleCopyExecutableURL(appBundle);
-  if (!bundleURL) return NS_ERROR_FAILURE;
-
-  FSRef fileRef;
-  if (!CFURLGetFSRef(bundleURL, &fileRef)) {
-    CFRelease(bundleURL);
-    return NS_ERROR_FAILURE;
+    free(pathdup);
+    if (!found)
+      return NS_ERROR_FAILURE;
   }
 
-  char exePath[MAXPATHLEN];
-  if (FSRefMakePath(&fileRef, exePath, MAXPATHLEN)) {
-    CFRelease(bundleURL);
-    return NS_ERROR_FAILURE;
-  }
-
-  CFRelease(bundleURL);
-
-#elif defined(XP_UNIX)
-  char* exePath = gBinaryPath;
+  rv = NS_NewNativeLocalFile(nsDependentCString(exePath), PR_TRUE,
+                             getter_AddRefs(lf));
+  if (NS_FAILED(rv))
+    return rv;
 
 #elif defined(XP_OS2)
   PPIB ppib;
   PTIB ptib;
   char exePath[MAXPATHLEN];
+
   DosGetInfoBlocks( &ptib, &ppib);
   DosQueryModuleName( ppib->pib_hmte, MAXPATHLEN, exePath);
+  rv = NS_NewNativeLocalFile(nsDependentCString(exePath), PR_TRUE,
+                             getter_AddRefs(lf));
+  if (NS_FAILED(rv))
+    return rv;
 
 #elif defined(XP_BEOS)
   int32 cookie = 0;
@@ -1046,24 +1117,69 @@ static nsresult LaunchChild(nsINativeAppSupport* aNative)
   if(get_next_image_info(0, &cookie, &info) != B_OK)
     return NS_ERROR_FAILURE;
 
-  char *exePath = info.name;
+  rv = NS_NewNativeLocalFile(nsDependentCString(info.name), PR_TRUE,
+                             getter_AddRefs(lf));
+  if (NS_FAILED(rv))
+    return rv;
+
 #elif
 #error Oops, you need platform-specific code here
 #endif
 
-  // restart this process by exec'ing it into the current process
-  // if supported by the platform.  otherwise, use nspr ;-)
+  NS_ADDREF(*aResult = lf);
+  return NS_OK;
+}
 
-#if defined(XP_WIN) || defined(XP_OS2)
-  if (_execv(exePath, gRestartArgv) == -1)
-    return NS_ERROR_FAILURE;
-#elif defined(XP_MACOSX)
+#define NS_ERROR_LAUNCHED_CHILD_PROCESS NS_ERROR_GENERATE_FAILURE(NS_ERROR_MODULE_PROFILE, 200)
+
+// If aBlankCommandLine is true, then the application will be launched with a
+// blank command line instead of being launched with the same command line that
+// it was initially started with.
+static nsresult LaunchChild(nsINativeAppSupport* aNative,
+                            PRBool aBlankCommandLine = PR_FALSE)
+{
+  aNative->Quit(); // release DDE mutex, if we're holding it
+
+  // Restart this process by exec'ing it into the current process
+  // if supported by the platform.  Otherwise, use NSPR.
+ 
+  if (aBlankCommandLine) {
+    gRestartArgc = 1;
+    gRestartArgv[gRestartArgc] = nsnull;
+  }
+
+#if defined(XP_MACOSX)
   LaunchChildMac(gRestartArgc, gRestartArgv);
+#else
+  nsCOMPtr<nsILocalFile> lf;
+  nsresult rv = XRE_GetBinaryPath(gArgv[0], getter_AddRefs(lf));
+  if (NS_FAILED(rv))
+    return rv;
+
+  nsCAutoString exePath;
+  rv = lf->GetNativePath(exePath);
+  if (NS_FAILED(rv))
+    return rv;
+
+#if defined(XP_WIN)
+  // We must shorten the path to a 8.3 path, since that's all _execv can
+  // handle (otherwise segments after any spaces that might exist in the path
+  // will be converted into parameters, and really weird things will happen)
+  char shortPath[MAXPATHLEN];
+  ::GetShortPathName(exePath.get(), shortPath, MAXPATHLEN);
+
+  gRestartArgv[0] = shortPath;
+
+  if (_execv(shortPath, gRestartArgv) == -1)
+    return NS_ERROR_FAILURE;
+#elif defined(XP_OS2)
+  if (_execv(exePath.get(), gRestartArgv) == -1)
+    return NS_ERROR_FAILURE;
 #elif defined(XP_UNIX)
-  if (execv(exePath, gRestartArgv) == -1)
+  if (execv(exePath.get(), gRestartArgv) == -1)
     return NS_ERROR_FAILURE;
 #else
-  PRProcess* process = PR_CreateProcess(exePath, gRestartArgv,
+  PRProcess* process = PR_CreateProcess(exePath.get(), gRestartArgv,
                                         nsnull, nsnull);
   if (!process) return NS_ERROR_FAILURE;
 
@@ -1071,6 +1187,7 @@ static nsresult LaunchChild(nsINativeAppSupport* aNative)
   PRStatus failed = PR_WaitProcess(process, &exitCode);
   if (failed || exitCode)
     return NS_ERROR_FAILURE;
+#endif
 #endif
 
   return NS_ERROR_LAUNCHED_CHILD_PROCESS;
@@ -1102,7 +1219,7 @@ ProfileLockedDialog(nsILocalFile* aProfileDir, nsILocalFile* aProfileLocalDir,
 
     nsCOMPtr<nsIStringBundle> sb;
     sbs->CreateBundle(kProfileProperties, getter_AddRefs(sb));
-    NS_ENSURE_TRUE(sbs, NS_ERROR_FAILURE);
+    NS_ENSURE_TRUE_LOG(sbs, NS_ERROR_FAILURE);
 
     NS_ConvertUTF8toUTF16 appName(gAppData->name);
     const PRUnichar* params[] = {appName.get(), appName.get()};
@@ -1134,7 +1251,7 @@ ProfileLockedDialog(nsILocalFile* aProfileDir, nsILocalFile* aProfileLocalDir,
     PRInt32 button;
     rv = ps->ConfirmEx(nsnull, killTitle, killMessage, flags,
                        killTitle, nsnull, nsnull, nsnull, nsnull, &button);
-    NS_ENSURE_SUCCESS(rv, rv);
+    NS_ENSURE_SUCCESS_LOG(rv, rv);
 
     if (button == 1 && aUnlocker) {
       rv = aUnlocker->Unlock(nsIProfileUnlocker::FORCE_QUIT);
@@ -1195,7 +1312,7 @@ ShowProfileManager(nsIToolkitProfileService* aProfileSvc,
 
       appStartup->ExitLastWindowClosingSurvivalArea();
 
-      NS_ENSURE_SUCCESS(rv, rv);
+      NS_ENSURE_SUCCESS_LOG(rv, rv);
 
       aProfileSvc->Flush();
 
@@ -1206,7 +1323,7 @@ ShowProfileManager(nsIToolkitProfileService* aProfileSvc,
       nsCOMPtr<nsIProfileLock> lock;
       rv = dlgArray->QueryElementAt(0, NS_GET_IID(nsIProfileLock),
                                     getter_AddRefs(lock));
-      NS_ENSURE_SUCCESS(rv, rv);
+      NS_ENSURE_SUCCESS_LOG(rv, rv);
 
       rv = lock->GetDirectory(getter_AddRefs(profD));
       NS_ENSURE_SUCCESS(rv, rv);
@@ -1569,6 +1686,34 @@ static void RemoveComponentRegistries(nsIFile* aProfileDir, nsIFile* aLocalProfi
   file->Remove(PR_FALSE);
 }
 
+// To support application initiated restart via nsIAppStartup.quit, we
+// need to save various environment variables, and then restore them
+// before re-launching the application.
+
+static struct {
+  const char *name;
+  char *value;
+} gSavedVars[] = {
+  {"XUL_APP_FILE", nsnull}
+};
+
+static void SaveStateForAppInitiatedRestart()
+{
+  for (size_t i = 0; i < NS_ARRAY_LENGTH(gSavedVars); ++i) {
+    const char *s = PR_GetEnv(gSavedVars[i].name);
+    if (s)
+      gSavedVars[i].value = PR_smprintf("%s=%s", gSavedVars[i].name, s);
+  }
+}
+
+static void RestoreStateForAppInitiatedRestart()
+{
+  for (size_t i = 0; i < NS_ARRAY_LENGTH(gSavedVars); ++i) {
+    if (gSavedVars[i].value)
+      PR_SetEnv(gSavedVars[i].value);
+  }
+}
+
 const nsXREAppData* gAppData = nsnull;
 
 #if defined(XP_OS2)
@@ -1626,11 +1771,6 @@ XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
   // trap behavior that trips up on floating-point tests performed by
   // the JS engine.  See bugzilla bug 9967 details.
   fpsetmask(0);
-#endif
-
-#if defined(XP_UNIX) && !defined(XP_MACOSX)
-  if (!GetBinaryPath(argv[0]))
-    return 1;
 #endif
 
   gArgc = argc;
@@ -1717,6 +1857,11 @@ XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
     }
     return 0;
   }
+
+#if defined(MOZ_UPDATER)
+  // Check for and process any available updates
+  ProcessUpdates(dirProvider.GetAppDir(), gRestartArgc, gRestartArgv);
+#endif
 
 #if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_GTK2)
   // setup for private colormap.  Ideally we'd like to do this
@@ -1887,6 +2032,7 @@ XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
   }
 
   PRBool needsRestart = PR_FALSE;
+  PRBool appInitiatedRestart = PR_FALSE;
 
   // Allows the user to forcefully bypass the restart process at their
   // own risk. Useful for debugging or for tinderboxes where child 
@@ -1994,11 +2140,12 @@ XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
       }
 
       if (!upgraded && !needsRestart) {
+        SaveStateForAppInitiatedRestart();
 
         // clear out any environment variables which may have been set 
         // during the relaunch process now that we know we won't be relaunching.
         PR_SetEnv("XRE_PROFILE_PATH=");
-        PR_SetEnv("XRE_PROFILE_TEMP_PATH=");
+        PR_SetEnv("XRE_PROFILE_LOCAL_PATH=");
         PR_SetEnv("XRE_START_OFFLINE=");
         PR_SetEnv("XRE_IMPORT_PROFILES=");
         PR_SetEnv("NO_EM_RESTART=");
@@ -2024,7 +2171,7 @@ XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
 #endif
 
         rv = cmdLine->Run();
-        NS_ENSURE_SUCCESS(rv, 1);
+        NS_ENSURE_SUCCESS_LOG(rv, 1);
 
         nsCOMPtr<nsIWindowMediator> windowMediator
           (do_GetService(NS_WINDOWMEDIATOR_CONTRACTID, &rv));
@@ -2037,7 +2184,12 @@ XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
 
         PRBool more;
         windowEnumerator->HasMoreElements(&more);
-        if (more) {
+        if (!more) {
+          // We didn't open any windows. This is normally not a good thing,
+          // so we force console logging to file.
+          gLogConsoleErrors = PR_TRUE;
+        }
+        else {
 #ifndef XP_MACOSX
           appStartup->ExitLastWindowClosingSurvivalArea();
 #endif
@@ -2058,7 +2210,17 @@ XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
           NS_TIMELINE_ENTER("appStartup->Run");
           rv = appStartup->Run();
           NS_TIMELINE_LEAVE("appStartup->Run");
-          NS_ASSERTION(NS_SUCCEEDED(rv), "failed to run appstartup");
+          if (NS_FAILED(rv)) {
+            NS_ERROR("failed to run appstartup");
+            gLogConsoleErrors = PR_TRUE;
+          }
+
+          // Check for an application initiated restart.  This is one that
+          // corresponds to nsIAppStartup.quit(eRestart)
+          if (rv == NS_SUCCESS_RESTART_APP) {
+            needsRestart = PR_TRUE;
+            appInitiatedRestart = PR_TRUE;
+          }
 
 #ifdef MOZ_ENABLE_XREMOTE
           // shut down the x remote proxy window
@@ -2087,12 +2249,17 @@ XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
 
   // Restart the app after XPCOM has been shut down cleanly. 
   if (needsRestart) {
-    char* noEMRestart = PR_GetEnv("NO_EM_RESTART");
-    if (noEMRestart && *noEMRestart) {
-      PR_SetEnv("NO_EM_RESTART=1");
+    if (appInitiatedRestart) {
+      RestoreStateForAppInitiatedRestart();
     }
     else {
-      PR_SetEnv("NO_EM_RESTART=0");
+      char* noEMRestart = PR_GetEnv("NO_EM_RESTART");
+      if (noEMRestart && *noEMRestart) {
+        PR_SetEnv("NO_EM_RESTART=1");
+      }
+      else {
+        PR_SetEnv("NO_EM_RESTART=0");
+      }
     }
 
     nsCAutoString path1, path2;
@@ -2105,7 +2272,8 @@ XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
     PR_SetEnv(kEnvVar1);
     PR_SetEnv(kEnvVar2);
 
-    return LaunchChild(nativeApp) == NS_ERROR_LAUNCHED_CHILD_PROCESS ? 0 : 1;
+    rv = LaunchChild(nativeApp, appInitiatedRestart);
+    return rv == NS_ERROR_LAUNCHED_CHILD_PROCESS ? 0 : 1;
   }
 
   return NS_FAILED(rv) ? 1 : 0;

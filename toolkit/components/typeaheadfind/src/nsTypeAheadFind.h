@@ -107,7 +107,11 @@ protected:
                                nsPresContext **aPresContext);
 
   nsresult Cancel();
-  
+
+  // Get the pres shell from mPresShell and return it only if it is still
+  // attached to the DOM window.
+  NS_HIDDEN_(already_AddRefed<nsIPresShell>) GetPresShell();
+
   // Current find state
   nsString mTypeAheadBuffer;
   nsCString mNotFoundSoundURL;
@@ -120,6 +124,7 @@ protected:
   PRPackedBool mLinksOnly;
   PRBool mCaretBrowsingOn;
   PRBool mFocusLinks;
+  nsCOMPtr<nsIDOMElement> mFoundLink;
   PRPackedBool mLiteralTextSearchOnly;
   PRPackedBool mDontTryExactMatch;
   // mAllTheSame Char starts out PR_TRUE, becomes false when 

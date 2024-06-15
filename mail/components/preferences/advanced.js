@@ -43,9 +43,14 @@ var gAdvancedPane = {
     this.mPane = document.getElementById("paneAdvanced");
     this.updateMarkAsReadTextbox(false);
 
-    var preference = document.getElementById("mail.preferences.advanced.selectedTabIndex");
-    if (preference.value)
-      document.getElementById("advancedPrefs").selectedIndex = preference.value;
+    if ("arguments" in window && window.arguments[1] && document.getElementById(window.arguments[1]))
+      document.getElementById("advancedPrefs").selectedTab = document.getElementById(window.arguments[1]);
+    else 
+    {    
+      var preference = document.getElementById("mail.preferences.advanced.selectedTabIndex");
+      if (preference.value)
+        document.getElementById("advancedPrefs").selectedIndex = preference.value;
+    }
     this.mInitialized = true;
   },
 
@@ -53,8 +58,8 @@ var gAdvancedPane = {
   {
     if (this.mInitialized)
     {
-      var preference = document.getElementById("mail.preferences.advanced.selectedTabIndex");
-      preference.valueFromPreferences = document.getElementById("advancedPrefs").selectedIndex;
+      document.getElementById("mail.preferences.advanced.selectedTabIndex")
+              .valueFromPreferences = document.getElementById("advancedPrefs").selectedIndex;
     }
   },
 
@@ -67,43 +72,78 @@ var gAdvancedPane = {
 
   updateAppUpdateUI: function ()
   {
-    var preference = document.getElementById("app.update.autoUpdateEnabled");
-    var ids = ["enableAutoInstall", "autoInstallMode", "updateAnd"];
-    if (!preference.value)
-      for (var i = 0; i < ids.length; ++i)
-        document.getElementById(ids[i]).disabled = true;
-    else 
-    {
-      document.getElementById("enableAutoInstall").disabled = false;
-      this.updateAutoInstallUI();
-    }
+    var preference = document.getElementById("app.update.enabled");
+    document.getElementById("enableAutoInstall").disabled = !preference.value;
+
+    var aus = 
+        Components.classes["@mozilla.org/updates/update-service;1"].
+        getService(Components.interfaces.nsIApplicationUpdateService);
+    var checkNowButton = document.getElementById("checkNowButton");
+    checkNowButton.disabled = !aus.canUpdate;
+    
+    this.updateAutoPref();
     return undefined;
   },
   
-  updateAutoInstallUI: function ()
+  updateAutoPref: function ()
   {
-    var preference = document.getElementById("app.update.autoInstallEnabled");
-    var ids = ["autoInstallMode", "updateAnd"];
-    for (var i = 0; i < ids.length; ++i)
-      document.getElementById(ids[i]).disabled = !preference.value;
+    var preference = document.getElementById("app.update.auto");
+    var updateEnabledPref = document.getElementById("app.update.enabled");
+    var autoInstallOptions = document.getElementById("autoInstallOptions");
+    autoInstallOptions.disabled = !preference.value || !updateEnabledPref.value;
     return undefined;
   },
   
-  checkForUpdates: function (aType)
+  checkForAddonUpdates: function ()
   {
-    var updates = Components.classes["@mozilla.org/updates/update-service;1"]
-                            .getService(Components.interfaces.nsIUpdateService);
-    updates.checkForUpdates([], 0, aType, 
-                            Components.interfaces.nsIUpdateService.SOURCE_EVENT_USER,
-                            null);  
+    var updateTypes = 
+        Components.classes["@mozilla.org/supports-PRUint8;1"].
+        createInstance(Components.interfaces.nsISupportsPRUint8);
+    updateTypes.data = Components.interfaces.nsIUpdateItem.TYPE_ADDON;
+    var showMismatch = 
+        Components.classes["@mozilla.org/supports-PRBool;1"].
+        createInstance(Components.interfaces.nsISupportsPRBool);
+    showMismatch.data = false;
+    var ary = 
+        Components.classes["@mozilla.org/supports-array;1"].
+        createInstance(Components.interfaces.nsISupportsArray);
+    ary.AppendElement(updateTypes);
+    ary.AppendElement(showMismatch);
+
+    var features = "chrome,centerscreen,dialog,titlebar";
+    const URI_EXTENSION_UPDATE_DIALOG = 
+      "chrome://mozapps/content/extensions/update.xul";
+    var ww = 
+        Components.classes["@mozilla.org/embedcomp/window-watcher;1"].
+        getService(Components.interfaces.nsIWindowWatcher);
+    ww.openWindow(window, URI_EXTENSION_UPDATE_DIALOG, "", features, ary);  
+  },
+  
+  checkForUpdates: function ()
+  {
+    var prompter = Components.classes["@mozilla.org/updates/update-prompt;1"]
+                             .createInstance(Components.interfaces.nsIUpdatePrompt);
+    prompter.checkForUpdates();  
+  },
+
+  showAutoInstallOptions: function () 
+  {
+    document.documentElement.openSubDialog("chrome://mozapps/content/preferences/update.xul",
+                                           "", null);  
+  },
+    
+  showUpdates: function ()
+  {
+    var prompter = Components.classes["@mozilla.org/updates/update-prompt;1"]
+                             .createInstance(Components.interfaces.nsIUpdatePrompt);
+    prompter.showUpdateHistory(window);  
   },
 
   updateMarkAsReadTextbox: function(aFocusTextBox) 
   {
     var textbox = document.getElementById('markAsReadDelay'); 
-    var checkbox = document.getElementById('markAsRead');
-    textbox.disabled = !checkbox.checked;
+    textbox.disabled = !document.getElementById('markAsRead').checked;
     if (!textbox.disabled && aFocusTextBox)
         textbox.focus();
-  },
+  }
 };

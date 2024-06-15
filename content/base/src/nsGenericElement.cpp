@@ -48,6 +48,7 @@
 #include "nsIDOMText.h"
 #include "nsIDOMEventReceiver.h"
 #include "nsITextContent.h"
+#include "nsIContentIterator.h"
 #include "nsRange.h"
 #include "nsIEventListenerManager.h"
 #include "nsILinkHandler.h"
@@ -128,6 +129,7 @@ PLDHashTable nsGenericElement::sRangeListsHash;
 PLDHashTable nsGenericElement::sEventListenerManagersHash;
 PRInt32 nsIContent::sTabFocusModel = eTabFocus_any;
 PRBool nsIContent::sTabFocusModelAppliesToXUL = PR_FALSE;
+nsresult NS_NewContentIterator(nsIContentIterator** aInstancePtrResult);
 //----------------------------------------------------------------------
 
 nsChildContentList::nsChildContentList(nsIContent *aContent)
@@ -218,40 +220,32 @@ nsNode3Tearoff::GetTextContent(nsAString &aTextContent)
     return node->GetNodeValue(aTextContent);
   }
 
-  nsIDocument *doc = mContent->GetOwnerDoc();
-  if (!doc) {
-    NS_ERROR("Need a document to do text serialization");
-
-    return NS_ERROR_FAILURE;
-  }
-
-  return GetTextContent(doc, node, aTextContent);
+  return GetTextContent(mContent, aTextContent);
 }
 
 // static
 nsresult
-nsNode3Tearoff::GetTextContent(nsIDocument *aDocument,
-                               nsIDOMNode *aNode,
+nsNode3Tearoff::GetTextContent(nsIContent *aContent,
                                nsAString &aTextContent)
 {
-  NS_ENSURE_ARG_POINTER(aDocument);
-  NS_ENSURE_ARG_POINTER(aNode);
+  NS_ENSURE_ARG_POINTER(aContent);
 
-  nsCOMPtr<nsIDocumentEncoder> docEncoder =
-    do_CreateInstance(NS_DOC_ENCODER_CONTRACTID_BASE "text/plain");
+  nsCOMPtr<nsIContentIterator> iter;
+  NS_NewContentIterator(getter_AddRefs(iter));
+  iter->Init(aContent);
 
-  if (!docEncoder) {
-    NS_ERROR("Could not get a document encoder.");
-
-    return NS_ERROR_FAILURE;
+  nsString tempString;
+  aTextContent.Truncate();
+  while (!iter->IsDone()) {
+    nsIContent *content = iter->GetCurrentNode();
+    if (content->IsContentOfType(nsIContent::eTEXT)) {
+      nsCOMPtr<nsITextContent> textContent(do_QueryInterface(iter->GetCurrentNode()));
+      if (textContent)
+        textContent->AppendTextTo(aTextContent);
+    }
+    iter->Next();
   }
-
-  docEncoder->Init(aDocument, NS_LITERAL_STRING("text/plain"),
-                   nsIDocumentEncoder::OutputRaw);
-
-  docEncoder->SetNode(aNode);
-
-  return docEncoder->EncodeToString(aTextContent);
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -289,13 +283,15 @@ nsNode3Tearoff::SetTextContent(nsIContent* aContent,
     aContent->RemoveChildAt(i, PR_TRUE);
   }
 
-  nsCOMPtr<nsITextContent> textContent;
-  nsresult rv = NS_NewTextNode(getter_AddRefs(textContent));
-  NS_ENSURE_SUCCESS(rv, rv);
+  if (!aTextContent.IsEmpty()) {
+    nsCOMPtr<nsITextContent> textContent;
+    nsresult rv = NS_NewTextNode(getter_AddRefs(textContent));
+    NS_ENSURE_SUCCESS(rv, rv);
 
-  textContent->SetText(aTextContent, PR_TRUE);
+    textContent->SetText(aTextContent, PR_TRUE);
 
-  aContent->AppendChildTo(textContent, PR_TRUE);
+    aContent->AppendChildTo(textContent, PR_TRUE);
+  }
 
   return NS_OK;
 }
@@ -631,17 +627,9 @@ nsDOMEventRTTearoff::AddEventListener(const nsAString& aType,
                                       nsIDOMEventListener *aListener,
                                       PRBool useCapture)
 {
-  PRBool permitUntrustedEvents = PR_FALSE;
-  nsIDocument *ownerDoc = mContent->GetOwnerDoc();
-  nsIURI *docUri;
-  if (ownerDoc && (docUri = ownerDoc->GetDocumentURI())) {
-    PRBool isChrome = PR_TRUE;
-    nsresult rv = docUri->SchemeIs("chrome", &isChrome);
-    NS_ENSURE_SUCCESS(rv, rv);
-    permitUntrustedEvents = !isChrome;
-  }
-
-  return AddEventListener(aType, aListener, useCapture, permitUntrustedEvents);
+  return
+    AddEventListener(aType, aListener, useCapture,
+                     !nsContentUtils::IsChromeDoc(mContent->GetOwnerDoc()));
 }
 
 NS_IMETHODIMP
@@ -1302,6 +1290,10 @@ nsGenericElement::GetAttributes(nsIDOMNamedNodeMap** aAttributes)
     slots->mAttributeMap = new nsDOMAttributeMap(this);
     if (!slots->mAttributeMap) {
       return NS_ERROR_OUT_OF_MEMORY;
+    }
+    if (!slots->mAttributeMap->Init()) {
+      slots->mAttributeMap = nsnull;
+      return NS_ERROR_FAILURE;
     }
   }
 
@@ -1980,6 +1972,9 @@ nsGenericElement::HandleDOMEvent(nsPresContext* aPresContext,
                                  PRUint32 aFlags,
                                  nsEventStatus* aEventStatus)
 {
+  // Make sure to tell the event that dispatch has started.
+  NS_MARK_EVENT_DISPATCH_STARTED(aEvent);
+
   nsresult ret = NS_OK;
   PRBool retarget = PR_FALSE;
   PRBool externalDOMEvent = PR_FALSE;
@@ -2204,6 +2199,10 @@ nsGenericElement::HandleDOMEvent(nsPresContext* aPresContext,
 
       aDOMEvent = nsnull;
     }
+
+    // Now that we're done with this event, remove the flag that says
+    // we're in the process of dispatching this event.
+    NS_MARK_EVENT_DISPATCH_DONE(aEvent);
   }
 
   return ret;
@@ -2676,12 +2675,6 @@ nsGenericElement::InsertChildAt(nsIContent* aKid,
   nsIDocument *document = GetCurrentDoc();
   mozAutoDocUpdate updateBatch(document, UPDATE_CONTENT_MODEL, aNotify);
   
-  PRBool isAppend;
-
-  if (aNotify) {
-    isAppend = aIndex == GetChildCount();
-  }
-
   nsresult rv = mAttrsAndChildren.InsertChildAt(aKid, aIndex);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2702,7 +2695,7 @@ nsGenericElement::InsertChildAt(nsIContent* aKid,
   // the DOM....
   if (document && document == GetCurrentDoc() && aKid->GetParent() == this) {
     if (aNotify) {
-      if (isAppend) {
+      if (aIndex == GetChildCount() - 1) {
         document->ContentAppended(this, aIndex);
       } else {
         document->ContentInserted(this, aKid, aIndex);
@@ -3323,12 +3316,13 @@ nsGenericElement::TriggerLink(nsPresContext* aPresContext,
     // Check that this page is allowed to load this URI.
     nsCOMPtr<nsIScriptSecurityManager> securityManager = 
              do_GetService(NS_SCRIPTSECURITYMANAGER_CONTRACTID, &rv);
-    if (NS_SUCCEEDED(rv))
+    if (NS_SUCCEEDED(rv)) {
+      PRUint32 flag = aIsUserTriggered ?
+                      (PRUint32) nsIScriptSecurityManager::STANDARD :
+                      (PRUint32) nsIScriptSecurityManager::DISALLOW_FROM_MAIL;
       proceed =
-        securityManager->CheckLoadURI(aOriginURI, aLinkURI,
-                                      aIsUserTriggered ?
-                                        nsIScriptSecurityManager::STANDARD :
-                                        nsIScriptSecurityManager::DISALLOW_FROM_MAIL);
+        securityManager->CheckLoadURI(aOriginURI, aLinkURI, flag);
+    }
 
     // Only pass off the click event if the script security manager
     // says it's ok.
@@ -3376,19 +3370,9 @@ nsGenericElement::AddScriptEventListener(nsIAtom* aAttribute,
   if (manager) {
     nsIDocument *ownerDoc = GetOwnerDoc();
 
-    PRBool permitUntrustedEvents = PR_FALSE;
-
-    nsIURI *docUri;
-    if (ownerDoc && (docUri = ownerDoc->GetDocumentURI())) {
-      PRBool isChrome = PR_TRUE;
-      rv = docUri->SchemeIs("chrome", &isChrome);
-      NS_ENSURE_SUCCESS(rv, rv);
-
-      permitUntrustedEvents = !isChrome;
-    }
-
-    rv = manager->AddScriptEventListener(target, aAttribute, aValue, defer,
-                                         permitUntrustedEvents);
+    rv =
+      manager->AddScriptEventListener(target, aAttribute, aValue, defer,
+                                      !nsContentUtils::IsChromeDoc(ownerDoc));
   }
 
   return rv;
@@ -3680,6 +3664,12 @@ nsGenericElement::UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
       HandleDOMEvent(nsnull, &mutation, nsnull,
                      NS_EVENT_FLAG_INIT, &status);
     }
+  }
+
+  // Clear binding to nsIDOMNamedNodeMap
+  nsDOMSlots *slots = GetExistingDOMSlots();
+  if (slots && slots->mAttributeMap) {
+    slots->mAttributeMap->DropAttribute(aNameSpaceID, aName);
   }
 
   nsresult rv = mAttrsAndChildren.RemoveAttrAt(index);

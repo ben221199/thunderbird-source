@@ -77,6 +77,7 @@
 #include "nsIScriptObjectPrincipal.h"
 #include "nsDocumentCharsetInfoCID.h"
 #include "nsICanvasFrame.h"
+#include "nsIScrollableFrame.h"
 #include "nsContentPolicyUtils.h" // NS_CheckContentLoadPolicy(...)
 #include "nsICategoryManager.h"
 #include "nsXPCOMCID.h"
@@ -171,7 +172,7 @@ static NS_DEFINE_CID(kDOMScriptObjectFactoryCID,
 
 #include "plevent.h"
 #include "nsGUIEvent.h"
-#include "nsIPrivateDOMEvent.h"
+#include "nsEventQueueUtils.h"
 
 // Number of documents currently loading
 static PRInt32 gNumberOfDocumentsLoading = 0;
@@ -488,6 +489,9 @@ ConvertDocShellLoadInfoToLoadType(nsDocShellInfoLoadType aDocShellLoadType)
     case nsIDocShellLoadInfo::loadNormalReplace:
         loadType = LOAD_NORMAL_REPLACE;
         break;
+    case nsIDocShellLoadInfo::loadNormalExternal:
+        loadType = LOAD_NORMAL_EXTERNAL;
+        break;
     case nsIDocShellLoadInfo::loadHistory:
         loadType = LOAD_HISTORY;
         break;
@@ -537,6 +541,9 @@ nsDocShell::ConvertLoadTypeToDocShellLoadInfo(PRUint32 aLoadType)
         break;
     case LOAD_NORMAL_REPLACE:
         docShellLoadType = nsIDocShellLoadInfo::loadNormalReplace;
+        break;
+    case LOAD_NORMAL_EXTERNAL:
+        docShellLoadType = nsIDocShellLoadInfo::loadNormalExternal;
         break;
     case LOAD_HISTORY:
         docShellLoadType = nsIDocShellLoadInfo::loadHistory;
@@ -657,7 +664,9 @@ nsDocShell::LoadURI(nsIURI * aURI,
                 if (mCurrentURI == nsnull) {
                     // This is a newly created frame. Check for exception cases first. 
                     // By default the subframe will inherit the parent's loadType.
-                    if (shEntry && (parentLoadType == LOAD_NORMAL || parentLoadType == LOAD_LINK)) {
+                    if (shEntry && (parentLoadType == LOAD_NORMAL ||
+                                    parentLoadType == LOAD_LINK   ||
+                                    parentLoadType == LOAD_NORMAL_EXTERNAL)) {
                         // The parent was loaded normally. In this case, this *brand new* child really shouldn't
                         // have a SHEntry. If it does, it could be because the parent is replacing an
                         // existing frame with a new frame, in the onLoadHandler. We don't want this
@@ -861,18 +870,18 @@ nsDocShell::PrepareForNewContentModel()
 
 
 NS_IMETHODIMP
-nsDocShell::FireUnloadNotification()
+nsDocShell::FirePageHideNotification(PRBool aIsUnload)
 {
     if (mContentViewer && !mFiredUnloadEvent) {
         mFiredUnloadEvent = PR_TRUE;
 
-        mContentViewer->Unload();
+        mContentViewer->PageHide(aIsUnload);
 
         PRInt32 i, n = mChildList.Count();
         for (i = 0; i < n; i++) {
             nsCOMPtr<nsIDocShell> shell(do_QueryInterface(ChildAt(i)));
             if (shell) {
-                shell->FireUnloadNotification();
+                shell->FirePageHideNotification(aIsUnload);
             }
         }
     }
@@ -1685,6 +1694,20 @@ NS_IMETHODIMP
 nsDocShell::SetSecurityUI(nsISecureBrowserUI *aSecurityUI)
 {
     mSecurityUI = aSecurityUI;
+    return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDocShell::GetUseErrorPages(PRBool *aUseErrorPages)
+{
+    *aUseErrorPages = mUseErrorPages;
+    return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDocShell::SetUseErrorPages(PRBool aUseErrorPages)
+{
+    mUseErrorPages = aUseErrorPages;
     return NS_OK;
 }
 
@@ -2996,29 +3019,25 @@ nsDocShell::LoadErrorPage(nsIURI *aURI, const PRUnichar *aURL,
     }
 #endif
     // Create an shistory entry for the old load, if we have a channel
-    // XXXbz except what happens if this got called in EndPageLoad?  Then we've
-    // already cleared out mLSHE, so we're just setting mOSHE to null.  That
-    // can't be a good idea.
     if (aFailedChannel) {
         mURIResultedInDocument = PR_TRUE;
         OnLoadingSite(aFailedChannel, PR_TRUE);
-        mOSHE = mLSHE;
     }
 
-    nsAutoString url;
+    nsCAutoString url;
+    nsCAutoString charset;
     if (aURI)
     {
         // Set our current URI
         SetCurrentURI(aURI);
 
-        nsCAutoString uri;
-        nsresult rv = aURI->GetSpec(uri);
+        nsresult rv = aURI->GetSpec(url);
+        rv |= aURI->GetOriginCharset(charset);
         NS_ENSURE_SUCCESS(rv, rv);
-        CopyUTF8toUTF16(uri, url);
     }
     else if (aURL)
     {
-        url.Assign(aURL);
+        CopyUTF16toUTF8(aURL, url);
     }
     else
     {
@@ -3027,7 +3046,8 @@ nsDocShell::LoadErrorPage(nsIURI *aURI, const PRUnichar *aURL,
 
     // Create a URL to pass all the error information through to the page.
 
-    char *escapedUrl = nsEscape(NS_ConvertUTF16toUTF8(url.get()).get(), url_Path);
+    char *escapedUrl = nsEscape(url.get(), url_Path);
+    char *escapedCharset = nsEscape(charset.get(), url_Path);
     char *escapedError = nsEscape(NS_ConvertUTF16toUTF8(aErrorType).get(), url_Path);
     char *escapedDescription = nsEscape(NS_ConvertUTF16toUTF8(aDescription).get(), url_Path);
 
@@ -3049,12 +3069,15 @@ nsDocShell::LoadErrorPage(nsIURI *aURI, const PRUnichar *aURL,
     errorPageUrl.AppendASCII(escapedError);
     errorPageUrl.AppendLiteral("&u=");
     errorPageUrl.AppendASCII(escapedUrl);
+    errorPageUrl.AppendLiteral("&c=");
+    errorPageUrl.AppendASCII(escapedCharset);
     errorPageUrl.AppendLiteral("&d=");
     errorPageUrl.AppendASCII(escapedDescription);
 
     nsMemory::Free(escapedDescription);
     nsMemory::Free(escapedError);
     nsMemory::Free(escapedUrl);
+    nsMemory::Free(escapedCharset);
 
     nsCOMPtr<nsIURI> errorPageURI;
     nsresult rv = NS_NewURI(getter_AddRefs(errorPageURI), errorPageUrl);
@@ -3140,6 +3163,13 @@ NS_IMETHODIMP
 nsDocShell::Stop(PRUint32 aStopFlags)
 {
     if (nsIWebNavigation::STOP_CONTENT & aStopFlags) {
+        // Revoke any pending plevents related to content viewer restoration
+        nsCOMPtr<nsIEventQueue> uiThreadQueue;
+        NS_GetMainEventQ(getter_AddRefs(uiThreadQueue));
+        if (uiThreadQueue)
+            uiThreadQueue->RevokeEvents(this);
+
+        // Stop the document loading
         if (mContentViewer)
             mContentViewer->Stop();
     }
@@ -3370,7 +3400,7 @@ nsDocShell::Destroy()
     mIsBeingDestroyed = PR_TRUE;
 
     //Fire unload event before we blow anything away.
-    (void) FireUnloadNotification();
+    (void) FirePageHideNotification(PR_TRUE);
 
     // Stop any URLs that are currently being loaded...
     Stop(nsIWebNavigation::STOP_ALL);
@@ -3944,21 +3974,25 @@ nsDocShell::GetScrollbarVisibility(PRBool * verticalVisible,
     nsIScrollableView* scrollView;
     NS_ENSURE_SUCCESS(GetRootScrollableView(&scrollView),
                       NS_ERROR_FAILURE);
-    if (!scrollView) {
+    if (!scrollView)
         return NS_ERROR_FAILURE;
-    }
 
-    PRBool vertVisible;
-    PRBool horizVisible;
+    // We should now call nsLayoutUtils::GetScrollableFrameFor,
+    // but we can't because of stupid linkage!
+    nsIFrame* scrollFrame =
+        NS_STATIC_CAST(nsIFrame*, scrollView->View()->GetParent()->GetClientData());
+    if (!scrollFrame)
+        return NS_ERROR_FAILURE;
+    nsIScrollableFrame* scrollable = nsnull;
+    CallQueryInterface(scrollFrame, &scrollable);
+    if (!scrollable)
+        return NS_ERROR_FAILURE;
 
-    NS_ENSURE_SUCCESS(scrollView->GetScrollbarVisibility(&vertVisible,
-                                                         &horizVisible),
-                      NS_ERROR_FAILURE);
-
+    nsMargin scrollbars = scrollable->GetActualScrollbarSizes();
     if (verticalVisible)
-        *verticalVisible = vertVisible;
+        *verticalVisible = scrollbars.left != 0 || scrollbars.right != 0;
     if (horizontalVisible)
-        *horizontalVisible = horizVisible;
+        *horizontalVisible = scrollbars.top != 0 || scrollbars.bottom != 0;
 
     return NS_OK;
 }
@@ -4617,7 +4651,7 @@ nsDocShell::EndPageLoad(nsIWebProgress * aProgress,
     // This will cause any OnLoad(...) handlers to fire, if it is a HTML
     // document...
     //
-    if (!mEODForCurrentDocument && mContentViewer) {
+    if ((mIsRestoringDocument || !mEODForCurrentDocument) && mContentViewer) {
         mIsExecutingOnLoadHandler = PR_TRUE;
         mContentViewer->LoadComplete(aStatus);
         mIsExecutingOnLoadHandler = PR_FALSE;
@@ -4742,7 +4776,7 @@ nsDocShell::CreateAboutBlankContentViewer()
     // is changed within the DocShell - otherwise, javascript will get the
     // wrong information :-(
     //
-    (void) FireUnloadNotification();
+    (void) FirePageHideNotification(PR_TRUE);
   }
 
   // one helper factory, please
@@ -4783,7 +4817,7 @@ nsDocShell::CreateAboutBlankContentViewer()
 }
 
 PRBool
-nsDocShell::CanSavePresentation(nsIRequest *aNewRequest)
+nsDocShell::CanSavePresentation(PRUint32 aLoadType, nsIRequest *aNewRequest)
 {
     if (!mOSHE)
         return PR_FALSE; // no entry to save into
@@ -4791,9 +4825,9 @@ nsDocShell::CanSavePresentation(nsIRequest *aNewRequest)
     // Only save presentation for "normal" loads and link loads.  Anything else
     // probably wants to refetch the page, so caching the old presentation
     // would be incorrect.
-    if (mLoadType != LOAD_NORMAL &&
-        mLoadType != LOAD_HISTORY &&
-        mLoadType != LOAD_LINK)
+    if (aLoadType != LOAD_NORMAL &&
+        aLoadType != LOAD_HISTORY &&
+        aLoadType != LOAD_LINK)
         return PR_FALSE;
 
     // If the session history entry has the saveLayoutState flag set to false,
@@ -4826,8 +4860,13 @@ nsDocShell::CanSavePresentation(nsIRequest *aNewRequest)
 nsresult
 nsDocShell::CaptureState()
 {
+    if (!mOSHE || mOSHE == mLSHE) {
+        // No entry to save into, or we're replacing the existing entry.
+        return NS_ERROR_FAILURE;
+    }
+
     nsCOMPtr<nsPIDOMWindow> privWin = do_QueryInterface(mScriptGlobal);
-    if (!privWin || !mOSHE)
+    if (!privWin)
         return NS_ERROR_FAILURE;
 
     nsCOMPtr<nsISupports> windowState;
@@ -4884,86 +4923,164 @@ nsDocShell::CaptureState()
         mOSHE->AddChildShell(childShell);
     }
 
-    // Capture the security state.
-    nsCOMPtr<nsISupports> securityState;
-    if (mSecurityUI)
-        mSecurityUI->CaptureState(getter_AddRefs(securityState));
+    return NS_OK;
+}
 
-    return mOSHE->SetSecurityState(securityState);
+class RestorePresentationEvent : public PLEvent
+{
+public:
+    RestorePresentationEvent(nsDocShell *aShell);
+
+    nsRefPtr<nsDocShell> mDocShell;
+};
+
+PR_STATIC_CALLBACK(void*)
+HandleRestorePresentationEvent(PLEvent *aEvent)
+{
+    NS_STATIC_CAST(RestorePresentationEvent*, aEvent)->mDocShell->FinishRestore();
+    return nsnull;
+}
+
+PR_STATIC_CALLBACK(void)
+DestroyRestorePresentationEvent(PLEvent *aEvent)
+{
+    delete NS_STATIC_CAST(RestorePresentationEvent*, aEvent);
+}
+
+RestorePresentationEvent::RestorePresentationEvent(nsDocShell *aShell)
+    : mDocShell(aShell)
+{
+    PL_InitEvent(this, mDocShell, ::HandleRestorePresentationEvent,
+                 ::DestroyRestorePresentationEvent);
 }
 
 NS_IMETHODIMP
-nsDocShell::FireRestoreEvents()
+nsDocShell::BeginRestore(PRBool aTop)
 {
-    // These events fire bottom-up, so call this on our children first.
-    PRInt32 n = mChildList.Count();
-    for (PRInt32 i = 0; i < n; ++i) {
-        nsCOMPtr<nsIDocShell> child = do_QueryInterface(ChildAt(i));
-        if (child) {
-            child->FireRestoreEvents();
-        }
-    }
-
-    // Dispatch events.  This is a little messy.  We need to avoid firing
-    // onload so that it is visible from the content DOM window, but we _do_
-    // want the chrome to see it for chrome/extensions that look for page load.
-    // In addition, we need to fire DOMPageRestore on the content window.
+    // Dispatch events for restoring the presentation.  We try to simulate
+    // the progress notifications loading the document would cause, so we add
+    // the document's channel to the loadgroup to initiate stateChange
+    // notifications.
 
     nsresult rv = EnsureContentViewer();
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsCOMPtr<nsIDocumentViewer> docViewer = do_QueryInterface(mContentViewer);
-    NS_ENSURE_TRUE(docViewer, NS_ERROR_UNEXPECTED);
+    nsCOMPtr<nsIDOMDocument> domDoc;
+    mContentViewer->GetDOMDocument(getter_AddRefs(domDoc));
+    nsCOMPtr<nsIDocument> doc = do_QueryInterface(domDoc);
+    if (doc) {
+        nsIChannel *channel = doc->GetChannel();
+        if (channel) {
+            mIsRestoringDocument = PR_TRUE;
+            mLoadGroup->AddRequest(channel, nsnull);
+            mIsRestoringDocument = PR_FALSE;
+        }
+    }
 
-    nsCOMPtr<nsIPresShell> shell;
-    docViewer->GetPresShell(getter_AddRefs(shell));
-    NS_ENSURE_TRUE(shell, NS_ERROR_UNEXPECTED);
+    // These events start from the top-down and finish from the bottom-up.
+    // So, next we tell all of our children to call AddRequest, then post
+    // a PLEvent, which will cause us to call finishRestore() on our children.
 
-    nsEvent event(PR_TRUE, NS_PAGE_LOAD);
-    nsEventStatus status = nsEventStatus_eIgnore;
+    PRInt32 n = mChildList.Count();
+    for (PRInt32 i = 0; i < n; ++i) {
+        nsCOMPtr<nsIDocShell> child = do_QueryInterface(ChildAt(i));
+        if (child) {
+            rv = child->BeginRestore(PR_FALSE);
+            NS_ENSURE_SUCCESS(rv, rv);
+        }
+    }
 
-    nsCOMPtr<nsPIDOMWindow> privWin = do_QueryInterface(mScriptGlobal);
-    NS_ENSURE_TRUE(privWin, NS_ERROR_UNEXPECTED);
+    if (aTop) {
+        // We finish up the restore processing on a PLEvent to mimic the way
+        // RemoveRequest is called by nsIChannel implementations.
 
-    nsCOMPtr<nsIChromeEventHandler> handler = privWin->GetChromeEventHandler();
+        nsCOMPtr<nsIEventQueue> uiThreadQueue;
+        NS_GetMainEventQ(getter_AddRefs(uiThreadQueue));
+        NS_ENSURE_TRUE(uiThreadQueue, NS_ERROR_UNEXPECTED);
 
-    PRUint32 flags = NS_EVENT_FLAG_INIT;
-    event.flags |= flags;
-    flags &= ~(NS_EVENT_FLAG_CANT_BUBBLE | NS_EVENT_FLAG_CANT_CANCEL);
-    flags |= NS_EVENT_FLAG_BUBBLE | NS_EVENT_FLAG_CAPTURE;
+        PLEvent *evt = new RestorePresentationEvent(this);
+        NS_ENSURE_TRUE(evt, NS_ERROR_OUT_OF_MEMORY);
 
-    nsIDOMEvent *domEvt = nsnull;
-    nsPresContext *pc = shell->GetPresContext();
+        rv = uiThreadQueue->PostEvent(evt);
+        if (NS_FAILED(rv)) {
+            PL_DestroyEvent(evt);
+        }
+    }
 
-    rv = handler->HandleChromeEvent(pc, &event, &domEvt,
-                                    flags & NS_EVENT_CAPTURE_MASK, &status);
-    NS_ENSURE_SUCCESS(rv, rv);
+    return rv;
+}
 
-    if (domEvt) {
-        nsrefcnt rc;
-        NS_RELEASE2(domEvt, rc);
-        if (0 != rc) {
-            // Okay, so someone in the DOM loop (a listener, JS object)
-            // still has a ref to the DOM Event but the internal data
-            // hasn't been malloc'd.  Force a copy of the data here so the
-            // DOM Event is still valid.
+NS_IMETHODIMP
+nsDocShell::FinishRestore()
+{
+    // First we call finishRestore() on our children.  In the simulated load,
+    // all of the child frames finish loading before the main document.
 
-            nsCOMPtr<nsIPrivateDOMEvent> privateEvent =
-                do_QueryInterface(domEvt);
+    PRInt32 n = mChildList.Count();
+    for (PRInt32 i = 0; i < n; ++i) {
+        nsCOMPtr<nsIDocShell> child = do_QueryInterface(ChildAt(i));
+        if (child) {
+            child->FinishRestore();
+        }
+    }
 
-            if (privateEvent) {
-                privateEvent->DuplicatePrivateData();
+    if (mContentViewer) {
+        nsCOMPtr<nsIDOMDocument> domDoc;
+        mContentViewer->GetDOMDocument(getter_AddRefs(domDoc));
+
+        nsCOMPtr<nsIDocument> doc = do_QueryInterface(domDoc);
+        if (doc) {
+            // Finally, we remove the request from the loadgroup.  This will
+            // cause onStateChange(STATE_STOP) to fire, which will fire the
+            // PageShow event to the chrome.
+
+            nsIChannel *channel = doc->GetChannel();
+            if (channel) {
+                mIsRestoringDocument = PR_TRUE;
+                mLoadGroup->RemoveRequest(channel, nsnull, NS_OK);
+                mIsRestoringDocument = PR_FALSE;
             }
         }
     }
 
-    status = nsEventStatus_eIgnore;
-    nsEvent restoreEvent(PR_TRUE, NS_PAGE_RESTORE);
-
-    return mScriptGlobal->HandleDOMEvent(pc, &restoreEvent, nsnull,
-                                         NS_EVENT_FLAG_INIT, &status);
+    return NS_OK;
 }
 
+NS_IMETHODIMP
+nsDocShell::GetRestoringDocument(PRBool *aRestoring)
+{
+    *aRestoring = mIsRestoringDocument;
+    return NS_OK;
+}
+
+class ContentViewerDestroyEvent : public PLEvent
+{
+public:
+    ContentViewerDestroyEvent(nsIContentViewer *aViewer, nsDocShell *aShell);
+
+    nsCOMPtr<nsIContentViewer> mViewer;
+};
+
+PR_STATIC_CALLBACK(void*)
+HandleContentViewerDestroyEvent(PLEvent *aEvent)
+{
+    NS_STATIC_CAST(ContentViewerDestroyEvent*, aEvent)->mViewer->Destroy();
+    return nsnull;
+}
+
+PR_STATIC_CALLBACK(void)
+DestroyContentViewerDestroyEvent(PLEvent *aEvent)
+{
+    delete NS_STATIC_CAST(ContentViewerDestroyEvent*, aEvent);
+}
+
+ContentViewerDestroyEvent::ContentViewerDestroyEvent(nsIContentViewer *aViewer,
+                                                     nsDocShell *aShell)
+    : mViewer(aViewer)
+{
+    PL_InitEvent(this, aShell, ::HandleContentViewerDestroyEvent,
+                 ::DestroyContentViewerDestroyEvent);
+}
 
 nsresult
 nsDocShell::RestorePresentation(nsISHEntry *aSHEntry, PRBool aSavePresentation,
@@ -5006,7 +5123,7 @@ nsDocShell::RestorePresentation(nsISHEntry *aSHEntry, PRBool aSavePresentation,
         printf("No valid container, clearing presentation\n");
 #endif
         aSHEntry->SetContentViewer(nsnull);
-        return NS_OK;
+        return NS_ERROR_FAILURE;
     }
 
     NS_ASSERTION(mContentViewer != viewer, "Restoring existing presentation");
@@ -5014,6 +5131,10 @@ nsDocShell::RestorePresentation(nsISHEntry *aSHEntry, PRBool aSavePresentation,
 #ifdef DEBUG_PAGE_CACHE
     printf("restoring presentation from session history: %s\n", spec.get());
 #endif
+
+    // Notify the old content viewer that it's being hidden.
+    FirePageHideNotification(!aSavePresentation);
+    mFiredUnloadEvent = PR_FALSE;
 
     // Save off the root view's parent and sibling so that we can insert the
     // new content viewer's root view at the same position.  Also save the
@@ -5047,21 +5168,43 @@ nsDocShell::RestorePresentation(nsISHEntry *aSHEntry, PRBool aSavePresentation,
     // content viewer, we prevent the viewer from being torn down after
     // Destroy() is called.
 
-    if (!aSavePresentation)
-        FireUnloadNotification();
-
-    mFiredUnloadEvent = PR_FALSE;
+    nsresult rv;
 
     if (mContentViewer) {
+        if (aSavePresentation) {
+            rv = CaptureState();
+            if (NS_FAILED(rv) && mOSHE) {
+                mOSHE->SyncPresentationState();
+                aSavePresentation = PR_FALSE;
+            }
+        }
+
         mContentViewer->Close(aSavePresentation ? mOSHE.get() : nsnull);
-        mContentViewer->Destroy();
+        mContentViewer->Hide();
+
+        // It's unsafe to actually destroy the content viewer here.
+        // In particular, if we're called from within a plugin's event loop,
+        // then attempting to tear down the plugin can cause a hang.
+        // So, post an event to destroy and release the viewer.
+
+        nsCOMPtr<nsIEventQueue> uiThreadQueue;
+        NS_GetMainEventQ(getter_AddRefs(uiThreadQueue));
+        NS_ENSURE_TRUE(uiThreadQueue, NS_ERROR_UNEXPECTED);
+
+        PLEvent *evt = new ContentViewerDestroyEvent(mContentViewer, this);
+        NS_ENSURE_TRUE(evt, NS_ERROR_OUT_OF_MEMORY);
+
+        rv = uiThreadQueue->PostEvent(evt);
+        if (NS_FAILED(rv)) {
+            PL_DestroyEvent(evt);
+        }
     }
 
     mContentViewer.swap(viewer);
     viewer = nsnull; // force a release to complete ownership transfer
 
     // Reattach to the window object.
-    nsresult rv = mContentViewer->Open();
+    rv = mContentViewer->Open();
 
     // Now remove it from the cached presentation.
     aSHEntry->SetContentViewer(nsnull);
@@ -5131,21 +5274,8 @@ nsDocShell::RestorePresentation(nsISHEntry *aSHEntry, PRBool aSavePresentation,
     aSHEntry->GetRefreshURIList(getter_AddRefs(mRefreshURIList));
     aSHEntry->SetRefreshURIList(nsnull);
 
-    // Restore the page title.  Re-setting the current title on the document
-    // will update the docshell title and dispatch DOMTitleChanged.
-    nsIDocument *doc = shell->GetDocument();
-    nsCOMPtr<nsIDOMNSDocument> nsDoc = do_QueryInterface(doc);
-    if (doc && nsDoc) {
-        const nsAFlatString &title = doc->GetDocumentTitle();
-        nsDoc->SetTitle(title);
-    }
-    
+    // aSHEntry is now our currently-loaded document.
     mOSHE = aSHEntry;
-
-    // mEODForCurrentDocument is true here, so EndPageLoad will not fire
-    // onload (we fire that below, in a special way so that the content window
-    // does not see it).
-    EndPageLoad(nsnull, nsnull, NS_OK);
 
     // Meta-refresh timers have been restarted for this shell, but not
     // for our children.  Walk the child shells and restart their timers.
@@ -5189,35 +5319,34 @@ nsDocShell::RestorePresentation(nsISHEntry *aSHEntry, PRBool aSavePresentation,
         }
     }
 
-    // Reset the security state
-    if (mSecurityUI) {
-        nsCOMPtr<nsISupports> securityState;
-        aSHEntry->GetSecurityState(getter_AddRefs(securityState));
-        if (securityState)
-            mSecurityUI->TransitionToState(securityState);
-    }
+    // Tell the event loop to favor plevents over user events, see comments
+    // in CreateContentViewer.
+    if (++gNumberOfDocumentsLoading == 1)
+      PL_FavorPerformanceHint(PR_TRUE, NS_EVENT_STARVATION_DELAY_HINT);
 
     SetCurrentURI(uri);
 
-    // Dispatch onload and DOMPageRestore.
-    rv = FireRestoreEvents();
+    // Restore the page title.  Re-setting the current title on the document
+    // will update the docshell title and dispatch DOMTitleChanged.
+    // (We must do this after setting mOSHE so that the correct history entry
+    // title is set).
+    nsIDocument *doc = shell->GetDocument();
+    nsCOMPtr<nsIDOMNSDocument> nsDoc = do_QueryInterface(doc);
+    if (doc && nsDoc) {
+        const nsAFlatString &title = doc->GetDocumentTitle();
+        nsDoc->SetTitle(title);
+    }
+    
+    // Dispatch DOMPageShow and other events.
+    rv = BeginRestore(PR_TRUE);
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = mContentViewer->Show();
     NS_ENSURE_SUCCESS(rv, rv);
 
-    // Restart plugins
+    // Restart plugins, and paint the content.
     if (shell)
         shell->Thaw();
-
-    // XXXbryner  Making this invalidate synchronous causes unpainted areas
-    // (on Mac, at least) if the above locationchanged event hides Firefox's
-    // infobar.  Doing it asynchronously seems to work around the problem, but
-    // shouldn't the style change that hides the infobar handle all necessary
-    // invalidation, including the newly-exposed area?
-
-    rv = mParentWidget->Invalidate(PR_FALSE);
-    NS_ENSURE_SUCCESS(rv, rv);
 
     *aRestored = PR_TRUE;
     return NS_OK;
@@ -5250,9 +5379,15 @@ nsDocShell::CreateContentViewer(const char *aContentType,
     // wrong information :-(
     //
 
-    PRBool savePresentation = CanSavePresentation(request);
-    if (!savePresentation)
-        FireUnloadNotification();
+    if (mSavingOldViewer) {
+        // We determined that it was safe to cache the document presentation
+        // at the time we initiated the new load.  We need to check whether
+        // it's still safe to do so, since there may have been DOM mutations
+        // or new requests initiated.
+        mSavingOldViewer = CanSavePresentation(mLoadType, request);
+    }
+
+    FirePageHideNotification(!mSavingOldViewer);
 
     // Set mFiredUnloadEvent = PR_FALSE so that the unload handler for the
     // *new* document will fire.
@@ -5266,18 +5401,6 @@ nsDocShell::CreateContentViewer(const char *aContentType,
     nsCOMPtr<nsIChannel> aOpenedChannel = do_QueryInterface(request);
 
     PRBool onLocationChangeNeeded = OnLoadingSite(aOpenedChannel, PR_FALSE);
-
-    if (savePresentation) {
-        // The old content viewer will be saved during the call to Embed().
-        rv = CaptureState();
-        if (NS_SUCCEEDED(rv)) {
-            mSavingOldViewer = PR_TRUE;
-        } else {
-            if (mOSHE) {
-                mOSHE->SyncPresentationState();
-            }
-        }
-    }
 
     // let's try resetting the load group if we need to...
     nsCOMPtr<nsILoadGroup> currentLoadGroup;
@@ -5570,7 +5693,16 @@ nsDocShell::SetupNewViewer(nsIContentViewer * aNewViewer)
 
         // Tell the old content viewer to hibernate in session history when
         // it is destroyed.
-        mContentViewer->Close(mSavingOldViewer ? mOSHE.get() : nsnull);
+
+        PRBool savePresentation = mSavingOldViewer;
+        if (savePresentation && NS_FAILED(CaptureState())) {
+            if (mOSHE) {
+                mOSHE->SyncPresentationState();
+            }
+            savePresentation = PR_FALSE;
+        }
+
+        mContentViewer->Close(savePresentation ? mOSHE.get() : nsnull);
         aNewViewer->SetPreviousViewer(mContentViewer);
 
         mContentViewer = nsnull;
@@ -5997,6 +6129,25 @@ nsDocShell::InternalLoad(nsIURI * aURI,
         return NS_ERROR_FAILURE;
     }
 
+    // Before going any further vet loads initiated by external programs.
+    if (aLoadType == LOAD_NORMAL_EXTERNAL) {
+        // Disallow external chrome: loads targetted at content windows
+        PRBool isChrome = PR_FALSE;
+        if (NS_SUCCEEDED(aURI->SchemeIs("chrome", &isChrome)) && isChrome) {
+            NS_WARNING("blocked external chrome: url -- use '-chrome' option");
+            return NS_ERROR_FAILURE;
+        }
+
+        // clear the decks to prevent context bleed-through (bug 298255)
+        rv = CreateAboutBlankContentViewer();
+        if (NS_FAILED(rv))
+            return NS_ERROR_FAILURE;
+
+        // reset loadType so we don't have to add lots of tests for
+        // LOAD_NORMAL_EXTERNAL after this point
+        aLoadType = LOAD_NORMAL;
+    }
+
     rv = CheckLoadingPermissions();
     if (NS_FAILED(rv)) {
         return rv;
@@ -6061,9 +6212,13 @@ nsDocShell::InternalLoad(nsIURI * aURI,
             if (mOSHE) {
                 /* save current position of scroller(s) (bug 59774) */
                 mOSHE->SetScrollPosition(cx, cy);
-                // Get the postdata and page ident from the current page,
-                // if the new load is being done via normal means.
-                if (aLoadType == LOAD_NORMAL || aLoadType == LOAD_LINK) {
+                // Get the postdata and page ident from the current page, if
+                // the new load is being done via normal means.  Note that
+                // "normal means" can be checked for just by checking for
+                // LOAD_CMD_NORMAL, given the loadType and allowScroll check
+                // above -- it filters out some LOAD_CMD_NORMAL cases that we
+                // wouldn't want here.
+                if (aLoadType & LOAD_CMD_NORMAL) {
                     mOSHE->GetPostData(getter_AddRefs(postData));
                     mOSHE->GetPageIdentifier(&pageIdent);
                 }
@@ -6137,7 +6292,7 @@ nsDocShell::InternalLoad(nsIURI * aURI,
     // This is necessary so that we can catch any pending requests.
     // Since the new request has not been created yet, we pass null for the
     // new request parameter.
-    PRBool savePresentation = CanSavePresentation(nsnull);
+    PRBool savePresentation = CanSavePresentation(aLoadType, nsnull);
 
     // Don't stop current network activity for javascript: URL's since
     // they might not result in any data, and thus nothing should be
@@ -6170,32 +6325,32 @@ nsDocShell::InternalLoad(nsIURI * aURI,
     }
 
     mLoadType = aLoadType;
+    
     // mLSHE should be assigned to aSHEntry, only after Stop() has
-    // been called.
-    mLSHE = aSHEntry;
+    // been called. But when loading an error page, do not clear the
+    // mLSHE for the real page.
+    if (mLoadType != LOAD_ERROR_PAGE) {
+        mLSHE = aSHEntry;
+        mSavingOldViewer = savePresentation;
+    }
 
     // If we have a saved content viewer in history, restore and show it now.
-    if (aSHEntry) {
-        if (savePresentation) {
-            rv = CaptureState();
-            if (NS_FAILED(rv) && mOSHE)
-                mOSHE->SyncPresentationState();
-        }
-
+    if (aSHEntry && (mLoadType & LOAD_CMD_HISTORY)) {
         nsCOMPtr<nsISHEntry> oldEntry = mOSHE;
         PRBool restored;
-        rv = RestorePresentation(aSHEntry, savePresentation &&
-                                 NS_SUCCEEDED(rv), &restored);
+        rv = RestorePresentation(aSHEntry, savePresentation, &restored);
         if (restored)
             return rv;
 
         // We failed to restore the presentation, so clean up.
         // Both the old and new history entries could potentially be in
         // an inconsistent state.
-        if (oldEntry)
-            oldEntry->SyncPresentationState();
+        if (NS_FAILED(rv)) {
+            if (oldEntry)
+                oldEntry->SyncPresentationState();
 
-        aSHEntry->SyncPresentationState();
+            aSHEntry->SyncPresentationState();
+        }
     }
 
     nsCOMPtr<nsIRequest> req;

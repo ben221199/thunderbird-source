@@ -188,7 +188,7 @@ NS_NewHTMLNOTUSEDElement(nsINodeInfo *aNodeInfo, PRBool aFromParser)
 }
 
 #define HTML_TAG(_tag, _classname) NS_NewHTML##_classname##Element,
-#define HTML_OTHER(_tag, _classname) NS_NewHTML##_classname##Element,
+#define HTML_OTHER(_tag) NS_NewHTMLNOTUSEDElement,
 static const contentCreatorCallback sContentCreatorCallbacks[] = {
   NS_NewHTMLUnknownElement,
 #include "nsHTMLTagList.h"
@@ -757,16 +757,14 @@ HTMLContentSink::SinkTraceNode(PRUint32 aBit,
                                void* aThis)
 {
   if (SINK_LOG_TEST(gSinkLogModuleInfo, aBit)) {
-    nsCOMPtr<nsIDTD> dtd;
-    if (mParser) {
-      mParser->GetDTD(getter_AddRefs(dtd));
-      if (!dtd) 
-        return;
-    }
-    const char* cp = 
-      NS_ConvertUCS2toUTF8(dtd->IntTagToStringTag(aTag)).get();
+    nsIParserService *parserService =
+      nsContentUtils::GetParserServiceWeakRef();
+    if (!parserService)
+      return;
+
+    NS_ConvertUTF16toUTF8 tag(parserService->HTMLIdToStringTag(aTag));
     PR_LogPrint("%s: this=%p node='%s' stackPos=%d", 
-                aMsg, aThis, cp, aStackPos);
+                aMsg, aThis, tag.get(), aStackPos);
   }
 }
 #endif
@@ -858,8 +856,6 @@ HTMLContentSink::CreateContentObject(const nsIParserNode& aNode,
                                      nsGenericHTMLElement* aForm,
                                      nsIDocShell* aDocShell)
 {
-  nsresult rv = NS_OK;
-
   // Find/create atom for the tag name
 
   nsCOMPtr<nsINodeInfo> nodeInfo;
@@ -869,69 +865,28 @@ HTMLContentSink::CreateContentObject(const nsIParserNode& aNode,
     ToLowerCase(tmp);
 
     nsCOMPtr<nsIAtom> name = do_GetAtom(tmp);
-    rv = mNodeInfoManager->GetNodeInfo(name, nsnull, kNameSpaceID_None,
-                                       getter_AddRefs(nodeInfo));
+    mNodeInfoManager->GetNodeInfo(name, nsnull, kNameSpaceID_None,
+                                  getter_AddRefs(nodeInfo));
   } else {
-    nsCOMPtr<nsIDTD> dtd;
-    rv = mParser->GetDTD(getter_AddRefs(dtd));
-    if (NS_SUCCEEDED(rv)) {
-      rv = mNodeInfoManager->GetNodeInfo(dtd->IntTagToAtom(aNodeType), nsnull,
-                                         kNameSpaceID_None,
-                                         getter_AddRefs(nodeInfo));
-    }
+    nsIParserService *parserService =
+      nsContentUtils::GetParserServiceWeakRef();
+    if (!parserService)
+      return nsnull;
+
+    nsIAtom *name = parserService->HTMLIdToAtomTag(aNodeType);
+    NS_ASSERTION(name, "What? Reverse mapping of id to string broken!!!");
+
+    mNodeInfoManager->GetNodeInfo(name, nsnull, kNameSpaceID_None,
+                                  getter_AddRefs(nodeInfo));
   }
 
-  NS_ENSURE_SUCCESS(rv, nsnull);
-
-  // XXX if the parser treated the text in a textarea like a normal
-  // textnode we wouldn't need to do this.
-
-  if (aNodeType == eHTMLTag_textarea) {
-    nsCOMPtr<nsIDTD> dtd;
-    mParser->GetDTD(getter_AddRefs(dtd));
-    NS_ENSURE_TRUE(dtd, nsnull);
-
-    PRInt32 lineNo = 0;
-
-    dtd->CollectSkippedContent(eHTMLTag_textarea, mSkippedContent, lineNo);
-  }
+  NS_ENSURE_TRUE(nodeInfo, nsnull);
 
   // Make the content object
   nsGenericHTMLElement* result = MakeContentObject(aNodeType, nodeInfo, aForm,
                                              !!mInsideNoXXXTag, PR_TRUE).get();
   if (!result) {
     return nsnull;
-  }
-
-  if (aNodeType == eHTMLTag_textarea && !mSkippedContent.IsEmpty()) {
-    // XXX: if the parser treated the text in a textarea like a normal
-    // textnode we wouldn't need to do this.
-
-    // If the text area has some content, set it
-
-    // Strip only one leading newline if there is one (bug 40394)
-    nsString::const_iterator start, end;
-    mSkippedContent.BeginReading(start);
-    mSkippedContent.EndReading(end);
-    if (*start == nsCRT::CR) {
-      ++start;
-
-      if (start != end && *start == nsCRT::LF) {
-        ++start;
-      }
-    } else if (*start == nsCRT::LF) {
-      ++start;
-    }
-
-    nsCOMPtr<nsIDOMHTMLTextAreaElement> ta(do_QueryInterface(result));
-    NS_ASSERTION(ta, "Huh? text area doesn't implement "
-                 "nsIDOMHTMLTextAreaElement?");
-
-    ta->SetDefaultValue(Substring(start, end));
-
-    // Release whatever's in the skipped content string, no point in
-    // holding on to this any longer.
-    mSkippedContent.Truncate();
   }
 
   result->SetContentID(mDocument->GetAndIncrementContentID());
@@ -950,30 +905,17 @@ NS_NewHTMLElement(nsIContent** aResult, nsINodeInfo *aNodeInfo)
 
   nsIAtom *name = aNodeInfo->NameAtom();
 
-  PRInt32 id;
+  nsHTMLTag id;
   nsRefPtr<nsGenericHTMLElement> result;
   if (aNodeInfo->NamespaceEquals(kNameSpaceID_XHTML)) {
     // Find tag in tag table
-    parserService->HTMLCaseSensitiveAtomTagToId(name, &id);
+    id = nsHTMLTag(parserService->HTMLCaseSensitiveAtomTagToId(name));
 
-    // XXX Temporary fix for
-    //     https://bugzilla.mozilla.org/show_bug.cgi?id=285166
-    if (id > NS_HTML_TAG_MAX) {
-        id = eHTMLTag_userdefined;
-    }
-
-    result = MakeContentObject(nsHTMLTag(id), aNodeInfo, nsnull,
-                               PR_FALSE, PR_FALSE);
+    result = MakeContentObject(id, aNodeInfo, nsnull, PR_FALSE, PR_FALSE);
   }
   else {
     // Find tag in tag table
-    parserService->HTMLAtomTagToId(name, &id);
-
-    // XXX Temporary fix for
-    //     https://bugzilla.mozilla.org/show_bug.cgi?id=285166
-    if (id > NS_HTML_TAG_MAX) {
-        id = eHTMLTag_userdefined;
-    }
+    id = nsHTMLTag(parserService->HTMLAtomTagToId(name));
 
     // Reverse map id to name to get the correct character case in
     // the tag name.
@@ -981,16 +923,13 @@ NS_NewHTMLElement(nsIContent** aResult, nsINodeInfo *aNodeInfo)
     nsCOMPtr<nsINodeInfo> kungFuDeathGrip;
     nsINodeInfo *nodeInfo = aNodeInfo;
 
-    if (nsHTMLTag(id) != eHTMLTag_userdefined) {
-      const PRUnichar *tag = nsnull;
-      parserService->HTMLIdToStringTag(id, &tag);
+    if (id != eHTMLTag_userdefined) {
+      nsIAtom *tag = parserService->HTMLIdToAtomTag(id);
       NS_ASSERTION(tag, "What? Reverse mapping of id to string broken!!!");
 
-      if (!name->Equals(nsDependentString(tag))) {
-        nsCOMPtr<nsIAtom> atom = do_GetAtom(tag);
-
+      if (name != tag) {
         nsresult rv =
-          nsContentUtils::NameChanged(aNodeInfo, atom,
+          nsContentUtils::NameChanged(aNodeInfo, tag,
                                       getter_AddRefs(kungFuDeathGrip));
         NS_ENSURE_SUCCESS(rv, rv);
 
@@ -998,8 +937,7 @@ NS_NewHTMLElement(nsIContent** aResult, nsINodeInfo *aNodeInfo)
       }
     }
 
-    result = MakeContentObject(nsHTMLTag(id), nodeInfo, nsnull,
-                               PR_FALSE, PR_FALSE);
+    result = MakeContentObject(id, nodeInfo, nsnull, PR_FALSE, PR_FALSE);
   }
 
   return result ? CallQueryInterface(result.get(), aResult)
@@ -1169,16 +1107,18 @@ SinkContext::DidAddContent(nsIContent* aContent, PRBool aDidNotify)
 
 #ifdef NS_DEBUG
     // Tracing code
-    nsCOMPtr<nsIDTD> dtd;
-    mSink->mParser->GetDTD(getter_AddRefs(dtd));
-    nsHTMLTag tag = nsHTMLTag(mStack[mStackPos - 1].mType);
-    nsDependentString str(dtd->IntTagToStringTag(tag));
+    nsIParserService *parserService =
+      nsContentUtils::GetParserServiceWeakRef();
+    if (parserService) {
+      nsHTMLTag tag = nsHTMLTag(mStack[mStackPos - 1].mType);
+      NS_ConvertUTF16toUTF8 str(parserService->HTMLIdToStringTag(tag));
 
-    SINK_TRACE(SINK_TRACE_REFLOW,
-               ("SinkContext::DidAddContent: Insertion notification for "
-                "parent=%s at position=%d and stackPos=%d",
-                NS_LossyConvertUCS2toASCII(str).get(),
-                mStack[mStackPos - 1].mInsertionPoint - 1, mStackPos - 1));
+      SINK_TRACE(SINK_TRACE_REFLOW,
+                 ("SinkContext::DidAddContent: Insertion notification for "
+                  "parent=%s at position=%d and stackPos=%d",
+                  str.get(), mStack[mStackPos - 1].mInsertionPoint - 1,
+                  mStackPos - 1));
+    }
 #endif
 
     mSink->NotifyInsert(parent, aContent,
@@ -1396,8 +1336,7 @@ SinkContext::CloseContainer(const nsHTMLTag aTag)
 
     break;
   case eHTMLTag_select:
-    // case eHTMLTag_textarea:
-    // textarea is treated as a leaf, not as a container
+  case eHTMLTag_textarea:
   case eHTMLTag_object:
   case eHTMLTag_applet:
     content->DoneAddingChildren();
@@ -1471,12 +1410,7 @@ SinkContext::AddLeaf(const nsIParserNode& aNode)
         content->DoneCreatingElement();
 
         break;
-      case eHTMLTag_textarea:
-        // XXX as long as a textarea is treated as a leaf, not a real container,
-        // we have to do this here, even though it can't have any children
-        content->DoneAddingChildren();
 
-        break;
       default:
         break;
       }
@@ -1754,8 +1688,6 @@ SinkContext::FlushTags(PRBool aNotify)
 void
 SinkContext::UpdateChildCounts()
 {
-  nsGenericHTMLElement* content;
-
   // Start from the top of the stack (growing upwards) and see if any
   // new content has been appended. If so, we recognize that reflows
   // have been generated for it and we should make sure that no
@@ -4148,7 +4080,11 @@ HTMLContentSink::ProcessSCRIPTTag(const nsIParserNode& aNode)
         loader->SetEnabled(PR_FALSE);
       }
     }
-  } else {
+  } else if (parent->GetCurrentDoc() == mDocument) {
+    // We test the current doc of |parent| because if it doesn't have one we
+    // won't actually try to evaluate the script, so we shouldn't be blocking
+    // or appending to mScriptElements or anything.
+    
     // Don't include script loading and evaluation in the stopwatch
     // that is measuring content creation time
     MOZ_TIMER_DEBUGLOG(("Stop: nsHTMLContentSink::ProcessSCRIPTTag()\n"));

@@ -21,6 +21,7 @@
  *
  * Contributor(s):
  *  Allan Beaufour <abeaufour@novell.com>
+ *  Olli Pettay <Olli.Pettay@helsinki.fi>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -37,7 +38,6 @@
  * ***** END LICENSE BLOCK ***** */
 
 #include "nsIModelElementPrivate.h"
-#include "nsXFormsAtoms.h"
 #include "nsXFormsControlStub.h"
 #include "nsXFormsMDGEngine.h"
 
@@ -49,6 +49,9 @@
 #include "nsIXTFXMLVisualWrapper.h"
 #include "nsIDocument.h"
 #include "nsXFormsModelElement.h"
+#include "nsPIDOMWindow.h"
+#include "nsIFocusController.h"
+#include "nsIScriptGlobalObject.h"
 
 /** This class is used to generate xforms-hint and xforms-help events.*/
 class nsXFormsHintHelpListener : public nsIDOMEventListener {
@@ -76,27 +79,27 @@ nsXFormsHintHelpListener::HandleEvent(nsIDOMEvent* aEvent)
       if (code == nsIDOMKeyEvent::DOM_VK_F1)
         nsXFormsUtils::DispatchEvent(targetNode, eEvent_Help);
     } else {
-      nsXFormsUtils::DispatchEvent(targetNode, eEvent_Hint);
+      nsAutoString type;
+      aEvent->GetType(type);
+      nsXFormsUtils::DispatchEvent(targetNode,
+                                   (type.EqualsLiteral("mouseover") ||
+                                    type.EqualsLiteral("focus"))
+                                   ? eEvent_Hint : eEvent_MozHintOff);
     }
   }
 
   return NS_OK;
 }
 
-NS_IMPL_ISUPPORTS_INHERITED2(nsXFormsControlStub,
-                             nsXFormsXMLVisualStub,
-                             nsIXFormsContextControl,
-                             nsIXFormsControl)
-
 NS_IMETHODIMP
-nsXFormsControlStub::GetBoundNode(nsIDOMNode **aBoundNode)
+nsXFormsControlStubBase::GetBoundNode(nsIDOMNode **aBoundNode)
 {
   NS_IF_ADDREF(*aBoundNode = mBoundNode);
   return NS_OK;  
 }
 
 NS_IMETHODIMP
-nsXFormsControlStub::GetDependencies(nsCOMArray<nsIDOMNode> **aDependencies)
+nsXFormsControlStubBase::GetDependencies(nsCOMArray<nsIDOMNode> **aDependencies)
 {
   if (aDependencies)
     *aDependencies = &mDependencies;
@@ -104,14 +107,14 @@ nsXFormsControlStub::GetDependencies(nsCOMArray<nsIDOMNode> **aDependencies)
 }
 
 NS_IMETHODIMP
-nsXFormsControlStub::GetElement(nsIDOMElement **aElement)
+nsXFormsControlStubBase::GetElement(nsIDOMElement **aElement)
 {
   NS_IF_ADDREF(*aElement = mElement);
   return NS_OK;  
 }
 
 void
-nsXFormsControlStub::RemoveIndexListeners()
+nsXFormsControlStubBase::RemoveIndexListeners()
 {
   if (!mIndexesUsed.Count())
     return;
@@ -125,9 +128,9 @@ nsXFormsControlStub::RemoveIndexListeners()
 }
 
 NS_IMETHODIMP
-nsXFormsControlStub::ResetBoundNode(const nsString     &aBindAttribute,
-                                    PRUint16            aResultType,
-                                    nsIDOMXPathResult **aResult)
+nsXFormsControlStubBase::ResetBoundNode(const nsString     &aBindAttribute,
+                                        PRUint16            aResultType,
+                                        nsIDOMXPathResult **aResult)
 {
   // Clear existing bound node, etc.
   mBoundNode = nsnull;
@@ -156,6 +159,19 @@ nsXFormsControlStub::ResetBoundNode(const nsString     &aBindAttribute,
 
   if (mBoundNode && mModel) {
     mModel->SetStates(this, mBoundNode);
+  } else if (mModel) {
+    // we should have been successful.  Must be pointing to a node that
+    // doesn't exist in the instance document.  Disable the control
+    // per 4.2.2 in the spec
+
+    // Set pseudo class
+    ///
+    /// @bug Set via attributes right now. Bug 271720. (XXX)
+    mElement->SetAttribute(NS_LITERAL_STRING("disabled"), 
+                           NS_LITERAL_STRING("1"));
+    mElement->RemoveAttribute(NS_LITERAL_STRING("enabled"));
+    // Dispatch event
+    nsXFormsUtils::DispatchEvent(mElement, eEvent_Disabled);
   }
 
   if (aResult) {
@@ -167,21 +183,21 @@ nsXFormsControlStub::ResetBoundNode(const nsString     &aBindAttribute,
 }
 
 NS_IMETHODIMP
-nsXFormsControlStub::Bind()
+nsXFormsControlStubBase::Bind()
 {
   return ResetBoundNode(NS_LITERAL_STRING("ref"),
                         nsIDOMXPathResult::FIRST_ORDERED_NODE_TYPE);
 }
 
 NS_IMETHODIMP
-nsXFormsControlStub::TryFocus(PRBool* aOK)
+nsXFormsControlStubBase::TryFocus(PRBool* aOK)
 {
   *aOK = PR_FALSE;
   return NS_OK;
 }
   
 NS_IMETHODIMP
-nsXFormsControlStub::IsEventTarget(PRBool *aOK)
+nsXFormsControlStubBase::IsEventTarget(PRBool *aOK)
 {
   *aOK = PR_TRUE;
   return NS_OK;
@@ -189,7 +205,7 @@ nsXFormsControlStub::IsEventTarget(PRBool *aOK)
   
 
 nsresult
-nsXFormsControlStub::ProcessNodeBinding(const nsString          &aBindingAttr,
+nsXFormsControlStubBase::ProcessNodeBinding(const nsString          &aBindingAttr,
                                         PRUint16                 aResultType,
                                         nsIDOMXPathResult      **aResult,
                                         nsIModelElementPrivate **aModel)
@@ -204,13 +220,8 @@ nsXFormsControlStub::ProcessNodeBinding(const nsString          &aBindingAttr,
 
   nsCOMPtr<nsIDOMDocument> domDoc;
   mElement->GetOwnerDocument(getter_AddRefs(domDoc));
-  nsCOMPtr<nsIDocument> doc = do_QueryInterface(domDoc);
-  if (!doc) {
-    return NS_OK;
-  }
-  nsIDocument *test = NS_STATIC_CAST(nsIDocument *,
-                        doc->GetProperty(nsXFormsAtoms::readyForBindProperty));
-  if (!test) {
+
+  if (!nsXFormsUtils::IsDocumentReadyForBind(domDoc)) {
     nsXFormsModelElement::DeferElementBind(domDoc, this);
     return NS_OK;
   }
@@ -255,19 +266,23 @@ nsXFormsControlStub::ProcessNodeBinding(const nsString          &aBindingAttr,
 }
 
 void
-nsXFormsControlStub::ResetHelpAndHint(PRBool aInitialize)
+nsXFormsControlStubBase::ResetHelpAndHint(PRBool aInitialize)
 {
   nsCOMPtr<nsIDOMEventTarget> targ(do_QueryInterface(mElement));
   if (!targ)
     return;
 
   NS_NAMED_LITERAL_STRING(mouseover, "mouseover");
+  NS_NAMED_LITERAL_STRING(mouseout, "mouseout");
   NS_NAMED_LITERAL_STRING(focus, "focus");
+  NS_NAMED_LITERAL_STRING(blur, "blur");
   NS_NAMED_LITERAL_STRING(keypress, "keypress");
 
   if (mEventListener) {
     targ->RemoveEventListener(mouseover, mEventListener, PR_TRUE);
+    targ->RemoveEventListener(mouseout, mEventListener, PR_TRUE);
     targ->RemoveEventListener(focus, mEventListener, PR_TRUE);
+    targ->RemoveEventListener(blur, mEventListener, PR_TRUE);
     targ->RemoveEventListener(keypress, mEventListener, PR_TRUE);
     mEventListener = nsnull;
   }
@@ -278,13 +293,15 @@ nsXFormsControlStub::ResetHelpAndHint(PRBool aInitialize)
       return;
 
     targ->AddEventListener(mouseover, mEventListener, PR_TRUE);
+    targ->AddEventListener(mouseout, mEventListener, PR_TRUE);
     targ->AddEventListener(focus, mEventListener, PR_TRUE);
+    targ->AddEventListener(blur, mEventListener, PR_TRUE);
     targ->AddEventListener(keypress, mEventListener, PR_TRUE);
   }
 }
 
 PRBool
-nsXFormsControlStub::GetReadOnlyState()
+nsXFormsControlStubBase::GetReadOnlyState()
 {
   PRBool res = PR_FALSE;
   if (mElement) {
@@ -294,7 +311,7 @@ nsXFormsControlStub::GetReadOnlyState()
 }
 
 PRBool
-nsXFormsControlStub::GetRelevantState()
+nsXFormsControlStubBase::GetRelevantState()
 {
   PRBool res = PR_FALSE;
   if (mElement) {
@@ -303,9 +320,9 @@ nsXFormsControlStub::GetRelevantState()
   return res;
 }
 
-NS_IMETHODIMP
-nsXFormsControlStub::HandleDefault(nsIDOMEvent *aEvent,
-                                   PRBool      *aHandled)
+nsresult
+nsXFormsControlStubBase::HandleDefault(nsIDOMEvent *aEvent,
+                                       PRBool      *aHandled)
 {
   NS_ENSURE_ARG(aHandled);
   *aHandled = PR_FALSE;
@@ -326,27 +343,127 @@ nsXFormsControlStub::HandleDefault(nsIDOMEvent *aEvent,
 
     if (type.EqualsASCII(sXFormsEventsEntries[eEvent_Focus].name)) {
       TryFocus(aHandled);
+    } else if (type.Equals(NS_LITERAL_STRING("keypress"))) { 
+      nsCOMPtr<nsIDOMKeyEvent> keyEvent = do_QueryInterface(aEvent);
+      if (keyEvent) {
+        PRUint32 keycode;
+        keyEvent->GetKeyCode(&keycode);
+        if (keycode == nsIDOMKeyEvent::DOM_VK_TAB) {
+          PRBool extraKey = PR_FALSE;
+
+          keyEvent->GetAltKey(&extraKey);
+          if (extraKey) {
+            return NS_OK;
+          }
+
+          keyEvent->GetCtrlKey(&extraKey);
+          if (extraKey) {
+            return NS_OK;
+          }
+
+          keyEvent->GetMetaKey(&extraKey);
+          if (extraKey) {
+            return NS_OK;
+          }
+
+          keyEvent->GetShiftKey(&extraKey);
+          mPreventLoop = PR_TRUE;
+          if (extraKey) {
+            nsXFormsUtils::DispatchEvent(mElement, eEvent_Previous);
+          } else {
+            nsXFormsUtils::DispatchEvent(mElement, eEvent_Next);
+          }
+        }
+      }
+    } else if (type.EqualsASCII(sXFormsEventsEntries[eEvent_Next].name) ||     
+               type.EqualsASCII(sXFormsEventsEntries[eEvent_Previous].name)) { 
+
+      // only continue this processing if xforms-next or xforms-previous were
+      // dispatched by the form and not as part of the 'tab' and 'shift+tab'
+      // processing
+      if (mPreventLoop) {
+        mPreventLoop = PR_FALSE;
+        return NS_OK;
+      }
+
+      nsCOMPtr<nsIDOMDocument> domDoc;
+      mElement->GetOwnerDocument(getter_AddRefs(domDoc));
+
+      nsCOMPtr<nsIDocument> doc = do_QueryInterface(domDoc);
+      // element isn't in a document, yet?  Odd, indeed.  Well, if not in
+      // document, these two events have no meaning.
+      NS_ENSURE_TRUE(doc, NS_ERROR_UNEXPECTED);
+      nsCOMPtr<nsPIDOMWindow> win = 
+                               do_QueryInterface(doc->GetScriptGlobalObject()); 
+                                               
+    
+      // An inelegant way to retrieve this to be sure, but we are
+      // guaranteed that the focus controller outlives us, so it
+      // is safe to hold on to it (since we can't die until it has
+      // died).
+      nsIFocusController *focusController = win->GetRootFocusController();
+      if (focusController &&
+          type.EqualsASCII(sXFormsEventsEntries[eEvent_Next].name)) {
+        focusController->MoveFocus(PR_TRUE, nsnull);
+      } else {
+        focusController->MoveFocus(PR_FALSE, nsnull);
+      }
     }
   }
   
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsXFormsControlStub::OnCreated(nsIXTFXMLVisualWrapper *aWrapper)
+#ifdef DEBUG_smaug
+static nsVoidArray* sControlList = nsnull;
+class ControlDebug
+{
+public:
+  ControlDebug() {
+    sControlList = new nsVoidArray();
+    NS_ASSERTION(sControlList, "Out of memory!");
+  }
+
+  ~ControlDebug() {
+    for (PRInt32 i = 0; i < sControlList->Count(); ++i) {
+      nsXFormsControlStubBase* control =
+        NS_STATIC_CAST(nsXFormsControlStubBase*, sControlList->ElementAt(i));
+      if (control) {
+        printf("Possible leak, <xforms:%s>\n", control->Name());
+      }
+    }
+    delete sControlList;
+    sControlList = nsnull;
+  }
+};
+
+static ControlDebug tester = ControlDebug();
+#endif
+
+nsresult
+nsXFormsControlStubBase::Create(nsIXTFElementWrapper *aWrapper)
 {
   aWrapper->SetNotificationMask(kStandardNotificationMask);
 
-  aWrapper->GetElementNode(getter_AddRefs(mElement));
+  // It's ok to keep a weak pointer to mElement.  mElement will have an
+  // owning reference to this object, so as long as we null out mElement in
+  // OnDestroyed, it will always be valid.
+  nsCOMPtr<nsIDOMElement> node;
+  aWrapper->GetElementNode(getter_AddRefs(node));
+  mElement = node;
   NS_ASSERTION(mElement, "Wrapper is not an nsIDOMElement, we'll crash soon");
 
   ResetHelpAndHint(PR_TRUE);
 
+#ifdef DEBUG_smaug
+  sControlList->AppendElement(this);
+#endif
+
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsXFormsControlStub::OnDestroyed()
+nsresult
+nsXFormsControlStubBase::OnDestroyed()
 {
   ResetHelpAndHint(PR_FALSE);
   RemoveIndexListeners();
@@ -355,13 +472,17 @@ nsXFormsControlStub::OnDestroyed()
     mModel->RemoveFormControl(this);
     mModel = nsnull;
   }
-  mElement = nsnull;
 
+#ifdef DEBUG_smaug
+  sControlList->RemoveElement(this);
+#endif
+
+  mElement = nsnull;
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsXFormsControlStub::DocumentChanged(nsIDOMDocument *aNewDocument)
+nsresult
+nsXFormsControlStubBase::DocumentChanged(nsIDOMDocument *aNewDocument)
 {
   // We need to re-evaluate our instance data binding when our document
   // changes, since our context can change
@@ -373,8 +494,8 @@ nsXFormsControlStub::DocumentChanged(nsIDOMDocument *aNewDocument)
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsXFormsControlStub::ParentChanged(nsIDOMElement *aNewParent)
+nsresult
+nsXFormsControlStubBase::ParentChanged(nsIDOMElement *aNewParent)
 {
   mHasParent = aNewParent != nsnull;
   // We need to re-evaluate our instance data binding when our parent changes,
@@ -387,29 +508,29 @@ nsXFormsControlStub::ParentChanged(nsIDOMElement *aNewParent)
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsXFormsControlStub::WillSetAttribute(nsIAtom *aName, const nsAString &aValue)
+nsresult
+nsXFormsControlStubBase::WillSetAttribute(nsIAtom *aName, const nsAString &aValue)
 {
   MaybeRemoveFromModel(aName, aValue);
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsXFormsControlStub::AttributeSet(nsIAtom *aName, const nsAString &aValue)
+nsresult
+nsXFormsControlStubBase::AttributeSet(nsIAtom *aName, const nsAString &aValue)
 {
   MaybeBindAndRefresh(aName);
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsXFormsControlStub::WillRemoveAttribute(nsIAtom *aName)
+nsresult
+nsXFormsControlStubBase::WillRemoveAttribute(nsIAtom *aName)
 {
   MaybeRemoveFromModel(aName, EmptyString());
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsXFormsControlStub::AttributeRemoved(nsIAtom *aName)
+nsresult
+nsXFormsControlStubBase::AttributeRemoved(nsIAtom *aName)
 {
   MaybeBindAndRefresh(aName);
   return NS_OK;
@@ -418,16 +539,18 @@ nsXFormsControlStub::AttributeRemoved(nsIAtom *aName)
 // nsIXFormsContextControl
 
 NS_IMETHODIMP
-nsXFormsControlStub::SetContextNode(nsIDOMNode *aContextNode)
+nsXFormsControlStubBase::SetContext(nsIDOMNode *aContextNode,
+                                    PRInt32     aContextPosition,
+                                    PRInt32     aContextSize)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP
-nsXFormsControlStub::GetContext(nsAString      &aModelID,
-                                nsIDOMNode    **aContextNode,
-                                PRInt32        *aContextPosition,
-                                PRInt32        *aContextSize)
+nsXFormsControlStubBase::GetContext(nsAString      &aModelID,
+                                    nsIDOMNode    **aContextNode,
+                                    PRInt32        *aContextPosition,
+                                    PRInt32        *aContextSize)
 {
   NS_ENSURE_ARG(aContextSize);
   NS_ENSURE_ARG(aContextPosition);
@@ -451,7 +574,7 @@ nsXFormsControlStub::GetContext(nsAString      &aModelID,
 }
 
 void
-nsXFormsControlStub::ResetProperties()
+nsXFormsControlStubBase::ResetProperties()
 {
   if (!mElement) {
     return;
@@ -465,7 +588,7 @@ nsXFormsControlStub::ResetProperties()
 }
 
 void
-nsXFormsControlStub::AddRemoveSNBAttr(nsIAtom *aName, const nsAString &aValue) 
+nsXFormsControlStubBase::AddRemoveSNBAttr(nsIAtom *aName, const nsAString &aValue) 
 {
   nsAutoString attrStr, attrValue;
   aName->ToString(attrStr);
@@ -487,7 +610,7 @@ nsXFormsControlStub::AddRemoveSNBAttr(nsIAtom *aName, const nsAString &aValue)
 }
 
 void
-nsXFormsControlStub::MaybeBindAndRefresh(nsIAtom *aName)
+nsXFormsControlStubBase::MaybeBindAndRefresh(nsIAtom *aName)
 {
   if (aName == nsXFormsAtoms::bind ||
       aName == nsXFormsAtoms::ref  ||
@@ -500,8 +623,8 @@ nsXFormsControlStub::MaybeBindAndRefresh(nsIAtom *aName)
 }
 
 void
-nsXFormsControlStub::MaybeRemoveFromModel(nsIAtom         *aName, 
-                                          const nsAString &aValue)
+nsXFormsControlStubBase::MaybeRemoveFromModel(nsIAtom         *aName, 
+                                              const nsAString &aValue)
 {
   if (aName == nsXFormsAtoms::model ||
       aName == nsXFormsAtoms::bind ||
@@ -514,3 +637,16 @@ nsXFormsControlStub::MaybeRemoveFromModel(nsIAtom         *aName,
     }
   }
 }
+
+NS_IMPL_ISUPPORTS_INHERITED3(nsXFormsControlStub,
+                             nsXFormsXMLVisualStub,
+                             nsIXFormsContextControl,
+                             nsIXFormsControl,
+                             nsIXFormsControlBase)
+
+
+NS_IMPL_ISUPPORTS_INHERITED2(nsXFormsBindableControlStub,
+                             nsXFormsBindableStub,
+                             nsIXFormsContextControl,
+                             nsIXFormsControl)
+

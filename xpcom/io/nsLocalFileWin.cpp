@@ -1904,7 +1904,7 @@ nsLocalFile::GetParent(nsIFile * *aParent)
       return NS_ERROR_FILE_UNRECOGNIZED_PATH;
 
     if (offset == 1 && parentPath[0] == '\\') {
-        aParent = nsnull;
+        *aParent = nsnull;
         return NS_OK;
     }
     if (offset > 0)
@@ -2160,7 +2160,8 @@ nsLocalFile::Equals(nsIFile *inFile, PRBool *_retval)
     nsCAutoString inFilePath;
     inFile->GetNativePath(inFilePath);
 
-    *_retval = inFilePath.Equals(mWorkingPath);
+    *_retval = (_mbsicmp((unsigned char*) inFilePath.get(),
+                         (unsigned char*) mWorkingPath.get()) == 0);
     return NS_OK;
 }
 

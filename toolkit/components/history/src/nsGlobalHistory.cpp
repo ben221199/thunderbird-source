@@ -1331,9 +1331,7 @@ nsGlobalHistory::IsVisited(nsIURI* aURI, PRBool *_retval)
   rv = aURI->GetSpec(URISpec);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsCOMPtr<nsIMdbRow> row;
-  rv = FindRow(kToken_URLColumn, URISpec.get(), getter_AddRefs(row));
-
+  rv = FindRow(kToken_URLColumn, URISpec.get(), nsnull);
   *_retval = NS_SUCCEEDED(rv);
 
   return NS_OK;
@@ -3070,23 +3068,27 @@ nsGlobalHistory::FindRow(mdb_column aCol,
 
   mdbOid rowId;
   nsCOMPtr<nsIMdbRow> row;
-  err = mStore->FindRow(mEnv, kToken_HistoryRowScope,
-                        aCol, &yarn,
-                        &rowId, getter_AddRefs(row));
+  if (aResult) {
+    err = mStore->FindRow(mEnv, kToken_HistoryRowScope,
+                          aCol, &yarn, &rowId, getter_AddRefs(row));
 
+    if (!row) return NS_ERROR_NOT_AVAILABLE;
+  } else {
+    err = mStore->FindRow(mEnv, kToken_HistoryRowScope,
+                          aCol, &yarn, &rowId, nsnull);
+  }
 
-  if (!row) return NS_ERROR_NOT_AVAILABLE;
-  
-  
   // make sure it's actually stored in the main table
   mdb_bool hasRow;
-  mTable->HasRow(mEnv, row, &hasRow);
+  mTable->HasOid(mEnv, &rowId, &hasRow);
 
   if (!hasRow) return NS_ERROR_NOT_AVAILABLE;
   
-  *aResult = row;
-  (*aResult)->AddRef();
-  
+  if (aResult) {
+    *aResult = row;
+    (*aResult)->AddRef();
+  }
+
   return NS_OK;
 }
 
@@ -3099,9 +3101,7 @@ nsGlobalHistory::IsURLInHistory(nsIRDFResource* aResource)
   rv = aResource->GetValueConst(&url);
   if (NS_FAILED(rv)) return PR_FALSE;
 
-  nsCOMPtr<nsIMdbRow> row;
-  rv = FindRow(kToken_URLColumn, url, getter_AddRefs(row));
-
+  rv = FindRow(kToken_URLColumn, url, nsnull);
   return (NS_SUCCEEDED(rv)) ? PR_TRUE : PR_FALSE;
 }
 
@@ -4176,9 +4176,9 @@ nsGlobalHistory::StartSearch(const nsAString &aSearchString,
 
   NS_ENSURE_SUCCESS(OpenDB(), NS_ERROR_FAILURE);
   
-  nsIAutoCompleteMdbResult *result = nsnull;
+  nsCOMPtr<nsIAutoCompleteMdbResult> result;
   if (aSearchString.IsEmpty()) {
-    AutoCompleteTypedSearch(&result);
+    AutoCompleteTypedSearch(getter_AddRefs(result));
   } else {
     // if the search string is empty after it has had prefixes removed, then 
     // we need to ignore the previous result set
@@ -4194,7 +4194,10 @@ nsGlobalHistory::StartSearch(const nsAString &aSearchString,
     AutoCompleteGetExcludeInfo(filtered, &exclude);
     
     // perform the actual search here
-    nsresult rv = AutoCompleteSearch(filtered, &exclude, NS_STATIC_CAST(nsIAutoCompleteMdbResult *, aPreviousResult), &result);
+    nsresult rv = AutoCompleteSearch(filtered, &exclude,
+                                     NS_STATIC_CAST(nsIAutoCompleteMdbResult *,
+                                                    aPreviousResult),
+                                     getter_AddRefs(result));
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -4289,7 +4292,7 @@ nsGlobalHistory::AutoCompleteSearch(const nsAString &aSearchString,
         aPrevResult->RemoveValueAt(i, PR_FALSE);
     }
     
-    *aResult = aPrevResult;
+    NS_ADDREF(*aResult = aPrevResult);
   } else {
     // Search through the entire history
         

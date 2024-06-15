@@ -160,28 +160,10 @@ FeedItem.prototype =
   {
     this.mUnicodeConverter.charset = this.characterSet;
 
-    try 
-    {
-      if (this.title)
-        this.title = this.mUnicodeConverter.ConvertToUnicode(this.title);
-    } catch (ex) {}
-
-    try 
-    {
-      if (this.description)
-        this.description =  this.mUnicodeConverter.ConvertToUnicode(this.description);
-    } catch (ex) {}
-
     if (this.isStored()) 
       debug(this.identity + " already stored; ignoring");
     else if (this.content) 
     {
-      try 
-      {
-        this.content = this.mUnicodeConverter.ConvertToUnicode(this.content);
-      } 
-      catch (ex) {}
-
       debug(this.identity + " has content; storing");
       var content = MESSAGE_TEMPLATE;
       content = content.replace(/%CONTENT_TEMPLATE%/, LOCAL_CONTENT_TEMPLATE);
@@ -291,24 +273,6 @@ FeedItem.prototype =
     }
     else 
       ds.Assert(resource, FZ_VALID, RDF_LITERAL_TRUE, true);
-  },
-
-  markStored: function() 
-  {
-    var ds = getItemsDS(this.feed.server);
-    var resource = rdf.GetResource(this.mURL || ("urn:" + this.id));
-   
-    if (!ds.HasAssertion(resource, FZ_FEED, rdf.GetResource(this.feed.url), true))
-      ds.Assert(resource, FZ_FEED, rdf.GetResource(this.feed.url), true);
-    
-    var currentValue;
-    if (ds.hasArcOut(resource, FZ_STORED)) 
-    {
-      currentValue = ds.GetTarget(resource, FZ_STORED, true);
-      ds.Change(resource, FZ_STORED, currentValue, RDF_LITERAL_TRUE);
-    }
-    else 
-      ds.Assert(resource, FZ_STORED, RDF_LITERAL_TRUE, true);
   },
 
   markStored: function() 

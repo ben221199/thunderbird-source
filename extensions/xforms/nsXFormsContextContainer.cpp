@@ -78,7 +78,16 @@ protected:
   /** The HTML representation for the node */
   nsCOMPtr<nsIDOMElement> mHTMLElement;
 
+  /** The context position for the element */
+  PRInt32 mContextPosition;
+
+  /** The context size for the element */
+  PRInt32 mContextSize;
+
 public:
+  nsXFormsContextContainer()
+    : mContextPosition(1), mContextSize(1) {}
+
   NS_DECL_ISUPPORTS_INHERITED
 
   // nsIXTFXMLVisual overrides
@@ -96,11 +105,25 @@ public:
   // nsIXFormsControl
   NS_IMETHOD Bind();
   NS_IMETHOD Refresh();
-  NS_IMETHOD SetContextNode(nsIDOMNode *aContextNode);
+  NS_IMETHOD SetContext(nsIDOMNode *aContextNode,
+                        PRInt32     aContextPosition,
+                        PRInt32     aContextSize);
+  NS_IMETHOD GetContext(nsAString   &aModelID,
+                        nsIDOMNode **aContextNode,
+                        PRInt32     *aContextPosition,
+                        PRInt32     *aContextSize);
   NS_IMETHOD IsEventTarget(PRBool *aOK);
 
   // nsIXFormsRepeatItemElement
   NS_DECL_NSIXFORMSREPEATITEMELEMENT
+
+#ifdef DEBUG_smaug
+  virtual const char* Name() {
+    return mIsBlock ? "contextcontainer" : "contextcontainer-inline";
+  }
+
+  PRBool mIsBlock;
+#endif
 };
 
 NS_IMPL_ISUPPORTS_INHERITED1(nsXFormsContextContainer,
@@ -129,6 +152,10 @@ nsXFormsContextContainer::OnCreated(nsIXTFXMLVisualWrapper *aWrapper)
   nsAutoString localName;
   mElement->GetLocalName(localName);
   isBlock = localName.EqualsLiteral("contextcontainer");
+
+#ifdef DEBUG_smaug
+  mIsBlock = isBlock;
+#endif
 
   // Create UI element
   rv = domDoc->CreateElementNS(NS_LITERAL_STRING("http://www.w3.org/1999/xhtml"),
@@ -203,16 +230,9 @@ nsXFormsContextContainer::HandleDefault(nsIDOMEvent *aEvent,
     // Not a child to a \<repeat\>
     return NS_OK;
 
-  // Find our context position
-  nsAutoString posString;
-  mElement->GetAttribute(NS_LITERAL_STRING("contextposition"), posString);
-  NS_ASSERTION(!posString.IsEmpty(), "@contextposition n/a or empty on repeat child?");
-  PRInt32 errCode;
-  PRUint32 pos = posString.ToInteger(&errCode);
-  NS_ASSERTION(!errCode, "@contextposition != integer on repeat child?");
-
   // Tell \<repeat\> about the new index position
-  return repeat->SetIndex(&pos, PR_FALSE);
+  PRUint32 tmp = mContextPosition;
+  return repeat->SetIndex(&tmp, PR_FALSE);
 }
 
 NS_IMETHODIMP
@@ -242,9 +262,13 @@ nsXFormsContextContainer::CloneState(nsIDOMElement *aElement)
 // nsIXFormsContextControl
 
 NS_IMETHODIMP
-nsXFormsContextContainer::SetContextNode(nsIDOMNode *aContextNode)
+nsXFormsContextContainer::SetContext(nsIDOMNode *aContextNode,
+                                     PRInt32     aContextPosition,
+                                     PRInt32     aContextSize)
 {
   mBoundNode = aContextNode;
+  mContextPosition = aContextPosition;
+  mContextSize = aContextSize;
 
   // Remove from old model (if any)
   if (mModel) {
@@ -257,6 +281,24 @@ nsXFormsContextContainer::SetContextNode(nsIDOMNode *aContextNode)
     mModel->AddFormControl(this);
     mModel->SetStates(this, mBoundNode);
   }
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsXFormsContextContainer::GetContext(nsAString      &aModelID,
+                                     nsIDOMNode    **aContextNode,
+                                     PRInt32        *aContextPosition,
+                                     PRInt32        *aContextSize)
+{
+  nsresult rv = nsXFormsControlStub::GetContext(aModelID,
+                                                aContextNode,
+                                                aContextPosition,
+                                                aContextSize);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  *aContextPosition = mContextPosition;
+  *aContextSize = mContextSize;
 
   return NS_OK;
 }

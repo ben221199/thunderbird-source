@@ -335,7 +335,7 @@ function net_doconnect(e)
         catch(ex)
         {
             this.state = NET_OFFLINE;
-    
+
             ev = new CEvent ("network", "error", this, "onError");
             ev.server = this;
             ev.debug = "Exception opening socket: " + ex;
@@ -1330,10 +1330,13 @@ function serv_001 (e)
                           c: ['l'],
                           d: ['i', 'm', 'n', 'p', 's', 't']
                         };
+    // Default to support of v/+ and o/@ only.
     this.userModes = [
                        { mode: 'o', symbol: '@' },
                        { mode: 'v', symbol: '+' }
                      ];
+    // Assume the server supports no extra interesting commands.
+    this.servCmds = {};
 
     if (this.parent.INITIAL_UMODE)
     {
@@ -1357,6 +1360,7 @@ function serv_001 (e)
 CIRCServer.prototype.on005 =
 function serv_005 (e)
 {
+    var oldCaseMapping = this.supports["casemapping"];
     /* Drop params 0 and 1. */
     for (var i = 2; i < e.params.length; i++) {
         var itemStr = e.params[i];
@@ -1385,6 +1389,30 @@ function serv_005 (e)
         {
             // Boolean-type items stored as 'true'.
             this.supports[name] = !(("1" in item) && item[1] == "-");
+        }
+    }
+    // Update all users and channels if the casemapping changed.
+    if (this.supports["casemapping"] != oldCaseMapping)
+    {
+        var newName, encodedName;
+        for (var user in this.users)
+        {
+            newName = this.toLowerCase(this.users[user].encodedName);
+            renameProperty(this.users, user, newName);
+            this.users[newName].canonicalName = newName;
+        }
+        for (var channel in this.channels)
+        {
+            newName = this.toLowerCase(this.channels[channel].encodedName);
+            renameProperty(this.channels, this.channels[channel].canonicalName,
+                           newName);
+            this.channels[channel].canonicalName = newName;
+            for (user in this.channels[channel].users)
+            {
+                encodedName = this.channels[channel].users[user].encodedName;
+                newName = this.toLowerCase(encodedName);
+                renameProperty(this.channels[channel].users, user, newName);
+            }
         }
     }
 
@@ -1434,6 +1462,14 @@ function serv_005 (e)
                                            d: cmlist[3].split('')
                                          };
         }
+    }
+
+    if ("cmds" in this.supports)
+    {
+        // Map this.supports.cmds [comma-list] into this.servCmds [props].
+        var cmdlist = this.supports.cmds.split(/,/);
+        for (var i = 0; i < cmdlist.length; i++)
+            this.servCmds[cmdlist[i].toLowerCase()] = true;
     }
 
     this.supports.rpl_isupport = true;
@@ -2978,6 +3014,15 @@ function usr_hostmask (pfx)
     return (pfx + this.host.substr(idx + 1, this.host.length));
 }
 
+CIRCUser.prototype.getBanMask =
+function usr_banmask()
+{
+    var hostmask = this.host;
+    if (!/^\d+\.\d+\.\d+\.\d+$/.test(hostmask))
+        hostmask = hostmask.replace(/^[^.]+/, "*");
+    return "*!" + this.name + "@" + hostmask;
+}
+
 CIRCUser.prototype.say =
 function usr_say (msg)
 {
@@ -3009,7 +3054,7 @@ function usr_ctcp (code, msg, type)
 CIRCUser.prototype.whois =
 function usr_whois ()
 {
-    this.parent.whois(this.encodedName);
+    this.parent.whois(this.unicodeName);
 }
 
 /*
@@ -3166,7 +3211,7 @@ function cusr_setban (f)
         return false;
 
     var modifier = (f) ? " +b " : " -b ";
-    modifier += this.getHostMask() + " ";
+    modifier += this.getBanMask() + " ";
 
     server.sendData("MODE " + this.parent.encodedName + modifier + "\n");
 
@@ -3182,7 +3227,7 @@ function cusr_kban (reason)
         return false;
 
     reason = (typeof reason != "undefined") ? reason : this.encodedName;
-    var modifier = " -o+b " + this.encodedName + " " + this.getHostMask() + " ";
+    var modifier = " -o+b " + this.encodedName + " " + this.getBanMask() + " ";
 
     server.sendData("MODE " + this.parent.encodedName + modifier + "\n" +
                     "KICK " + this.parent.encodedName + " " +

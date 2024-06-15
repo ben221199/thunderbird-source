@@ -79,6 +79,7 @@
 
 #define NS_APP_CHROME_DIR_LIST                  "AChromDL"
 #define NS_APP_PLUGINS_DIR_LIST                 "APluginsDL"
+#define NS_APP_SEARCH_DIR_LIST                  "SrchPluginsDL"
 
 // --------------------------------------------------------------------------------------
 // Files and directories which exist on a per-profile basis
@@ -100,6 +101,7 @@
 #define NS_APP_USER_PROFILE_LOCAL_50_DIR        "ProfLD"
         
 #define NS_APP_USER_CHROME_DIR                  "UChrm"
+#define NS_APP_USER_SEARCH_DIR                  "UsrSrchPlugns"
          
 #define NS_APP_LOCALSTORE_50_FILE               "LclSt"
 #define NS_APP_HISTORY_50_FILE                  "UHist"

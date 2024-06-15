@@ -118,9 +118,6 @@ static struct {
 const char js_AnyName_str[]       = "AnyName";
 const char js_AttributeName_str[] = "AttributeName";
 const char js_isXMLName_str[]     = "isXMLName";
-const char js_Namespace_str[]     = "Namespace";
-const char js_QName_str[]         = "QName";
-const char js_XML_str[]           = "XML";
 const char js_XMLList_str[]       = "XMLList";
 const char js_localName_str[]     = "localName";
 const char js_xml_parent_str[]    = "parent";
@@ -180,7 +177,7 @@ static void
 namespace_finalize(JSContext *cx, JSObject *obj)
 {
     JSXMLNamespace *ns;
-    JSAtom *functionAtom;
+    JSRuntime *rt;
 
     ns = (JSXMLNamespace *) JS_GetPrivate(cx, obj);
     if (!ns)
@@ -189,10 +186,9 @@ namespace_finalize(JSContext *cx, JSObject *obj)
     ns->object = NULL;
     UNMETER(xml_stats.livenamespaceobj);
 
-    functionAtom = cx->runtime->atomState.lazy.functionNamespaceAtom;
-    if (functionAtom && JSVAL_TO_OBJECT(ATOM_KEY(functionAtom)) == obj) {
-        cx->runtime->atomState.lazy.functionNamespaceAtom = NULL;
-    }
+    rt = cx->runtime;
+    if (rt->functionNamespaceObject == obj)
+        rt->functionNamespaceObject = NULL;
 }
 
 static void
@@ -401,9 +397,13 @@ qname_finalize(JSContext *cx, JSObject *obj)
 static void
 anyname_finalize(JSContext* cx, JSObject* obj)
 {
-    /* Make sure the next call to js_GetAnyName doesn't try to use
-       this object */
-    cx->runtime->atomState.lazy.anynameAtom = NULL;
+    JSRuntime *rt;
+
+    /* Make sure the next call to js_GetAnyName doesn't try to use obj. */
+    rt = cx->runtime;
+    if (rt->anynameObject == obj)
+        rt->anynameObject = NULL;
+
     qname_finalize(cx, obj);
 }
 
@@ -7347,17 +7347,21 @@ js_InitNamespaceClass(JSContext *cx, JSObject *obj)
 JSObject *
 js_InitQNameClass(JSContext *cx, JSObject *obj)
 {
-    if (!JS_InitClass(cx, obj, NULL, &js_AttributeNameClass, AttributeName, 2,
-                      qname_props, qname_methods, NULL, NULL)) {
-        return NULL;
-    }
-
-    if (!JS_InitClass(cx, obj, NULL, &js_AnyNameClass, AnyName, 0,
-                      qname_props, qname_methods, NULL, NULL)) {
-        return NULL;
-    }
-
     return JS_InitClass(cx, obj, NULL, &js_QNameClass.base, QName, 2,
+                        qname_props, qname_methods, NULL, NULL);
+}
+
+JSObject *
+js_InitAttributeNameClass(JSContext *cx, JSObject *obj)
+{
+    return JS_InitClass(cx, obj, NULL, &js_AttributeNameClass, AttributeName, 2,
+                        qname_props, qname_methods, NULL, NULL);
+}
+
+JSObject *
+js_InitAnyNameClass(JSContext *cx, JSObject *obj)
+{
+    return JS_InitClass(cx, obj, NULL, &js_AnyNameClass, AnyName, 0,
                         qname_props, qname_methods, NULL, NULL);
 }
 
@@ -7444,7 +7448,13 @@ js_InitXMLClass(JSContext *cx, JSObject *obj)
 JSObject *
 js_InitXMLClasses(JSContext *cx, JSObject *obj)
 {
-    if (!js_InitNamespaceClass(cx, obj) || !js_InitQNameClass(cx, obj))
+    if (!js_InitNamespaceClass(cx, obj))
+        return NULL;
+    if (!js_InitQNameClass(cx, obj))
+        return NULL;
+    if (!js_InitAttributeNameClass(cx, obj))
+        return NULL;
+    if (!js_InitAnyNameClass(cx, obj))
         return NULL;
     return js_InitXMLClass(cx, obj);
 }
@@ -7453,16 +7463,16 @@ JSBool
 js_GetFunctionNamespace(JSContext *cx, jsval *vp)
 {
     JSRuntime *rt;
+    JSObject *obj;
     JSAtom *atom;
     JSString *prefix, *uri;
-    JSObject *obj;
 
     /* An invalid URI, for internal use only, guaranteed not to collide. */
     static const char anti_uri[] = "@mozilla.org/js/function";
 
     rt = cx->runtime;
-    atom = rt->atomState.lazy.functionNamespaceAtom;
-    if (!atom) {
+    obj = rt->functionNamespaceObject;
+    if (!obj) {
         atom = js_Atomize(cx, js_function_str, 8, 0);
         JS_ASSERT(atom);
         prefix = ATOM_TO_STRING(atom);
@@ -7477,12 +7487,9 @@ js_GetFunctionNamespace(JSContext *cx, jsval *vp)
         if (!obj)
             return JS_FALSE;
 
-        atom = js_AtomizeObject(cx, obj, 0);
-        if (!atom)
-            return JS_FALSE;
-        rt->atomState.lazy.functionNamespaceAtom = atom;
+        rt->functionNamespaceObject = obj;
     }
-    *vp = ATOM_KEY(atom);
+    *vp = OBJECT_TO_JSVAL(obj);
     return JS_TRUE;
 }
 
@@ -7531,8 +7538,12 @@ js_GetDefaultXMLNamespace(JSContext *cx, jsval *vp)
     if (!nsobj)
         return JS_FALSE;
     v = OBJECT_TO_JSVAL(nsobj);
-    if (obj && !OBJ_SET_PROPERTY(cx, obj, JS_DEFAULT_XML_NAMESPACE_ID, &v))
+    if (obj &&
+        !OBJ_DEFINE_PROPERTY(cx, obj, JS_DEFAULT_XML_NAMESPACE_ID, v,
+                             JS_PropertyStub, JS_PropertyStub,
+                             JSPROP_PERMANENT, NULL)) {
         return JS_FALSE;
+    }
     fp->xmlNamespace = nsobj;
     *vp = v;
     return JS_TRUE;
@@ -7556,8 +7567,11 @@ js_SetDefaultXMLNamespace(JSContext *cx, jsval v)
     fp = cx->fp;
     varobj = fp->varobj;
     if (varobj) {
-        if (!OBJ_SET_PROPERTY(cx, varobj, JS_DEFAULT_XML_NAMESPACE_ID, &v))
+        if (!OBJ_DEFINE_PROPERTY(cx, varobj, JS_DEFAULT_XML_NAMESPACE_ID, v,
+                                 JS_PropertyStub, JS_PropertyStub,
+                                 JSPROP_PERMANENT, NULL)) {
             return JS_FALSE;
+        }
     } else {
         JS_ASSERT(fp->fun && !(fp->fun->flags & JSFUN_HEAVYWEIGHT));
     }
@@ -7644,13 +7658,12 @@ JSBool
 js_GetAnyName(JSContext *cx, jsval *vp)
 {
     JSRuntime *rt;
-    JSAtom *atom;
-    JSXMLQName *qn;
     JSObject *obj;
+    JSXMLQName *qn;
 
     rt = cx->runtime;
-    atom = rt->atomState.lazy.anynameAtom;
-    if (!atom) {
+    obj = rt->anynameObject;
+    if (!obj) {
         qn = js_NewXMLQName(cx, rt->emptyString, rt->emptyString,
                             ATOM_TO_STRING(rt->atomState.starAtom));
         if (!qn)
@@ -7665,12 +7678,9 @@ js_GetAnyName(JSContext *cx, jsval *vp)
         METER(xml_stats.qnameobj);
         METER(xml_stats.liveqnameobj);
 
-        atom = js_AtomizeObject(cx, obj, 0);
-        if (!atom)
-            return JS_FALSE;
-        rt->atomState.lazy.anynameAtom = atom;
+        rt->anynameObject = obj;
     }
-    *vp = ATOM_KEY(atom);
+    *vp = OBJECT_TO_JSVAL(obj);
     return JS_TRUE;
 }
 

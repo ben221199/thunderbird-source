@@ -212,6 +212,23 @@ MOZCE_SHUNT_API DWORD mozce_GetFileAttributesA(LPCSTR lpFileName)
     return retval;
 }
 
+MOZCE_SHUNT_API HANDLE mozce_CreateMutexA(LPSECURITY_ATTRIBUTES lpMutexAttributes, BOOL bInitialOwner, LPCSTR lpName)
+{
+    MOZCE_PRECHECK
+
+#ifdef DEBUG
+    mozce_printf("mozce_CreateMutexA called\n");
+#endif
+    
+    if (!lpName)
+        return CreateMutexW(lpMutexAttributes, bInitialOwner, NULL);
+    
+    LPTSTR widestr = a2w_malloc(lpName, -1, NULL);
+    HANDLE h = CreateMutexW(lpMutexAttributes, bInitialOwner, widestr);
+    free(widestr);
+    return h;
+}
+
 MOZCE_SHUNT_API BOOL mozce_CreateProcessA(LPCSTR pszImageName, LPCSTR pszCmdLine, LPSECURITY_ATTRIBUTES psaProcess, LPSECURITY_ATTRIBUTES psaThread, BOOL fInheritHandles, DWORD fdwCreate, LPVOID pvEnvironment, LPSTR pszCurDir, LPSTARTUPINFO psiStartInfo, LPPROCESS_INFORMATION pProcInfo)
 {
     MOZCE_PRECHECK
@@ -269,17 +286,16 @@ MOZCE_SHUNT_API int mozce_GetLocaleInfoA(LCID Locale, LCTYPE LCType, LPSTR lpLCD
             {
                 if(0 == cchData)
                 {
-                    retval = WideCharToMultiByte(
-                        CP_ACP,
-                        0,
-                        buffer,
-                        neededChars,
-                        NULL,
-                        0,
-                        NULL,
-                        NULL
-                        );
-
+                    retval = WideCharToMultiByte(CP_ACP,
+                                                 0,
+                                                 buffer,
+                                                 neededChars,
+                                                 NULL,
+                                                 0,
+                                                 NULL,
+                                                 NULL
+                                                 );
+                    
                 }
                 else
                 {
@@ -537,38 +553,38 @@ MOZCE_SHUNT_API HDC mozce_CreateDCA(LPCSTR inDriver, LPCSTR inDevice, LPCSTR inO
     LPTSTR wOutput = a2w_malloc(inOutput, -1, NULL);
 
     DEVMODE wInitData;
-    memset(&wInitData, 0, sizeof(wInitData));
-
-    wInitData.dmSpecVersion = inInitData->dmSpecVersion;
-    wInitData.dmDriverVersion = inInitData->dmDriverVersion;
-    wInitData.dmSize = inInitData->dmSize;
-    wInitData.dmDriverExtra = inInitData->dmDriverExtra;
-    wInitData.dmFields = inInitData->dmFields;
-    wInitData.dmOrientation = inInitData->dmOrientation;
-    wInitData.dmPaperSize = inInitData->dmPaperSize;
-    wInitData.dmPaperLength = inInitData->dmPaperLength;
-    wInitData.dmPaperWidth = inInitData->dmPaperWidth;
-    wInitData.dmScale = inInitData->dmScale;
-    wInitData.dmCopies = inInitData->dmCopies;
-    wInitData.dmDefaultSource = inInitData->dmDefaultSource;
-    wInitData.dmPrintQuality = inInitData->dmPrintQuality;
-    wInitData.dmColor = inInitData->dmColor;
-    wInitData.dmDuplex = inInitData->dmDuplex;
-    wInitData.dmYResolution = inInitData->dmYResolution;
-    wInitData.dmTTOption = inInitData->dmTTOption;
-    wInitData.dmCollate = inInitData->dmCollate;
-    wInitData.dmLogPixels = inInitData->dmLogPixels;
-    wInitData.dmBitsPerPel = inInitData->dmBitsPerPel;
-    wInitData.dmPelsWidth = inInitData->dmPelsWidth;
-    wInitData.dmPelsHeight = inInitData->dmPelsHeight;
-    wInitData.dmDisplayFlags = inInitData->dmDisplayFlags;
-    wInitData.dmDisplayFrequency = inInitData->dmDisplayFrequency;
-
-    a2w_buffer((LPCSTR)inInitData->dmDeviceName, -1, wInitData.dmDeviceName, charcount(wInitData.dmDeviceName));
-    a2w_buffer((LPCSTR)inInitData->dmFormName, -1, wInitData.dmFormName, charcount(wInitData.dmFormName));
-
-    retval = CreateDC(wDriver, wDevice, wOutput, &wInitData);
-
+    if (inInitData)
+    {
+        memset(&wInitData, 0, sizeof(wInitData));
+        
+        wInitData.dmSpecVersion = inInitData->dmSpecVersion;
+        wInitData.dmDriverVersion = inInitData->dmDriverVersion;
+        wInitData.dmSize = inInitData->dmSize;
+        wInitData.dmDriverExtra = inInitData->dmDriverExtra;
+        wInitData.dmFields = inInitData->dmFields;
+        wInitData.dmOrientation = inInitData->dmOrientation;
+        wInitData.dmPaperSize = inInitData->dmPaperSize;
+        wInitData.dmPaperLength = inInitData->dmPaperLength;
+        wInitData.dmPaperWidth = inInitData->dmPaperWidth;
+        wInitData.dmScale = inInitData->dmScale;
+        wInitData.dmCopies = inInitData->dmCopies;
+        wInitData.dmDefaultSource = inInitData->dmDefaultSource;
+        wInitData.dmPrintQuality = inInitData->dmPrintQuality;
+        wInitData.dmColor = inInitData->dmColor;
+        wInitData.dmDuplex = inInitData->dmDuplex;
+        wInitData.dmYResolution = inInitData->dmYResolution;
+        wInitData.dmTTOption = inInitData->dmTTOption;
+        wInitData.dmCollate = inInitData->dmCollate;
+        wInitData.dmLogPixels = inInitData->dmLogPixels;
+        wInitData.dmBitsPerPel = inInitData->dmBitsPerPel;
+        wInitData.dmPelsWidth = inInitData->dmPelsWidth;
+        wInitData.dmPelsHeight = inInitData->dmPelsHeight;
+        wInitData.dmDisplayFlags = inInitData->dmDisplayFlags;
+        wInitData.dmDisplayFrequency = inInitData->dmDisplayFrequency;
+        a2w_buffer((LPCSTR)inInitData->dmDeviceName, -1, wInitData.dmDeviceName, charcount(wInitData.dmDeviceName));
+        a2w_buffer((LPCSTR)inInitData->dmFormName, -1, wInitData.dmFormName, charcount(wInitData.dmFormName));
+    }
+    retval = CreateDC(wDriver, wDevice, wOutput, inInitData ? &wInitData : NULL);
     if(NULL != wDriver)
     {
         free(wDriver);
@@ -650,7 +666,6 @@ MOZCE_SHUNT_API BOOL mozce_GetTextExtentExPointA(HDC inDC, char* inStr, int inLe
     return retval;
 }
 
-
 MOZCE_SHUNT_API BOOL mozce_ExtTextOutA(HDC inDC, int inX, int inY, UINT inOptions, const LPRECT inRect, LPCSTR inString, UINT inCount, const LPINT inDx)
 {
     MOZCE_PRECHECK
@@ -676,6 +691,13 @@ MOZCE_SHUNT_API BOOL mozce_ExtTextOutA(HDC inDC, int inX, int inY, UINT inOption
 
     return retval;
 }
+
+
+MOZCE_SHUNT_API BOOL mozce_TextOutA(HDC hdc, int nXStart, int nYStart, LPCSTR lpString, int cbString)
+{
+  return mozce_ExtTextOutA(hdc, nXStart, nYStart, 0, NULL, lpString, cbString, NULL);
+}
+
 MOZCE_SHUNT_API DWORD mozce_GetGlyphOutlineA(HDC inDC, CHAR inChar, UINT inFormat, void* inGM, DWORD inBufferSize, LPVOID outBuffer, CONST mozce_MAT2* inMAT2)
 {
     MOZCE_PRECHECK
@@ -816,7 +838,7 @@ MOZCE_SHUNT_API BOOL mozce_VerQueryValueA(const LPVOID inBlock, LPSTR inSubBlock
     MOZCE_PRECHECK
 
 #ifdef DEBUG
-    mozce_printf("mozce_VerQueryValueA called\n");
+    mozce_printf("mozce_VerQueryValueA called.  Incomplete implementation.  Your code will have to manually convert strings.\n");
 #endif
 
     BOOL retval = FALSE;
@@ -1823,14 +1845,53 @@ MOZCE_SHUNT_API HFONT mozce_CreateFontIndirectA(CONST LOGFONTA* lplf)
 }
 
 
-MOZCE_SHUNT_API int mozce_EnumFontFamiliesA(HDC hdc, LPCTSTR lpszFamily, FONTENUMPROC lpEnumFontFamProc, LPARAM lParam)
+
+typedef struct _MyEnumFontFamArg
+{
+  FONTENUMPROC fn;
+  LPARAM lParam;
+} MYENUMFONTFAMARG;
+
+
+
+// typedef int (CALLBACK* FONTENUMPROC)(CONST LOGFONT *, CONST TEXTMETRIC *, DWORD, LPARAM);
+
+static int CALLBACK
+MyEnumFontFamProc(CONST LOGFONT *lf, CONST TEXTMETRIC *tm, DWORD fonttype, LPARAM lParam)
+{
+    MYENUMFONTFAMARG *parg = (MYENUMFONTFAMARG *) lParam;
+    FONTENUMPROC fn = parg->fn;
+
+    LOGFONTW lfw;
+    memcpy(&lfw, lf, sizeof(LOGFONTA));    
+    a2w_buffer((const char*)lf->lfFaceName, -1, lfw.lfFaceName, LF_FACESIZE);
+
+    return (*fn) (&lfw, tm, fonttype, parg->lParam);
+}
+
+MOZCE_SHUNT_API int mozce_EnumFontFamiliesA(HDC hdc, LPCSTR lpszFamily, FONTENUMPROC lpEnumFontFamProc, LPARAM lParam)
 {
     MOZCE_PRECHECK
 
 #ifdef DEBUG
-    mozce_printf("-- mozce_EnumFontFamilies called\n");
+    mozce_printf("mozce_EnumFontFamilies called\n");
 #endif
-    return 0;
+    
+    MYENUMFONTFAMARG arg;
+    wchar_t *lpszFamilyW = NULL;
+    
+    if(lpszFamily != NULL)
+        lpszFamilyW = a2w_malloc(lpszFamily, -1, NULL);
+    
+    arg.fn = lpEnumFontFamProc;
+    arg.lParam = lParam;
+    
+    int result = EnumFontFamiliesW(hdc, lpszFamilyW, (FONTENUMPROC) MyEnumFontFamProc, (LPARAM) &arg);
+
+    free(lpszFamilyW);
+    
+    return result;
+
 }
 
 
@@ -1908,6 +1969,24 @@ MOZCE_SHUNT_API BOOL mozce_GetTextMetricsA(HDC hdc, LPTEXTMETRICA lptma)
 
     return res;
 }
+
+MOZCE_SHUNT_API BOOL mozce_SetWindowTextA(HWND hWnd, LPCSTR lpString)
+{
+    MOZCE_PRECHECK
+
+#ifdef DEBUG
+    mozce_printf("mozce_SetWindowTextA called\n");
+#endif
+
+    LPTSTR wstr = a2w_malloc(lpString, -1, NULL);
+    BOOL result = SetWindowTextW(hWnd, wstr); 
+    
+    if (wstr)
+        free(wstr);
+
+    return result;
+}
+
 
 #if 0
 {

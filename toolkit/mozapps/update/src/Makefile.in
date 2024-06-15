@@ -44,6 +44,10 @@ include $(DEPTH)/config/autoconf.mk
 
 MODULE = extensions
 
+ifdef MOZ_UPDATER
+DIRS = updater
+endif
+
 EXTRA_COMPONENTS = nsUpdateService.js
 
 include $(topsrcdir)/config/rules.mk

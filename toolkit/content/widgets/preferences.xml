@@ -131,7 +131,7 @@
             this.valueFromPreferences = aValue;
           else {
             // I wonder if we should synthesize a change event handler here. 
-            // As it stands we only fire onpreferenceread when UE calls 
+            // As it stands we only fire onsyncfrompreference when UE calls 
             // setElementValue. That's enough to reinit the UI element but
             // may be counter intuitive.
             this.updateElements();
@@ -322,13 +322,13 @@
             return;
           
           var rv = undefined;
-          if (aElement.hasAttribute("onpreferenceread")) {
+          if (aElement.hasAttribute("onsyncfrompreference")) {
             // Value changed, synthesize an event
             try {
               var event = document.createEvent("Events");
               event.initEvent("preferenceread", false, true);
               var f = new Function ("event", 
-                                    aElement.getAttribute("onpreferenceread"));
+                                    aElement.getAttribute("onsyncfrompreference"));
               rv = f(event);
             }
             catch (e) {
@@ -348,13 +348,13 @@
         <parameter name="aElement"/>
         <body>
         <![CDATA[
-          if (aElement.hasAttribute("onpreferencewrite")) {
+          if (aElement.hasAttribute("onsynctopreference")) {
             // Value changed, synthesize an event
             try {
               var event = document.createEvent("Events");
               event.initEvent("preferencewrite", false, true);
               var f = new Function ("event", 
-                                    aElement.getAttribute("onpreferencewrite"));
+                                    aElement.getAttribute("onsynctopreference"));
               var rv = f(event);
               if (rv !== undefined) 
                 return rv;
@@ -363,13 +363,15 @@
               dump(e);
             }
           }
+          var value = ("value" in aElement) ? aElement.value : aElement.getAttribute("value");
+
           switch (this.type) {
           case "int":
-            return aElement.value != "" ? parseInt(aElement.value) : 0;
+            return value != "" ? parseInt(value, 10) : 0;
           case "bool":
-            return typeof(aElement.value) == "boolean" ? aElement.value : aElement.value == "true";
+            return typeof(value) == "boolean" ? value : value == "true";
           }
-          return aElement.value;
+          return value;
         ]]>
         </body>
       </method>
@@ -471,14 +473,15 @@
                                .getService(Components.interfaces.nsIPrefBranch);
           this.instantApply = psvc.getBoolPref("browser.preferences.instantApply");
           if (this.instantApply) {
-#ifdef XP_MACOSX
-            var dlgButtons = document.getAnonymousElementByAttribute(this, "anonid", "dlg-buttons");
-            dlgButtons.hidden = true;
-#else
             var docElt = document.documentElement;
             var acceptButton = docElt.getButton("accept");
             acceptButton.hidden = true;
             var cancelButton  = docElt.getButton("cancel");
+#ifdef XP_MACOSX
+            // no buttons on Mac except Help
+            cancelButton.hidden = true;
+#else
+            // morph the Cancel button into the Close button
             cancelButton.setAttribute ("icon", "close");
             cancelButton.label = docElt.getAttribute("closebuttonlabel");
             cancelButton.accesskey = docElt.getAttribute("closebuttonaccesskey");
@@ -497,11 +500,19 @@
         }
         var panes = this.preferencePanes;
 
+        var lastPane = null;
+        if (this.lastSelected) {
+          lastPane = document.getElementById(this.lastSelected);
+          if (!lastPane) {
+            this.lastSelected = null;
+          }
+        }
+
         var paneToLoad;
-        if ("arguments" in window && window.arguments[0])
+        if ("arguments" in window && window.arguments[0] && document.getElementById(window.arguments[0]))
           paneToLoad = document.getElementById(window.arguments[0]);
-        else if (this.lastSelected)
-          paneToLoad = document.getElementById(this.lastSelected);
+        else if (lastPane)
+          paneToLoad = lastPane;
         else
           paneToLoad = panes[0];
 
@@ -599,7 +610,8 @@
             event.initEvent(aEventName, false, true);
             var cancel = !aTarget.dispatchEvent(event);
             if (aTarget.hasAttribute("on" + aEventName)) {
-              var rv = (new Function ("event", aTarget.getAttribute("on" + aEventName)))(event);
+              var fn = new Function ("event", aTarget.getAttribute("on" + aEventName));
+              var rv = fn.call(aTarget, event);
               if (rv == false)
                 cancel = true;
             }
@@ -645,6 +657,12 @@
               break;
             }
           }
+
+          var helpButton = document.documentElement.getButton("help");
+          if (aPaneElement.hasAttribute("helpURI"))
+            helpButton.hidden = false;
+          else
+            helpButton.hidden = true;
         ]]>
         </body>
       </method>
@@ -810,8 +828,67 @@
           return win;
         </body>
       </method>
+      
+      // copied from contextHelp.js
+      // Locate existing help window for this helpFileURI.
+      <method name="locateHelpWindow">
+        <parameter name="helpFileURI"/>
+        <body>
+        <![CDATA[
+          const wm = Components.classes['@mozilla.org/appshell/window-mediator;1']
+                               .getService(Components.interfaces.nsIWindowMediator);
+          const iterator = wm.getEnumerator("mozilla:help");
+          var topWindow = null;
+          var aWindow;
+
+          // Loop through help windows looking for one with selected helpFileURI
+          while (iterator.hasMoreElements()) {
+            aWindow = iterator.getNext();
+            if (aWindow.getHelpFileURI() == helpFileURI)
+              topWindow = aWindow;
+          }
+          return topWindow;
+        ]]>
+        </body>
+      </method>
+      
+      // copied from contextHelp.js
+      // Opens up the Help Viewer with the specified topic and helpFileURI.
+      <method name="openHelp">
+        <parameter name="topic"/>
+        <parameter name="helpFileURI"/>
+        <body>
+        <![CDATA[
+          // Try to find previously opened help.
+          var topWindow = this.locateHelpWindow(helpFileURI);
+
+          if (topWindow) {
+          // Open topic in existing window.
+            topWindow.focus();
+            topWindow.displayTopic(topic);
+          }
+          else {
+          // Open topic in new window.
+            const params = Components.classes["@mozilla.org/embedcomp/dialogparam;1"]
+                                     .createInstance(Components.interfaces.nsIDialogParamBlock);
+            params.SetNumberStrings(2);
+            params.SetString(0, helpFileURI);
+            params.SetString(1, topic);
+            const ww = Components.classes["@mozilla.org/embedcomp/window-watcher;1"]
+                                 .getService(Components.interfaces.nsIWindowWatcher);
+            ww.openWindow(null, "chrome://help/content/help.xul", "_blank", "chrome,all,alwaysRaised,dialog=no", params);
+          }
+        ]]>
+        </body>
+      </method>
     </implementation>
     <handlers>
+      <handler event="dialoghelp">
+        // currentPane is set in _selectPane for prefwindows which aren't childs.
+        // So if there's no currentPane, just use the first pane.
+        var pane = this.currentPane ? this.currentPane : this.preferencePanes[0];
+        this.openHelp(pane.helpTopic, pane.getAttribute("helpURI"));
+      </handler>
       <handler event="dialogaccept">
       <![CDATA[
         if (!this._fireEvent("beforeaccept", this)) 
@@ -930,6 +1007,23 @@
       <property name="preferences"
                 onget="return this.getElementsByTagName('preference');"/>
 
+      <property name="helpTopic">
+        <getter>
+        <![CDATA[
+          // if there are tabs, and the selected tab provides a helpTopic, return that
+          var box = this.getElementsByTagName("tabbox");
+          if (box[0]) {
+            var tab = box[0].selectedTab;
+            if (tab && tab.hasAttribute("helpTopic"))
+              return tab.getAttribute("helpTopic");
+          }
+
+          // otherwise, return the helpTopic of the current panel
+          return this.getAttribute("helpTopic");
+        ]]>
+        </getter>
+      </property>
+
       <field name="_loaded">false</field>
       <property name="loaded" 
                 onget="return !this.src ? true : this._loaded;"
@@ -998,6 +1092,11 @@
         // the user in this window. 
         this.userChangedValue(event.target);
       </handler>
+      <handler event="input">
+        // This "input" event handler tracks changes made to preferences by 
+        // the user in this window.
+        this.userChangedValue(event.target);
+      </handler>
       <handler event="paneload">
       <![CDATA[
         // Initialize all values from preferences.
@@ -1021,7 +1120,7 @@
       <stylesheet src="chrome://global/skin/preferences.css"/>
     </resources>
     <content>
-      <xul:image class="paneButtonIcon" xbl:inherits="image"/>
+      <xul:image class="paneButtonIcon" xbl:inherits="src"/>
       <xul:label class="paneButtonLabel" xbl:inherits="value=label"/>
     </content>
   </binding>

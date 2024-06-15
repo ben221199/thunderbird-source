@@ -61,7 +61,6 @@
 
 #include "nsEditProperty.h"
 #include "nsHTMLCSSUtils.h"
-#include "nsIParserService.h"
 
 #include "nsVoidArray.h"
 
@@ -84,6 +83,7 @@ class TypeInState;
 class nsIContentFilter;
 class nsIURL;
 class nsIRangeUtils;
+class nsILinkHandler;
 
 /**
  * The HTML editor implementation.<br>
@@ -781,9 +781,6 @@ protected:
    // for real-time spelling
    nsCOMPtr<nsITextServicesDocument> mTextServices;
 
-  // Maintain a static parser service ...
-  static nsIParserService* sParserService;
-
   // And a static range utils service
   static nsIRangeUtils* sRangeHelper;
 
@@ -942,6 +939,8 @@ protected:
 
   void     AddMouseClickListener(nsIDOMElement * aElement);
   void     RemoveMouseClickListener(nsIDOMElement * aElement);
+
+  nsCOMPtr<nsILinkHandler> mLinkHandler;
 
 public:
 

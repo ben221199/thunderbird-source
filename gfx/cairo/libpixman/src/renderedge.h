@@ -1,5 +1,5 @@
 /*
- * $Id: renderedge.h,v 1.2 2005/03/23 19:53:40 tor%cs.brown.edu Exp $
+ * $Id: renderedge.h,v 1.3 2005/06/04 07:03:29 vladimir%pobox.com Exp $
  *
  * Copyright © 2004 Keith Packard
  *

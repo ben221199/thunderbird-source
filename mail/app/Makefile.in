@@ -80,10 +80,10 @@ LIBS = \
 	$(STATIC_COMPONENTS_LINKER_PATH) \
 	$(DIST)/lib/$(LIB_PREFIX)xulapp_s.$(LIB_SUFFIX) \
 	$(MOZ_JS_LIBS) \
-	$(TK_LIBS) \
 	$(EXTRA_DSO_LIBS) \
 	$(XPCOM_LIBS) \
 	$(NSPR_LIBS) \
+	$(TK_LIBS) \
 	$(NULL)
 
 # Add explicit X11 dependency when building against X11 toolkits
@@ -273,6 +273,8 @@ endif
 
 ifneq (,$(filter mac cocoa,$(MOZ_WIDGET_TOOLKIT)))
 
+AB := $(firstword $(subst -, ,$(AB_CD)))
+
 ifdef MOZ_DEBUG
 APP_NAME = ThunderbirdDebug
 else
@@ -281,13 +283,18 @@ endif
 
 libs:: $(PROGRAM)
 	mkdir -p $(DIST)/$(APP_NAME).app/Contents/MacOS
-	rsync -a --exclude CVS --exclude "*.in" $(srcdir)/macbuild/Contents $(DIST)/$(APP_NAME).app
+	rsync -a --exclude CVS --exclude "*.in" $(srcdir)/macbuild/Contents $(DIST)/$(APP_NAME).app --exclude English.lproj
+	mkdir -p $(DIST)/$(APP_NAME).app/Contents/Resources/$(AB).lproj
+	rsync -a --exclude CVS $(srcdir)/macbuild/Contents/Resources/English.lproj/ $(DIST)/$(APP_NAME).app/Contents/Resources/$(AB).lproj
 	sed -e "s/APP_VERSION/$(APP_VERSION)/" $(srcdir)/macbuild/Contents/Info.plist.in > $(DIST)/$(APP_NAME).app/Contents/Info.plist
 	rsync -a $(DIST)/bin/ $(DIST)/$(APP_NAME).app/Contents/MacOS
 	rm -f $(DIST)/$(APP_NAME).app/Contents/MacOS/$(PROGRAM)
 	rsync -aL $(PROGRAM) $(DIST)/$(APP_NAME).app/Contents/MacOS
 	mkdir -p $(DIST)/$(APP_NAME).app/Contents/Plug-Ins
-	cp -R $(DIST)/package/PrintPDE.plugin $(DIST)/$(APP_NAME).app/Contents/Plug-Ins/
+# Bug 297227: the next line only exists to repair broken depend builds, it can
+# go away once that bug has been closed for a while.
+	rm -rf $(DIST)/$(APP_NAME).app/Contents/Plug-Ins/PrintPDE.plugin
+	rsync -a --copy-unsafe-links $(DIST)/package/PrintPDE.plugin $(DIST)/$(APP_NAME).app/Contents/Plug-Ins
 	cp -RL $(DIST)/branding/thunderbird.icns $(DIST)/$(APP_NAME).app/Contents/Resources/thunderbird.icns
 	cp -RL $(srcdir)/macbuild/mail-biff-badge.png 	$(DIST)/$(APP_NAME).app/Contents/Resources/mail-biff-badge.png
 	echo -n APPLMOZM > $(DIST)/$(APP_NAME).app/Contents/PkgInfo

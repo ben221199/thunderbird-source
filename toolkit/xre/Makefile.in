@@ -101,9 +101,15 @@ SHAREDCPPSRCS = \
 CPPSRCS = \
 	$(SHAREDCPPSRCS) \
 	nsAppRunner.cpp \
+	nsConsoleWriter.cpp \
 	nsXREDirProvider.cpp \
 	nsNativeAppSupportBase.cpp \
 	$(NULL)
+
+ifdef MOZ_UPDATER
+CPPSRCS += nsUpdateDriver.cpp
+DEFINES += -DMOZ_UPDATER
+endif
 
 ifeq ($(MOZ_WIDGET_TOOLKIT),windows)
 CPPSRCS += nsNativeAppSupportWin.cpp
@@ -170,6 +176,14 @@ CXXFLAGS += $(TK_CFLAGS)
 
 ifdef BUILD_STATIC_LIBS
 DEFINES += -D_BUILD_STATIC_BIN
+endif
+
+DEFINES += -DOS_TARGET=\"$(OS_TARGET)\"
+ifdef TARGET_XPCOM_ABI
+DEFINES += \
+	-DTARGET_XPCOM_ABI=\"$(TARGET_XPCOM_ABI)\" \
+	-DTARGET_OS_ABI=\"$(OS_TARGET)_$(TARGET_XPCOM_ABI)\" \
+	$(NULL)
 endif
 
 export:: $(addprefix $(topsrcdir)/xpfe/bootstrap/, $(SHAREDCPPSRCS) $(SHAREDCMMSRCS)) $(STACKWALK_CPPSRCS)

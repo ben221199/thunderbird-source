@@ -152,6 +152,21 @@ nsMsgRuleAction::GetJunkScore(PRInt32 *aResult)
   return NS_OK;
 }
 
+NS_IMETHODIMP
+nsMsgRuleAction::SetStrValue(const char *aStrValue)
+{
+  m_strValue = aStrValue;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsMsgRuleAction::GetStrValue(char **aStrValue)
+{
+  NS_ENSURE_ARG_POINTER(aStrValue);
+  *aStrValue = ToNewCString(m_strValue);
+  return NS_OK;
+}
+
 nsMsgFilter::nsMsgFilter():
     m_temporary(PR_FALSE),
     m_unparseable(PR_FALSE),
@@ -400,6 +415,7 @@ NS_IMETHODIMP nsMsgFilter::GetScope(nsIMsgSearchScopeTerm **aResult)
 
 NS_IMETHODIMP nsMsgFilter::LogRuleHit(nsIMsgRuleAction *aFilterAction, nsIMsgDBHdr *aMsgHdr)
 {
+    NS_ENSURE_TRUE(m_filterList, NS_OK);
     nsCOMPtr <nsIOutputStream> logStream;
     nsresult rv = m_filterList->GetLogStream(getter_AddRefs(logStream));
     NS_ENSURE_SUCCESS(rv,rv);
@@ -711,6 +727,16 @@ nsresult nsMsgFilter::SaveRule(nsIOFileStream *aStream)
         action->GetJunkScore(&junkScore);
         err = filterList->WriteIntAttr(nsIMsgFilterList::attribActionValue, junkScore, aStream);
       }
+      break;
+      case nsMsgFilterAction::Reply:
+      case nsMsgFilterAction::Forward:
+      {
+        nsXPIDLCString strValue;
+        action->GetStrValue(getter_Copies(strValue));
+        // strValue is e-mail address
+        err = filterList->WriteStrAttr(nsIMsgFilterList::attribActionValue, strValue.get(), aStream);
+      }
+      break;
       default:
         break;
     }

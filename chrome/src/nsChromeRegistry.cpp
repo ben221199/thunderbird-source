@@ -466,7 +466,8 @@ nsChromeRegistry::Init()
     return NS_ERROR_FAILURE;
 
   if (!mOverlayHash.Init() ||
-      !mStyleHash.Init())
+      !mStyleHash.Init() ||
+      !mOverrideTable.Init())
     return NS_ERROR_FAILURE;
 
   mSelectedLocale = NS_LITERAL_CSTRING("en-US");
@@ -664,6 +665,9 @@ nsChromeRegistry::ConvertChromeURL(nsIURI* aChromeURI, nsIURI* *aResult)
   nsresult rv;
   NS_ASSERTION(aChromeURI, "null url!");
 
+  if (mOverrideTable.Get(aChromeURI, aResult))
+    return NS_OK;
+
   nsCOMPtr<nsIURL> chromeURL (do_QueryInterface(aChromeURI));
   NS_ENSURE_TRUE(chromeURL, NS_NOINTERFACE);
 
@@ -679,8 +683,15 @@ nsChromeRegistry::ConvertChromeURL(nsIURI* aChromeURI, nsIURI* *aResult)
                                                        & (nsACString&) package,
                                                        PL_DHASH_LOOKUP));
 
-  if (PL_DHASH_ENTRY_IS_FREE(entry))
-    return mInitialized ? NS_ERROR_FAILURE : NS_ERROR_NOT_INITIALIZED;
+  if (PL_DHASH_ENTRY_IS_FREE(entry)) {
+    if (!mInitialized)
+      return NS_ERROR_NOT_INITIALIZED;
+
+    LogMessage("No chrome package registered for chrome://%s/%s/%s .",
+               package.get(), provider.get(), path.get());
+
+    return NS_ERROR_FAILURE;
+  }
 
   if (entry->flags & PackageEntry::PLATFORM_PACKAGE) {
 #if defined(XP_WIN) || defined(XP_OS2)
@@ -1051,6 +1062,7 @@ nsChromeRegistry::CheckForNewChrome()
   PL_DHashTableEnumerate(&mPackagesHash, RemoveAll, nsnull);
   mOverlayHash.Clear();
   mStyleHash.Clear();
+  mOverrideTable.Clear();
 
   nsCOMPtr<nsIURI> manifestURI;
   rv = NS_NewURI(getter_AddRefs(manifestURI),
@@ -1294,7 +1306,8 @@ nsChromeRegistry::ProcessNewChromeBuffer(char *aBuffer, PRInt32 aLength,
         if (NS_FAILED(rv)) return rv;
       }
 
-      ProcessContentsManifest(baseURI, aManifest, PR_TRUE, strcmp(chromeType, "skin") == 0);
+      ProcessContentsManifest(baseURI, aManifest, baseURI, PR_TRUE,
+                              strcmp(chromeType, "skin") == 0);
     }
     
     while (aBuffer < bufferEnd && (*aBuffer == '\0' || *aBuffer == ' ' || *aBuffer == '\r' || *aBuffer == '\n'))
@@ -1454,12 +1467,13 @@ static const PRInt32 kNSPR_TRUNCATE_FLAGS = PR_WRONLY | PR_CREATE_FILE | PR_TRUN
 
 NS_IMETHODIMP
 nsChromeRegistry::ProcessContentsManifest(nsIURI* aOldManifest, nsIURI* aFile,
-                                          PRBool aAppend, PRBool aSkinOnly)
+                                          nsIURI* aBaseURI, PRBool aAppend,
+                                          PRBool aSkinOnly)
 {
   nsresult rv;
 
   nsCAutoString relativePath;
-  GetRelativePath(aFile, aOldManifest, relativePath);
+  GetRelativePath(aFile, aBaseURI, relativePath);
 
   nsCAutoString spec;
   aOldManifest->GetSpec(spec);
@@ -1999,8 +2013,11 @@ nsChromeRegistry::ProcessManifestBuffer(char *buf, PRInt32 length,
       }
       char *base    = nsCRT::strtok(whitespace, kWhitespace, &whitespace);
       char *overlay = nsCRT::strtok(whitespace, kWhitespace, &whitespace);
-      if (!base || !overlay)
+      if (!base || !overlay) {
+        LogMessageWithContext(manifestURI, line, nsIScriptError::warningFlag,
+                              "Warning: malformed chrome overlay instruction.");
         continue;
+      }
 
       nsCOMPtr<nsIURI> baseuri, overlayuri;
       rv  = io->NewURI(nsDependentCString(base), nsnull, nsnull,
@@ -2017,8 +2034,11 @@ nsChromeRegistry::ProcessManifestBuffer(char *buf, PRInt32 length,
     else if (!strcmp(token, "style")) {
       char *base    = nsCRT::strtok(whitespace, kWhitespace, &whitespace);
       char *overlay = nsCRT::strtok(whitespace, kWhitespace, &whitespace);
-      if (!base || !overlay)
+      if (!base || !overlay) {
+        LogMessageWithContext(manifestURI, line, nsIScriptError::warningFlag,
+                              "Warning: malformed chrome style instruction.");
         continue;
+      }
 
       nsCOMPtr<nsIURI> baseuri, overlayuri;
       rv  = io->NewURI(nsDependentCString(base), nsnull, nsnull,
@@ -2029,6 +2049,31 @@ nsChromeRegistry::ProcessManifestBuffer(char *buf, PRInt32 length,
         continue;
 
       mStyleHash.Add(baseuri, overlayuri);
+    }
+    else if (!strcmp(token, "override")) {
+      if (aSkinOnly) {
+        LogMessageWithContext(manifestURI, line, nsIScriptError::warningFlag,
+                              "Warning: Ignoring override registration in skin-only manifest.");
+        continue;
+      }
+
+      char *chrome    = nsCRT::strtok(whitespace, kWhitespace, &whitespace);
+      char *resolved  = nsCRT::strtok(whitespace, kWhitespace, &whitespace);
+      if (!chrome || !resolved) {
+        LogMessageWithContext(manifestURI, line, nsIScriptError::warningFlag,
+                              "Warning: malformed chrome override instruction.");
+        continue;
+      }
+
+      nsCOMPtr<nsIURI> chromeuri, resolveduri;
+      rv  = io->NewURI(nsDependentCString(chrome), nsnull, nsnull,
+                      getter_AddRefs(chromeuri));
+      rv |= io->NewURI(nsDependentCString(resolved), nsnull, nsnull,
+                       getter_AddRefs(resolveduri));
+      if (NS_FAILED(rv))
+        continue;
+
+      mOverrideTable.Put(chromeuri, resolveduri);
     }
     else {
       LogMessageWithContext(manifestURI, line, nsIScriptError::warningFlag,

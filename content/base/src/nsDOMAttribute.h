@@ -46,8 +46,8 @@
 #include "nsCOMPtr.h"
 #include "nsINodeInfo.h"
 #include "nsIDOM3Node.h"
+#include "nsDOMAttributeMap.h"
 
-class nsIContent;
 class nsDOMAttribute;
 
 // bogus child list for an attribute
@@ -74,7 +74,7 @@ class nsDOMAttribute : public nsIDOMAttr,
                        public nsIAttribute
 {
 public:
-  nsDOMAttribute(nsIContent* aContent, nsINodeInfo *aNodeInfo,
+  nsDOMAttribute(nsDOMAttributeMap* aAttrMap, nsINodeInfo *aNodeInfo,
                  const nsAString& aValue);
   virtual ~nsDOMAttribute();
 
@@ -90,7 +90,18 @@ public:
   NS_DECL_NSIDOMATTR
 
   // nsIAttribute interface
-  // No methods, all inline.
+  void SetMap(nsDOMAttributeMap *aMap);
+  nsIContent *GetContent() const;
+
+  // Property functions, see nsPropertyTable.h
+  virtual void* GetProperty(nsIAtom  *aPropertyName,
+                            nsresult *aStatus = nsnull);
+  virtual nsresult SetProperty(nsIAtom            *aPropertyName,
+                               void               *aValue,
+                               NSPropertyDtorFunc  aDtor);
+  virtual nsresult DeleteProperty(nsIAtom  *aPropertyName);
+  virtual void*    UnsetProperty(nsIAtom *aPropertyName,
+                                 nsresult *aStatus = nsnull);
 
 private:
   nsString mValue;
@@ -98,6 +109,11 @@ private:
   // element representing the value
   nsIDOMText* mChild;
   nsAttributeChildList* mChildList;
+
+  nsIContent *GetContentInternal() const
+  {
+    return mAttrMap ? mAttrMap->GetContent() : nsnull;
+  }
 };
 
 

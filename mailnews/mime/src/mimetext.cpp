@@ -94,7 +94,7 @@ MimeInlineTextClassInitialize(MimeInlineTextClass *clazz)
 static int
 MimeInlineText_initialize (MimeObject *obj)
 {
-  /* This is an abstract class; it shouldn't be directly instanciated. */
+  /* This is an abstract class; it shouldn't be directly instantiated. */
   PR_ASSERT(obj->clazz != (MimeObjectClass *) &mimeInlineTextClass);
 
   ((MimeInlineText *) obj)->initializeCharset = PR_FALSE;
@@ -332,7 +332,7 @@ MimeInlineText_parse_decoded_buffer (const char *buf, PRInt32 size, MimeObject *
 
   /* If we're supposed to write this object, but aren't supposed to convert
 	 it to HTML, simply pass it through unaltered. */
-  if (!obj->options->write_html_p)
+  if (!obj->options->write_html_p && obj->options->format_out != nsMimeOutput::nsMimeMessageAttach)
 	return MimeObject_write(obj, buf, size, PR_TRUE);
 
   /* This is just like the parse_decoded_buffer method we inherit from the
@@ -517,7 +517,8 @@ MimeInlineText_rotate_convert_and_parse_line(char *line, PRInt32 length,
   PRBool  doConvert = PR_TRUE;
   // Don't convert vCard data
   if ( ( (obj->content_type) && (!PL_strcasecmp(obj->content_type, TEXT_VCARD)) ) ||
-       (obj->options->format_out == nsMimeOutput::nsMimeMessageSaveAs) )
+       (obj->options->format_out == nsMimeOutput::nsMimeMessageSaveAs)
+       || obj->options->format_out == nsMimeOutput::nsMimeMessageAttach)
     doConvert = PR_FALSE;
     
   // Only convert if the user prefs is false 

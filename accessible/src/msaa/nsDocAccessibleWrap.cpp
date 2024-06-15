@@ -174,6 +174,41 @@ NS_IMETHODIMP nsDocAccessibleWrap::Shutdown()
 
 NS_IMETHODIMP nsDocAccessibleWrap::FireToolkitEvent(PRUint32 aEvent, nsIAccessible* aAccessible, void* aData)
 {
+#ifdef DEBUG
+  // Ensure that we're only firing events that we intend to
+  PRUint32 supportedEvents[] = {
+    nsIAccessibleEvent::EVENT_SHOW,
+    nsIAccessibleEvent::EVENT_HIDE,
+    nsIAccessibleEvent::EVENT_REORDER,
+    nsIAccessibleEvent::EVENT_FOCUS,
+    nsIAccessibleEvent::EVENT_STATE_CHANGE,
+    nsIAccessibleEvent::EVENT_NAME_CHANGE,
+    nsIAccessibleEvent::EVENT_DESCRIPTIONCHANGE,
+    nsIAccessibleEvent::EVENT_VALUE_CHANGE,
+    nsIAccessibleEvent::EVENT_SELECTION,
+    nsIAccessibleEvent::EVENT_SELECTION_ADD,
+    nsIAccessibleEvent::EVENT_SELECTION_REMOVE,
+    nsIAccessibleEvent::EVENT_SELECTION_WITHIN,
+    nsIAccessibleEvent::EVENT_ALERT,
+    nsIAccessibleEvent::EVENT_MENUSTART,
+    nsIAccessibleEvent::EVENT_MENUEND,
+    nsIAccessibleEvent::EVENT_MENUPOPUPSTART,
+    nsIAccessibleEvent::EVENT_MENUPOPUPEND,
+    nsIAccessibleEvent::EVENT_SCROLLINGSTART,
+    nsIAccessibleEvent::EVENT_SCROLLINGEND,
+  };
+
+  PRBool found = PR_FALSE;
+  for (PRUint32 count = 0; count < NS_ARRAY_LENGTH(supportedEvents); count ++) {
+    if (aEvent == supportedEvents[count]) {
+      found = PR_TRUE;
+      break;
+    }
+  }
+  if (!found) {
+    NS_WARNING("Event not supported!");
+  }
+#endif
   if (!mWeakShell) {   // Means we're not active
     return NS_ERROR_FAILURE;
   }
@@ -196,24 +231,34 @@ NS_IMETHODIMP nsDocAccessibleWrap::FireToolkitEvent(PRUint32 aEvent, nsIAccessib
   PRInt32 childID, worldID = OBJID_CLIENT;
   PRUint32 role = ROLE_SYSTEM_TEXT; // Default value
 
+  HWND hWnd = (HWND)mWnd;
+
   if (NS_SUCCEEDED(aAccessible->GetRole(&role)) && role == ROLE_SYSTEM_CARET) {
     childID = CHILDID_SELF;
     worldID = OBJID_CARET;
   }
-  else 
+  else {
     childID = GetChildIDFor(aAccessible); // get the id for the accessible
-
-  if (role == ROLE_SYSTEM_PANE && aEvent == nsIAccessibleEvent::EVENT_STATE_CHANGE) {
-    // Something on the document has changed
-    // Clear out the cache in this subtree
+    if (aAccessible != this) {
+      // See if we're in a scrollable area with its own window
+      nsCOMPtr<nsIAccessible> accessible;
+      if (aEvent == nsIAccessibleEvent::EVENT_HIDE) {
+        // Don't use frame from current accessible when we're hiding that accessible
+        aAccessible->GetParent(getter_AddRefs(accessible));
+      }
+      else {
+        accessible = aAccessible;
+      }
+      nsCOMPtr<nsPIAccessNode> privateAccessNode =
+        do_QueryInterface(accessible);
+      if (privateAccessNode) {
+        nsIFrame *frame = privateAccessNode->GetFrame();
+        if (frame) {
+          hWnd = (HWND)frame->GetWindow()->GetNativeData(NS_NATIVE_WINDOW); 
+        }
+      }
+    }
   }
-
-  nsCOMPtr<nsPIAccessNode> privateAccessNode =
-    do_QueryInterface(aAccessible);
-  nsIFrame *frame = privateAccessNode->GetFrame();
-
-  HWND hWnd = frame ? (HWND)frame->GetWindow()->GetNativeData(NS_NATIVE_WINDOW) :
-                      (HWND)mWnd;
 
   // Gecko uses two windows for every scrollable area. One window contains
   // scrollbars and the child window contains only the client area.
@@ -280,7 +325,7 @@ nsDocAccessibleWrap::GetFirstLeafAccessible(nsIDOMNode *aStartNode)
 NS_IMETHODIMP nsDocAccessibleWrap::FireAnchorJumpEvent()
 {
   // Staying on the same page, jumping to a named anchor
-  // Fire EVENT_SELECTION_WITHIN on first leaf accessible -- because some
+  // Fire EVENT_SCROLLINGSTART on first leaf accessible -- because some
   // assistive technologies only cache the child numbers for leaf accessibles
   // the can only relate events back to their internal model if it's a leaf.
   // There is usually an accessible for the focus node, but if it's an empty text node
@@ -302,12 +347,13 @@ NS_IMETHODIMP nsDocAccessibleWrap::FireAnchorJumpEvent()
   }
   const char kHash = '#';
   PRBool hasAnchor = PR_FALSE;
-  if (theURL.FindChar(kHash) > 0) {
+  PRInt32 hasPosition = theURL.FindChar(kHash);
+  if (hasPosition > 0 && hasPosition < (PRInt32)theURL.Length() - 1) {
     hasAnchor = PR_TRUE;
   }
 
   // mWasAnchor is set when the previous URL included a named anchor.
-  // This way we still know to fire the SELECTION_WITHIN event when we
+  // This way we still know to fire the EVENT_SCROLLINGSTART event when we
   // move from a named anchor back to the top.
   if (!mWasAnchor && !hasAnchor) {
     return NS_OK;
@@ -334,7 +380,7 @@ NS_IMETHODIMP nsDocAccessibleWrap::FireAnchorJumpEvent()
   nsCOMPtr<nsIAccessible> accessible = GetFirstLeafAccessible(focusNode);
   nsCOMPtr<nsPIAccessible> privateAccessible = do_QueryInterface(accessible);
   if (privateAccessible) {
-    privateAccessible->FireToolkitEvent(nsIAccessibleEvent::EVENT_SELECTION_WITHIN,
+    privateAccessible->FireToolkitEvent(nsIAccessibleEvent::EVENT_SCROLLINGSTART,
                                         accessible, nsnull);
   }
   return NS_OK;
@@ -345,14 +391,31 @@ void nsDocAccessibleWrap::DocLoadCallback(nsITimer *aTimer, void *aClosure)
   // Doc has finished loading, fire "load finished" event
   // By using short timer we can wait for MS Windows to make the window visible,
   // which it does asynchronously. This avoids confusing the screen reader with a
-  // hidden window.
+  // hidden window. Waiting also allows us to see of the document has focus,
+  // which is important because we only fire doc loaded events for focused documents.
 
   nsDocAccessibleWrap *docAcc =
     NS_REINTERPRET_CAST(nsDocAccessibleWrap*, aClosure);
-  if (docAcc) {
-    docAcc->FireToolkitEvent(nsIAccessibleEvent::EVENT_STATE_CHANGE,
-                             docAcc, nsnull);
-    docAcc->FireAnchorJumpEvent();
+  if (!docAcc) {
+    return;
+  }
+
+  // Fire doc finished event
+  nsCOMPtr<nsIDOMNode> docDomNode;
+  docAcc->GetDOMNode(getter_AddRefs(docDomNode));
+  nsCOMPtr<nsIDocument> doc(do_QueryInterface(docDomNode));
+  if (doc) {
+    nsCOMPtr<nsISupports> container = doc->GetContainer();
+    nsCOMPtr<nsIDocShell> docShell = do_QueryInterface(container);
+    if (docShell) {
+      PRBool hasFocus;
+      docShell->GetHasFocus(&hasFocus);
+      if (hasFocus) {
+        docAcc->FireToolkitEvent(nsIAccessibleEvent::EVENT_STATE_CHANGE,
+                                docAcc, nsnull);
+        docAcc->FireAnchorJumpEvent();
+      }
+    }
   }
 }
 

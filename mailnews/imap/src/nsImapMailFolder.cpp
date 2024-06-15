@@ -111,6 +111,8 @@
 #include <time.h>
 #include "nsIMsgMailNewsUrl.h"
 #include "nsEmbedCID.h"
+#include "nsIMsgComposeService.h"
+#include "nsMsgCompCID.h"
 
 static NS_DEFINE_CID(kRDFServiceCID, NS_RDFSERVICE_CID);
 static NS_DEFINE_CID(kCMailDB, NS_MAILDB_CID);
@@ -486,16 +488,16 @@ nsresult nsImapMailFolder::CreateSubFolders(nsFileSpec &path)
   PRBool isServer;
   rv = GetIsServer(&isServer);
 
-  char *folderName;
+  nsCAutoString folderName;
   for (nsDirectoryIterator dir(path, PR_FALSE); dir.Exists(); dir++) 
   {
     nsFileSpec currentFolderPath = dir.Spec();
-    folderName = currentFolderPath.GetLeafName();
+    folderName.Adopt(currentFolderPath.GetLeafName());
     currentFolderNameStr.AssignWithConversion(folderName);
     if (isServer && imapServer)
     {
       PRBool isPFC;
-      imapServer->GetIsPFC(folderName, &isPFC);
+      imapServer->GetIsPFC(folderName.get(), &isPFC);
       if (isPFC)
       {
         nsCOMPtr <nsIMsgFolder> pfcFolder;
@@ -505,10 +507,7 @@ nsresult nsImapMailFolder::CreateSubFolders(nsFileSpec &path)
       // should check if this is the PFC
     }
     if (nsShouldIgnoreFile(currentFolderNameStr))
-    {
-      PL_strfree(folderName);
       continue;
-    }
 
     // OK, here we need to get the online name from the folder cache if we can.
     // If we can, use that to create the sub-folder
@@ -519,7 +518,7 @@ nsresult nsImapMailFolder::CreateSubFolders(nsFileSpec &path)
 
     NS_NewFileSpecWithSpec(currentFolderPath, getter_AddRefs(dbFile));
     // don't strip off the .msf in currentFolderPath.
-    currentFolderPath.SetLeafName(folderName);
+    currentFolderPath.SetLeafName(folderName.get());
     rv = NS_NewFileSpecWithSpec(currentFolderPath, getter_AddRefs(curFolder));
 
     currentFolderDBNameStr = currentFolderNameStr;
@@ -605,7 +604,6 @@ nsresult nsImapMailFolder::CreateSubFolders(nsFileSpec &path)
         child->SetPrettyName(currentFolderNameStr.get());
 
     }
-    PL_strfree(folderName);
   }
   return rv;
 }
@@ -1221,10 +1219,19 @@ NS_IMETHODIMP nsImapMailFolder::GetNoSelect(PRBool *aResult)
 NS_IMETHODIMP nsImapMailFolder::Compact(nsIUrlListener *aListener, nsIMsgWindow *aMsgWindow)
 {
   nsresult rv;
+
+  rv = GetDatabase(nsnull);
+  // now's a good time to apply the retention settings. If we do delete any
+  // messages, the expunge is going to have to wait until the delete to 
+  // finish before it can run, but the multiple-connection protection code
+  // should handle that.
+  if (mDatabase)
+    ApplyRetentionSettings();
+
   // compact offline store, if folder configured for offline use.
   // for now, check aMsgWindow because not having aMsgWindow means
   // we're doing a compact at shut-down. TEMPORARY HACK
- if (aMsgWindow && mFlags & MSG_FOLDER_FLAG_OFFLINE)
+  if (aMsgWindow && mFlags & MSG_FOLDER_FLAG_OFFLINE)
     CompactOfflineStore(aMsgWindow);
 
   nsCOMPtr<nsIImapService> imapService = do_GetService(NS_IMAPSERVICE_CONTRACTID, &rv);
@@ -2232,6 +2239,8 @@ NS_IMETHODIMP nsImapMailFolder::DeleteMessages(nsISupportsArray *messages,
         }
       }
     }
+    // if copy service listener is also a url listener, pass that
+    // url listener into StoreImapFlags.
     nsCOMPtr <nsIUrlListener> urlListener = do_QueryInterface(listener);
     if (deleteMsgs)
       messageFlags |= kImapMsgSeenFlag;
@@ -3367,9 +3376,47 @@ NS_IMETHODIMP nsImapMailFolder::ApplyFilterHit(nsIMsgFilter *filter, nsIMsgWindo
             NS_ASSERTION(keysToClassify, "error getting key bucket");
             if (keysToClassify)
               keysToClassify->Add(msgKey);
+            if (junkScore == 100)
+              msgIsNew = PR_FALSE;
           }
         }
         break;
+      case nsMsgFilterAction::Forward:
+        {
+          nsXPIDLCString forwardTo;
+          filterAction->GetStrValue(getter_Copies(forwardTo));
+          nsCOMPtr <nsIMsgIncomingServer> server;
+          rv = GetServer(getter_AddRefs(server));
+          NS_ENSURE_SUCCESS(rv, rv);
+          if (!forwardTo.IsEmpty())
+          {
+            nsCOMPtr <nsIMsgComposeService> compService = do_GetService (NS_MSGCOMPOSESERVICE_CONTRACTID) ;
+            if (compService)
+            {
+              nsAutoString forwardStr;
+              forwardStr.AssignWithConversion(forwardTo.get());
+              rv = compService->ForwardMessage(forwardStr, msgHdr, msgWindow, server);
+            }
+          }
+        }
+        break;
+
+      case nsMsgFilterAction::Reply:
+        {
+          nsXPIDLCString replyTemplateUri;
+          filterAction->GetStrValue(getter_Copies(replyTemplateUri));
+          nsCOMPtr <nsIMsgIncomingServer> server;
+          GetServer(getter_AddRefs(server));
+          NS_ENSURE_SUCCESS(rv, rv);
+          if (!replyTemplateUri.IsEmpty())
+          {
+            nsCOMPtr <nsIMsgComposeService> compService = do_GetService (NS_MSGCOMPOSESERVICE_CONTRACTID) ;
+            if (compService)
+              rv = compService->ReplyWithTemplate(msgHdr, replyTemplateUri, msgWindow, server);
+          }
+        }
+        break;
+
         default:
           break;
       }
@@ -4080,6 +4127,11 @@ nsImapMailFolder::GetNotifyDownloadedLines(PRBool *notifyDownloadedLines)
 NS_IMETHODIMP
 nsImapMailFolder::SetNotifyDownloadedLines(PRBool notifyDownloadedLines)
 {
+  // ignore this if we're downloading the whole folder and someone says
+  // to turn off downloading for offline use, which can happen if a 3rd party
+  // app tries to stream a message while we're downloading for offline use.
+  if (!notifyDownloadedLines && m_downloadingFolderForOfflineUse)
+    return NS_OK;
   m_downloadMessageForOfflineUse = notifyDownloadedLines;
   return NS_OK;
 }
@@ -4281,7 +4333,11 @@ nsresult nsImapMailFolder::HandleCustomFlags(nsMsgKey uidOfMessage, nsIMsgDBHdr 
     mDatabase->SetStringProperty(uidOfMessage, "junkscore", "0");
   // ### TODO: we really should parse the keywords into space delimited keywords before checking
   else if (FindInReadable(NS_LITERAL_CSTRING("Junk"), keywords.BeginReading(b), keywords.EndReading(e)))
+  {
+    PRUint32 newFlags;
+    dbHdr->AndFlags(~MSG_FLAG_NEW, &newFlags);
     mDatabase->SetStringProperty(uidOfMessage, "junkscore", "100");
+  }
   else
     messageClassified = PR_FALSE;
   if (messageClassified)

@@ -40,38 +40,43 @@
 
 #include <cairo.h>
 
-// this key can be used to look up a Surface object given a cairo_surface_t
-#ifdef CURRENT_VERSION_OF_CAIRO
-static cairo_user_data_key_t gSurfaceMapKey;
-#endif
+#include "gfxTypes.h"
 
 class gfxASurface {
-public:
-    // <insert refcount stuff here>
-    cairo_surface_t *CairoSurface() { return mSurface; }
+    THEBES_DECL_REFCOUNTING_ABSTRACT
 
-    static gfxASurface* LookupSurface(cairo_surface_t* surface) {
-#ifdef CURRENT_VERSION_OF_CAIRO
-        return static_cast<gfxASurface*>(cairo_surface_get_user_data(surface, &gSurfaceMapKey));
-#else
-        return 0;
-#endif
-}
+public:
+    /*** this DOES NOT addref the surface */
+    cairo_surface_t* CairoSurface() { return mSurface; }
 
 protected:
     void Init(cairo_surface_t* surface) {
+        mDestroyed = PR_FALSE;
         mSurface = surface;
-#ifdef CURRENT_VERSION_OF_CAIRO
-        cairo_surface_set_user_data(mSurface, &gSurfaceMapKey, static_cast<void*>(this), 0);
-#endif
+    }
+
+    void Destroy() {
+        if (mDestroyed) {
+            NS_WARNING("Calling Destroy on an already-destroyed surface!");
+            return;
+        }
+
+        cairo_surface_destroy(mSurface);
+        mDestroyed = PR_TRUE;
+    }
+
+    PRBool Destroyed() {
+        return mDestroyed;
     }
 
     virtual ~gfxASurface() {
-        cairo_surface_destroy(mSurface);
+        if (!mDestroyed) {
+            NS_WARNING("gfxASurface::~gfxASurface called, but cairo surface was not destroyed! (Did someone forget to call Destroy()?)");
+        }
     }
-
 private:
     cairo_surface_t* mSurface;
+    PRBool mDestroyed;
 };
 
 #endif /* GFX_ASURFACE_H */

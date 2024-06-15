@@ -111,7 +111,7 @@ MimeMultipart_initialize (MimeObject *object)
   MimeMultipart *mult = (MimeMultipart *) object;
   char *ct;
 
-  /* This is an abstract class; it shouldn't be directly instanciated. */
+  /* This is an abstract class; it shouldn't be directly instantiated. */
   PR_ASSERT(object->clazz != (MimeObjectClass *) &mimeMultipartClass);
 
   ct = MimeHeaders_get (object->headers, HEADER_CONTENT_TYPE, PR_FALSE, PR_FALSE);
@@ -413,11 +413,9 @@ MimeMultipart_parse_line (char *line, PRInt32 length, MimeObject *obj)
       return -1;
   }
 
-  if (obj->options->format_out == nsMimeOutput::nsMimeMessageAttach && mult->state != MimeMultipartPartLine)
-  {
-    if (!obj->options->state->strippingPart  /* || mult->state != MimeMultipartHeaders */)
+  if (obj->options->format_out == nsMimeOutput::nsMimeMessageAttach && 
+      (!obj->options->state->strippingPart && mult->state != MimeMultipartPartLine))
       return MimeObject_write(obj, line, length, PR_FALSE);
-  }
   return 0;
 }
 

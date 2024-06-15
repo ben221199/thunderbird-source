@@ -49,7 +49,6 @@
 |   longer term, this code will be restructured to make it more reusable.      |
 ------------------------------------------------------------------------------*/
 
-const kMailToLength = 7;
 
 function nsContextMenu( xulMenu ) {
     this.target         = null;
@@ -265,12 +264,12 @@ nsContextMenu.prototype = {
                 var documentType = window._content.document.contentType;
                 if ( documentType.substr(0,6) == "image/" )
                     this.onStandaloneImage = true;
-             } else if ( this.target.localName.toUpperCase() == "INPUT") {
+             } else if ( this.target instanceof HTMLInputElement) {
                type = this.target.getAttribute("type");
                this.onTextInput = this.isTargetATextBox(this.target);
-            } else if ( this.target.localName.toUpperCase() == "TEXTAREA" ) {
+            } else if ( this.target instanceof HTMLTextAreaElement ) {
                  this.onTextInput = true;
-            } else if ( this.target.localName.toUpperCase() == "HTML" ) {
+            } else if ( this.target instanceof HTMLHtmlElement ) {
                // pages with multiple <body>s are lame. we'll teach them a lesson.
                var bodyElt = this.target.ownerDocument.getElementsByTagName("body")[0];
                if ( bodyElt ) {
@@ -337,13 +336,11 @@ nsContextMenu.prototype = {
         var elem = this.target;
         while ( elem ) {
             if ( elem.nodeType == Node.ELEMENT_NODE ) {
-                var localname = elem.localName.toUpperCase();
-                
                 // Link?
                 if ( !this.onLink && 
-                    ( (localname === "A" && elem.href) ||
-                      localname === "AREA" ||
-                      localname === "LINK" ||
+                    ( (elem instanceof HTMLAnchorElement && elem.href) ||
+                      elem instanceof HTMLAreaElement ||
+                      elem instanceof HTMLLinkElement ||
                       elem.getAttributeNS( "http://www.w3.org/1999/xlink", "type") == "simple" ) ) {
                     // Clicked on a link.
                     this.onLink = true;
@@ -365,14 +362,12 @@ nsContextMenu.prototype = {
                 if ( !this.onMetaDataItem ) {
                     // We currently display metadata on anything which fits
                     // the below test.
-                    if ( ( localname === "BLOCKQUOTE" && 'cite' in elem && elem.cite)  ||
-                         ( localname === "Q" && 'cite' in elem && elem.cite)           ||
-                         ( localname === "TABLE" && 'summary' in elem && elem.summary) ||
-                         ( ( localname === "INS" || localname === "DEL" ) &&
-                           ( ( 'cite' in elem && elem.cite ) ||
-                             ( 'dateTime' in elem && elem.dateTime ) ) )               ||
-                         ( 'title' in elem && elem.title )                             ||
-                         ( 'lang' in elem && elem.lang ) ) {
+                    if ( ( elem instanceof HTMLQuoteElement && elem.cite)    ||
+                         ( elem instanceof HTMLTableElement && elem.summary) ||
+                         ( elem instanceof HTMLModElement &&
+                             ( elem.cite || elem.dateTime ) )                ||
+                         ( elem instanceof HTMLElement &&
+                             ( elem.title || elem.lang ) ) ) {
                         this.onMetaDataItem = true;
                     }
                 }
@@ -572,14 +567,17 @@ nsContextMenu.prototype = {
         // Copy the comma-separated list of email addresses only.
         // There are other ways of embedding email addresses in a mailto:
         // link, but such complex parsing is beyond us.
+        
+        const kMailToLength = 7; // length of "mailto:"
+
         var url = this.linkURL();
         var qmark = url.indexOf( "?" );
         var addresses;
         
-        if ( qmark > 7 ) {                   // 7 == length of "mailto:"
-            addresses = url.substring( 7, qmark );
+        if ( qmark > kMailToLength ) {
+            addresses = url.substring( kMailToLength, qmark );
         } else {
-            addresses = url.substr( 7 );
+            addresses = url.substr( kMailToLength );
         }
 
         // Let's try to unescape it using a character set
@@ -602,7 +600,7 @@ nsContextMenu.prototype = {
       var docshell = document.getElementById( "content" ).webNavigation;
       BookmarksUtils.addBookmark( docshell.currentURI.spec,
                                   docshell.document.title,
-                                  docshell.document.charset,
+                                  docshell.document.characterSet,
                                   false );
     },
     addBookmarkForFrame : function() {
@@ -613,7 +611,7 @@ nsContextMenu.prototype = {
         title = uri;
       BookmarksUtils.addBookmark( uri,
                                   title,
-                                  doc.charset,
+                                  doc.characterSet,
                                   false );
     },
     // Open Metadata window for node
@@ -772,29 +770,12 @@ nsContextMenu.prototype = {
     },
     isTargetATextBox : function ( node )
     {
-      if (node.nodeType != Node.ELEMENT_NODE)
-        return false;
+      if (node instanceof HTMLInputElement)
+        return (node.type == "text" || node.type == "password")
 
-      if (node.localName.toUpperCase() == "INPUT") {
-        var attrib = "";
-        var type = node.getAttribute("type");
-
-        if (type)
-          attrib = type.toUpperCase();
-
-        return( (attrib != "IMAGE") &&
-                (attrib != "CHECKBOX") &&
-                (attrib != "RADIO") &&
-                (attrib != "SUBMIT") &&
-                (attrib != "RESET") &&
-                (attrib != "HIDDEN") &&
-                (attrib != "RESET") &&
-                (attrib != "BUTTON") );
-      } else  {
-        return(node.localName.toUpperCase() == "TEXTAREA");
-      }
+      return (node instanceof HTMLTextAreaElement);
     },
-    
+
     // Determines whether or not the separator with the specified ID should be 
     // shown or not by determining if there are any non-hidden items between it
     // and the previous separator. 

@@ -13,8 +13,11 @@ main(int argc, char **argv)
   int j = 0;
   int k = 0;
 
+  // Clear any link env variable that might get us tangled up
+  _putenv("LINK=");
+
   args[i++] = "link.exe";
-  args[i++] = "/SUBSYSTEM:WINDOWSCE";
+  args[i++] = "/SUBSYSTEM:WINDOWSCE,4.20";
   args[i++] = "/MACHINE:X86";
   args[i++] = "/LIBPATH:\"" WCE_LIB "\"";
   args[i++] = "/LIBPATH:\"" SHUNT_LIB "\"";
@@ -30,7 +33,7 @@ main(int argc, char **argv)
   args[i++] = "/NODEFAULTLIB:OLDNAMES";
   args[i++] = "/NODEFAULTLIB:MSVCRT";
 
-  args[i++] = "/STACK:0x5000000,1000000";
+  args[i++] = "/STACK:0x5000000"; //,1000000
 
   // if -DLL is not passed, then change the entry to 'main'
   while(argv[j])

@@ -22,6 +22,7 @@
  * Contributor(s):
  *   Makoto Kato  <m_kato@ga2.so-net.ne.jp>
  *   Dean Tessman <dean_tessman@hotmail.com>
+ *   Mats Palmgren <mats.palmgren@bredband.net>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -121,6 +122,8 @@
 #include "nsContentUtils.h"
 
 #include "imgIContainer.h"
+#include "nsIProperties.h"
+#include "nsISupportsPrimitives.h"
 
 #if defined (XP_MAC) || defined(XP_MACOSX)
 #include <Events.h>
@@ -128,10 +131,6 @@
 
 #if defined(DEBUG_rods) || defined(DEBUG_bryner)
 //#define DEBUG_DOCSHELL_FOCUS
-#endif
-
-#ifdef DEBUG_DOCSHELL_FOCUS
-static char* gDocTypeNames[] = {"eChrome", "eGenericContent", "eFrameSet", "eFrame", "eIFrame"};
 #endif
 
 static NS_DEFINE_CID(kFrameTraversalCID, NS_FRAMETRAVERSAL_CID);
@@ -513,7 +512,9 @@ nsEventStateManager::PreHandleEvent(nsPresContext* aPresContext,
           // we will be focusing it again later when we receive the NS_ACTIVATE
           // event.  See bug 120209.
 
-          nsIFocusController *focusController = nsnull;
+          // Hold a strong ref to the focus controller, since we need
+          // it after event dispatch.
+          nsCOMPtr<nsIFocusController> focusController;
           PRBool isAlreadySuppressed = PR_FALSE;
 
           if (ourWindow) {
@@ -750,8 +751,9 @@ nsEventStateManager::PreHandleEvent(nsPresContext* aPresContext,
         return NS_ERROR_NULL_POINTER;
       }
 
-      nsIFocusController *focusController = win->GetRootFocusController();
-
+      // Hold a strong ref to the focus controller, since we need
+      // it after event dispatch.
+      nsCOMPtr<nsIFocusController> focusController = win->GetRootFocusController();
       nsCOMPtr<nsIDOMElement> focusedElement;
       nsCOMPtr<nsIDOMWindowInternal> focusedWindow;
 
@@ -932,7 +934,8 @@ nsEventStateManager::HandleAccessKey(nsPresContext* aPresContext,
   // Alt or other accesskey modifier is down, we may need to do an accesskey
   if (mAccessKeys) {
     // Someone registered an accesskey.  Find and activate it.
-    PRUnichar accKey = nsCRT::ToLower((char)aEvent->charCode);
+    PRUint32 accKey = (IS_IN_BMP(aEvent->charCode)) ? 
+      ToLowerCase((PRUnichar)aEvent->charCode) : aEvent->charCode;
 
     nsVoidKey key(NS_INT32_TO_PTR(accKey));
     if (mAccessKeys->Exists(&key)) {
@@ -1217,10 +1220,12 @@ nsEventStateManager::FireContextClick()
   // event and it will get reset on the very next event to the correct frame).
   mCurrentTarget = nsnull;
   if ( mGestureDownContent ) {
-    mPresContext->GetPresShell()->GetPrimaryFrameFor(mGestureDownContent,
+    mPresContext->GetPresShell()->GetPrimaryFrameFor(mGestureDownFrameOwner,
                                                      &mCurrentTarget);
 
     if ( mCurrentTarget ) {
+      SetFrameExternalReference(mCurrentTarget);
+      
       NS_ASSERTION(mPresContext == mCurrentTarget->GetPresContext(),
                    "a prescontext returned a primary frame that didn't belong to it?");
 
@@ -1294,8 +1299,9 @@ nsEventStateManager::FireContextClick()
   }
 
   // now check if the event has been handled. If so, stop tracking a drag
-  if ( status == nsEventStatus_eConsumeNoDefault )
+  if ( status == nsEventStatus_eConsumeNoDefault ) {
     StopTrackingDragGesture();
+  }
 
   KillClickHoldTimer();
 
@@ -1331,6 +1337,7 @@ nsEventStateManager::BeginTrackingDragGesture(nsPresContext* aPresContext,
   inDownFrame->GetContentForEvent(aPresContext, inDownEvent,
                                   getter_AddRefs(mGestureDownContent));
 
+  mGestureDownFrameOwner = inDownFrame->GetContent();
   mGestureDownShift = inDownEvent->isShift;
   mGestureDownControl = inDownEvent->isControl;
   mGestureDownAlt = inDownEvent->isAlt;
@@ -1353,6 +1360,7 @@ void
 nsEventStateManager::StopTrackingDragGesture()
 {
   mGestureDownContent = nsnull;
+  mGestureDownFrameOwner = nsnull;
 }
 
 
@@ -1449,12 +1457,14 @@ nsEventStateManager::GenerateDragGesture(nsPresContext* aPresContext,
 {
   NS_WARN_IF_FALSE(aPresContext, "This shouldn't happen.");
   if ( IsTrackingDragGesture() ) {
-    aPresContext->GetPresShell()->GetPrimaryFrameFor(mGestureDownContent,
+    aPresContext->GetPresShell()->GetPrimaryFrameFor(mGestureDownFrameOwner,
                                                      &mCurrentTarget);
     if (!mCurrentTarget) {
       StopTrackingDragGesture();
       return;
     }
+
+    SetFrameExternalReference(mCurrentTarget);
 
     // Check if selection is tracking drag gestures, if so
     // don't interfere!
@@ -1712,21 +1722,11 @@ nsEventStateManager::DoScrollText(nsPresContext* aPresContext,
     scrollView->GetLineHeight(&lineHeight);
 
     if (lineHeight != 0) {
-      nscoord xPos, yPos;
-      scrollView->GetScrollPosition(xPos, yPos);
-
-      if (aNumLines < 0) {
-        passToParent = aScrollHorizontal ? (xPos <= 0) : (yPos <= 0);
-      } else {
-        nsSize scrolledSize;
-        scrollView->GetContainerSize(&scrolledSize.width, &scrolledSize.height);
-
-        nsRect portRect = scrollView->View()->GetBounds();
-
-        passToParent = (aScrollHorizontal ?
-                        (xPos + portRect.width >= scrolledSize.width) :
-                        (yPos + portRect.height >= scrolledSize.height));
-      }
+      PRBool canScroll;
+      nsresult rv = scrollView->CanScroll(aScrollHorizontal,
+                                          (aNumLines > 0), canScroll);
+      if (NS_SUCCEEDED(rv))
+        passToParent = !canScroll;
 
       // Comboboxes need special care.
       nsIComboboxControlFrame* comboBox = nsnull;
@@ -2308,6 +2308,8 @@ nsEventStateManager::UpdateCursor(nsPresContext* aPresContext,
 {
   PRInt32 cursor = NS_STYLE_CURSOR_DEFAULT;
   imgIContainer* container = nsnull;
+  PRBool haveHotspot = PR_FALSE;
+  float hotspotX = 0.0f, hotspotY = 0.0f;
 
   //If cursor is locked just use the locked one
   if (mLockCursor) {
@@ -2320,6 +2322,9 @@ nsEventStateManager::UpdateCursor(nsPresContext* aPresContext,
         return;  // don't update the cursor if we failed to get it from the frame see bug 118877
       cursor = framecursor.mCursor;
       container = framecursor.mContainer;
+      haveHotspot = framecursor.mHaveHotspot;
+      hotspotX = framecursor.mHotspotX;
+      hotspotY = framecursor.mHotspotY;
   }
 
   // Check whether or not to show the busy cursor
@@ -2339,7 +2344,8 @@ nsEventStateManager::UpdateCursor(nsPresContext* aPresContext,
   }
 
   if (aTargetFrame) {
-    SetCursor(cursor, container, aTargetFrame->GetWindow(), PR_FALSE);
+    SetCursor(cursor, container, haveHotspot, hotspotX, hotspotY,
+              aTargetFrame->GetWindow(), PR_FALSE);
   }
 
   if (mLockCursor || NS_STYLE_CURSOR_AUTO != cursor) {
@@ -2349,6 +2355,8 @@ nsEventStateManager::UpdateCursor(nsPresContext* aPresContext,
 
 NS_IMETHODIMP
 nsEventStateManager::SetCursor(PRInt32 aCursor, imgIContainer* aContainer,
+                               PRBool aHaveHotspot,
+                               float aHotspotX, float aHotspotY,
                                nsIWidget* aWidget, PRBool aLockCursor)
 {
   nsCursor c;
@@ -2472,8 +2480,45 @@ nsEventStateManager::SetCursor(PRInt32 aCursor, imgIContainer* aContainer,
 
   // First, try the imgIContainer, if non-null
   nsresult rv = NS_ERROR_FAILURE;
-  if (aContainer)
-    rv = aWidget->SetCursor(aContainer);
+  if (aContainer) {
+    PRUint32 hotspotX, hotspotY;
+
+    // css3-ui says to use the CSS-specified hotspot if present,
+    // otherwise use the intrinsic hotspot, otherwise use the top left
+    // corner.
+    if (aHaveHotspot) {
+      PRInt32 imgWidth, imgHeight;
+      aContainer->GetWidth(&imgWidth);
+      aContainer->GetHeight(&imgHeight);
+
+      // XXX NSToUintRound?
+      hotspotX = aHotspotX > 0.0f
+                   ? PRUint32(aHotspotX + ROUND_CONST_FLOAT) : PRUint32(0);
+      if (hotspotX >= PRUint32(imgWidth))
+        hotspotX = imgWidth - 1;
+      hotspotY = aHotspotY > 0.0f
+                   ? PRUint32(aHotspotY + ROUND_CONST_FLOAT) : PRUint32(0);
+      if (hotspotY >= PRUint32(imgHeight))
+        hotspotY = imgHeight - 1;
+    } else {
+      hotspotX = 0;
+      hotspotY = 0;
+      nsCOMPtr<nsIProperties> props(do_QueryInterface(aContainer));
+      if (props) {
+        nsCOMPtr<nsISupportsPRUint32> hotspotXWrap, hotspotYWrap;
+
+        props->Get("hotspotX", NS_GET_IID(nsISupportsPRUint32), getter_AddRefs(hotspotXWrap));
+        props->Get("hotspotY", NS_GET_IID(nsISupportsPRUint32), getter_AddRefs(hotspotYWrap));
+
+        if (hotspotXWrap)
+          hotspotXWrap->GetData(&hotspotX);
+        if (hotspotYWrap)
+          hotspotYWrap->GetData(&hotspotY);
+      }
+    }
+
+    rv = aWidget->SetCursor(aContainer, hotspotX, hotspotY);
+  }
 
   if (NS_FAILED(rv))
     aWidget->SetCursor(c);
@@ -2626,6 +2671,10 @@ nsEventStateManager::NotifyMouseOver(nsGUIEvent* aEvent, nsIContent* aContent)
   if (mLastMouseOverElement == aContent)
     return;
 
+  // Remember mLastMouseOverElement as the related content for the
+  // DispatchMouseEvent() call below, since NotifyMouseOut() resets it, bug 298477.
+  nsCOMPtr<nsIContent> lastMouseOverElement = mLastMouseOverElement;
+
   NotifyMouseOut(aEvent, aContent);
 
   // Store the first mouseOver event we fire and don't refire mouseOver
@@ -2636,7 +2685,7 @@ nsEventStateManager::NotifyMouseOver(nsGUIEvent* aEvent, nsIContent* aContent)
   
   // Fire mouseover
   mLastMouseOverFrame = DispatchMouseEvent(aEvent, NS_MOUSE_ENTER_SYNTH,
-                                           aContent, mLastMouseOverElement);
+                                           aContent, lastMouseOverElement);
   mLastMouseOverElement = aContent;
   
   // Turn recursion protection back off
@@ -3034,7 +3083,7 @@ PrintDocTree(nsIDocShellTreeNode * aParentNode, int aLevel)
   printf("DS %p  Type %s  Cnt %d  Doc %p  DW %p  EM %p\n",
     parentAsDocShell.get(),
     type==nsIDocShellTreeItem::typeChrome?"Chrome":"Content",
-    childWebshellCount, doc.get(), domwin.get(),
+    childWebshellCount, doc, domwin.get(),
     presContext->EventStateManager());
 
   if (childWebshellCount > 0) {
@@ -3230,7 +3279,7 @@ nsEventStateManager::ShiftFocusInternal(PRBool aForward, nsIContent* aStart)
         // ChangeFocusWith failed to move focus to nextFocus because a blur handler
         // made it unfocusable. (bug #118685)
         // Try again unless it's from the same point, bug 232368.
-        if (oldFocus != aStart) {
+        if (oldFocus != aStart && oldFocus->GetDocument()) {
           mCurrentTarget = nsnull;
           return ShiftFocusInternal(aForward, oldFocus);
         } else {
@@ -3625,7 +3674,7 @@ nsEventStateManager::GetEventRelatedContent(nsIContent** aContent)
 NS_IMETHODIMP
 nsEventStateManager::GetContentState(nsIContent *aContent, PRInt32& aState)
 {
-  aState = NS_EVENT_STATE_UNSPECIFIED;
+  aState = aContent->IntrinsicState();
 
   // Hierchical active:  Check the ancestor chain of mActiveContent to see
   // if we are on it.
@@ -3681,20 +3730,6 @@ static nsIContent* FindCommonAncestor(nsIContent *aNode1, nsIContent *aNode2)
         break;
       anc2 = parent;
     }
-#ifdef DEBUG
-    if (anc1 != anc2) {
-      // This could be a performance problem.
-
-      // The |!anc1->GetDocument()| case (that aNode1 has been removed
-      // from the document) could be a slight performance problem.  It's
-      // rare enough that it shouldn't be an issue, but common enough
-      // that we don't want to assert..
-      NS_ASSERTION(!anc1->GetDocument(),
-                   "moved hover/active between nodes in different documents");
-      // XXX Why don't we ever hit this code because we're not using
-      // |GetBindingParent|?
-    }
-#endif
     if (anc1 == anc2) {
       anc1 = aNode1;
       anc2 = aNode2;
@@ -3870,17 +3905,9 @@ nsEventStateManager::SetContentState(nsIContent *aContent, PRInt32 aState)
         }
       }
     }
-    else if (newHover) {
-      doc1 = newHover->GetDocument();
-    }
-    else if (oldHover) {
-      doc1 = oldHover->GetDocument();
-    }
-    else if (newActive) {
-      doc1 = newActive->GetDocument();
-    }
     else {
-      doc1 = oldActive->GetDocument();
+      EnsureDocument(mPresContext);
+      doc1 = mDocument;
     }
     if (doc1) {
       doc1->BeginUpdate(UPDATE_CONTENT_STATE);
@@ -4190,7 +4217,17 @@ NS_IMETHODIMP
 nsEventStateManager::SetFocusedContent(nsIContent* aContent)
 {
   mCurrentFocus = aContent;
+  if (mCurrentFocus)
+    mLastFocus = mCurrentFocus;
   mCurrentFocusFrame = nsnull;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsEventStateManager::GetLastFocusedContent(nsIContent** aContent)
+{
+  *aContent = mLastFocus;
+  NS_IF_ADDREF(*aContent);
   return NS_OK;
 }
 
@@ -4225,6 +4262,11 @@ nsEventStateManager::ContentRemoved(nsIContent* aContent)
     SetFocusedContent(nsnull);
   }
 
+  if (mLastFocus &&
+      nsContentUtils::ContentIsDescendantOf(mLastFocus, aContent)) {
+    mLastFocus = nsnull;
+  }
+
   if (mHoverContent &&
       nsContentUtils::ContentIsDescendantOf(mHoverContent, aContent)) {
     // Since hover is hierarchical, set the current hover to the
@@ -4232,15 +4274,21 @@ nsEventStateManager::ContentRemoved(nsIContent* aContent)
     mHoverContent = aContent->GetParent();
   }
 
-  if (aContent == mActiveContent) {
-    mActiveContent = nsnull;
+  if (mActiveContent &&
+      nsContentUtils::ContentIsDescendantOf(mActiveContent, aContent)) {
+    // Active is hierarchical, so set the current active to the
+    // content's parent node.
+    mActiveContent = aContent->GetParent();
   }
 
-  if (aContent == mDragOverContent) {
+  if (mDragOverContent &&
+      nsContentUtils::ContentIsDescendantOf(mDragOverContent, aContent)) {
     mDragOverContent = nsnull;
   }
 
-  if (aContent == mLastMouseOverElement) {
+  if (mLastMouseOverElement &&
+      nsContentUtils::ContentIsDescendantOf(mLastMouseOverElement, aContent)) {
+    // See bug 292146 for why we want to null this out
     mLastMouseOverElement = nsnull;
   }
 
@@ -4273,7 +4321,7 @@ nsEventStateManager::RegisterAccessKey(nsIContent* aContent, PRUint32 aKey)
   }
 
   if (aContent) {
-    PRUnichar accKey = nsCRT::ToLower((char)aKey);
+    PRUint32 accKey = (IS_IN_BMP(aKey)) ? ToLowerCase((PRUnichar)aKey) : aKey;
 
     nsVoidKey key(NS_INT32_TO_PTR(accKey));
 
@@ -4295,7 +4343,7 @@ nsEventStateManager::UnregisterAccessKey(nsIContent* aContent, PRUint32 aKey)
   }
 
   if (aContent) {
-    PRUnichar accKey = nsCRT::ToLower((char)aKey);
+    PRUint32 accKey = (IS_IN_BMP(aKey)) ? ToLowerCase((PRUnichar)aKey) : aKey;
 
     nsVoidKey key(NS_INT32_TO_PTR(accKey));
 
@@ -4334,12 +4382,25 @@ nsEventStateManager::DispatchNewEvent(nsISupports* aTarget,
 
   nsCOMPtr<nsIPrivateDOMEvent> privEvt(do_QueryInterface(aEvent));
   if (privEvt) {
+    nsEvent * innerEvent;
+    privEvt->GetInternalNSEvent(&innerEvent);
+
+    NS_ENSURE_TRUE(innerEvent, NS_ERROR_ILLEGAL_VALUE);
+
+    // Make sure this event isn't currently in dispatch.
+    NS_ENSURE_TRUE(!NS_IS_EVENT_IN_DISPATCH(innerEvent),
+                   NS_ERROR_ILLEGAL_VALUE);
+
+    // And make sure this event wasn't already dispatched w/o being
+    // re-initialized in between.
+    NS_ENSURE_TRUE(!(innerEvent->flags & NS_EVENT_FLAG_STOP_DISPATCH_IMMEDIATELY),
+                   NS_ERROR_ILLEGAL_VALUE);
+
+    // Mark this event as dispatched now that we're this far along.
+    NS_MARK_EVENT_DISPATCH_STARTED(innerEvent);
+
     nsCOMPtr<nsIDOMEventTarget> eventTarget(do_QueryInterface(aTarget));
     privEvt->SetTarget(eventTarget);
-
-    //Check security state to determine if dispatcher is trusted
-    nsIScriptSecurityManager *securityManager =
-      nsContentUtils::GetSecurityManager();
 
     PRBool trusted;
     nsCOMPtr<nsIDOMNSEvent> nsevent(do_QueryInterface(privEvt));
@@ -4347,6 +4408,10 @@ nsEventStateManager::DispatchNewEvent(nsISupports* aTarget,
     nsevent->GetIsTrusted(&trusted);
 
     if (!trusted) {
+      //Check security state to determine if dispatcher is trusted
+      nsIScriptSecurityManager *securityManager =
+        nsContentUtils::GetSecurityManager();
+
       PRBool enabled;
       nsresult res =
         securityManager->IsCapabilityEnabled("UniversalBrowserWrite",
@@ -4354,45 +4419,45 @@ nsEventStateManager::DispatchNewEvent(nsISupports* aTarget,
       privEvt->SetTrusted(NS_SUCCEEDED(res) && enabled);
     }
 
-    nsEvent * innerEvent;
-    privEvt->GetInternalNSEvent(&innerEvent);
-
-    if (innerEvent) {
-      nsEventStatus status = nsEventStatus_eIgnore;
-      nsCOMPtr<nsIScriptGlobalObject> target(do_QueryInterface(aTarget));
+    nsEventStatus status = nsEventStatus_eIgnore;
+    nsCOMPtr<nsIScriptGlobalObject> target(do_QueryInterface(aTarget));
+    if (target) {
+      ret = target->HandleDOMEvent(mPresContext, innerEvent, &aEvent,
+                                   NS_EVENT_FLAG_INIT, &status);
+    }
+    else {
+      nsCOMPtr<nsIDocument> target(do_QueryInterface(aTarget));
       if (target) {
-        ret = target->HandleDOMEvent(mPresContext, innerEvent, &aEvent, NS_EVENT_FLAG_INIT, &status);
+        ret = target->HandleDOMEvent(mPresContext, innerEvent, &aEvent,
+                                     NS_EVENT_FLAG_INIT, &status);
       }
       else {
-        nsCOMPtr<nsIDocument> target(do_QueryInterface(aTarget));
+        nsCOMPtr<nsIContent> target(do_QueryInterface(aTarget));
         if (target) {
-          ret = target->HandleDOMEvent(mPresContext, innerEvent, &aEvent, NS_EVENT_FLAG_INIT, &status);
+          ret = target->HandleDOMEvent(mPresContext, innerEvent, &aEvent,
+                                       NS_EVENT_FLAG_INIT, &status);
+
+          // Dispatch to the system event group.  Make sure to clear
+          // the STOP_DISPATCH flag since this resets for each event
+          // group per DOM3 Events.
+
+          innerEvent->flags &= ~NS_EVENT_FLAG_STOP_DISPATCH;
+          ret = target->HandleDOMEvent(mPresContext, innerEvent, &aEvent,
+                                       NS_EVENT_FLAG_INIT |
+                                       NS_EVENT_FLAG_SYSTEM_EVENT,
+                                       &status);
         }
         else {
-          nsCOMPtr<nsIContent> target(do_QueryInterface(aTarget));
+          nsCOMPtr<nsIChromeEventHandler> target(do_QueryInterface(aTarget));
           if (target) {
-            ret = target->HandleDOMEvent(mPresContext, innerEvent, &aEvent, NS_EVENT_FLAG_INIT, &status);
-
-            // Dispatch to the system event group.  Make sure to clear the
-            // STOP_DISPATCH flag since this resets for each event group
-            // per DOM3 Events.
-
-            innerEvent->flags &= ~NS_EVENT_FLAG_STOP_DISPATCH;
-            ret = target->HandleDOMEvent(mPresContext, innerEvent, &aEvent,
-                                         NS_EVENT_FLAG_INIT | NS_EVENT_FLAG_SYSTEM_EVENT,
-                                         &status);
-          }
-          else {
-            nsCOMPtr<nsIChromeEventHandler> target(do_QueryInterface(aTarget));
-            if (target) {
-              ret = target->HandleChromeEvent(mPresContext, innerEvent, &aEvent, NS_EVENT_FLAG_INIT, &status);
-            }
+            ret = target->HandleChromeEvent(mPresContext, innerEvent, &aEvent,
+                                            NS_EVENT_FLAG_INIT, &status);
           }
         }
       }
-
-      *aDefaultActionEnabled = status != nsEventStatus_eConsumeNoDefault;
     }
+
+    *aDefaultActionEnabled = status != nsEventStatus_eConsumeNoDefault;
   }
 
   return ret;
@@ -4612,10 +4677,6 @@ nsEventStateManager::FocusElementButNotDocument(nsIContent *aContent)
   nsCOMPtr<nsIDOMElement> oldFocusedElement;
   focusController->GetFocusedElement(getter_AddRefs(oldFocusedElement));
   nsCOMPtr<nsIContent> oldFocusedContent(do_QueryInterface(oldFocusedElement));
-
-  // Notify focus controller of new focus for this document
-  nsCOMPtr<nsIDOMElement> newFocusedElement(do_QueryInterface(aContent));
-  focusController->SetFocusedElement(newFocusedElement);
 
   // Temporarily set mCurrentFocus so that esm::GetContentState() tells
   // layout system to show focus on this element.

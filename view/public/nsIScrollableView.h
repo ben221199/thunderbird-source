@@ -49,8 +49,8 @@ struct nsSize;
 
 // IID for the nsIScrollableView interface
 #define NS_ISCROLLABLEVIEW_IID    \
-{ 0x1a8c8cfa, 0x86aa, 0x4421, \
-{ 0xa1, 0x86, 0xae, 0x51, 0x79, 0x03, 0xe9, 0x06 } }
+{ 0x36083bcf, 0x61d7, 0x4c24, \
+{ 0xa6, 0xd4, 0x2f, 0x05, 0xba, 0x2c, 0x1b, 0x51 } }
 
 /**
  * A scrolling view allows an arbitrary view that you supply to be scrolled
@@ -107,13 +107,6 @@ public:
    * @return error status
    */
   NS_IMETHOD ScrollTo(nscoord aX, nscoord aY, PRUint32 aUpdateFlags) = 0;
-
-  /**
-   * Get information about whether the vertical and horizontal scrollbars
-   * are currently visible
-   */
-  NS_IMETHOD GetScrollbarVisibility(PRBool *aVerticalVisible,
-                                    PRBool *aHorizontalVisible) const = 0;
 
   /**
    * Set the properties describing how scrolling can be performed
@@ -181,6 +174,15 @@ public:
    * @return error status
    */
   NS_IMETHOD ScrollByWhole(PRBool aTop) = 0;
+
+  /**
+   * Check the view can scroll from current offset.
+   * @param aHorizontal If checking to Left or to Right, true. Otherwise, false.
+   * @param aForward    If checking to Right or Bottom, true. Otherwise, false.
+   * @param aResult     If the view can scroll, true. Otherwise, false.
+   * @return            error status
+   */
+  NS_IMETHOD CanScroll(PRBool aHorizontal, PRBool aForward, PRBool &aResult) = 0;
 
   /**
    * Returns the view as an nsIView*

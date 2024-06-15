@@ -1,4 +1,5 @@
 mk_add_options NSPR_CO_TAG=NSPRPUB_PRE_4_2_WINCE_BRANCH
+mk_add_options NSS_CO_TAG=NSS_WINCE_CLIENT_TAG
 
 mk_add_options MOZ_CO_PROJECT=suite
 ac_add_options --enable-application=suite
@@ -16,14 +17,9 @@ ac_add_options --target=arm-wince
 ac_add_options --enable-win32-target=WINCE
 ac_add_options --enable-default-toolkit=windows
 
-ac_add_options --without-libIDL
-
-ac_add_options --disable-md
-
 ac_add_options --disable-activex
 ac_add_options --disable-activex-scripting
 ac_add_options --disable-oji
-ac_add_options --disable-plugins
 
 WINCE=1
 mk_add_options WINCE=1
@@ -34,16 +30,13 @@ mk_add_options TARGET_DEVICE=emulator
 MINIMO=1
 mk_add_options MINIMO=1
 
-# disable XUL support to reduce codesize
-ac_add_options --disable-xul
-
 # enable minimal profile support
 ac_add_options --disable-profilesharing
 ac_add_options --disable-profilelocking
 ac_add_options --enable-single-profile
 
 # disable features and skip various build steps
-ac_add_options --enable-extensions="xml-rpc xmlextras transformiix webservices"
+ac_add_options --enable-extensions="xml-rpc xmlextras transformiix webservices spatialnavigation"
 ac_add_options --disable-accessibility
 ac_add_options --disable-composer
 ac_add_options --enable-plaintext-editor-only
@@ -56,6 +49,7 @@ ac_add_options --disable-installer
 ac_add_options --disable-xpinstall
 ac_add_options --disable-xpfe-components
 ac_add_options --disable-necko-disk-cache
+ac_add_options --disable-updater
 
 # configure necko to allocate smaller network buffers
 ac_add_options --enable-necko-small-buffers
@@ -66,7 +60,7 @@ ac_add_options --disable-logging
 ac_add_options --disable-tests
 
 # build minimal set of protocol handlers
-ac_add_options --enable-necko-protocols=http,file,res,jar
+ac_add_options --enable-necko-protocols=about,data,http,file,res,jar
 
 # build minimal set of image decoders
 ac_add_options --enable-image-decoders=png,gif,jpeg
@@ -82,7 +76,5 @@ ac_add_options --disable-debug
 ac_add_options --disable-shared
 ac_add_options --enable-static
 
-ac_add_options --disable-crypto
-
-# XPCALL Code is busted on the emulator?
+#xptcall busted
 ac_add_options --disable-jsloader

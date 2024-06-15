@@ -68,7 +68,6 @@ CPPSRCS		= \
 		nsSVGClipPathFrame.cpp \
 		nsSVGDefsFrame.cpp \
 		nsSVGEllipseFrame.cpp \
-		nsSVGForeignObjectFrame.cpp \
 		nsSVGGFrame.cpp \
 		nsSVGGenericContainerFrame.cpp \
 		nsSVGGlyphFrame.cpp \
@@ -90,6 +89,10 @@ CPPSRCS		= \
 		nsSVGUtils.cpp \
 		$(NULL)
 
+ifdef MOZ_SVG_FOREIGNOBJECT
+CPPSRCS += nsSVGForeignObjectFrame.cpp
+endif
+
 include $(topsrcdir)/config/config.mk
 
 # we don't want the shared lib, but we want to force the creation of a static lib.
@@ -107,11 +110,9 @@ LOCAL_INCLUDES	= \
 
 libs::
 	$(INSTALL) $(srcdir)/svg.css $(DIST)/bin/res
-	$(INSTALL) $(srcdir)/svg.properties $(DIST)/bin/res
 
 install::
 	$(SYSINSTALL) $(IFLAGS1) $(srcdir)/svg.css $(DESTDIR)$(mozappdir)/res
-	$(SYSINSTALL) $(IFLAGS1) $(srcdir)/svg.properties $(DESTDIR)$(mozappdir)/res
 
 
 DEFINES += -D_IMPL_NS_LAYOUT

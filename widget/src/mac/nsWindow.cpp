@@ -272,7 +272,6 @@ nsWindow::nsWindow() : nsBaseWidget() , nsDeleteObserved(this), nsIKBStateContro
   mVisRegion = nsnull;
   mWindowPtr = nsnull;
   mDrawing = PR_FALSE;
-  mDestroyCalled = PR_FALSE;
   mDestructorCalled = PR_FALSE;
 
   SetBackgroundColor(NS_RGB(255, 255, 255));
@@ -418,9 +417,9 @@ NS_IMETHODIMP nsWindow::Create(nsNativeWidget aNativeParent,		// this is a nsWin
 //-------------------------------------------------------------------------
 NS_IMETHODIMP nsWindow::Destroy()
 {
-	if (mDestroyCalled)
+	if (mOnDestroyCalled)
 		return NS_OK;
-	mDestroyCalled = PR_TRUE;
+	mOnDestroyCalled = PR_TRUE;
 
 	nsBaseWidget::OnDestroy();
 	nsBaseWidget::Destroy();
@@ -682,18 +681,6 @@ nsIMenuBar* nsWindow::GetMenuBar()
   return mMenuBar;
 }
 
-PRBool OnJaguarOrLater() // Return true if we are on Mac OS X 10.2 or later
-{
-    static PRBool gInitVer = PR_FALSE;
-    static PRBool gOnJaguarOrLater = PR_FALSE;
-    if(!gInitVer)
-    {
-        gOnJaguarOrLater =
-            (nsToolkit::OSXVersion() >= MAC_OS_X_VERSION_10_2_HEX);
-        gInitVer = PR_TRUE;
-    }
-    return gOnJaguarOrLater;
-}
 
 PRBool OnPantherOrLater() // Return true if we are on Mac OS X 10.3 or later
 {
@@ -724,7 +711,7 @@ NS_METHOD nsWindow::SetCursor(nsCursor aCursor)
     return NS_OK;
   }
 
-  if ( gCursorSpinner == nsnull && OnJaguarOrLater())
+  if ( gCursorSpinner == nsnull )
   {
       gCursorSpinner = new CursorSpinner();
   }
@@ -750,7 +737,7 @@ NS_METHOD nsWindow::SetCursor(nsCursor aCursor)
     case eCursor_zoom_in:             cursor = 129; break;
     case eCursor_zoom_out:            cursor = 130; break;
     case eCursor_not_allowed:
-    case eCursor_no_drop:             cursor = OnJaguarOrLater() ? kThemeNotAllowedCursor : 131; break;  
+    case eCursor_no_drop:             cursor = kThemeNotAllowedCursor; break;  
     case eCursor_col_resize:          cursor = 132; break; 
     case eCursor_row_resize:          cursor = 133; break;
     case eCursor_vertical_text:       cursor = 134; break;   
@@ -772,19 +759,14 @@ NS_METHOD nsWindow::SetCursor(nsCursor aCursor)
       break;
   }
 
-  //animated cursors cause crash on Mac OS X 10.1 when Japanese Kotorei input method is enabled
-  if ( OnJaguarOrLater() )
+
+  if (aCursor == eCursor_spinning)
   {
-    if (aCursor == eCursor_spinning)
-    {
-      gCursorSpinner->StartSpinCursor();
-    }
-    else
-    {
-      gCursorSpinner->StopSpinCursor();
-      nsWindow::SetCursorResource(cursor);
-    }
-  } else {
+    gCursorSpinner->StartSpinCursor();
+  }
+  else
+  {
+    gCursorSpinner->StopSpinCursor();
     nsWindow::SetCursorResource(cursor);
   }
 
@@ -1129,7 +1111,7 @@ inline PRUint16 COLOR8TOCOLOR16(PRUint8 color8)
 //-------------------------------------------------------------------------
 void nsWindow::StartDraw(nsIRenderingContext* aRenderingContext)
 {
-	if (mDrawing)
+	if (mDrawing || mOnDestroyCalled)
 		return;
 	mDrawing = PR_TRUE;
 
@@ -1184,7 +1166,7 @@ void nsWindow::StartDraw(nsIRenderingContext* aRenderingContext)
 //-------------------------------------------------------------------------
 void nsWindow::EndDraw()
 {
-	if (! mDrawing)
+	if (! mDrawing || mOnDestroyCalled)
 		return;
 	mDrawing = PR_FALSE;
 

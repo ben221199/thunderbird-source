@@ -178,27 +178,6 @@ function openNewTabWith(url, sendReferrer, reverseBackgroundPref)
   }
 }
 
-function findParentNode(node, parentNode)
-{
-  if (node && node.nodeType == Node.TEXT_NODE) {
-    node = node.parentNode;
-  }
-  while (node) {
-    var nodeName = node.localName;
-    if (!nodeName)
-      return null;
-    nodeName = nodeName.toLowerCase();
-    if (nodeName == "body" || nodeName == "html" ||
-        nodeName == "#document") {
-      return null;
-    }
-    if (nodeName == parentNode)
-      return node;
-    node = node.parentNode;
-  }
-  return null;
-}
-
 // Clientelle: (Make sure you don't break any of these)
 //  - File    ->  Save Page/Frame As...
 //  - Context ->  Save Page/Frame As...
@@ -415,13 +394,13 @@ function internalSave(aURL, aDocument, aDefaultFileName, aContentDisposition,
 
     const kWrapColumn = 80;
     tr.init((aChosenData ? aChosenData.uri : fileInfo.uri),
-            persistArgs.target, "", null, null, persist);
+            persistArgs.target, "", null, null, null, persist);
     persist.progressListener = tr;
     persist.saveDocument(persistArgs.source, persistArgs.target, filesFolder,
                          persistArgs.contentType, encodingFlags, kWrapColumn);
   } else {
     tr.init((aChosenData ? aChosenData.uri : source),
-            persistArgs.target, "", null, null, persist);
+            persistArgs.target, "", null, null, null, persist);
     persist.progressListener = tr;
     persist.saveURI((aChosenData ? aChosenData.uri : source),
                     null, aReferrer, persistArgs.postData, null,

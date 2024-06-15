@@ -128,6 +128,7 @@ static NS_DEFINE_CID(kEventQueueServiceCID,   NS_EVENTQUEUESERVICE_CID);
 #endif
 #ifdef ACCESSIBILITY
 #include "nsIAccessibilityService.h"
+#include "nsIAccessibleEvent.h"
 #endif
 
 #include "nsInlineFrame.h"
@@ -188,8 +189,10 @@ nsresult
 NS_NewSVGGFrame(nsIPresShell* aPresShell, nsIContent* aContent, nsIFrame** aNewFrame);
 nsresult
 NS_NewSVGGenericContainerFrame(nsIPresShell* aPresShell, nsIContent* aContent, nsIFrame** aNewFrame);
+#ifdef MOZ_SVG_FOREIGNOBJECT
 nsresult
 NS_NewSVGForeignObjectFrame(nsIPresShell* aPresShell, nsIContent* aContent, nsIFrame** aNewFrame);
+#endif
 nsresult
 NS_NewSVGPathFrame(nsIPresShell* aPresShell, nsIContent* aContent, nsIFrame** aNewFrame);
 nsresult
@@ -429,6 +432,14 @@ SVG_TestLanguage(const nsSubstring& lstr, const nsSubstring& prefs)
   return PR_FALSE;
 }
 #endif
+
+static inline nsIFrame*
+GetFieldSetAreaFrame(nsIFrame* aFieldsetFrame)
+{
+  // Depends on the fieldset child frame order - see ConstructFieldSetFrame() below.
+  nsIFrame* firstChild = aFieldsetFrame->GetFirstChild(nsnull);
+  return firstChild && firstChild->GetNextSibling() ? firstChild->GetNextSibling() : firstChild;
+}
 
 //----------------------------------------------------------------------
 //
@@ -3762,29 +3773,19 @@ nsCSSFrameConstructor::ConstructTableCellFrame(nsFrameConstructorState& aState,
   return rv;
 }
 
-PRBool 
-nsCSSFrameConstructor::MustGeneratePseudoParent(nsIAtom*         aTag,
-                                                nsIContent*      aContent,
-                                                nsStyleContext*  aStyleContext)
+static PRBool 
+MustGeneratePseudoParent(nsIContent* aContent, nsStyleContext*  aStyleContext)
 {
-  if (!aStyleContext)
+  if (!aStyleContext ||
+      NS_STYLE_DISPLAY_NONE == aStyleContext->GetStyleDisplay()->mDisplay) {
     return PR_FALSE;
-
-  if (NS_STYLE_DISPLAY_NONE == aStyleContext->GetStyleDisplay()->mDisplay)
-    return PR_FALSE;
+  }
     
-  // check tags first
-
-  if ((nsLayoutAtoms::textTagName == aTag)) {
+  if (aContent->IsContentOfType(nsIContent::eTEXT)) {
     return !IsOnlyWhitespace(aContent);
   }
 
-  // exclude tags
-  if ( nsLayoutAtoms::commentTagName == aTag) {
-    return PR_FALSE;
-  }
-
-  return PR_TRUE;
+  return !aContent->IsContentOfType(nsIContent::eCOMMENT);
 }
 
 // this is called when a non table related element is a child of a table, row group, 
@@ -3803,9 +3804,7 @@ nsCSSFrameConstructor::ConstructTableForeignFrame(nsFrameConstructorState& aStat
   nsIFrame* parentFrame = nsnull;
   PRBool hasPseudoParent = PR_FALSE;
 
-  nsIAtom *tag = aContent->Tag();
- 
-  if (MustGeneratePseudoParent(tag, aContent, aStyleContext)) {
+  if (MustGeneratePseudoParent(aContent, aStyleContext)) {
     // this frame may have a pseudo parent, use block frame type to
     // trigger foreign
     rv = GetParentFrame(aTableCreator,
@@ -5200,8 +5199,13 @@ nsCSSFrameConstructor::ConstructTextFrame(nsFrameConstructorState& aState,
   // XXX kipp: temporary
   newFrame->AddStateBits(NS_FRAME_REPLACED_ELEMENT);
 
-  InitAndRestoreFrame(aState, aContent, aParentFrame, aStyleContext, nsnull,
-                      newFrame);
+  rv = InitAndRestoreFrame(aState, aContent, aParentFrame, aStyleContext,
+                           nsnull, newFrame);
+
+  if (NS_FAILED(rv)) {
+    newFrame->Destroy(aState.mPresContext);
+    return rv;
+  }
 
   // We never need to create a view for a text frame.
 
@@ -6715,7 +6719,8 @@ nsCSSFrameConstructor::InitAndRestoreFrame(const nsFrameConstructorState& aState
                                            nsIFrame*                aParentFrame,
                                            nsStyleContext*          aStyleContext,
                                            nsIFrame*                aPrevInFlow,
-                                           nsIFrame*                aNewFrame)
+                                           nsIFrame*                aNewFrame,
+                                           PRBool                   aAllowCounters)
 {
   nsresult rv = NS_OK;
   
@@ -6732,7 +6737,7 @@ nsCSSFrameConstructor::InitAndRestoreFrame(const nsFrameConstructorState& aState
     aState.mFrameManager->RestoreFrameStateFor(aNewFrame, aState.mFrameState);
   }
 
-  if (!aPrevInFlow &&
+  if (aAllowCounters && !aPrevInFlow &&
       mCounterManager.AddCounterResetsAndIncrements(aNewFrame)) {
     CountersDirty();
   }
@@ -6761,7 +6766,7 @@ nsCSSFrameConstructor::ResolveStyleContext(nsIFrame*         aParentFrame,
     return styleSet->ResolveStyleFor(aContent, parentStyleContext);
   } else {
 
-    NS_ASSERTION(aContent->Tag() == nsLayoutAtoms::textTagName,
+    NS_ASSERTION(aContent->IsContentOfType(nsIContent::eTEXT),
                  "shouldn't waste time creating style contexts for "
                  "comments and processing instructions");
 
@@ -7296,10 +7301,12 @@ nsCSSFrameConstructor::ConstructSVGFrame(nsFrameConstructorState& aState,
     rv = NS_NewSVGLineFrame(mPresShell, aContent, &newFrame);
   else if (aTag == nsSVGAtoms::rect)
     rv = NS_NewSVGRectFrame(mPresShell, aContent, &newFrame);
+#ifdef MOZ_SVG_FOREIGNOBJECT
   else if (aTag == nsSVGAtoms::foreignObject) {
     processChildren = PR_TRUE;
     rv = NS_NewSVGForeignObjectFrame(mPresShell, aContent, &newFrame);
   }
+#endif
   else if (aTag == nsSVGAtoms::path)
     rv = NS_NewSVGPathFrame(mPresShell, aContent, &newFrame);
   else if (aTag == nsSVGAtoms::text) {
@@ -7358,6 +7365,7 @@ nsCSSFrameConstructor::ConstructSVGFrame(nsFrameConstructorState& aState,
   // If we succeeded in creating a frame then initialize it, process its
   // children (if requested), and set the initial child list
   if (NS_SUCCEEDED(rv) && newFrame != nsnull) {
+#ifdef MOZ_SVG_FOREIGNOBJECT
     if (aTag == nsSVGAtoms::foreignObject) {
       // Claim to be relatively positioned so that we end up being the
       // absolute containing block.  Also, push "null" as the floater
@@ -7368,7 +7376,9 @@ nsCSSFrameConstructor::ConstructSVGFrame(nsFrameConstructorState& aState,
       rv = ConstructBlock(aState, disp, aContent,
                           geometricParent, aParentFrame, aStyleContext,
                           &newFrame, aFrameItems, PR_TRUE);
-    } else {
+    } else
+#endif  // MOZ_SVG_FOREIGNOBJECT
+    {
       InitAndRestoreFrame(aState, aContent, geometricParent, aStyleContext,
                           nsnull, newFrame);
 
@@ -7466,12 +7476,9 @@ nsCSSFrameConstructor::ConstructFrame(nsFrameConstructorState& aState,
     return rv;
   }
 
-  // Get the element's tag
-  nsIAtom *tag = aContent->Tag();
-
-  // never create frames for comments on PIs
-  if (tag == nsLayoutAtoms::commentTagName ||
-      tag == nsLayoutAtoms::processingInstructionTagName)
+  // never create frames for comments or PIs
+  if (aContent->IsContentOfType(nsIContent::eCOMMENT) ||
+      aContent->IsContentOfType(nsIContent::ePROCESSING_INSTRUCTION))
     return rv;
 
   nsRefPtr<nsStyleContext> styleContext;
@@ -7486,8 +7493,8 @@ nsCSSFrameConstructor::ConstructFrame(nsFrameConstructorState& aState,
   }
   // construct the frame
   rv = ConstructFrameInternal(aState, aContent, aParentFrame,
-                              tag, aContent->GetNameSpaceID(), styleContext,
-                              aFrameItems, PR_FALSE);
+                              aContent->Tag(), aContent->GetNameSpaceID(),
+                              styleContext, aFrameItems, PR_FALSE);
   if (NS_SUCCEEDED(rv) && pageBreakAfter) {
     // Construct the page break after
     ConstructPageBreakFrame(aState, aContent, aParentFrame, styleContext,
@@ -7644,7 +7651,7 @@ nsCSSFrameConstructor::ConstructFrameInternal( nsFrameConstructorState& aState,
         // display:none, so they don't mess with pseudo-state!
         aState.mFrameManager->SetUndisplayedContent(aContent, styleContext);
         return NS_OK;
-      } else 
+      } else if (xtfElem->GetElementType() != nsIXTFElement::ELEMENT_TYPE_BINDABLE)
         rv = ConstructXTFFrame(aState, aContent, adjParentFrame, aTag,
                                aNameSpaceID, styleContext, *frameItems,
                                pseudoParent);
@@ -7816,7 +7823,7 @@ nsCSSFrameConstructor::GetAbsoluteContainingBlock(nsIFrame* aFrame)
         } else if (nsLayoutAtoms::fieldSetFrame == frameType) {
           // If the positioned frame is a fieldset, use the area frame inside it.
           // We don't use GetContentInsertionFrame for fieldsets yet.
-          containingBlock = wrappedFrame->GetFirstChild(nsnull);
+          containingBlock = GetFieldSetAreaFrame(wrappedFrame);
         }
       }
 
@@ -7875,6 +7882,16 @@ nsCSSFrameConstructor::AppendFrames(const nsFrameConstructorState& aState,
                                     aState.mPresContext)) {
     nsIFrame* afterFrame = nsLayoutUtils::GetAfterFrame(aParentFrame);
     if (afterFrame) {
+      // aParentFrame may have next-in-flows.  If there's no :after content
+      // around, we automatically get the right in-flow as aParentFrame.  But
+      // in this case, we could have ended up with the prev-in-flow of the
+      // right thing (the "right thing" being the last-in-flow for an append).
+      // Looking for afterFrame in the child list of it would then fail, and we
+      // could end up inserting our new frame at the wrong place.  So just set
+      // aParentFrame to the parent of afterFrame.  That will make sure we're
+      // getting our ordering right, and if our frame needs to be pulled up to
+      // the prev-in-flow that will happen when we reflow.
+      aParentFrame = afterFrame->GetParent();
       nsFrameList frames(aParentFrame->GetFirstChild(nsnull));
 
       // Insert the frames before the :after pseudo-element.
@@ -8284,11 +8301,7 @@ GetAdjustedParentFrame(nsIFrame*       aParentFrame,
     // parent unless the new content is a legend. 
     nsCOMPtr<nsIDOMHTMLLegendElement> legendContent(do_QueryInterface(childContent));
     if (!legendContent) {
-      // Depends on the fieldset child frame order - see ConstructFieldSetFrame() above.
-      newParent = aParentFrame->GetFirstChild(nsnull);
-      if (newParent->GetNextSibling()) {
-        newParent = newParent->GetNextSibling();
-      }
+      newParent = GetFieldSetAreaFrame(aParentFrame);
     }
   }
   return (newParent) ? newParent : aParentFrame;
@@ -8485,8 +8498,10 @@ nsCSSFrameConstructor::ContentAppended(nsIContent*     aContainer,
   nsIAtom* frameType = parentFrame->GetType();
   if (frameType == nsLayoutAtoms::objectFrame ||
       frameType == nsLayoutAtoms::tableColFrame ||
-      frameType == nsLayoutAtoms::HTMLCanvasFrame) {
-    // This handles APPLET, EMBED, OBJECT, COL, and CANVAS
+      frameType == nsLayoutAtoms::HTMLCanvasFrame ||
+      frameType == nsLayoutAtoms::textInputFrame) {
+    // This handles APPLET, EMBED, OBJECT, COL, CANVAS, TEXTAREA and
+    // <INPUT TYPE=text>
     return NS_OK;
   }
   // Deal with inner/outer tables, fieldsets
@@ -9073,8 +9088,10 @@ nsCSSFrameConstructor::ContentInserted(nsIContent*            aContainer,
     nsIAtom* frameType = parentFrame->GetType();
     if (frameType == nsLayoutAtoms::objectFrame ||
         frameType == nsLayoutAtoms::tableColFrame ||
-        frameType == nsLayoutAtoms::HTMLCanvasFrame) {
-      // This handles APPLET, EMBED, OBJECT, COL, and CANVAS
+        frameType == nsLayoutAtoms::HTMLCanvasFrame ||
+        frameType == nsLayoutAtoms::textInputFrame) {
+      // This handles APPLET, EMBED, OBJECT, COL, CANVAS, TEXTAREA, and
+      // <INPUT TYPE=text>
       return NS_OK;
     }
     // Deal with inner/outer tables, fieldsets
@@ -10092,6 +10109,45 @@ nsCSSFrameConstructor::CharacterDataChanged(nsIContent* aContent,
   return rv;
 }
 
+#ifdef ACCESSIBILITY
+nsIAtom*
+nsCSSFrameConstructor::GetRenderedFrameType(nsIFrame *aFrame)
+{
+  if (aFrame) {
+    const nsStyleVisibility* vis = aFrame->GetStyleVisibility();
+    if (vis->IsVisible()) {
+      return aFrame->GetType();
+    }
+  }
+
+  return nsnull;
+}
+
+void
+nsCSSFrameConstructor::NotifyAccessibleChange(nsIAtom *aPreviousFrameType,
+                                              nsIAtom *aFrameType,
+                                              nsIContent *aContent)
+{
+  if (aFrameType == aPreviousFrameType) {
+    return;
+  }
+  PRUint32 event = nsIAccessibleEvent::EVENT_REORDER;
+  if (!aPreviousFrameType) {
+    event = nsIAccessibleEvent::EVENT_SHOW;
+  }
+  else if (!aFrameType) {
+    event = nsIAccessibleEvent::EVENT_HIDE;
+  }
+
+  // A significant enough change occured that this part
+  // of the accessible tree is no longer valid.
+  nsCOMPtr<nsIAccessibilityService> accService = 
+    do_GetService("@mozilla.org/accessibilityService;1");
+  if (accService) {
+    accService->InvalidateSubtreeFor(mPresShell, aContent, event);
+  }
+}
+#endif
 
 nsresult
 nsCSSFrameConstructor::ProcessRestyledFrames(nsStyleChangeList& aChangeList)
@@ -10150,23 +10206,6 @@ nsCSSFrameConstructor::ProcessRestyledFrames(nsStyleChangeList& aChangeList)
         if (viewMgr)
           viewMgr->SynthesizeMouseMove(PR_FALSE);
       }
-  #ifdef ACCESSIBILITY
-      if ((hint & nsChangeHint_AccessibleChange) && 
-          mPresShell->IsAccessibilityActive()) {
-        // A significant enough change occured that this part
-        // of the accessible tree is no longer valid
-        // This also happens in RecreateFramesForContent()
-        nsCOMPtr<nsIAccessibilityService> accService = 
-          do_GetService("@mozilla.org/accessibilityService;1");
-        if (accService) {
-          nsCOMPtr<nsIContent> parentContent = content->GetParent();
-          if (!parentContent) {
-            parentContent = content;
-          }
-          accService->InvalidateSubtreeFor(mPresShell, parentContent);
-        }
-      }
-  #endif
     }
 
 #ifdef DEBUG
@@ -10203,6 +10242,12 @@ nsCSSFrameConstructor::RestyleElement(nsIContent     *aContent,
                                       nsIFrame       *aPrimaryFrame,
                                       nsChangeHint   aMinHint)
 {
+#ifdef ACCESSIBILITY
+  nsIAtom *prevRenderedFrameType = nsnull;
+  if (mPresShell->IsAccessibilityActive()) {
+    prevRenderedFrameType = GetRenderedFrameType(aPrimaryFrame);
+  }
+#endif
   if (aMinHint & nsChangeHint_ReconstructFrame) {
     RecreateFramesForContent(aContent);
   } else if (aPrimaryFrame) {
@@ -10223,6 +10268,15 @@ nsCSSFrameConstructor::RestyleElement(nsIContent     *aContent,
     // no frames, reconstruct for content
     MaybeRecreateFramesForContent(aContent);
   }
+#ifdef ACCESSIBILITY
+  if (mPresShell->IsAccessibilityActive()) {
+    nsIFrame *frame;
+    mPresShell->GetPrimaryFrameFor(aContent, &frame);
+    NotifyAccessibleChange(prevRenderedFrameType,
+                           GetRenderedFrameType(frame),
+                           aContent);
+  }
+#endif
 }
 
 void
@@ -11130,7 +11184,7 @@ nsCSSFrameConstructor::CreateContinuingFrame(nsPresContext* aPresContext,
       // Create a continuing area frame
       // XXXbz we really shouldn't have to do this by hand!
       nsIFrame* continuingAreaFrame;
-      nsIFrame* areaFrame = aFrame->GetFirstChild(nsnull);
+      nsIFrame* areaFrame = GetFieldSetAreaFrame(aFrame);
       CreateContinuingFrame(aPresContext, areaFrame, newFrame, &continuingAreaFrame);
 
       // Set the fieldset's initial child list
@@ -11430,7 +11484,7 @@ nsCSSFrameConstructor::FindPrimaryFrameFor(nsFrameManager*  aFrameManager,
 
   if (aHint && !*aFrame)
   { // if we had a hint, and we didn't get a frame, see if we should try the slow way
-    if (aContent->Tag() == nsLayoutAtoms::textTagName) 
+    if (aContent->IsContentOfType(nsIContent::eTEXT)) 
     {
 #ifdef NOISY_FINDFRAME
       FFWC_slowSearchForText++;
@@ -11601,17 +11655,6 @@ nsCSSFrameConstructor::RecreateFramesForContent(nsIContent* aContent)
   }
 
   if (frame && IsFrameSpecial(frame)) {
-#ifdef ACCESSIBILITY
-    nsCOMPtr<nsIContent> invalidationContent;
-    if (mPresShell->IsAccessibilityActive()) {
-      // A significant enough change occured that this part
-      // of the accessible tree is no longer valid
-      nsIFrame *containerFrame = GetIBContainingBlockFor(frame);
-      invalidationContent = containerFrame ? containerFrame->GetContent() :
-                                             aContent;
-    }
-#endif
-
 #ifdef DEBUG
     if (gNoisyContentUpdates) {
       printf("nsCSSFrameConstructor::RecreateFramesForContent: frame=");
@@ -11619,17 +11662,7 @@ nsCSSFrameConstructor::RecreateFramesForContent(nsIContent* aContent)
       printf(" is special\n");
     }
 #endif
-    nsresult rv = ReframeContainingBlock(frame);
-#ifdef ACCESSIBILITY
-    if (invalidationContent) {
-      nsCOMPtr<nsIAccessibilityService> accService = 
-        do_GetService("@mozilla.org/accessibilityService;1");
-      if (accService) {
-        accService->InvalidateSubtreeFor(mPresShell, invalidationContent);
-      }
-    }
-#endif
-    return rv;
+    return ReframeContainingBlock(frame);
   }
 
   nsresult rv = NS_OK;
@@ -11667,21 +11700,6 @@ nsCSSFrameConstructor::RecreateFramesForContent(nsIContent* aContent)
     // The content is the root node, so just rebuild the world.
     ReconstructDocElementHierarchy();
   }
-
-#ifdef ACCESSIBILITY
-  if (mPresShell->IsAccessibilityActive()) {
-    // A significant enough change occured that this part
-    // of the accessible tree is no longer valid
-    nsCOMPtr<nsIAccessibilityService> accService = 
-      do_GetService("@mozilla.org/accessibilityService;1");
-    if (accService) {
-      if (!container) {
-        container = aContent;
-      }
-      accService->InvalidateSubtreeFor(mPresShell, container);
-    }
-  }
-#endif
 
   return rv;
 }
@@ -12973,7 +12991,7 @@ nsCSSFrameConstructor::ConstructInline(nsFrameConstructorState& aState,
                                                           aStyleContext);
 
   InitAndRestoreFrame(aState, aContent, aParentFrame, blockSC, nsnull,
-                      blockFrame);  
+                      blockFrame, PR_FALSE);  
 
   // Any inline frame could have a view (e.g., opacity)
   // XXXbz should we be passing in a non-null aContentParentFrame?
@@ -13011,7 +13029,7 @@ nsCSSFrameConstructor::ConstructInline(nsFrameConstructorState& aState,
     }
 
     InitAndRestoreFrame(aState, aContent, aParentFrame, aStyleContext, nsnull,
-                        inlineFrame);
+                        inlineFrame, PR_FALSE);
 
     // Any frame might need a view
     // XXXbz should we be passing in a non-null aContentParentFrame?
@@ -13137,14 +13155,19 @@ nsCSSFrameConstructor::ProcessInlineChildren(nsFrameConstructorState& aState,
     }
   }
 
-  *aKidsAllInline = allKidsInline;
-
   // process the current pseudo frame state
   if (!aState.mPseudoFrames.IsEmpty()) {
     ProcessPseudoFrames(aState, aFrameItems);
+    // recompute allKidsInline to take into account new child frames
+    // XXX we DON'T do this yet because anonymous table children should
+    // be accepted as inline children, until we turn on inline-table.
+    // See bug 297537.
+    // allKidsInline = AreAllKidsInline(aFrameItems.childList);
   }
   // restore the pseudo frame state
   aState.mPseudoFrames = prevPseudoFrames;
+
+  *aKidsAllInline = allKidsInline;
 
   return rv;
 }
@@ -13396,7 +13419,8 @@ nsCSSFrameConstructor::SplitToContainingBlock(nsFrameConstructorState& aState,
     ResolvePseudoStyleFor(content, nsCSSAnonBoxes::mozAnonymousBlock,
                           styleContext);
 
-  InitAndRestoreFrame(aState, content, nsnull, blockSC, nsnull, blockFrame);
+  InitAndRestoreFrame(aState, content, nsnull, blockSC, nsnull, blockFrame,
+                      PR_FALSE);
 
   blockFrame->SetInitialChildList(aState.mPresContext, nsnull, aBlockChildFrame);
   MoveChildrenTo(aState.mFrameManager, blockSC, blockFrame, aBlockChildFrame,
@@ -13412,7 +13436,7 @@ nsCSSFrameConstructor::SplitToContainingBlock(nsFrameConstructorState& aState,
     return NS_ERROR_OUT_OF_MEMORY;
 
   InitAndRestoreFrame(aState, content, nsnull, styleContext, nsnull,
-                      inlineFrame);
+                      inlineFrame, PR_FALSE);
 
   inlineFrame->SetInitialChildList(aState.mPresContext, nsnull,
                                    aRightInlineChildFrame);

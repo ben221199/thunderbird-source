@@ -135,7 +135,7 @@
 
 // Note that one would not normally turn *any* of these on in a non-DEBUG build.
 
-#if defined(DEBUG_jband) || defined(DEBUG_jst) || defined(DEBUG_dbradley) || defined(DEBUG_shaver_no) || defined(DEBUG_dbaron) || defined(DEBUG_timeless)
+#if defined(DEBUG_jband) || defined(DEBUG_jst) || defined(DEBUG_dbradley) || defined(DEBUG_shaver_no) || defined(DEBUG_timeless)
 #define DEBUG_xpc_hacker
 #endif
 
@@ -164,6 +164,10 @@
 //#define XPC_REPORT_NATIVE_INTERFACE_AND_SET_FLUSHING
 //#define XPC_REPORT_JSCLASS_FLUSHING
 //#define XPC_TRACK_AUTOMARKINGPTR_STATS
+#endif
+
+#if defined(DEBUG_dbaron) // only part of DEBUG_xpc_hacker!
+#define XPC_DUMP_AT_SHUTDOWN
 #endif
 
 /***************************************************************************/
@@ -558,6 +562,7 @@ public:
         IDX_COMPONENTS              ,
         IDX_WRAPPED_JSOBJECT        ,
         IDX_OBJECT                  ,
+        IDX_FUNCTION                ,
         IDX_PROTOTYPE               ,
         IDX_CREATE_INSTANCE         ,
         IDX_ITEM                    ,
@@ -1014,6 +1019,9 @@ public:
     JSObject*
     GetPrototypeJSObject() const {return mPrototypeJSObject;}
 
+    JSObject*
+    GetPrototypeJSFunction() const {return mPrototypeJSFunction;}
+
     void RemoveWrappedNativeProtos();
 
     static XPCWrappedNativeScope*
@@ -1076,6 +1084,7 @@ private:
     XPCWrappedNativeScope*           mNext;
     JSObject*                        mGlobalJSObject;
     JSObject*                        mPrototypeJSObject;
+    JSObject*                        mPrototypeJSFunction;
 };
 
 /***************************************************************************/
@@ -1205,7 +1214,8 @@ public:
                     {return 0 != (mMemberCount & XPC_NATIVE_IFACE_MARK_FLAG);}
 
     // NOP. This is just here to make the AutoMarkingPtr code compile.
-    inline void MarkBeforeJSFinalize(JSContext*) {};
+    inline void MarkBeforeJSFinalize(JSContext*) {}
+    inline void AutoMark(JSContext*) {}
 
     static void DestroyInstance(JSContext* cx, XPCJSRuntime* rt,
                                 XPCNativeInterface* inst);
@@ -1333,7 +1343,8 @@ public:
     inline void Mark();
 
     // NOP. This is just here to make the AutoMarkingPtr code compile.
-    inline void MarkBeforeJSFinalize(JSContext*) {};
+    inline void MarkBeforeJSFinalize(JSContext*) {}
+    inline void AutoMark(JSContext*) {}
 
 private:
     void MarkSelfOnly() {mInterfaceCount |= XPC_NATIVE_SET_MARK_FLAG;}
@@ -1635,6 +1646,8 @@ public:
             JS_MarkGCThing(cx, mJSProtoObject, 
                            "XPCWrappedNativeProto::mJSProtoObject", nsnull);
          if(mScriptableInfo) mScriptableInfo->Mark();}
+    // NOP. This is just here to make the AutoMarkingPtr code compile.
+    inline void AutoMark(JSContext*) {}
 
     // Yes, we *do* need to mark the mScriptableInfo in both cases.
     void Mark() const
@@ -1701,6 +1714,10 @@ public:
     XPCWrappedNativeTearOff()
         : mInterface(nsnull), mNative(nsnull), mJSObject(nsnull) {}
     ~XPCWrappedNativeTearOff();
+
+    // NOP. This is just here to make the AutoMarkingPtr code compile.
+    inline void MarkBeforeJSFinalize(JSContext*) {}
+    inline void AutoMark(JSContext*) {}
 
     void Mark()       {mJSObject = (JSObject*)(((jsword)mJSObject) | 1);}
     void Unmark()     {mJSObject = (JSObject*)(((jsword)mJSObject) & ~1);}
@@ -1926,6 +1943,20 @@ public:
         {
             JS_MarkGCThing(cx, mNativeWrapper, 
                            "XPCWrappedNative::mNativeWrapper", nsnull);
+        }
+    }
+
+    inline void AutoMark(JSContext* cx)
+    {
+        // If this got called, we're being kept alive by someone who really
+        // needs us alive and whole.  Do not let our mFlatJSObject go away.
+        // This is the only time we should be marking our mFlatJSObject;
+        // normally we just go away quietly when it does.  Be careful not to
+        // mark the bogus JSVAL_ONE value we can have during init, though.
+        if(mFlatJSObject && mFlatJSObject != (JSObject*)JSVAL_ONE)
+        {
+            ::JS_MarkGCThing(cx, mFlatJSObject,
+                             "XPCWrappedNative::mFlatJSObject", nsnull);
         }
     }
 
@@ -2179,7 +2210,7 @@ public:
     // longer root their JSObject and are only still alive because they
     // were being used via nsSupportsWeakReference at the time when their
     // last (outside) reference was released. Wrappers that fit into that
-    // category are only deleted when we see that their cooresponding JSObject
+    // category are only deleted when we see that their corresponding JSObject
     // is to be finalized.
     JSBool IsSubjectToFinalization() const {return IsValid() && mRefCnt == 1;}
 
@@ -2291,7 +2322,9 @@ public:
                                            nsIXPConnectJSObjectHolder** dest,
                                            nsISupports* src,
                                            const nsID* iid,
-                                           JSObject* scope, nsresult* pErr);
+                                           JSObject* scope,
+                                           PRBool allowNativeWrapper,
+                                           nsresult* pErr);
 
     static JSBool GetNativeInterfaceFromJSObject(XPCCallContext& ccx,
                                                  void** dest, JSObject* src,
@@ -2849,7 +2882,7 @@ class nsJSRuntimeServiceImpl : public nsIJSRuntimeService,
     NS_DECL_ISUPPORTS
     NS_DECL_NSIJSRUNTIMESERVICE
 
-    // This returns and AddRef'd pointer. It does not do this with an out param
+    // This returns an AddRef'd pointer. It does not do this with an out param
     // only because this form  is required by generic module macro:
     // NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR
     static nsJSRuntimeServiceImpl* GetSingleton();
@@ -2907,6 +2940,7 @@ private:
     nsXPCComponents_ID*             mID;
     nsXPCComponents_Exception*      mException;
     nsXPCComponents_Constructor*    mConstructor;
+    nsXPCComponents_Utils*          mUtils;
 };
 
 /***************************************************************************/
@@ -3161,6 +3195,7 @@ public:
         {if(JSVAL_IS_GCTHING(*mValPtr))
             JS_MarkGCThing(cx, JSVAL_TO_GCTHING(*mValPtr), 
                            "XPCMarkableJSVal", nsnull);}
+    void AutoMark(JSContext*) {}
 private:
     XPCMarkableJSVal(); // not implemented    
     jsval  mVal;
@@ -3219,7 +3254,10 @@ public:                                                                      \
     virtual ~ class_ () {}                                                   \
                                                                              \
     virtual void MarkBeforeJSFinalize(JSContext* cx)                         \
-        {if(mPtr) mPtr->MarkBeforeJSFinalize(cx);                            \
+        {if(mPtr) {                                                          \
+           mPtr->MarkBeforeJSFinalize(cx);                                   \
+           mPtr->AutoMark(cx);                                               \
+         }                                                                   \
          if(mNext) mNext->MarkBeforeJSFinalize(cx);}                         \
                                                                              \
     virtual void MarkAfterJSFinalize()                                       \
@@ -3242,6 +3280,7 @@ protected:                                                                   \
 DEFINE_AUTO_MARKING_PTR_TYPE(AutoMarkingNativeInterfacePtr, XPCNativeInterface)
 DEFINE_AUTO_MARKING_PTR_TYPE(AutoMarkingNativeSetPtr, XPCNativeSet)
 DEFINE_AUTO_MARKING_PTR_TYPE(AutoMarkingWrappedNativePtr, XPCWrappedNative)
+DEFINE_AUTO_MARKING_PTR_TYPE(AutoMarkingWrappedNativeTearOffPtr, XPCWrappedNativeTearOff)
 DEFINE_AUTO_MARKING_PTR_TYPE(AutoMarkingWrappedNativeProtoPtr, XPCWrappedNativeProto)
 DEFINE_AUTO_MARKING_PTR_TYPE(AutoMarkingJSVal, XPCMarkableJSVal)
                                     
@@ -3308,6 +3347,9 @@ protected:
 // Utilities
 
 JSBool xpc_IsReportableErrorCode(nsresult code);
+
+JSObject* xpc_CloneJSFunction(XPCCallContext &ccx, JSObject *funobj,
+                              JSObject *parent);
 
 /***************************************************************************/
 // Inlined utilities.

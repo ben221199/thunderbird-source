@@ -152,28 +152,55 @@ MOZCE_SHUNT_API int mozce_ExtSelectClipRgn(HDC inDC, HRGN inRGN, int inMode)
 #ifdef DEBUG
     mozce_printf("mozce_ExtSelectClipRgn called\n");
 #endif
-    RECT rect;
-    int result = GetClipBox(inDC, &rect);
+    
+    // inModes are defined as:
+    // RGN_AND = 1
+    // RGN_OR = 2
+    // RGN_XOR = 3
+    // RGN_DIFF = 4
+    // RGN_COPY = 5
+    
+    HRGN cRGN = NULL;
+    int result = GetClipRgn(inDC, cRGN);
+    
+    // if there is no current clipping region, set it to the
+    // tightest bounding rectangle that can be drawn around
+    // the current visible area on the device
 
-    if (result != ERROR)
+    if (result != 1)
     {
-        HRGN region = CreateRectRgn(0, 0, 0, 0);
-        HRGN scrap  = CreateRectRgn(rect.left, rect.top, rect.right, rect.bottom);
-        
-        result = CombineRgn(region, scrap, inRGN, RGN_AND);
-        if (result != ERROR)
-            SelectClipRgn(inDC, region);
-        
-        ::DeleteObject(scrap);
-        ::DeleteObject(region);
+        RECT cRect;
+        GetClipBox(inDC,&cRect);
+        cRGN = CreateRectRgn(cRect.left,cRect.top,cRect.right,cRect.bottom);
+        result = SelectClipRgn(inDC,cRGN);		
     }
+    
+    if (result == NULLREGION) 
+    {
+        if (inMode == RGN_DIFF || inMode == RGN_AND)
+            result = SelectClipRgn(inDC,NULL);
+        else
+            result = SelectClipRgn(inDC,inRGN);
+        
+        DeleteObject(cRGN);
+        return result;
+    } 
+    
+    if (result == SIMPLEREGION || result == COMPLEXREGION)
+    {
+        if (inMode == RGN_DIFF)
+            CombineRgn(cRGN, cRGN, inRGN, inMode);
+        else
+            CombineRgn(cRGN, inRGN, cRGN, inMode);
+        result = SelectClipRgn(inDC,cRGN);
+        DeleteObject(cRGN);
+        return result;
+    }
+    
+    HRGN rgn = CreateRectRgn(0, 0, 32000, 32000);
+    result = SelectClipRgn(inDC, rgn);
+    DeleteObject(rgn);
 
-    if (result == ERROR || TRUE)
-    {
-        HRGN rgn = CreateRectRgn(0, 0, 32000, 32000);
-        ::SelectClipRgn(inDC, rgn);
-        ::DeleteObject(rgn);
-    }
     return result;
 }
 
@@ -328,7 +355,7 @@ MOZCE_SHUNT_API UINT mozce_GetTextCharsetInfo(HDC inDC, LPFONTSIGNATURE outSig, 
     mozce_printf("mozce_GetTextCharsetInfo called\n");
 #endif
 
-    // A broken implementation.
+    // Zero out the FONTSIGNATURE as we do not know how to fill it out properly.
     if(NULL != outSig)
     {
         memset(outSig, 0, sizeof(FONTSIGNATURE));
@@ -342,22 +369,12 @@ MOZCE_SHUNT_API UINT mozce_GetOutlineTextMetrics(HDC inDC, UINT inData, void* ou
 {
     MOZCE_PRECHECK
 
-    static int x = 0;
-
 #ifdef DEBUG
-    mozce_printf("-- mozce_GetOutlineTextMetrics called (%d)\n", ++x);
+    mozce_printf("-- mozce_GetOutlineTextMetrics called.\n");
 #endif
 
-    UINT retval = 0;
-
-    if(NULL != outOTM)
-    {
-        //memset(outOTM, 0, sizeof(OUTLINETEXTMETRIC));
-    }
-
     SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
-
-    return retval;
+    return 0;
 }
 
 
@@ -400,32 +417,33 @@ MOZCE_SHUNT_API int mozce_EnumFontFamiliesEx(HDC inDC, LPLOGFONT inLogfont, FONT
 
     //  We support only one case.
     //  Callback should be oldstyle EnumFonts.
-    if(DEFAULT_CHARSET == inLogfont->lfCharSet)
+    if(DEFAULT_CHARSET != inLogfont->lfCharSet)
     {
-        CollectFaces collection;
-        collection.mCount = 0;
-
-        EnumFonts(inDC, NULL, collectProc, (LPARAM)&collection);
-
-        UINT loop;
-        for(loop = 0; loop < collection.mCount; loop++)
-        {
-            retval = EnumFonts(inDC, collection.mNames[loop], inFunc, inParam);
-        }
-
-        for(loop = 0; loop < collection.mCount; loop++)
-        {
-            free(collection.mNames[loop]);
-        }
-    }
-    else
-    {
+#ifdef DEBUG
+        mozce_printf("mozce_EnumFontFamiliesEx failed\n");
+#endif
         SetLastError(ERROR_NOT_SUPPORTED);
+        return retval;
+    }
+     
+    CollectFaces collection;
+    collection.mCount = 0;
+    
+    EnumFonts(inDC, NULL, collectProc, (LPARAM)&collection);
+    
+    UINT loop;
+    for(loop = 0; loop < collection.mCount; loop++)
+    {
+        retval = EnumFonts(inDC, collection.mNames[loop], inFunc, inParam);
+    }
+    
+    for(loop = 0; loop < collection.mCount; loop++)
+    {
+        free(collection.mNames[loop]);
     }
 
     return retval;
 }
-
 
 MOZCE_SHUNT_API int mozce_GetMapMode(HDC inDC)
 {
@@ -594,14 +612,9 @@ MOZCE_SHUNT_API BOOL mozce_OpenIcon(HWND inWnd)
     MOZCE_PRECHECK
 
 #ifdef DEBUG
-    mozce_printf("-- mozce_OpenIcon called\n");
+    mozce_printf("mozce_OpenIcon called\n");
 #endif
-
-    BOOL retval = FALSE;
-
-    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
-
-    return retval;
+    return SetActiveWindow(inWnd) ? 1:0;
 }
 
 

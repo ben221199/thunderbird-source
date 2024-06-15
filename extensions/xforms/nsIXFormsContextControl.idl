@@ -37,7 +37,7 @@
  * ***** END LICENSE BLOCK ***** */
 
 
-#include "nsISupports.idl"
+#include "nsIXFormsControlBase.idl"
 
 interface nsIDOMNode;
 
@@ -45,7 +45,7 @@ interface nsIDOMNode;
  * Interface for elements that sets the XPath context of its children.
  */
 [uuid(38a904ba-147c-4c7f-9356-9fff88107868)]
-interface nsIXFormsContextControl : nsISupports
+interface nsIXFormsContextControl : nsIXFormsControlBase
 {
   /**
    * Used by children to retrieve the context of their parent.
@@ -58,10 +58,16 @@ interface nsIXFormsContextControl : nsISupports
    * @note The actual model ID must be returned. An empty |aModelID| should
    * only be returned if the default model has an id="".
    */
-  void getContext(out AString aModelID, out nsIDOMNode aContextNode, out long aContextPosition, out long aContextSize);
+  void getContext(out AString aModelID, out nsIDOMNode aContextNode,
+                  out long aContextPosition, out long aContextSize);
 
   /**
-   * Used by parents to set the context node for children.
+   * Used by parents to set the context for children.
+   *
+   * @param aContextNode      The context node
+   * @param aContextPosition  The context position
+   * @param aContextSize      The context size
    */
-  void setContextNode(in nsIDOMNode aContextNode);
+  void setContext(in nsIDOMNode aContextNode, in long aContextPosition,
+                  in long aContextSize);
 };

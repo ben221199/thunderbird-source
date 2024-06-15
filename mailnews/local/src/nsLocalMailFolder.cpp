@@ -671,6 +671,8 @@ nsMsgLocalMailFolder::UpdateFolder(nsIMsgWindow *aWindow)
   PRBool filtersRun;
   PRBool hasNewMessages;
   GetHasNewMessages(&hasNewMessages);
+  if (mDatabase)
+    ApplyRetentionSettings();
   // if we have new messages, try the filter plugins.
   if (NS_SUCCEEDED(rv) && hasNewMessages)
     (void) CallFilterPlugins(aWindow, &filtersRun);
@@ -1204,6 +1206,13 @@ NS_IMETHODIMP nsMsgLocalMailFolder::Rename(const PRUnichar *aNewName, nsIMsgWind
     rv = parentFolder->AddSubfolder(safeName, getter_AddRefs(newFolder));
     if (newFolder) 
     {
+      // Because we just renamed the db, w/o setting the pretty name in it, 
+      // we need to force the pretty name to be correct. 
+      // SetPrettyName won't write the name to the db if it doesn't think the 
+      // name has changed. This hack forces the pretty name to get set in the db.
+      // We could set the new pretty name on the db before renaming the .msf file,
+      // but if the rename failed, it would be out of sync.
+      newFolder->SetPrettyName(NS_LITERAL_STRING("").get());
       newFolder->SetPrettyName(aNewName);
       PRBool changed = PR_FALSE;
       MatchOrChangeFilterDestination(newFolder, PR_TRUE /*caseInsenstive*/, &changed);
@@ -1219,6 +1228,7 @@ NS_IMETHODIMP nsMsgLocalMailFolder::Rename(const PRUnichar *aNewName, nsIMsgWind
         parentFolder->PropagateDelete(this, PR_FALSE, msgWindow);
         parentFolder->NotifyItemAdded(newFolder);
       }
+      SetPath(nsnull); // forget our path, since this folder object renamed itself
       folderRenameAtom = do_GetAtom("RenameCompleted");
       newFolder->NotifyFolderEvent(folderRenameAtom);
     }
@@ -2472,6 +2482,10 @@ void nsMsgLocalMailFolder::CopyPropertiesToMsgHdr(nsIMsgDBHdr *destHdr, nsIMsgDB
   destHdr->SetStringProperty("junkscore", sourceJunkScore);
   srcHdr->GetStringProperty("junkscoreorigin", getter_Copies(sourceJunkScore));
   destHdr->SetStringProperty("junkscoreorigin", sourceJunkScore);
+  
+  nsMsgLabelValue label = 0;
+  srcHdr->GetLabel(&label);
+  destHdr->SetLabel(label);
 }
 
 
@@ -2585,7 +2599,7 @@ NS_IMETHODIMP nsMsgLocalMailFolder::EndCopy(PRBool copySucceeded)
       nsresult result = mCopyState->m_parseMsgState->GetNewMsgHdr(getter_AddRefs(newHdr));
       if (NS_SUCCEEDED(result) && newHdr)
       {
-        // need to copy junk score from mCopyState->m_message to newHdr.
+        // need to copy junk score and label from mCopyState->m_message to newHdr.
         if (mCopyState->m_message)
           CopyPropertiesToMsgHdr(newHdr, mCopyState->m_message);
         msgDb->AddNewHdrToDB(newHdr, PR_TRUE);

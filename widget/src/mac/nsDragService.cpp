@@ -53,7 +53,6 @@
 #include "nsMimeMapper.h"
 #include "nsClipboard.h"
 #include "nsIRegion.h"
-#include "nsVoidArray.h"
 #include "nsXPCOM.h"
 #include "nsISupportsPrimitives.h"
 #include "nsCOMPtr.h"
@@ -1014,7 +1013,7 @@ char*
 nsDragService::LookupMimeMappingsForItem ( DragReference inDragRef, ItemReference inItemRef )
 {
   char* mapperData = nsnull;
-  PRInt32 mapperSize = 0;
+  PRUint32 mapperSize = 0;
   ExtractDataFromOS(inDragRef, inItemRef, nsMimeMapperMac::MappingFlavor(),  (void**)&mapperData, &mapperSize);
 
   return mapperData;
@@ -1050,7 +1049,7 @@ nsDragService::LookupMimeMappingsForItem ( DragReference inDragRef, ItemReferenc
 //
 nsresult
 nsDragService::ExtractDataFromOS ( DragReference inDragRef, ItemReference inItemRef, ResType inFlavor, 
-                                        void** outBuffer, PRInt32* outBuffSize )
+                                       void** outBuffer, PRUint32* outBuffSize )
 {
   if ( !outBuffer || !outBuffSize || !inFlavor )
     return NS_ERROR_FAILURE;

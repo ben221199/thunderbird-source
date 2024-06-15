@@ -54,6 +54,7 @@ function initCommands()
          ["attach",            cmdAttach,                          CMD_CONSOLE],
          ["away",              cmdAway,                            CMD_CONSOLE],
          ["back",              cmdAway,                            CMD_CONSOLE],
+         ["ban",               cmdBan,             CMD_NEED_CHAN | CMD_CONSOLE],
          ["cancel",            cmdCancel,           CMD_NEED_NET | CMD_CONSOLE],
          ["charset",           cmdCharset,                         CMD_CONSOLE],
          ["channel-motif",     cmdMotif,           CMD_NEED_CHAN | CMD_CONSOLE],
@@ -100,7 +101,7 @@ function initCommands()
          ["eval",              cmdEval,                            CMD_CONSOLE],
          ["find",              cmdFind,                                      0],
          ["find-again",        cmdFindAgain,                                 0],
-         ["focus-input",       cmdFocusInput,                      CMD_CONSOLE],
+         ["focus-input",       cmdFocusInput,                                0],
          ["font-family",       cmdFont,                            CMD_CONSOLE],
          ["font-family-other", cmdFont,                                      0],
          ["font-size",         cmdFont,                            CMD_CONSOLE],
@@ -175,6 +176,7 @@ function initCommands()
          ["toggle-pref",       cmdTogglePref,                                0],
          ["topic",             cmdTopic,           CMD_NEED_CHAN | CMD_CONSOLE],
          ["unignore",          cmdIgnore,           CMD_NEED_NET | CMD_CONSOLE],
+         ["unban",             cmdBan,             CMD_NEED_CHAN | CMD_CONSOLE],
          ["unstalk",           cmdUnstalk,                         CMD_CONSOLE],
          ["urls",              cmdURLs,                            CMD_CONSOLE],
          ["usermode",          cmdUsermode,                        CMD_CONSOLE],
@@ -194,7 +196,7 @@ function initCommands()
          ["j",                "join",                              CMD_CONSOLE],
          ["name",             "pref username",                     CMD_CONSOLE],
          ["part",             "leave",                             CMD_CONSOLE],
-         ["raw",              "quote",              CMD_NEED_SRV | CMD_CONSOLE],
+         ["raw",              "quote",                             CMD_CONSOLE],
          // Used to display a nickname in the menu only.
          ["label-user",       "echo",                                        0],
          // These are all the font family/size menu commands...
@@ -220,7 +222,7 @@ function initCommands()
          ["motif-dark",       "motif dark",                                  0],
          ["motif-light",      "motif light",                                 0],
          ["motif-default",    "motif default",                               0],
-         ["sync-output",      "eval syncOutputFrame(this)",        CMD_CONSOLE],
+         ["sync-output",      "eval syncOutputFrame(this)",                  0],
          ["userlist",         "toggle-ui userlist",                CMD_CONSOLE],
          ["tabstrip",         "toggle-ui tabstrip",                CMD_CONSOLE],
          ["statusbar",        "toggle-ui status",                  CMD_CONSOLE],
@@ -809,6 +811,38 @@ function cmdAblePlugin(e)
     }
 }
 
+function cmdBan(e)
+{
+    /* If we're unbanning, or banning in odd cases, we may actually be talking
+     * about a user who is not in the channel, so we need to check the server
+     * for information as well.
+     */
+    if (!e.user)
+        e.user = e.channel.getUser(e.nickname);
+    if (!e.user)
+        e.user = e.server.getUser(e.nickname);
+
+    var mask;
+    if (e.user)
+    {
+        // We have a real user object, so get their proper 'ban mask'.
+        mask = e.user.getBanMask();
+    }
+    else
+    {
+        /* If we have either ! or @ in the nickname assume the user has given
+         * us a complete mask and pass it directly, otherwise assume it is
+         * only the nickname and use * for username/host.
+         */
+        mask = fromUnicode(e.nickname, e.server);
+        if (!/[!@]/.test(e.nickname))
+            mask = mask + "!*@*";
+    }
+
+    var op = (e.command.name == "unban") ? " -b " : " +b ";
+    e.server.sendData("MODE " + e.channel.encodedName + op + mask + "\n");
+}
+
 function cmdCancel(e)
 {
     var network = e.network;
@@ -940,6 +974,10 @@ function cmdCharset(e)
     }
 
     display(getMsg(msg, pm.prefs["charset"]));
+
+    // If we're on a channel, get the topic again so it can be re-decoded.
+    if (e.newCharset && e.server && e.channel)
+        e.server.sendData("TOPIC " + e.channel.encodedName + "\n");
 }
 
 function cmdCreateTabForView(e)
@@ -1324,10 +1362,14 @@ function cmdServer(e)
         client.addNetwork(name, [{name: e.hostname, port: e.port,
                                         password: e.password}], true);
     }
-    else if (e.password)
+    else
     {
-        /* update password on existing server. */
-        client.networks[name].serverList[0].password = e.password;
+        // We are trying to connect without SSL, adjust for temporary networks
+        if (client.networks[name].temporary)
+            client.networks[name].serverList[0].isSecure = false;
+        // update password on existing server.
+        if (e.password)
+            client.networks[name].serverList[0].password = e.password;
     }
 
     return client.connectToNetwork(name, false);
@@ -1358,10 +1400,14 @@ function cmdSSLServer(e)
         client.addNetwork(name, [{name: e.hostname, port: e.port,
                                   password: e.password, isSecure: true}], true);
     }
-    else if (e.password)
+    else
     {
-        /* update password on existing server. */
-        client.networks[name].serverList[0].password = e.password;
+        // We are trying to connect using SSL, adjust for temporary networks
+        if (client.networks[name].temporary)
+            client.networks[name].serverList[0].isSecure = true;
+        // update password on existing server.
+        if (e.password)
+            client.networks[name].serverList[0].password = e.password;
     }
 
     return client.connectToNetwork(name, true);
@@ -1847,7 +1893,13 @@ function cmdNick(e)
 {
     if (!e.nickname)
     {
-        e.nickname = prompt(MSG_NICK_PROMPT);
+        var curNick;
+        if (e.network)
+            curNick = e.network.prefs["nickname"];
+        else
+            curNick = client.prefs["nickname"];
+
+        e.nickname = prompt(MSG_NICK_PROMPT, curNick);
         if (e.nickname == null)
             return;
     }
@@ -2239,7 +2291,7 @@ function cmdLoad(e)
             }
 
             plugin.API = 1;
-            plugin.prefary = [["enabled", true, ""]];
+            plugin.prefary = [["enabled", true, "hidden"]];
             rv = rvStr = plugin.init(e.scope);
 
             var branch = "extensions.irc.plugins." + plugin.id + ".";
@@ -2720,17 +2772,7 @@ function cmdKick(e)
     }
 
     if (e.command.name == "kick-ban")
-    {
-        var hostmask;
-
-        if (e.user.host.match(/^[\d\.]*$/) != null)
-            hostmask = e.user.host.replace(/[^.]+$/, "*");
-        else
-            hostmask = e.user.host.replace(/^[^.]+/, "*");
-
-        e.server.sendData("MODE " + e.channel.encodedName + " +b *!" +
-                          e.user.name + "@" + hostmask + "\n");
-    }
+        e.sourceObject.dispatch("ban", { nickname: e.user.encodedName });
 
     e.user.kick(e.reason);
 }

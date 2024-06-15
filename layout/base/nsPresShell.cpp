@@ -176,6 +176,7 @@
 #ifdef ACCESSIBILITY
 #include "nsIAccessibilityService.h"
 #include "nsIAccessible.h"
+#include "nsIAccessibleEvent.h"
 #endif
 
 // For style data reconstruction
@@ -1208,7 +1209,7 @@ public:
 
   virtual nsresult ReconstructFrames(void);
   virtual void Freeze();
-  virtual void Thaw();
+  virtual void Thaw(PRBool aIsTopLevel);
 
 #ifdef IBMBIDI
   NS_IMETHOD SetCaretBidiLevel(PRUint8 aLevel);
@@ -3640,6 +3641,10 @@ PresShell::AppendReflowCommand(nsIFrame*    aTargetFrame,
   if (! mDidInitialReflow)
     return NS_OK;
 
+  // If we're already destroying, don't bother with this either.
+  if (mIsDestroying)
+    return NS_OK;
+
 #ifdef DEBUG
   //printf("gShellCounter: %d\n", gShellCounter++);
   if (mInVerifyReflow) {
@@ -3822,6 +3827,20 @@ PresShell::CancelAllReflowCommands()
   return NS_OK;
 }
 
+#ifdef ACCESSIBILITY
+void nsIPresShell::InvalidateAccessibleSubtree(nsIContent *aContent)
+{
+  if (mIsAccessibilityActive) {
+    nsCOMPtr<nsIAccessibilityService> accService = 
+      do_GetService("@mozilla.org/accessibilityService;1");
+    if (accService) {
+      accService->InvalidateSubtreeFor(this, aContent,
+                                       nsIAccessibleEvent::EVENT_REORDER);
+    }
+  }
+}
+#endif
+
 NS_IMETHODIMP
 PresShell::RecreateFramesFor(nsIContent* aContent)
 {
@@ -3837,6 +3856,9 @@ PresShell::RecreateFramesFor(nsIContent* aContent)
   mViewManager->BeginUpdateViewBatch();
   nsresult rv = mFrameConstructor->ProcessRestyledFrames(changeList);
   mViewManager->EndUpdateViewBatch(NS_VMREFRESH_NO_SYNC);
+#ifdef ACCESSIBILITY
+  InvalidateAccessibleSubtree(aContent);
+#endif
   return rv;
 }
 
@@ -5527,6 +5549,10 @@ nsIPresShell::ReconstructStyleDataInternal()
   mViewManager->EndUpdateViewBatch(NS_VMREFRESH_NO_SYNC);
 
   VERIFY_STYLE_TREE;
+
+#ifdef ACCESSIBILITY
+  InvalidateAccessibleSubtree(nsnull);
+#endif
 }
 
 void
@@ -6558,6 +6584,8 @@ PresShell::Freeze()
   if (mCaret)
     mCaret->SetCaretVisible(PR_FALSE);
 
+  mPaintingSuppressed = PR_TRUE;
+
   if (mDocument)
     mDocument->EnumerateSubDocuments(FreezeSubDocument, nsnull);
 }
@@ -6565,8 +6593,21 @@ PresShell::Freeze()
 static void
 StartPluginInstance(PresShell *aShell, nsIContent *aContent)
 {
-  // For now we just reconstruct the frame.
-  aShell->RecreateFramesFor(aContent);
+  // For now we just reconstruct the frame, but only if the element
+  // has a plugin instance.
+  nsIFrame *frame = nsnull;
+  aShell->GetPrimaryFrameFor(aContent, &frame);
+  if (frame) {
+    nsIObjectFrame *objFrame = nsnull;
+    CallQueryInterface(frame, &objFrame);
+    if (objFrame) {
+      nsCOMPtr<nsIPluginInstance> instance;
+      objFrame->GetPluginInstance(*getter_AddRefs(instance));
+      if (instance) {
+        aShell->RecreateFramesFor(aContent);
+      }
+    }
+  }
 }
 
 PR_STATIC_CALLBACK(PRBool)
@@ -6574,13 +6615,13 @@ ThawSubDocument(nsIDocument *aDocument, void *aData)
 {
   nsIPresShell *shell = aDocument->GetShellAt(0);
   if (shell)
-    shell->Thaw();
+    shell->Thaw(PR_FALSE);
 
   return PR_TRUE;
 }
 
 void
-PresShell::Thaw()
+PresShell::Thaw(PRBool aIsTopLevel)
 {
   nsCOMPtr<nsIDOMDocument> domDoc = do_QueryInterface(mDocument);
   if (domDoc) {
@@ -6591,6 +6632,9 @@ PresShell::Thaw()
 
   if (mDocument)
     mDocument->EnumerateSubDocuments(ThawSubDocument, nsnull);
+
+  if (aIsTopLevel)
+    UnsuppressPainting();
 }
 
 //--------------------------------------------------------
@@ -6671,7 +6715,7 @@ PresShell::PostReflowEvent()
   mEventQueueService->GetSpecialEventQueue(nsIEventQueueService::UI_THREAD_EVENT_QUEUE,
                                            getter_AddRefs(eventQueue));
 
-  if (eventQueue != mReflowEventQueue &&
+  if (eventQueue != mReflowEventQueue && !mIsDestroying &&
       !mIsReflowing && mReflowCommands.Count() > 0) {
     ReflowEvent* ev = new ReflowEvent(NS_STATIC_CAST(nsIPresShell*, this));
     if (NS_FAILED(eventQueue->PostEvent(ev))) {
@@ -7152,6 +7196,9 @@ PresShell::Observe(nsISupports* aSubject,
       mFrameConstructor->ProcessRestyledFrames(changeList);
 
       mViewManager->EndUpdateViewBatch(NS_VMREFRESH_NO_SYNC);
+#ifdef ACCESSIBILITY
+      InvalidateAccessibleSubtree(nsnull);
+#endif
     }
     return NS_OK;
   }

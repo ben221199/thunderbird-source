@@ -195,7 +195,7 @@ NS_GetFrozenFunctions(XPCOMFunctions *entryPoints, const char* libraryPath);
 
 #define XPCOM_SEARCH_KEY  "PATH"
 #define GRE_CONF_NAME     "gre.config"
-#define GRE_WIN_REG_LOC   "Software\\mozilla.org\\GRE\\"
+#define GRE_WIN_REG_LOC   "Software\\mozilla.org\\GRE"
 #define XPCOM_DLL         "xpcom.dll"
 
 #elif defined(XP_BEOS)
@@ -212,13 +212,15 @@ NS_GetFrozenFunctions(XPCOMFunctions *entryPoints, const char* libraryPath);
 // you have to love apple..
 #ifdef XP_MACOSX  
 #define XPCOM_SEARCH_KEY  "DYLD_LIBRARY_PATH"
+#define GRE_FRAMEWORK_NAME "XUL"
 #else
 #define XPCOM_SEARCH_KEY  "LD_LIBRARY_PATH"
 #endif
 
 #define GRE_CONF_NAME ".gre.config"
 #define GRE_CONF_PATH "/etc/gre.conf"
-#define GRE_CONF_DIR  "/etc/gre.d/"
+#define GRE_CONF_DIR  "/etc/gre.d"
+#define GRE_USER_CONF_DIR ".gre.d"
 #endif
 
 #if defined(XP_WIN) || defined(XP_OS2)
@@ -229,6 +231,20 @@ NS_GetFrozenFunctions(XPCOMFunctions *entryPoints, const char* libraryPath);
   #define XPCOM_ENV_PATH_SEPARATOR        ":"
 #else
   #error need_to_define_your_file_path_separator_and_illegal_characters
+#endif
+
+#ifdef AIX
+#include <sys/param.h>
+#endif
+
+#ifndef MAXPATHLEN
+#ifdef _MAX_PATH
+#define MAXPATHLEN _MAX_PATH
+#elif defined(CCHMAXPATH)
+#define MAXPATHLEN CCHMAXPATH
+#else
+#define MAXPATHLEN 1024
+#endif
 #endif
 
 #endif

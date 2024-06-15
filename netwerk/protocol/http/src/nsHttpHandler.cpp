@@ -692,7 +692,16 @@ nsHttpHandler::InitUserAgentComponents()
         } else {
             buf += ' ';
 
+#ifdef AIX
+            // AIX uname returns machine specific info in the uname.machine
+            // field and does not return the cpu type like other platforms.
+            // We use the AIX version and release numbers instead.
+            buf += (char*)name.version;
+            buf += '.';
+            buf += (char*)name.release;
+#else
             buf += (char*)name.machine;
+#endif
         }
 
         mOscpu.Assign(buf);
@@ -1148,7 +1157,7 @@ PrepareAcceptLanguages(const char *i_AcceptLanguages, nsACString &o_AcceptLangua
     PRInt32 available;
 
     o_Accept = nsCRT::strdup(i_AcceptLanguages);
-    if (nsnull == o_Accept)
+    if (!o_Accept)
         return NS_ERROR_OUT_OF_MEMORY;
     for (p = o_Accept, n = size = 0; '\0' != *p; p++) {
         if (*p == ',') n++;
@@ -1157,8 +1166,10 @@ PrepareAcceptLanguages(const char *i_AcceptLanguages, nsACString &o_AcceptLangua
 
     available = size + ++n * 11 + 1;
     q_Accept = new char[available];
-    if ((char *) 0 == q_Accept)
-        return nsnull;
+    if (!q_Accept) {
+        nsCRT::free(o_Accept);
+        return NS_ERROR_OUT_OF_MEMORY;
+    }
     *q_Accept = '\0';
     q = 1.0;
     dec = q / (double) n;

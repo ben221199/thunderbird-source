@@ -72,6 +72,7 @@
 #include "nsIDOMHTMLHtmlElement.h"
 #include "nsGUIEvent.h"
 #include "nsIDOMEventGroup.h"
+#include "nsILinkHandler.h"
 
 #include "TransactionFactory.h"
 
@@ -129,6 +130,7 @@
 #include "nsIFrame.h"
 #include "nsIView.h"
 #include "nsIWidget.h"
+#include "nsIParserService.h"
 
 static NS_DEFINE_CID(kCTransitionalDTDCID,  NS_CTRANSITIONAL_DTD_CID);
 
@@ -137,8 +139,10 @@ static char hrefText[] = "href";
 static char anchorTxt[] = "anchor";
 static char namedanchorText[] = "namedanchor";
 
-nsIParserService* nsHTMLEditor::sParserService;
 nsIRangeUtils* nsHTMLEditor::sRangeHelper;
+
+// Defined in nsEditorRegistration.cpp
+extern nsIParserService *sParserService;
 
 // some prototypes for rules creation shortcuts
 nsresult NS_NewTextEditRules(nsIEditRules** aInstancePtrResult);
@@ -184,11 +188,13 @@ nsHTMLEditor::~nsHTMLEditor()
     nsCOMPtr<nsISelectionPrivate> selPriv(do_QueryInterface(selection));
     nsCOMPtr<nsISelectionListener>listener;
     listener = do_QueryInterface(mTypeInState);
-    if (listener) {
+    if (listener)
+    {
       selPriv->RemoveSelectionListener(listener); 
     }
     listener = do_QueryInterface(mSelectionListenerP);
-    if (listener) {
+    if (listener)
+    {
       selPriv->RemoveSelectionListener(listener); 
     }
   }
@@ -201,6 +207,26 @@ nsHTMLEditor::~nsHTMLEditor()
   // free any default style propItems
   RemoveAllDefaultProperties();
 
+  while (mStyleSheetURLs.Count())
+  {
+    nsAString* strp = mStyleSheetURLs.StringAt(0);
+
+    if (strp)
+    {
+      RemoveOverrideStyleSheet(*strp);
+    }
+  }
+
+  if (mLinkHandler && mPresShellWeak)
+  {
+    nsCOMPtr<nsIPresShell> ps = do_QueryReferent(mPresShellWeak);
+
+    if (ps && ps->GetPresContext())
+    {
+      ps->GetPresContext()->SetLinkHandler(mLinkHandler);
+    }
+  }
+
   RemoveEventListeners();
 }
 
@@ -208,7 +234,6 @@ nsHTMLEditor::~nsHTMLEditor()
 void
 nsHTMLEditor::Shutdown()
 {
-  NS_IF_RELEASE(sParserService);
   NS_IF_RELEASE(sRangeHelper);
 }
 
@@ -226,8 +251,10 @@ NS_INTERFACE_MAP_BEGIN(nsHTMLEditor)
 NS_INTERFACE_MAP_END_INHERITING(nsPlaintextEditor)
 
 
-NS_IMETHODIMP nsHTMLEditor::Init(nsIDOMDocument *aDoc, 
-                                 nsIPresShell   *aPresShell, nsIContent *aRoot, nsISelectionController *aSelCon, PRUint32 aFlags)
+NS_IMETHODIMP
+nsHTMLEditor::Init(nsIDOMDocument *aDoc, nsIPresShell *aPresShell,
+                   nsIContent *aRoot, nsISelectionController *aSelCon,
+                   PRUint32 aFlags)
 {
   NS_PRECONDITION(aDoc && aPresShell, "bad arg");
   if (!aDoc || !aPresShell)
@@ -275,8 +302,11 @@ NS_IMETHODIMP nsHTMLEditor::Init(nsIDOMDocument *aDoc,
     // disable links
     nsPresContext *context = aPresShell->GetPresContext();
     if (!context) return NS_ERROR_NULL_POINTER;
-    if (!(mFlags & eEditorPlaintextMask))
-      context->SetLinkHandler(0);  
+    if (!(mFlags & eEditorPlaintextMask)) {
+      mLinkHandler = context->GetLinkHandler();
+
+      context->SetLinkHandler(nsnull);
+    }
 
     // init the type-in state
     mTypeInState = new TypeInState();
@@ -386,7 +416,8 @@ nsHTMLEditor::SetFlags(PRUint32 aFlags)
   return mRules->SetFlags(aFlags);
 }
 
-NS_IMETHODIMP nsHTMLEditor::InitRules()
+NS_IMETHODIMP
+nsHTMLEditor::InitRules()
 {
   // instantiate the rules for the html editor
   nsresult res = NS_NewHTMLEditRules(getter_AddRefs(mRules));
@@ -397,7 +428,8 @@ NS_IMETHODIMP nsHTMLEditor::InitRules()
   return res;
 }
 
-NS_IMETHODIMP nsHTMLEditor::BeginningOfDocument()
+NS_IMETHODIMP
+nsHTMLEditor::BeginningOfDocument()
 {
   if (!mDocWeak || !mPresShellWeak) { return NS_ERROR_NOT_INITIALIZED; }
 
@@ -514,11 +546,6 @@ nsHTMLEditor::NodeIsBlockStatic(nsIDOMNode *aNode, PRBool *aIsBlock)
   nsIAtom *tagAtom = GetTag(aNode);
   if (!tagAtom) return NS_ERROR_NULL_POINTER;
 
-  if (!sParserService) {
-    rv = CallGetService("@mozilla.org/parser/parser-service;1", &sParserService);
-    if (NS_FAILED(rv)) return rv;
-  }
-
   // Nodes we know we want to treat as block
   // even though the parser says they're not:
   if (tagAtom==nsEditProperty::body       ||
@@ -538,10 +565,8 @@ nsHTMLEditor::NodeIsBlockStatic(nsIDOMNode *aNode, PRBool *aIsBlock)
     return NS_OK;
   }
 
-  PRInt32 id;
-  rv = sParserService->HTMLAtomTagToId(tagAtom, &id);
-  if (NS_FAILED(rv)) return rv;
-  rv = sParserService->IsBlock(id, *aIsBlock);
+  rv = sParserService->IsBlock(sParserService->HTMLAtomTagToId(tagAtom),
+                               *aIsBlock);
 
 #ifdef DEBUG
   // Check this against what we would have said with the old code:
@@ -686,7 +711,7 @@ nsHTMLEditor::SetDocumentTitle(const nsAString &aTitle)
 
       result = nsEditor::DoTransaction(txn);  
     }
-    // The transaction system (if any) has taken ownwership of txn
+    // The transaction system (if any) has taken ownership of txn
     NS_IF_RELEASE(txn);
   }
   return result;
@@ -3533,9 +3558,8 @@ nsHTMLEditor::RemoveStyleSheet(const nsAString &aURL)
 
     // Remove it from our internal list
     rv = RemoveStyleSheetFromList(aURL);
-    NS_ENSURE_SUCCESS(rv, rv);
   }
-  // The transaction system (if any) has taken ownwership of txns
+  // The transaction system (if any) has taken ownership of txns
   NS_IF_RELEASE(txn);
   
   return rv;
@@ -3612,8 +3636,12 @@ NS_IMETHODIMP
 nsHTMLEditor::RemoveOverrideStyleSheet(const nsAString &aURL)
 {
   nsCOMPtr<nsICSSStyleSheet> sheet;
-  nsresult rv = GetStyleSheetForURL(aURL, getter_AddRefs(sheet));
-  NS_ENSURE_SUCCESS(rv, rv);
+  GetStyleSheetForURL(aURL, getter_AddRefs(sheet));
+
+  // Make sure we remove the stylesheet from our internal list in all
+  // cases.
+  nsresult rv = RemoveStyleSheetFromList(aURL);
+
   if (!sheet)
     return NS_OK; /// Don't fail if sheet not found
 
@@ -3625,7 +3653,7 @@ nsHTMLEditor::RemoveOverrideStyleSheet(const nsAString &aURL)
   ps->ReconstructStyleData();
 
   // Remove it from our internal list
-  return RemoveStyleSheetFromList(aURL);
+  return rv;
 }
 
 NS_IMETHODIMP
@@ -4168,22 +4196,24 @@ nsHTMLEditor::StyleSheetLoaded(nsICSSStyleSheet* aSheet, PRBool aNotify)
       nsCOMPtr<nsIStyleSheet> sheet = do_QueryInterface(aSheet);
       nsCOMPtr<nsIURI> uri;
       rv = sheet->GetSheetURI(getter_AddRefs(uri));
-      if (NS_FAILED(rv))
-        return rv;
 
-      nsCAutoString spec;
-      rv = uri->GetSpec(spec);
-      if (NS_FAILED(rv))
-        return rv;
+      if (NS_SUCCEEDED(rv))
+      {
+        nsCAutoString spec;
+        rv = uri->GetSpec(spec);
 
-      // Save it so we can remove before applying the next one
-      mLastStyleSheetURL.AssignWithConversion(spec.get());
+        if (NS_SUCCEEDED(rv))
+        {
+          // Save it so we can remove before applying the next one
+          mLastStyleSheetURL.AssignWithConversion(spec.get());
 
-      // Also save in our arrays of urls and sheets
-      AddNewStyleSheetToList(mLastStyleSheetURL, aSheet);
+          // Also save in our arrays of urls and sheets
+          AddNewStyleSheetToList(mLastStyleSheetURL, aSheet);
+        }
+      }
     }
   }
-  // The transaction system (if any) has taken ownwership of txns
+  // The transaction system (if any) has taken ownership of txns
   NS_IF_RELEASE(txn);
 
   return NS_OK;
@@ -4248,16 +4278,13 @@ nsHTMLEditor::TagCanContainTag(const nsAString& aParentTag, const nsAString& aCh
   // if parent is a pre, and child is not inline, say "no"
   if ( aParentTag.EqualsLiteral("pre") )
   {
-    if (aChildTag.EqualsLiteral("__moz_text"))
+    if (aChildTag.EqualsLiteral("#text"))
       return PR_TRUE;
-    PRInt32 childTagEnum, parentTagEnum;
-    nsAutoString non_const_childTag(aChildTag);
-    nsAutoString non_const_parentTag(aParentTag);
-    nsresult res = mDTD->StringTagToIntTag(non_const_childTag,&childTagEnum);
-    if (NS_FAILED(res)) return PR_FALSE;
-    res = mDTD->StringTagToIntTag(non_const_parentTag,&parentTagEnum);
-    if (NS_FAILED(res)) return PR_FALSE;
-    if (!mDTD->IsInlineElement(childTagEnum,parentTagEnum))
+
+    PRInt32 childTagEnum = sParserService->HTMLStringTagToId(aChildTag);
+    PRInt32 parentTagEnum = sParserService->HTMLStringTagToId(aParentTag);
+
+    if (!mDTD->IsInlineElement(childTagEnum, parentTagEnum))
       return PR_FALSE;
   }
 */

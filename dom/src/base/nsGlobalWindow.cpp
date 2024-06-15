@@ -138,6 +138,8 @@
 #include "nsAutoPtr.h"
 #include "nsContentUtils.h"
 #include "nsCSSProps.h"
+#include "nsIURIFixup.h"
+#include "nsCDefaultURIFixup.h"
 
 #include "plbase64.h"
 
@@ -410,9 +412,10 @@ PopPopupControlState(PopupControlState aState)
 }
 
 PopupControlState
-nsGlobalWindow::PushPopupControlState(PopupControlState aState) const
+nsGlobalWindow::PushPopupControlState(PopupControlState aState,
+                                      PRBool aForce) const
 {
-  return ::PushPopupControlState(aState, PR_FALSE);
+  return ::PushPopupControlState(aState, aForce);
 }
 
 void
@@ -495,6 +498,11 @@ nsGlobalWindow::SetNewDocument(nsIDOMDocument* aDocument,
 
     // Let go of the cached principal since we no longer need it.
     mDocumentPrincipal = nsnull;
+
+    // clear smartcard events, our document has gone away.
+    if (mCrypto) {
+      mCrypto->SetEnableSmartCardEvents(PR_FALSE);
+    }
   }
 
   if (mFirstDocumentLoad) {
@@ -598,12 +606,16 @@ nsGlobalWindow::SetNewDocument(nsIDOMDocument* aDocument,
         ClearAllTimeouts();
 
         if (mContext && mJSObject) {
-          if (mNavigator) {
+          // If we're in the middle of shutdown, nsContentUtils may have
+          // already been notified of shutdown.
+          nsIXPConnect *xpc = nsContentUtils::XPConnect();
+
+          if (mNavigator && xpc) {
             nsIDOMNavigator* navigator =
               NS_STATIC_CAST(nsIDOMNavigator*, mNavigator.get());
-            nsContentUtils::XPConnect()->
-              WrapNative(cx, mJSObject, navigator, NS_GET_IID(nsIDOMNavigator),
-                         getter_AddRefs(mNavigatorHolder));
+            xpc->WrapNative(cx, mJSObject, navigator,
+                            NS_GET_IID(nsIDOMNavigator),
+                            getter_AddRefs(mNavigatorHolder));
           }
 
           JSObject *gsp =
@@ -808,6 +820,9 @@ nsGlobalWindow::HandleDOMEvent(nsPresContext* aPresContext, nsEvent* aEvent,
                                nsIDOMEvent** aDOMEvent, PRUint32 aFlags,
                                nsEventStatus* aEventStatus)
 {
+  // Make sure to tell the event that dispatch has started.
+  NS_MARK_EVENT_DISPATCH_STARTED(aEvent);
+
   nsresult ret = NS_OK;
   PRBool externalDOMEvent = PR_FALSE;
   nsIDOMEvent *domEvent = nsnull;
@@ -985,6 +1000,10 @@ nsGlobalWindow::HandleDOMEvent(nsPresContext* aPresContext, nsEvent* aEvent,
       }
       aDOMEvent = nsnull;
     }
+
+    // Now that we're done with this event, remove the flag that says
+    // we're in the process of dispatching this event.
+    NS_MARK_EVENT_DISPATCH_DONE(aEvent);
   }
 
   mCurrentEvent = oldEvent;
@@ -2357,27 +2376,77 @@ nsGlobalWindow::MakeScriptDialogTitle(const nsAString &aInTitle,
 {
   aOutTitle.Truncate();
 
-  // Load the string to be prepended to titles for script
-  // confirm/alert/prompt boxes.
+  // Try to get a host from the running principal -- this will do the
+  // right thing for javascript: and data: documents.
 
-  nsCOMPtr<nsIStringBundleService> stringBundleService =
-     do_GetService(kCStringBundleServiceCID);
+  nsresult rv = NS_OK;
+  NS_WARN_IF_FALSE(sSecMan, "Global Window has no security manager!");
+  if (sSecMan) {
+    nsCOMPtr<nsIPrincipal> principal;
+    rv = sSecMan->GetSubjectPrincipal(getter_AddRefs(principal));
 
-  if (stringBundleService) {
-    nsCOMPtr<nsIStringBundle> stringBundle;
-    stringBundleService->CreateBundle(kDOMBundleURL,
-                                      getter_AddRefs(stringBundle));
+    if (NS_SUCCEEDED(rv) && principal) {
+      nsCOMPtr<nsIURI> uri;
+      rv = principal->GetURI(getter_AddRefs(uri));
 
-    if (stringBundle) {
-      nsAutoString inTitle(aInTitle);
-      nsXPIDLString tempString;
-      const PRUnichar *formatStrings[1];
-      formatStrings[0] = inTitle.get();
-      stringBundle->FormatStringFromName(NS_LITERAL_STRING("ScriptDlgTitle").get(),
-                                         formatStrings, 1,
-                                         getter_Copies(tempString));
+      if (NS_SUCCEEDED(rv) && uri) {
+        // remove user:pass for privacy and spoof prevention
 
-      aOutTitle = tempString;
+        nsCOMPtr<nsIURIFixup> fixup(do_GetService(NS_URIFIXUP_CONTRACTID));
+        if (fixup) {
+          nsCOMPtr<nsIURI> fixedURI;
+          rv = fixup->CreateExposableURI(uri, getter_AddRefs(fixedURI));
+          if (NS_SUCCEEDED(rv) && fixedURI) {
+            nsCAutoString host;
+            fixedURI->GetHost(host);
+
+            if (!host.IsEmpty()) {
+              // if this URI has a host we'll show it. For other
+              // schemes (e.g. file:) we fall back to the localized
+              // generic string
+
+              nsCAutoString prepath;
+              fixedURI->GetPrePath(prepath);
+
+              aOutTitle = NS_ConvertUTF8toUTF16(prepath);
+              if (!aInTitle.IsEmpty()) {
+                aOutTitle.Append(NS_LITERAL_STRING(" - ") + aInTitle);
+              }
+            }
+          }
+        }
+      }
+    }
+    else { // failed to get subject principal
+      NS_WARNING("No script principal? Who is calling alert/confirm/prompt?!");
+    }
+  }
+
+  if (aOutTitle.IsEmpty()) {
+    // We didn't find a host so use the generic title modifier.  Load
+    // the string to be prepended to titles for script
+    // confirm/alert/prompt boxes.
+
+    nsCOMPtr<nsIStringBundleService> stringBundleService =
+      do_GetService(kCStringBundleServiceCID);
+
+    if (stringBundleService) {
+      nsCOMPtr<nsIStringBundle> stringBundle;
+      stringBundleService->CreateBundle(kDOMBundleURL,
+                                        getter_AddRefs(stringBundle));
+
+      if (stringBundle) {
+        nsAutoString inTitle(aInTitle);
+        nsXPIDLString tempString;
+        const PRUnichar *formatStrings[1];
+        formatStrings[0] = inTitle.get();
+        stringBundle->FormatStringFromName(
+          NS_LITERAL_STRING("ScriptDlgTitle").get(),
+          formatStrings, 1, getter_Copies(tempString));
+        if (tempString) {
+          aOutTitle = tempString.get();
+        }
+      }
     }
   }
 
@@ -2693,19 +2762,32 @@ nsGlobalWindow::Print()
     
     nsCOMPtr<nsIPrintSettings> printSettings;
     if (printSettingsService) {
-      printSettingsService->GetGlobalPrintSettings(getter_AddRefs(printSettings));
+      PRBool printSettingsAreGlobal =
+        nsContentUtils::GetBoolPref("print.use_global_printsettings", PR_FALSE);
 
-      nsXPIDLString printerName;
-      printSettingsService->GetDefaultPrinterName(getter_Copies(printerName));
-      if (printerName)
-        printSettingsService->InitPrintSettingsFromPrinter(printerName, printSettings);
-      printSettingsService->InitPrintSettingsFromPrefs(printSettings, 
+      if (printSettingsAreGlobal) {
+        printSettingsService->GetGlobalPrintSettings(getter_AddRefs(printSettings));
+
+        nsXPIDLString printerName;
+        printSettingsService->GetDefaultPrinterName(getter_Copies(printerName));
+        if (printerName)
+          printSettingsService->InitPrintSettingsFromPrinter(printerName, printSettings);
+        printSettingsService->InitPrintSettingsFromPrefs(printSettings, 
                                                          PR_TRUE, 
-                                                         nsIPrintSettings::kInitSaveAll); 
+                                                         nsIPrintSettings::kInitSaveAll);
+      } else {
+        printSettingsService->GetNewPrintSettings(getter_AddRefs(printSettings));
+      }
+
       webBrowserPrint->Print(printSettings, nsnull);
-      printSettingsService->SavePrintSettingsToPrefs(printSettings, 
+
+      PRBool savePrintSettings =
+        nsContentUtils::GetBoolPref("print.save_print_settings", PR_FALSE);
+      if (printSettingsAreGlobal && savePrintSettings) {
+        printSettingsService->SavePrintSettingsToPrefs(printSettings,
                                                        PR_TRUE, 
-                                                       nsIPrintSettings::kInitSaveAll); 
+                                                       nsIPrintSettings::kInitSaveAll);
+      }
     } else {
       webBrowserPrint->GetGlobalPrintSettings(getter_AddRefs(printSettings));
       webBrowserPrint->Print(printSettings, nsnull);
@@ -3590,6 +3672,10 @@ nsGlobalWindow::Close()
     nsIScriptContext *currentCX = nsJSUtils::GetDynamicScriptContext(cx);
 
     if (currentCX && currentCX == mContext) {
+      // We ignore the return value here.  If setting the termination function
+      // fails, it's better to fail to close the window than it is to crash
+      // (which is what would tend to happen if we did this synchronously
+      // here).
       currentCX->SetTerminationFunction(CloseWindow,
                                         NS_STATIC_CAST(nsIDOMWindow *,
                                                        this));
@@ -4079,16 +4165,10 @@ nsGlobalWindow::AddEventListener(const nsAString& aType,
                                  nsIDOMEventListener* aListener,
                                  PRBool aUseCapture)
 {
-  PRBool permitUntrustedEvents = PR_FALSE;
   nsCOMPtr<nsIDocument> doc(do_QueryInterface(mDocument));
-  nsIURI *docUri;
-  if (doc && (docUri = doc->GetDocumentURI())) {
-    PRBool isChrome = PR_TRUE;
-    nsresult rv = docUri->SchemeIs("chrome", &isChrome);
-    NS_ENSURE_SUCCESS(rv, rv);
-    permitUntrustedEvents = !isChrome;
-  }
-  return AddEventListener(aType, aListener, aUseCapture, permitUntrustedEvents);
+
+  return AddEventListener(aType, aListener, aUseCapture,
+                          !nsContentUtils::IsChromeDoc(doc));
 }
 
 NS_IMETHODIMP
@@ -4723,8 +4803,9 @@ nsGlobalWindow::OpenInternal(const nsAString& aUrl, const nsAString& aName,
         tabURI->SchemeIs("chrome", &chromeTab);
 
       if (!thisChrome && !chromeTab) {
-        containerPref=nsContentUtils::GetIntPref("browser.link.open_newwindow",
-                                nsIBrowserDOMWindow::OPEN_NEWWINDOW);
+        containerPref =
+          nsContentUtils::GetIntPref("browser.link.open_newwindow",
+                                     nsIBrowserDOMWindow::OPEN_NEWWINDOW);
         PRInt32 restrictionPref = nsContentUtils::GetIntPref(
                                 "browser.link.open_newwindow.restriction");
         /* The restriction pref is a power-user's fine-tuning pref. values:
@@ -4734,7 +4815,6 @@ nsGlobalWindow::OpenInternal(const nsAString& aUrl, const nsAString& aName,
 
         if (containerPref == nsIBrowserDOMWindow::OPEN_NEWTAB ||
             containerPref == nsIBrowserDOMWindow::OPEN_CURRENTWINDOW) {
-
           divertOpen = restrictionPref != 1;
           if (divertOpen && !aOptions.IsEmpty() && restrictionPref == 2)
             divertOpen = PR_FALSE;
@@ -4813,26 +4893,6 @@ nsGlobalWindow::OpenInternal(const nsAString& aUrl, const nsAString& aName,
         // dialog is open.
         nsAutoPopupStatePusher popupStatePusher(openAbused, PR_TRUE);
 
-        nsCOMPtr<nsIDOMChromeWindow> chrome_win =
-          do_QueryInterface(NS_STATIC_CAST(nsIDOMWindow *, this));
-
-        nsCOMPtr<nsIJSContextStack> stack;
-        JSContext *cx = nsnull;
-
-        if (IsCallerChrome() && !chrome_win) {
-          // open() is called from chrome on a non-chrome window, push
-          // the context of the callee onto the context stack to
-          // prevent the caller's priveleges from leaking into code
-          // that runs while opening the new window.
-
-          cx = (JSContext *)mContext->GetNativeContext();
-
-          stack = do_GetService(sJSStackContractID);
-          if (stack && cx) {
-            stack->Push(cx);
-          }
-        }
-
         if (argc) {
           nsCOMPtr<nsPIWindowWatcher> pwwatch(do_QueryInterface(wwatch));
           if (pwwatch) {
@@ -4848,10 +4908,6 @@ nsGlobalWindow::OpenInternal(const nsAString& aUrl, const nsAString& aName,
         } else {
           rv = wwatch->OpenWindow(this, url.get(), name_ptr, options_ptr,
                                   aExtraArgument, getter_AddRefs(domReturn));
-        }
-
-        if (stack && cx) {
-          stack->Pop(nsnull);
         }
       }
     }
@@ -5823,6 +5879,9 @@ public:
   // Get the listener manager, which holds all event handlers for the window.
   nsIEventListenerManager* GetListenerManager() { return mListenerManager; }
 
+  // Get the saved value of the mMutationBits field.
+  PRUint32 GetMutationBits() { return mMutationBits; }
+
   // Get the contents of focus memory when the state was saved
   // (if the focus was inside of this window).
   nsIDOMElement* GetFocusedElement() { return mFocusedElement; }
@@ -5843,6 +5902,7 @@ private:
   nsCOMPtr<nsIDOMWindowInternal> mFocusedWindow;
   nsTimeout *mSavedTimeouts;
   nsTimeout **mTimeoutInsertionPoint;
+  PRUint32 mMutationBits;
 };
 
 WindowStateHolder::WindowStateHolder(JSContext *cx, JSObject *aObject,
@@ -5851,7 +5911,15 @@ WindowStateHolder::WindowStateHolder(JSContext *cx, JSObject *aObject,
 {
   NS_ASSERTION(aWindow, "null window");
 
+  // Prevent mJSObj from being gc'd for the lifetime of this object.
+  ::JS_AddNamedRoot(cx, &mJSObj, "WindowStateHolder::mJSObj");
+
   aWindow->GetListenerManager(getter_AddRefs(mListenerManager));
+  mMutationBits = aWindow->mMutationBits;
+
+  // Clear the window's EventListenerManager pointer so that it can't have
+  // listeners removed from it later.
+  aWindow->mListenerManager = nsnull;
 
   nsIFocusController *fc = aWindow->GetRootFocusController();
   NS_ASSERTION(fc, "null focus controller");
@@ -5885,8 +5953,6 @@ WindowStateHolder::WindowStateHolder(JSContext *cx, JSObject *aObject,
 
   aWindow->mTimeouts = nsnull;
   aWindow->mTimeoutInsertionPoint = &aWindow->mTimeouts;
-
-  ::JS_AddNamedRoot(cx, &mJSObj, "WindowStateHolder::mJSObj");
 }
 
 WindowStateHolder::~WindowStateHolder()
@@ -5975,11 +6041,14 @@ CopyJSProperties(JSContext *cx, JSObject *aSource, JSObject *aDest)
   // Enumerate all of the properties on aSource and install them on aDest.
 
   JSIdArray *props = ::JS_Enumerate(cx, aSource);
+  if (props) {
+    props = ::JS_EnumerateResolvedStandardClasses(cx, aSource, props);
+  }
   if (!props) {
 #ifdef DEBUG_PAGE_CACHE
-    printf("[no properties]\n");
+    printf("failed to enumerate JS properties\n");
 #endif
-    return NS_OK;
+    return NS_ERROR_FAILURE;
   }
 
 #ifdef DEBUG_PAGE_CACHE
@@ -6015,7 +6084,11 @@ nsGlobalWindow::SaveWindowState(nsISupports **aState)
   printf("saving window state, stateObj = %p\n", stateObj);
 #endif
   nsresult rv = CopyJSProperties(cx, mJSObject, stateObj);
-  NS_ENSURE_SUCCESS(rv, rv);
+  if (NS_FAILED(rv)) {
+    delete *aState;
+    *aState = nsnull;
+    return rv;
+  }
 
   NS_ADDREF(*aState);
   return NS_OK;
@@ -6046,6 +6119,7 @@ nsGlobalWindow::RestoreWindowState(nsISupports *aState)
   NS_ENSURE_SUCCESS(rv, rv);
 
   mListenerManager = holder->GetListenerManager();
+  mMutationBits = holder->GetMutationBits();
 
   nsIDOMElement *focusedElement = holder->GetFocusedElement();
   nsIDOMWindowInternal *focusedWindow = holder->GetFocusedWindow();
@@ -6374,7 +6448,9 @@ nsGlobalChromeWindow::SetCursor(const nsAString& aCursor)
     NS_ENSURE_TRUE(widget, NS_ERROR_FAILURE);
 
     // Call esm and set cursor.
-    rv = presContext->EventStateManager()->SetCursor(cursor, nsnull, widget, PR_TRUE);
+    rv = presContext->EventStateManager()->SetCursor(cursor, nsnull,
+                                                     PR_FALSE, 0.0f, 0.0f,
+                                                     widget, PR_TRUE);
   }
 
   return rv;

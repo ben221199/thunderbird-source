@@ -51,10 +51,11 @@
 #include "nsTextFormatter.h"
 #include "nsDirectoryServiceDefs.h"
 #include "nsCRT.h"
+#include "nsIConsoleService.h"
+#include "nsIScriptError.h"
 
 #define kExpatSeparatorChar 0xFFFF
 
-static const char kWhitespace[] = " \r\n\t"; // Optimized for typical cases
 static const PRUnichar kUTF16[] = { 'U', 'T', 'F', '-', '1', '6', '\0' };
 
 /***************************** EXPAT CALL BACKS ******************************/
@@ -794,6 +795,19 @@ nsExpatDriver::HandleError(const char *aBuffer,
 
   // Adjust the column number so that it is one based rather than zero based.
   PRInt32 colNumber = XML_GetCurrentColumnNumber(mExpatParser) + 1;
+  PRInt32 lineNumber = XML_GetCurrentLineNumber(mExpatParser);
+
+  nsCOMPtr<nsIConsoleService> cs
+    (do_GetService(NS_CONSOLESERVICE_CONTRACTID));
+  nsCOMPtr<nsIScriptError> serr(do_CreateInstance(NS_SCRIPTERROR_CONTRACTID));
+  if (serr && cs) {
+    if (NS_SUCCEEDED(serr->Init(description.get(),
+                                mURISpec.get(),
+                                sourceLine.get(),
+                                lineNumber, colNumber,
+                                nsIScriptError::errorFlag, "malformed-xml")))
+      cs->LogMessage(serr);
+  }
 
   nsAutoString errorText;
   CreateErrorText(description.get(), XML_GetBase(mExpatParser),
@@ -1008,7 +1022,9 @@ nsExpatDriver::WillBuildModel(const CParserContext& aParserContext,
   XML_SetParamEntityParsing(mExpatParser, XML_PARAM_ENTITY_PARSING_ALWAYS);
 #endif
 
-  XML_SetBase(mExpatParser, aParserContext.mScanner->GetFilename().get());
+  mURISpec = aParserContext.mScanner->GetFilename();
+
+  XML_SetBase(mExpatParser, mURISpec.get());
 
   // Set up the callbacks
   XML_SetXmlDeclHandler(mExpatParser, Driver_HandleXMLDeclaration); 
@@ -1167,21 +1183,15 @@ nsExpatDriver::PrependTokens(nsDeque& aDeque)
 }
 
 NS_IMETHODIMP
-nsExpatDriver::HandleToken(CToken* aToken,nsIParser* aParser)
+nsExpatDriver::CopyState(nsITokenizer* aTokenizer)
 {
   return NS_OK;
 }
 
-NS_IMETHODIMP_(PRBool)
-nsExpatDriver::IsBlockElement(PRInt32 aTagID,PRInt32 aParentID) const
+NS_IMETHODIMP
+nsExpatDriver::HandleToken(CToken* aToken,nsIParser* aParser)
 {
-  return PR_FALSE;
-}
-
-NS_IMETHODIMP_(PRBool)
-nsExpatDriver::IsInlineElement(PRInt32 aTagID,PRInt32 aParentID) const
-{
-  return PR_FALSE;
+  return NS_OK;
 }
 
 NS_IMETHODIMP_(PRBool)
@@ -1194,22 +1204,4 @@ NS_IMETHODIMP_(PRBool)
 nsExpatDriver::CanContain(PRInt32 aParent,PRInt32 aChild) const
 {
   return PR_TRUE;
-}
-
-NS_IMETHODIMP
-nsExpatDriver::StringTagToIntTag(const nsAString &aTag, PRInt32* aIntTag) const
-{
-  return NS_OK;
-}
-
-NS_IMETHODIMP_(const PRUnichar *)
-nsExpatDriver::IntTagToStringTag(PRInt32 aIntTag) const
-{
-  return 0;
-}
-
-NS_IMETHODIMP_(nsIAtom *)
-nsExpatDriver::IntTagToAtom(PRInt32 aIntTag) const
-{
-  return 0;
 }

@@ -532,6 +532,8 @@ nsXULDocument::StartDocumentLoad(const char* aCommand, nsIChannel* aChannel,
 
     mDocumentTitle.SetIsVoid(PR_TRUE);
 
+    mChannel = aChannel;
+
     nsresult rv = aChannel->GetOriginalURI(getter_AddRefs(mDocumentURI));
     NS_ENSURE_SUCCESS(rv, rv);
     
@@ -1199,11 +1201,14 @@ nsXULDocument::ContentRemoved(nsIContent* aContainer,
 
 nsresult
 nsXULDocument::HandleDOMEvent(nsPresContext* aPresContext,
-                            nsEvent* aEvent,
-                            nsIDOMEvent** aDOMEvent,
-                            PRUint32 aFlags,
-                            nsEventStatus* aEventStatus)
+                              nsEvent* aEvent,
+                              nsIDOMEvent** aDOMEvent,
+                              PRUint32 aFlags,
+                              nsEventStatus* aEventStatus)
 {
+    // Make sure to tell the event that dispatch has started.
+    NS_MARK_EVENT_DISPATCH_STARTED(aEvent);
+
     nsresult ret = NS_OK;
     nsIDOMEvent* domEvent = nsnull;
     PRBool externalDOMEvent = PR_FALSE;
@@ -1264,6 +1269,10 @@ nsXULDocument::HandleDOMEvent(nsPresContext* aPresContext,
             }
         }
         aDOMEvent = nsnull;
+
+        // Now that we're done with this event, remove the flag that says
+        // we're in the process of dispatching this event.
+        NS_MARK_EVENT_DISPATCH_DONE(aEvent);
     }
 
     return ret;
@@ -2952,9 +2961,9 @@ nsXULDocument::ResumeWalk()
                     // stale and must be reloaded.
                     PRBool blocked;
                     rv = LoadScript(scriptproto, &blocked);
-                    if (NS_FAILED(rv)) return rv;
+                    // If the script cannot be loaded, just keep going!
 
-                    if (blocked)
+                    if (NS_SUCCEEDED(rv) && blocked)
                         return NS_OK;
                 }
                 else if (scriptproto->mJSObject) {
@@ -3330,13 +3339,13 @@ nsXULDocument::OnStreamComplete(nsIStreamLoader* aLoader,
                                 PRUint32 stringLen,
                                 const PRUint8* string)
 {
+    nsCOMPtr<nsIRequest> request;
+    aLoader->GetRequest(getter_AddRefs(request));
+    nsCOMPtr<nsIChannel> channel = do_QueryInterface(request);
+
 #ifdef DEBUG
     // print a load error on bad status
     if (NS_FAILED(aStatus)) {
-        nsCOMPtr<nsIRequest> request;
-        aLoader->GetRequest(getter_AddRefs(request));
-        nsCOMPtr<nsIChannel> channel;
-        channel = do_QueryInterface(request);
         if (channel) {
             nsCOMPtr<nsIURI> uri;
             channel->GetURI(getter_AddRefs(uri));
@@ -3379,10 +3388,14 @@ nsXULDocument::OnStreamComplete(nsIStreamLoader* aLoader,
         // not to reach here.
         nsCOMPtr<nsIURI> uri = scriptProto->mSrcURI;
 
-        // XXX this seems broken - what if the script is non-ascii? (bug 241739)
-        nsString stringStr; stringStr.AssignWithConversion(NS_REINTERPRET_CAST(const char*, string), stringLen);
-        rv = scriptProto->Compile(stringStr.get(), stringLen, uri, 1, this,
-                                  mCurrentPrototype);
+        // XXX should also check nsIHttpChannel::requestSucceeded
+
+        nsString stringStr;
+        rv = nsScriptLoader::ConvertToUTF16(channel, string, stringLen,
+                                            EmptyString(), this, stringStr);
+        if (NS_SUCCEEDED(rv))
+          rv = scriptProto->Compile(stringStr.get(), stringStr.Length(), uri,
+                                    1, this, mCurrentPrototype);
 
         aStatus = rv;
         if (NS_SUCCEEDED(rv) && scriptProto->mJSObject) {
@@ -3534,10 +3547,16 @@ nsXULDocument::CreateElementFromPrototype(nsXULPrototypeElement* aPrototype,
     else {
         // If it's not a XUL element, it's gonna be heavyweight no matter
         // what. So we need to copy everything out of the prototype
-        // into the element.
-        rv = NS_NewElement(getter_AddRefs(result),
-                           aPrototype->mNodeInfo->NamespaceID(),
-                           aPrototype->mNodeInfo);
+        // into the element.  Get a nodeinfo from our nodeinfo manager
+        // for this node.
+        nsCOMPtr<nsINodeInfo> newNodeInfo;
+        rv = mNodeInfoManager->GetNodeInfo(aPrototype->mNodeInfo->NameAtom(),
+                                           aPrototype->mNodeInfo->GetPrefixAtom(),
+                                           aPrototype->mNodeInfo->NamespaceID(),
+                                           getter_AddRefs(newNodeInfo));
+        if (NS_FAILED(rv)) return rv;
+        rv = NS_NewElement(getter_AddRefs(result), newNodeInfo->NamespaceID(),
+                           newNodeInfo);
         if (NS_FAILED(rv)) return rv;
 
         rv = AddAttributes(aPrototype, result);

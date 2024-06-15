@@ -67,6 +67,7 @@
 #include "nsIComponentManager.h"
 #include "nsBoxLayoutState.h"
 #include "nsIScrollableView.h"
+#include "nsIScrollableFrame.h"
 #include "nsGUIEvent.h"
 #include "nsIRootBox.h"
 #include "nsIDocShellTreeItem.h"
@@ -860,18 +861,13 @@ nsMenuPopupFrame::SyncViewWithFrame(nsPresContext* aPresContext,
     screen->GetAvailWidth(&screenWidth);
     screen->GetAvailHeight(&screenHeight);
   }
+
+  // keep 3px margin to the right and bottom of the screen for WinXP dropshadow
+  screenWidth -= 3;
+  screenHeight -= 3;
   screenRight = screenLeft + screenWidth;
   screenBottom = screenTop + screenHeight;
   
-   // inset the screen by 5px so that menus don't butt up against the side
-  const PRInt32 kTrimMargin = 5;
-  screenLeft += kTrimMargin;
-  screenTop += kTrimMargin;
-  screenRight -= kTrimMargin;
-  screenBottom -= kTrimMargin;
-  screenWidth -= 2 * kTrimMargin;
-  screenHeight -= 2 * kTrimMargin;
-
   PRInt32 screenTopTwips    = NSIntPixelsToTwips(screenTop, p2t);
   PRInt32 screenLeftTwips   = NSIntPixelsToTwips(screenLeft, p2t);
   PRInt32 screenWidthTwips  = NSIntPixelsToTwips(screenWidth, p2t);
@@ -1293,6 +1289,17 @@ NS_IMETHODIMP nsMenuPopupFrame::ConsumeOutsideClicks(PRBool& aConsumeOutsideClic
   return NS_OK;
 }
 
+static nsIScrollableView* GetScrollableViewForFrame(nsIFrame* aFrame)
+{
+  nsIScrollableFrame* sf;
+  nsresult rv = CallQueryInterface(aFrame, &sf);
+  if (NS_FAILED(rv))
+    return nsnull;
+  return sf->GetScrollableView();
+}
+
+// XXXroc this is megalame. Fossicking around for a view of the right
+// type is a recipe for disaster in the long term.
 nsIScrollableView* nsMenuPopupFrame::GetScrollableView(nsIFrame* aStart)
 {
   if ( ! aStart )
@@ -1304,9 +1311,7 @@ nsIScrollableView* nsMenuPopupFrame::GetScrollableView(nsIFrame* aStart)
   // try start frame and siblings
   currFrame=aStart;
   do {
-    nsIView* view = currFrame->GetView();
-    if ( view )
-      scrollableView = view->ToScrollableView();
+    scrollableView = GetScrollableViewForFrame(currFrame);
     if ( scrollableView )
       return scrollableView;
     currFrame = currFrame->GetNextSibling();

@@ -525,6 +525,10 @@ DocumentViewerImpl::~DocumentViewerImpl()
   NS_ASSERTION(!mPresShell && !mPresContext,
                "User did not call nsIContentViewer::Destroy");
   if (mPresShell || mPresContext) {
+    // Make sure we don't hand out a reference to the content viewer to
+    // the SHEntry!
+    mSHEntry = nsnull;
+
     Destroy();
   }
 
@@ -986,17 +990,26 @@ DocumentViewerImpl::LoadComplete(nsresult aStatus)
   nsCOMPtr<nsIDocumentViewer> kungFuDeathGrip(this);
 
   // Now, fire either an OnLoad or OnError event to the document...
+  PRBool restoring = PR_FALSE;
   if(NS_SUCCEEDED(aStatus)) {
     nsEventStatus status = nsEventStatus_eIgnore;
     nsEvent event(PR_TRUE, NS_PAGE_LOAD);
 
-    rv = global->HandleDOMEvent(mPresContext, &event, nsnull,
-                                NS_EVENT_FLAG_INIT, &status);
-#ifdef MOZ_TIMELINE
-    // if navigator.xul's load is complete, the main nav window is visible
-    // mark that point.
+    // If the document presentation is being restored, we don't want to fire
+    // onload to the document content since that would likely confuse scripts
+    // on the page.
 
-    if (mDocument) {
+    nsIDocShell *docShell = global->GetDocShell();
+    NS_ENSURE_TRUE(docShell, NS_ERROR_UNEXPECTED);
+
+    docShell->GetRestoringDocument(&restoring);
+    if (!restoring) {
+      rv = global->HandleDOMEvent(mPresContext, &event, nsnull,
+                                  NS_EVENT_FLAG_INIT, &status);
+#ifdef MOZ_TIMELINE
+      // if navigator.xul's load is complete, the main nav window is visible
+      // mark that point.
+
       //printf("DEBUG: getting uri from document (%p)\n", mDocument.get());
 
       nsIURI *uri = mDocument->GetDocumentURI();
@@ -1009,11 +1022,17 @@ DocumentViewerImpl::LoadComplete(nsresult aStatus)
           NS_TIMELINE_MARK("Navigator Window visible now");
         }
       }
-    }
 #endif /* MOZ_TIMELINE */
+    }
   } else {
     // XXX: Should fire error event to the document...
   }
+
+  // Notify the document that it has been shown (regardless of whether
+  // it was just loaded). Note: mDocument may be null now if the above
+  // firing of onload caused the document to unload.
+  if (mDocument)
+    mDocument->OnPageShow(restoring);
 
   // Now that the document has loaded, we can tell the presshell
   // to unsuppress painting.
@@ -1148,13 +1167,17 @@ DocumentViewerImpl::PermitUnload(PRBool *aPermitUnload)
 }
 
 NS_IMETHODIMP
-DocumentViewerImpl::Unload()
+DocumentViewerImpl::PageHide(PRBool aIsUnload)
 {
   mEnableRendering = PR_FALSE;
 
   if (!mDocument) {
     return NS_ERROR_NULL_POINTER;
   }
+
+  mDocument->OnPageHide(!aIsUnload);
+  if (!aIsUnload)
+    return NS_OK;
 
   // First, get the script global object from the document...
   nsIScriptGlobalObject *global = mDocument->GetScriptGlobalObject();
@@ -1202,6 +1225,7 @@ DocumentViewerImpl::Open()
 
   // XXX re-enable image animations once that works correctly
 
+  PrepareToStartLoad();
   return NS_OK;
 }
 
@@ -1369,14 +1393,18 @@ DocumentViewerImpl::Destroy()
 
     if (mDocument)
       mDocument->SetContainer(nsnull);
-    if (mPresContext)
+    if (mPresContext) {
       mPresContext->SetLinkHandler(nsnull);
+      mPresContext->SetContainer(nsnull);
+    }
 
     return NS_OK;
   }
 
-  mDocument->Destroy();
-  mDocument = nsnull;
+  if (mDocument) {
+    mDocument->Destroy();
+    mDocument = nsnull;
+  }
 
   // All callers are supposed to call destroy to break circular
   // references.  If we do this stuff in the destructor, the
@@ -3060,7 +3088,9 @@ DocumentViewerImpl::GetPopupImageNode(nsIImageLoadingContent** aNode)
   nsresult rv = GetPopupNode(getter_AddRefs(node));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  CallQueryInterface(node, aNode);
+  if (node)
+    CallQueryInterface(node, aNode);
+
   return NS_OK;
 }
 

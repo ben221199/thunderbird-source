@@ -59,8 +59,8 @@ bin/libxpcom_compat.so
 bin/components/libxpcom_compat_c.so
 
 [browser]
-bin/mozilla
-bin/mozilla-bin
+bin/seamonkey
+bin/seamonkey-bin
 bin/init.d/README
 bin/init.d/S02solaris_patchchecker.sh
 bin/moz_patch_checker.dtksh
@@ -323,6 +323,7 @@ bin/defaults/wallet/DistinguishedSchema.tbl
 bin/defaults/wallet/SchemaStrings.tbl
 bin/defaults/wallet/PositionalSchema.tbl
 bin/defaults/wallet/StateSchema.tbl
+bin/res/hiddenWindow.html
 bin/res/arrow.gif
 bin/res/loading-image.gif
 bin/res/broken-image.gif
@@ -363,11 +364,9 @@ bin/res/rdf/loading.gif
 bin/res/html/*
 bin/res/fonts/*
 bin/res/dtd/*
-bin/res/builtin/platformHTMLBindings.xml
 
 ; svg
 bin/res/svg.css
-bin/res/svg.properties
 bin/components/dom_svg.xpt
 
 [mail]
@@ -477,3 +476,6 @@ bin/components/libmyspell.so
 bin/components/libspellchecker.so
 bin/components/spellchecker.xpt
 bin/components/myspell/*
+
+[reporter]
+bin/chrome/reporter.jar

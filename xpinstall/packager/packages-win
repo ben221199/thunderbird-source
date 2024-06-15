@@ -69,7 +69,7 @@ bin\defaults\messenger\SpamPal.sfd
 bin\README.txt,bin\readme.txt
 bin\LICENSE,bin\license.txt
 bin\jpeg3250.dll
-bin\mozilla.exe
+bin\seamonkey.exe
 bin\regxpcom.exe
 bin\xpicleanup.exe
 bin\components\AcctIdl.dll
@@ -234,6 +234,7 @@ bin\chrome\icons\default\xul-file.ico
 ; to prevent migration bugs
 bin\defaults\pref\*
 bin\defaults\autoconfig\*
+bin\res\hiddenWindow.html
 bin\res\EditorOverride.css
 bin\res\grabber.gif
 bin\res\table-add-column-after-active.gif
@@ -273,7 +274,6 @@ bin\components\nsDownloadProgressListener.js
 ; svg
 bin\gksvggdiplus.dll
 bin\res\svg.css
-bin\res\svg.properties
 bin\components\dom_svg.xpt
 
 [mail]
@@ -377,3 +377,6 @@ bin\components\myspell.dll
 bin\components\spellchk.dll
 bin\components\spellchecker.xpt
 bin\components\myspell\*
+
+[reporter]
+bin\chrome\reporter.jar

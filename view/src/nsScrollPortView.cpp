@@ -328,13 +328,6 @@ NS_IMETHODIMP nsScrollPortView::ScrollTo(nscoord aDestinationX, nscoord aDestina
   return NS_OK;
 }
 
-NS_IMETHODIMP nsScrollPortView::GetScrollbarVisibility(PRBool *aVerticalVisible,
-                                                       PRBool *aHorizontalVisible) const
-{ 
-  NS_WARNING("Attempt to get scrollbars visibility this is not xp!");
-  return NS_OK;
-}
-
 static void AdjustChildWidgets(nsView *aView,
   nsPoint aWidgetToParentViewOrigin, float aScale, PRBool aInvalidate)
 {
@@ -349,7 +342,14 @@ static void AdjustChildWidgets(nsView *aView,
       widget->Move(NSTwipsToIntPixels(widgetOrigin.x, aScale),
                    NSTwipsToIntPixels(widgetOrigin.y, aScale));
       if (aInvalidate) {
-        widget->Invalidate(PR_FALSE);
+        // Force the widget and everything in it to repaint. We can't
+        // just use Invalidate because the widget might have child
+        // widgets and they wouldn't get updated. We can't call
+        // UpdateView(aView) because the area to be repainted might be
+        // outside aView's clipped bounds. This isn't the greatest way
+        // to achieve this, perhaps, but it works.
+        widget->Show(PR_FALSE);
+        widget->Show(PR_TRUE);
       }
     }
   } else {
@@ -468,6 +468,55 @@ NS_IMETHODIMP nsScrollPortView::ScrollByWhole(PRBool aTop)
   return NS_OK;
 }
 
+NS_IMETHODIMP nsScrollPortView::CanScroll(PRBool aHorizontal,
+                                          PRBool aForward,
+                                          PRBool &aResult)
+{
+  nscoord offset = aHorizontal ? mOffsetX : mOffsetY;
+
+  // Can scroll to Top or to Left?
+  if (!aForward) {
+    aResult = (offset > 0) ? PR_TRUE : PR_FALSE;
+    return NS_OK;
+  }
+
+  nsView* scrolledView = GetScrolledView();
+  if (!scrolledView) {
+    aResult = PR_FALSE;
+    return NS_ERROR_FAILURE;
+  }
+
+  nsSize scrolledSize;
+  scrolledView->GetDimensions(scrolledSize);
+
+  nsSize portSize;
+  GetDimensions(portSize);
+
+  nsCOMPtr<nsIDeviceContext> dev;
+  mViewManager->GetDeviceContext(*getter_AddRefs(dev));
+  float t2p, p2t;
+  t2p = dev->AppUnitsToDevUnits();
+  p2t = dev->DevUnitsToAppUnits();
+
+  nscoord max;
+  if (aHorizontal) {
+    max = scrolledSize.width - portSize.width;
+    // Round by pixel
+    nscoord maxPx = NSTwipsToIntPixels(max, t2p);
+    max = NSIntPixelsToTwips(maxPx, p2t);
+  } else {
+    max = scrolledSize.height - portSize.height;
+    // Round by pixel
+    nscoord maxPx = NSTwipsToIntPixels(max, t2p);
+    max = NSIntPixelsToTwips(maxPx, p2t);
+  }
+
+  // Can scroll to Bottom or to Right?
+  aResult = (offset < max) ? PR_TRUE : PR_FALSE;
+
+  return NS_OK;
+}
+
 PRBool nsScrollPortView::CannotBitBlt(nsView* aScrolledView)
 {
   PRUint32  scrolledViewFlags = aScrolledView->GetViewFlags();
@@ -563,17 +612,13 @@ NS_IMETHODIMP nsScrollPortView::Paint(nsIRenderingContext& aRC, const nsIRegion&
 NS_IMETHODIMP nsScrollPortView::ScrollToImpl(nscoord aX, nscoord aY, PRUint32 aUpdateFlags)
 {
   PRInt32           dxPx = 0, dyPx = 0;
-  
-  // convert to pixels
-  nsIDeviceContext  *dev;
-  float             t2p;
-  float             p2t;
 
-  mViewManager->GetDeviceContext(dev);
-  t2p = dev->AppUnitsToDevUnits(); 
+  // convert to pixels
+  nsCOMPtr<nsIDeviceContext> dev;
+  mViewManager->GetDeviceContext(*getter_AddRefs(dev));
+  float t2p, p2t;
+  t2p = dev->AppUnitsToDevUnits();
   p2t = dev->DevUnitsToAppUnits();
-  
-  NS_RELEASE(dev);
 
   // Update the scrolled view's position
   nsresult rv = ClampScrollValues(aX, aY, this);

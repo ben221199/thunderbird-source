@@ -13,7 +13,8 @@
 #
 # The Original Code is Spatial Navigation
 #
-# The Initial Developer of the Original Code is Douglas F. Turner II
+# The Initial Developer of the Original Code is
+# Douglas F. Turner II
 # Portions created by the Initial Developer are Copyright (C) 2004
 # the Initial Developer. All Rights Reserved.
 #
@@ -33,7 +34,6 @@
 #
 # ***** END LICENSE BLOCK *****
 
-
 DEPTH=../../..
 topsrcdir=@top_srcdir@
 srcdir=@srcdir@
@@ -43,6 +43,10 @@ include $(DEPTH)/config/autoconf.mk
 
 MODULE=snav
 XPIDL_MODULE=snav
+
+ifdef MOZ_XUL_APP
+XPI_NAME = snav
+endif
 
 XPIDLSRCS = nsISpatialNavigation.idl \
             $(NULL)

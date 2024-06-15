@@ -75,6 +75,16 @@
 #include "nsMsgSearchCore.h"
 #include "nsMailHeaders.h"
 #include "nsIMsgMailSession.h"
+#include "nsIMsgComposeParams.h"
+#include "nsMsgCompCID.h"
+#include "nsIInterfaceRequestor.h"
+#include "nsIInterfaceRequestorUtils.h"
+#include "nsIDocShell.h"
+#include "nsIMsgCompose.h"
+#include "nsIDOMWindowInternal.h"
+#include "nsIPrefBranch.h"
+#include "nsIPrefService.h"
+#include "nsIMsgComposeService.h"
 #include "nsIMsgCopyService.h"
 
 static NS_DEFINE_CID(kCMailDB, NS_MAILDB_CID);
@@ -506,6 +516,7 @@ NS_IMETHODIMP nsParseMailMessageState::Clear()
   m_return_path.length = 0;
   m_account_key.length = 0;
   m_in_reply_to.length = 0;
+  m_replyTo.length = 0;
   m_content_type.length = 0;
   m_mdn_original_recipient.length = 0;
   m_body_lines = 0;
@@ -892,6 +903,8 @@ int nsParseMailMessageState::ParseHeaders ()
       // Disposition-Notification-To
       else if (!nsCRT::strncasecmp ("Return-Receipt-To", buf, end - buf))
         header = &m_mdn_dnt;
+      else if (!nsCRT::strncasecmp("ReplyTo", buf, end - buf))
+        header = &m_replyTo;
       break;
     case 'S': case 's':
       if (!nsCRT::strncasecmp ("Subject", buf, end - buf))
@@ -1113,6 +1126,7 @@ int nsParseMailMessageState::FinalizeHeaders()
   struct message_header *subject;
   struct message_header *id;
   struct message_header *inReplyTo;
+  struct message_header *replyTo;
   struct message_header *references;
   struct message_header *date;
   struct message_header *statush;
@@ -1162,6 +1176,7 @@ int nsParseMailMessageState::FinalizeHeaders()
   priority   = (m_priority.length   ? &m_priority   : 0);
   mdn_dnt	   = (m_mdn_dnt.length	  ? &m_mdn_dnt	  : 0);
   inReplyTo = (m_in_reply_to.length ? &m_in_reply_to : 0);
+  replyTo = (m_replyTo.length ? &m_replyTo : 0);
   content_type = (m_content_type.length ? &m_content_type : 0);
   account_key = (m_account_key.length ? &m_account_key :0);
   
@@ -1214,6 +1229,10 @@ int nsParseMailMessageState::FinalizeHeaders()
       if (priorityFlags != nsMsgPriority::notSet)
         m_newMsgHdr->SetPriority(priorityFlags);
   
+      // if we have a reply to header, and it's different from the from: header,
+      // set the "replyTo" attribute on the msg hdr.
+      if (replyTo && (!sender || replyTo->length != sender->length || strncmp(replyTo->value, sender->value, sender->length)))
+        m_newMsgHdr->SetStringProperty("replyTo", replyTo->value);
       // convert the flag values (0xE000000) to label values (0-5)
       if (mozstatus2) // only do this if we have a mozstatus2 header
       {
@@ -1714,7 +1733,7 @@ NS_IMETHODIMP nsParseNewMailState::ApplyFilterHit(nsIMsgFilter *filter, nsIMsgWi
             m_msgMovedByFilter = NS_SUCCEEDED(err);
             // cleanup after mailHdr in source DB because we moved the message.
             if (m_msgMovedByFilter)
-            m_mailDB->RemoveHeaderMdbRow(msgHdr);
+              m_mailDB->RemoveHeaderMdbRow(msgHdr);
           }
           if (NS_SUCCEEDED(err))
           {
@@ -1783,12 +1802,48 @@ NS_IMETHODIMP nsParseNewMailState::ApplyFilterHit(nsIMsgFilter *filter, nsIMsgWi
         PRInt32 junkScore;
         filterAction->GetJunkScore(&junkScore);
         junkScoreStr.AppendInt(junkScore);
+        if (junkScore > 50)
+          msgIsNew = PR_FALSE;
         nsMsgKey msgKey;
         msgHdr->GetMessageKey(&msgKey);
         m_mailDB->SetStringProperty(msgKey, "junkscore", junkScoreStr.get());
         m_mailDB->SetStringProperty(msgKey, "junkscoreorigin", /* ### should this be plugin? */"plugin");
         break;
       }
+      case nsMsgFilterAction::Forward:
+        {
+          nsXPIDLCString forwardTo;
+          filterAction->GetStrValue(getter_Copies(forwardTo));
+          nsCOMPtr <nsIMsgIncomingServer> server;
+          rv = m_rootFolder->GetServer(getter_AddRefs(server));
+          NS_ENSURE_SUCCESS(rv, rv);
+          if (!forwardTo.IsEmpty())
+          {
+            nsCOMPtr <nsIMsgComposeService> compService = do_GetService (NS_MSGCOMPOSESERVICE_CONTRACTID) ;
+            if (compService)
+            {
+              nsAutoString forwardStr;
+              forwardStr.AssignWithConversion(forwardTo.get());
+              rv = compService->ForwardMessage(forwardStr, msgHdr, msgWindow, server);
+            }
+          }
+        }
+        break;
+      case nsMsgFilterAction::Reply:
+        {
+          nsXPIDLCString replyTemplateUri;
+          filterAction->GetStrValue(getter_Copies(replyTemplateUri));
+          nsCOMPtr <nsIMsgIncomingServer> server;
+          rv = m_rootFolder->GetServer(getter_AddRefs(server));
+          NS_ENSURE_SUCCESS(rv, rv);
+          if (!replyTemplateUri.IsEmpty())
+          {
+            nsCOMPtr <nsIMsgComposeService> compService = do_GetService (NS_MSGCOMPOSESERVICE_CONTRACTID) ;
+            if (compService)
+              rv = compService->ReplyWithTemplate(msgHdr, replyTemplateUri, msgWindow, server);
+          }
+        }
+
       case nsMsgFilterAction::DeleteFromPop3Server:
         {
           PRUint32 flags = 0;
@@ -2040,7 +2095,7 @@ nsresult nsParseNewMailState::MoveIncorporatedMessage(nsIMsgDBHdr *mailHdr,
     return NS_MSG_ERROR_WRITING_MAIL_FOLDER;
   }
     
-  PRBool movedMsgIsNew = PR_TRUE;
+  PRBool movedMsgIsNew = PR_FALSE;
   // if we have made it this far then the message has successfully been written to the new folder
   // now add the header to the destMailDB.
   if (NS_SUCCEEDED(rv) && destMailDB)
@@ -2056,12 +2111,14 @@ nsresult nsParseNewMailState::MoveIncorporatedMessage(nsIMsgDBHdr *mailHdr,
       newHdr->GetFlags(&newFlags);
       if (! (newFlags & MSG_FLAG_READ))
       {
-        newHdr->OrFlags(MSG_FLAG_NEW, &newFlags);
-        destMailDB->AddToNewList(newMsgPos);
-      }
-      else
-      {
-        movedMsgIsNew = PR_FALSE;
+        nsXPIDLCString junkScoreStr;
+        (void) newHdr->GetStringProperty("junkscore", getter_Copies(junkScoreStr));
+        if (atoi(junkScoreStr.get()) < 50)
+        {
+          newHdr->OrFlags(MSG_FLAG_NEW, &newFlags);
+          destMailDB->AddToNewList(newMsgPos);
+          movedMsgIsNew = PR_TRUE;
+        }
       }
       destMailDB->AddNewHdrToDB(newHdr, PR_TRUE);
     }

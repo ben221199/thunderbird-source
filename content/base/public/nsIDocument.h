@@ -90,8 +90,8 @@ class nsILayoutHistoryState;
 
 // IID for the nsIDocument interface
 #define NS_IDOCUMENT_IID      \
-{ 0x660e9925, 0x30e0, 0x4016, \
- { 0x8b, 0x7f, 0x0d, 0x70, 0x6e, 0xba, 0xc9, 0x8e } }
+{ 0x9339ff1e, 0xdab0, 0x4264, \
+  { 0x8a, 0x8c, 0xcb, 0x84, 0xeb, 0x4e, 0x6b, 0x92 } }
 
 // The base value for the content ID counter.
 // This counter is used by the document to 
@@ -442,6 +442,13 @@ public:
   }
 
   /**
+   * Get the channel that was passed to StartDocumentLoad for this
+   * document.  Note that this may be null in some cases (eg if
+   * StartDocumentLoad was never called)
+   */
+  virtual nsIChannel* GetChannel() const = 0;
+
+  /**
    * Get this document's attribute stylesheet.  May return null if
    * there isn't one.
    */
@@ -723,6 +730,26 @@ public:
    */
   virtual void BlockOnload() = 0;
   virtual void UnblockOnload() = 0;
+
+  /**
+   * Notification that the page has been shown, for documents which are loaded
+   * into a DOM window.  This corresponds to the completion of document load,
+   * or to the page's presentation being restored into an existing DOM window.
+   * This notification fires applicable DOM events to the content window.  See
+   * nsIDOMPageTransitionEvent.idl for a description of the |aPersisted|
+   * parameter.
+   */
+  virtual void OnPageShow(PRBool aPersisted) = 0;
+
+  /**
+   * Notification that the page has been hidden, for documents which are loaded
+   * into a DOM window.  This corresponds to the unloading of the document, or
+   * to the document's presentation being saved but removed from an existing
+   * DOM window.  This notification fires applicable DOM events to the content
+   * window.  See nsIDOMPageTransitionEvent.idl for a description of the
+   * |aPersisted| parameter.
+   */
+  virtual void OnPageHide(PRBool aPersisted) = 0;
 
 protected:
   ~nsIDocument()

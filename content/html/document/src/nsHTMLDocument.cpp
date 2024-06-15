@@ -1,4 +1,5 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set sw=2 ts=2 et tw=80: */
 /* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -708,9 +709,6 @@ nsHTMLDocument::StartDocumentLoad(const char* aCommand,
   // Store the security info for future use with wyciwyg channels.
   aChannel->GetSecurityInfo(getter_AddRefs(mSecurityInfo));
 
-  // Stash away a pointer to our channel (we need this for cookies)
-  mChannel = aChannel;
-
   nsCOMPtr<nsIURI> uri;
   rv = aChannel->GetURI(getter_AddRefs(uri));
   if (NS_FAILED(rv)) {
@@ -967,11 +965,16 @@ nsHTMLDocument::EndLoad()
           //   document.write("foo");
           //   location.href = "http://www.mozilla.org";
           //   document.write("bar");
-
-          scx->SetTerminationFunction(DocumentWriteTerminationFunc,
-                                      NS_STATIC_CAST(nsIDocument *, this));
-
-          return;
+          
+          nsresult rv =
+            scx->SetTerminationFunction(DocumentWriteTerminationFunc,
+                                        NS_STATIC_CAST(nsIDocument *, this));
+          // If we fail to set the termination function, just go ahead
+          // and EndLoad now.  The slight bugginess involved is better
+          // than leaking.
+          if (NS_SUCCEEDED(rv)) {
+            return;
+          }
         }
       }
     }
@@ -1232,18 +1235,24 @@ nsHTMLDocument::CreateElement(const nsAString& aTagName,
   *aReturn = nsnull;
   nsresult rv;
 
-  // if we are in quirks, don't validate the tag name
-  if (mCompatMode != eCompatibility_NavQuirks) {
-    rv = nsContentUtils::CheckQName(aTagName, PR_FALSE);
-    NS_ENSURE_SUCCESS(rv, rv);
-  }  
+  nsAutoString tagName(aTagName);
 
-  nsAutoString tmp(aTagName);
-  if (!IsXHTML()) {
-    ToLowerCase(tmp);
+  // if we are in quirks, allow surrounding '<' '>' for IE compat
+  if (mCompatMode == eCompatibility_NavQuirks &&
+      tagName.Length() > 2 &&
+      tagName.First() == '<' &&
+      tagName.Last() == '>') {
+    tagName = Substring(tagName, 1, tagName.Length() - 2); 
   }
 
-  nsCOMPtr<nsIAtom> name = do_GetAtom(tmp);
+  rv = nsContentUtils::CheckQName(tagName, PR_FALSE);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (!IsXHTML()) {
+    ToLowerCase(tagName);
+  }
+
+  nsCOMPtr<nsIAtom> name = do_GetAtom(tagName);
 
   nsCOMPtr<nsIContent> content;
   rv = CreateElem(name, nsnull, GetDefaultNamespaceID(), PR_TRUE,
@@ -1817,21 +1826,6 @@ nsHTMLDocument::SetCookie(const nsAString& aCookie)
   return NS_OK;
 }
 
-// static
-nsIPrincipal *
-nsHTMLDocument::GetCallerPrincipal()
-{
-  // XXX This will fail on non-DOM contexts :(
-  nsIDOMDocument *domDoc = nsContentUtils::GetDocumentFromCaller();
-
-  nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
-  if (!doc) {
-    return nsnull; // No document in the window
-  }
-
-  return doc->GetPrincipal();
-}
-
 // XXX TBI: accepting arguments to the open method.
 nsresult
 nsHTMLDocument::OpenCommon(const nsACString& aContentType, PRBool aReplace)
@@ -1859,7 +1853,9 @@ nsHTMLDocument::OpenCommon(const nsACString& aContentType, PRBool aReplace)
 
   if (callerDoc) {
     securityInfo = callerDoc->GetSecurityInfo();
-    callerPrincipal = GetCallerPrincipal();
+
+    nsContentUtils::GetSecurityManager()->
+      GetSubjectPrincipal(getter_AddRefs(callerPrincipal));
   }
 
   // The URI for the document after this call. Get it from the calling
@@ -2091,8 +2087,6 @@ nsHTMLDocument::Open(const nsACString& aContentType, PRBool aReplace,
   return CallQueryInterface(this, aReturn);
 }
 
-#define NS_GENERATE_PARSER_KEY() NS_INT32_TO_PTR((mIsWriting << 31) | (mWriteLevel & 0x7fffffff))
-
 NS_IMETHODIMP
 nsHTMLDocument::Clear()
 {
@@ -2109,9 +2103,12 @@ nsHTMLDocument::Close()
     ++mWriteLevel;
     if (mContentType.EqualsLiteral("text/html")) {
       rv = mParser->Parse(NS_LITERAL_STRING("</HTML>"),
-                          NS_GENERATE_PARSER_KEY(),
+                          GenerateParserKey(),
                           mContentType, PR_FALSE,
                           PR_TRUE);
+    } else {
+      rv = mParser->Parse(EmptyString(), GenerateParserKey(),
+                          mContentType, PR_FALSE, PR_TRUE);
     }
     --mWriteLevel;
     mIsWriting = 0;
@@ -2174,7 +2171,9 @@ nsHTMLDocument::WriteCommon(const nsAString& aText,
 
   // Save the data in cache
   if (mWyciwygChannel) {
-    mWyciwygChannel->WriteToCacheEntry(aText);
+    if (!aText.IsEmpty()) {
+      mWyciwygChannel->WriteToCacheEntry(aText);
+    }
 
     if (aNewlineTerminate) {
       mWyciwygChannel->WriteToCacheEntry(new_line);
@@ -2189,12 +2188,12 @@ nsHTMLDocument::WriteCommon(const nsAString& aText,
   // why pay that price when we don't need to?
   if (aNewlineTerminate) {
     rv = mParser->Parse(aText + new_line,
-                        NS_GENERATE_PARSER_KEY(),
+                        GenerateParserKey(),
                         mContentType, PR_FALSE,
                         (!mIsWriting || (mWriteLevel > 1)));
   } else {
     rv = mParser->Parse(aText,
-                        NS_GENERATE_PARSER_KEY(),
+                        GenerateParserKey(),
                         mContentType, PR_FALSE,
                         (!mIsWriting || (mWriteLevel > 1)));
   }
@@ -3067,18 +3066,15 @@ nsHTMLDocument::RemoveFromIdTable(nsIContent *aContent)
 nsresult
 nsHTMLDocument::UnregisterNamedItems(nsIContent *aContent)
 {
-  nsIAtom *tag = aContent->Tag();
-
-  if (tag == nsLayoutAtoms::textTagName) {
+  if (aContent->IsContentOfType(nsIContent::eTEXT)) {
     // Text nodes are not named items nor can they have children.
-
     return NS_OK;
   }
 
   nsAutoString value;
   nsresult rv = NS_OK;
 
-  if (!IsXHTML() && IsNamedItem(aContent, tag, value)) {
+  if (!IsXHTML() && IsNamedItem(aContent, aContent->Tag(), value)) {
     rv = RemoveFromNameTable(value, aContent);
 
     if (NS_FAILED(rv)) {
@@ -3104,17 +3100,14 @@ nsHTMLDocument::UnregisterNamedItems(nsIContent *aContent)
 nsresult
 nsHTMLDocument::RegisterNamedItems(nsIContent *aContent)
 {
-  nsIAtom *tag = aContent->Tag();
-
-  if (tag == nsLayoutAtoms::textTagName) {
+  if (aContent->IsContentOfType(nsIContent::eTEXT)) {
     // Text nodes are not named items nor can they have children.
-
     return NS_OK;
   }
 
   nsAutoString value;
 
-  if (!IsXHTML() && IsNamedItem(aContent, tag, value)) {
+  if (!IsXHTML() && IsNamedItem(aContent, aContent->Tag(), value)) {
     UpdateNameTableEntry(value, aContent);
   }
 
@@ -3150,15 +3143,15 @@ FindNamedItems(const nsAString& aName, nsIContent *aContent,
 
   nsIAtom *tag = aContent->Tag();
 
-  if (tag == nsLayoutAtoms::textTagName) {
+  if (aContent->IsContentOfType(nsIContent::eTEXT)) {
     // Text nodes are not named items nor can they have children.
-
     return;
   }
 
   nsAutoString value;
 
-  if (!aIsXHTML && IsNamedItem(aContent, tag, value) && value.Equals(aName)) {
+  if (!aIsXHTML && IsNamedItem(aContent, aContent->Tag(), value) &&
+      value.Equals(aName)) {
     aEntry.mContentList->AppendElement(aContent);
   }
 
@@ -3475,6 +3468,17 @@ nsHTMLDocument::RemoveWyciwygChannel(void)
   return rv;
 }
 
+void *
+nsHTMLDocument::GenerateParserKey(void)
+{
+  // The script loader provides us with the currently executing script element,
+  // which is guaranteed to be unique per script.
+  nsCOMPtr<nsIScriptElement> key;
+  mScriptLoader->GetCurrentScript(getter_AddRefs(key));
+
+  return key;
+}
+
 /* attribute DOMString designMode; */
 NS_IMETHODIMP
 nsHTMLDocument::GetDesignMode(nsAString & aDesignMode)
@@ -3524,8 +3528,23 @@ nsHTMLDocument::SetDesignMode(const nsAString & aDesignMode)
     rv = editSession->MakeWindowEditable(window, "html", PR_FALSE);
 
     if (NS_SUCCEEDED(rv)) {
-      // now that we've successfully created the editor, we can reset our flag
+      // now that we've successfully created the editor, we can
+      // reset our flag
       mEditingIsOn = PR_TRUE;
+
+      // Set the editor to not insert br's on return when in p
+      // elements by default.
+      PRBool unused;
+      rv = ExecCommand(NS_LITERAL_STRING("insertBrOnReturn"), PR_FALSE,
+                       NS_LITERAL_STRING("false"), &unused);
+
+      if (NS_FAILED(rv)) {
+        // Editor setup failed. Editing is is not on after all.
+
+        editSession->TearDownEditorOnWindow(window);
+
+        mEditingIsOn = PR_FALSE;
+      }
     }
   } else if (aDesignMode.LowerCaseEqualsLiteral("off") && mEditingIsOn) {
     // turn editing off
@@ -3618,6 +3637,9 @@ static const struct MidasCommand gMidasCommandTable[] = {
   { "heading",       "cmd_paragraphState",  "", PR_FALSE, PR_FALSE },
   { "useCSS",        "cmd_setDocumentUseCSS",   "", PR_FALSE, PR_TRUE },
   { "readonly",      "cmd_setDocumentReadOnly", "", PR_FALSE, PR_TRUE },
+  { "insertBrOnReturn", "cmd_insertBrOnReturn", "", PR_FALSE, PR_TRUE },
+  { "enableObjectResizing", "cmd_enableObjectResizing", "", PR_FALSE, PR_TRUE },
+  { "enableInlineTableEditing", "cmd_enableInlineTableEditing", "", PR_FALSE, PR_TRUE },
 #if 0
 // no editor support to remove alignments right now
   { "justifynone",   "cmd_align",           "", PR_TRUE,  PR_FALSE },
@@ -3688,16 +3710,15 @@ nsHTMLDocument::ConvertToMidasInternalCommand(const nsAString & inCommandID,
     }
     else {
       // handle checking of param passed in
-      NS_ConvertUCS2toUTF8 convertedParam(inParam);
-
       if (outIsBoolean) {
         // if this is a boolean value and it's not explicitly false
         // (e.g. no value) we default to "true"
-        outBooleanValue = convertedParam.Equals("false",
-                                   nsCaseInsensitiveCStringComparator());
+        outBooleanValue = !inParam.LowerCaseEqualsLiteral("false");
         outParam.SetLength(0);
       }
       else {
+        NS_ConvertUCS2toUTF8 convertedParam(inParam);
+
         // check to see if we need to convert the parameter
         PRUint32 j;
         for (j = 0; j < MidasParamCount; ++j) {

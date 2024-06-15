@@ -80,6 +80,8 @@ function searchOnLoad()
   initializeSearchWindowWidgets();
 
   gSearchBundle = document.getElementById("bundle_search");
+  gSearchStopButton.setAttribute("label", gSearchBundle.getString("labelForSearchButton"));
+  gSearchStopButton.setAttribute("accesskey", gSearchBundle.getString("accesskeyForSearchButton"));
   gAddressBookBundle = document.getElementById("bundle_addressBook");
   gSearchSession = Components.classes[searchSessionContractID].createInstance(Components.interfaces.nsIMsgSearchSession);
 
@@ -98,7 +100,7 @@ function searchOnLoad()
   abList = document.getElementById("abPopup");
   gAbResultsTree = document.getElementById("abResultsTree");
 
-  onMore(null, 0);
+  onMore(null);
 }
 
 function searchOnUnload()

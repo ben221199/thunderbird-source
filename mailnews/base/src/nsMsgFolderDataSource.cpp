@@ -1910,6 +1910,8 @@ nsMsgFolderDataSource::GetNumMessagesNode(PRInt32 aNumMessages, nsIRDFNode **nod
   return NS_OK;
 }
 
+#define DIVISIONWITHCEIL(num, div) (num/div+((num%div>0)?1:0))
+
 nsresult 
 nsMsgFolderDataSource::GetFolderSizeNode(PRInt32 aFolderSize, nsIRDFNode **aNode)
 {
@@ -1921,15 +1923,15 @@ nsMsgFolderDataSource::GetFolderSizeNode(PRInt32 aFolderSize, nsIRDFNode **aNode
   else
   {
     nsAutoString sizeString;
-    if (folderSize < 1024)
-      folderSize = 1024; // make at least 1 k;
-    folderSize /= 1024;  // normalize into k;
-    PRBool sizeInMB = (folderSize > 1024);
+    // use Round or Ceil - bug #251202
+    folderSize = DIVISIONWITHCEIL(folderSize, 1024);  // normalize into k;
+    PRBool sizeInMB = (folderSize > 999); // 999, not 1024 - bug #251204
+
     // kKiloByteString/kMegaByteString are localized strings that we use
     // to get the right format to add on the "KB"/"MB" or equivalent
     nsTextFormatter::ssprintf(sizeString,
                               (sizeInMB) ? kMegaByteString : kKiloByteString,
-                              (sizeInMB) ? folderSize / 1024 : folderSize);
+                              (sizeInMB) ? DIVISIONWITHCEIL(folderSize, 1024) : folderSize);
     createNode(sizeString.get(), aNode, getRDFService());
   }
   return NS_OK;
@@ -2088,6 +2090,7 @@ nsresult nsMsgFolderDataSource::DoDeleteFromFolder(
       folderToDelete->GetFlags(&folderFlags);
       if (folderFlags & MSG_FOLDER_FLAG_VIRTUAL)
       {
+        NS_ENSURE_ARG_POINTER(msgWindow);
         nsCOMPtr<nsIStringBundleService> sBundleService = do_GetService(NS_STRINGBUNDLE_CONTRACTID, &rv);
         nsCOMPtr<nsIStringBundle> sMessengerStringBundle;
         nsXPIDLString confirmMsg;

@@ -437,7 +437,7 @@ interface nsIXPConnect : nsISupports
                   in PRUint32     aFlags);
 
     const PRUint32 INIT_JS_STANDARD_CLASSES  = 1 << 0;
-    const PRUint32 FLAG_SYSTEM_GLOBAL_OBJECT = 1 << 0;
+    const PRUint32 FLAG_SYSTEM_GLOBAL_OBJECT = 1 << 1;
 
     /**
     * wrapNative will create a new JSObject or return an existing one.
@@ -462,6 +462,9 @@ interface nsIXPConnect : nsISupports
     * It *might* be possible to QueryInterface the nsIXPConnectJSObjectHolder
     * returned by the method into a nsIXPConnectWrappedNative or a
     * nsIXPConnectWrappedJS.
+    *
+    * This method will never wrap the JSObject involved in an
+    * XPCNativeWrapper before returning.
     *
     * Returns:
     *    success:

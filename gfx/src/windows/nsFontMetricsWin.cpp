@@ -62,6 +62,7 @@
 #include "nsAutoBuffer.h"
 
 #define DEFAULT_TTF_SYMBOL_ENCODING "windows-1252"
+#define IS_RTL_PRESENTATION_FORM(c) ((0xfb1d <= (c)) && ((c)<= 0xfefc))
 
 #define NOT_SETUP 0x33
 static PRBool gIsWIN95OR98 = NOT_SETUP;
@@ -552,6 +553,8 @@ nsFontMetricsWin::FillLogFont(LOGFONT* logFont, PRInt32 aWeight,
 #endif
 }
 
+#undef CFF
+#define CFF  (('C') | ('F' << 8) | ('F' << 16) | (' ' << 24))
 #undef CMAP
 #define CMAP (('c') | ('m' << 8) | ('a' << 16) | ('p' << 24))
 #undef HEAD
@@ -624,6 +627,10 @@ enum eGetNameError
 static eGetNameError
 GetNAME(HDC aDC, nsString* aName, PRBool* aIsSymbolEncoding = nsnull)
 {
+#ifdef WINCE
+  return eGetName_GDIError;
+#else
+
   DWORD len = GetFontData(aDC, NAME, 0, nsnull, 0);
   if (len == GDI_ERROR) {
     TEXTMETRIC metrics;
@@ -690,6 +697,7 @@ GetNAME(HDC aDC, nsString* aName, PRBool* aIsSymbolEncoding = nsnull)
   }
 
   return eGetName_OK;
+#endif
 }
 
 static PLHashNumber
@@ -721,13 +729,21 @@ GetIndexToLocFormat(HDC aDC)
 }
 
 static nsresult
-GetSpaces(HDC aDC, PRUint32* aMaxGlyph, nsAutoFontDataBuffer& aIsSpace)
+GetSpaces(HDC aDC, PRBool* aIsCFFOutline, PRUint32* aMaxGlyph,
+  nsAutoFontDataBuffer& aIsSpace)
 {
+  // OpenType fonts with CFF outline do not have the 'loca' table
+  DWORD len = GetFontData(aDC, CFF, 0, nsnull, 0);
+  if ((len != GDI_ERROR) && len) {
+    *aIsCFFOutline = PR_TRUE;
+    return NS_OK;
+  }
+  *aIsCFFOutline = PR_FALSE;
   int isLong = GetIndexToLocFormat(aDC);
   if (isLong < 0) {
     return NS_ERROR_FAILURE;
   }
-  DWORD len = GetFontData(aDC, LOCA, 0, nsnull, 0);
+  len = GetFontData(aDC, LOCA, 0, nsnull, 0);
   if ((len == GDI_ERROR) || (!len)) {
     return NS_ERROR_FAILURE;
   }
@@ -1240,7 +1256,7 @@ GetCustomEncoding(const char* aFontName, nsCString& aValue, PRBool* aIsWide)
        (!strcmp(aFontName, "Times New Roman" )) ||
        (!strcmp(aFontName, "Courier New" )) ||
        (!strcmp(aFontName, mspgothic )) )
-    return NS_ERROR_NOT_AVAILABLE; // error mean do not get a special encoding
+    return NS_ERROR_NOT_AVAILABLE; // error means do not get a special encoding
 
   // XXX We need this kludge to deal with aFontName in CP949 when the locale 
   // is Korean until we figure out a way to get facename in US-ASCII
@@ -1513,7 +1529,8 @@ ReadCMAPTableFormat12(PRUint8* aBuf, PRInt32 len, PRUint32 **aExtMap)
 
 
 static void 
-ReadCMAPTableFormat4(PRUint8* aBuf, PRInt32 aLength, PRUint32* aMap, PRUint8* aIsSpace, PRUint32 aMaxGlyph) 
+ReadCMAPTableFormat4(PRUint8* aBuf, PRInt32 aLength, PRUint32* aMap,
+  PRBool aIsCFFOutline, PRUint8* aIsSpace, PRUint32 aMaxGlyph)
 {
   PRUint8* p = aBuf;
   PRUint8* end = aBuf + aLength;
@@ -1544,7 +1561,10 @@ ReadCMAPTableFormat4(PRUint8* aBuf, PRInt32 aLength, PRUint32* aMap, PRUint8* aI
         if ((PRUint8*) g < end) {
           if (*g) {
             PRUint16 glyph = idDelta[i] + *g;
-            if (glyph < aMaxGlyph) {
+            if (aIsCFFOutline) {
+              ADD_GLYPH(aMap, c);
+            }
+            else if (glyph < aMaxGlyph) {
               if (aIsSpace[glyph]) {
                 if (SHOULD_BE_SPACE_CHAR(c)) {
                   ADD_GLYPH(aMap, c);
@@ -1571,7 +1591,10 @@ ReadCMAPTableFormat4(PRUint8* aBuf, PRInt32 aLength, PRUint32* aMap, PRUint8* aI
       PRUint16 endC = endCode[i];
       for (PRUint32 c = startCode[i]; c <= endC; ++c) {
         PRUint16 glyph = idDelta[i] + c;
-        if (glyph < aMaxGlyph) {
+        if (aIsCFFOutline) {
+          ADD_GLYPH(aMap, c);
+        }
+        else if (glyph < aMaxGlyph) {
           if (aIsSpace[glyph]) {
             if (SHOULD_BE_SPACE_CHAR(c)) {
               ADD_GLYPH(aMap, c);
@@ -1593,6 +1616,7 @@ nsFontMetricsWin::GetFontCCMAP(HDC aDC, const char* aShortName,
   PRBool aNameQuirks, eFontType& aFontType, PRUint8& aCharset)
 {
   PRUint16 *ccmap = nsnull;
+
   DWORD len = GetFontData(aDC, CMAP, 0, nsnull, 0);
   if ((len == GDI_ERROR) || (!len)) {
     return nsnull;
@@ -1677,8 +1701,10 @@ nsFontMetricsWin::GetFontCCMAP(HDC aDC, const char* aShortName,
   else if (eTTFormat4SegmentMappingToDeltaValues == keepFormat) {
     PRUint32 maxGlyph;
     nsAutoFontDataBuffer isSpace;
-    if (NS_SUCCEEDED(GetSpaces(aDC, &maxGlyph, isSpace))) {
-      ReadCMAPTableFormat4(buf+keepOffset, len-keepOffset, map, isSpace.get(), maxGlyph);
+    PRBool isCFFOutline;
+    if (NS_SUCCEEDED(GetSpaces(aDC, &isCFFOutline, &maxGlyph, isSpace))) {
+      ReadCMAPTableFormat4(buf+keepOffset, len-keepOffset, map, isCFFOutline,
+        isSpace.get(), maxGlyph);
       ccmap = MapToCCMap(map);
       aCharset = DEFAULT_CHARSET;
       aFontType = eFontType_Unicode;
@@ -2480,11 +2506,13 @@ enumProc(const LOGFONT* logFont, const TEXTMETRIC* metrics,
       }
 
       // copy Unicode subrange bitfield (128bit) if it's a truetype font. 
-#ifndef WINCE
       if (fontType & hasFontSig) {
+#ifndef WINCE
         memcpy(font->signature.fsUsb, ((NEWTEXTMETRICEX*)metrics)->ntmFontSig.fsUsb, 16);
-      }
+#else
+        memset(font->signature.fsUsb, '\0', 16);
 #endif
+      }
       return 1;
     }
   }
@@ -2514,6 +2542,8 @@ enumProc(const LOGFONT* logFont, const TEXTMETRIC* metrics,
 #ifndef WINCE
     // copy Unicode subrange bitfield (128 bits = 16 bytes)
     memcpy(font->signature.fsUsb, ((NEWTEXTMETRICEX*)metrics)->ntmFontSig.fsUsb, 16);
+#else
+    memset(font->signature.fsUsb, '\0', 16);
 #endif
   }
 
@@ -2709,6 +2739,16 @@ nsFontMetricsWin::FindSubstituteFont(HDC aDC, PRUint32 c)
     }
     else if (res == eGetName_GDIError) { // Bitmap font
       // alright, was treated as unicode font in GetCCMAP()
+
+#ifdef WINCE
+      name.AssignWithConversion(font->mName);
+      font = LoadSubstituteFont(aDC, name);
+      if (font) {
+        ((nsFontWinSubstitute*)font)->SetRepresentable(c);
+        mSubstituteFont = font;
+        return font;
+      }
+#endif
     }
     else {
       continue;
@@ -3940,7 +3980,8 @@ nsFontMetricsWin::ResolveBackwards(HDC                  aDC,
   if (currFont == mLoadedFonts[firstFont]) {
     while (currChar > lastChar && 
            (currFont->HasGlyph(*currChar)) &&
-           !CCMAP_HAS_CHAR_EXT(gIgnorableCCMapExt, *currChar))
+           !CCMAP_HAS_CHAR_EXT(gIgnorableCCMapExt, *currChar) &&
+           !IS_RTL_PRESENTATION_FORM(*currChar))
       --currChar;
     fontSwitch.mFontWin = currFont;
     if (!(*aFunc)(&fontSwitch, currChar+1, firstChar - currChar, aData))
@@ -3975,11 +4016,13 @@ nsFontMetricsWin::ResolveBackwards(HDC                  aDC,
       lastCharLen = 1;
     }
     if (nextFont != currFont ||
-        /* render right-to-left characters outside the BMP one by one, because
-           Windows doesn't reorder them. 
+        /* render Hebrew and Arabic presentation forms and right-to-left
+           characters outside the BMP one by one, because Windows doesn't reorder
+           them. 
        XXX If a future version of Uniscribe corrects this, we will need to make a
            run-time check and set a rendering hint accordingly */
-        codepoint > 0xFFFF) {
+        codepoint > 0xFFFF ||
+        IS_RTL_PRESENTATION_FORM(codepoint)) {
       // We have a substring that can be represented with the same font, and
       // we are about to switch fonts, it is time to notify our caller.
       fontSwitch.mFontWin = currFont;

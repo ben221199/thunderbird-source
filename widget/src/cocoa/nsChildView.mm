@@ -35,22 +35,19 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#include <unistd.h>
+
 #include "nsChildView.h"
-#include "nsIFontMetrics.h"
-#include "nsIDeviceContext.h"
+
 #include "nsCOMPtr.h"
 #include "nsToolkit.h"
-#include "nsIEnumerator.h"
 #include "prmem.h"
 #include "nsCRT.h"
-
-#include <Appearance.h>
-#include <Timer.h>
-#include <Icons.h>
-#include <Errors.h>
-
 #include "nsplugindefs.h"
-#include "nsMacResources.h"
+
+#include "nsIFontMetrics.h"
+#include "nsIDeviceContext.h"
+#include "nsIEnumerator.h"
 #include "nsIRegion.h"
 #include "nsIRollupListener.h"
 #include "nsIEventSink.h"
@@ -59,21 +56,15 @@
 
 #include "nsCarbonHelpers.h"
 #include "nsGfxUtils.h"
+#include "nsMacResources.h"
 
-#if PINK_PROFILING
-#include "profilerutils.h"
-#endif
-
-#include <unistd.h>
-#include "nsCursorManager.h"
+#import "nsCursorManager.h"
+#import "nsWindowMap.h"
 
 #define NSAppKitVersionNumber10_2 663
 
 // category of NSView methods to quiet warnings
 @interface NSView(ChildViewExtensions)
-
-- (NSWindow*)getNativeWindow;
-- (NSMenu*)getContextMenu;
 
 #if MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_3
 - (void)getRectsBeingDrawn:(const NSRect **)rects count:(int *)count;
@@ -83,8 +74,7 @@
 
 @end
 
-
-
+//#define DEBUG_IME 1
 
 @interface ChildView(Private)
 
@@ -99,19 +89,19 @@
                        doCommit:(BOOL)doCommit;
 
   // sets up our view, attaching it to its owning gecko view
-- (id) initWithGeckoChild:(nsChildView*)child eventSink:(nsIEventSink*)sink;
+- (id)initWithFrame:(NSRect)inFrame geckoChild:(nsChildView*)inChild eventSink:(nsIEventSink*)inSink;
 
   // convert from one event system to the other for event dispatching
-- (void) convert:(NSEvent*)inEvent message:(PRInt32)inMsg toGeckoEvent:(nsInputEvent*)outGeckoEvent;
+- (void) convertEvent:(NSEvent*)inEvent message:(PRInt32)inMsg toGeckoEvent:(nsInputEvent*)outGeckoEvent;
 
   // create a gecko key event out of a cocoa event
-- (void) convert:(NSEvent*)aKeyEvent message:(PRUint32)aMessage 
-           isChar:(PRBool*)outIsChar
+- (void) convertKeyEvent:(NSEvent*)aKeyEvent message:(PRUint32)aMessage
            toGeckoEvent:(nsKeyEvent*)outGeckoEvent;
-- (void) convert:(NSPoint)inPoint message:(PRInt32)inMsg 
+- (void) convertLocation:(NSPoint)inPoint message:(PRInt32)inMsg
           modifiers:(unsigned int)inMods toGeckoEvent:(nsInputEvent*)outGeckoEvent;
 
 - (NSMenu*)getContextMenu;
+- (TopLevelWindowData*)ensureWindowData;
 
 - (void)setIsPluginView:(BOOL)aIsPlugin;
 - (BOOL)getIsPluginView;
@@ -128,6 +118,7 @@
 
 @end
 
+#pragma mark -
 
 ////////////////////////////////////////////////////
 nsIRollupListener * gRollupListener = nsnull;
@@ -327,6 +318,12 @@ nsChildView::nsChildView() : nsBaseWidget()
 //-------------------------------------------------------------------------
 nsChildView::~nsChildView()
 {
+  // notify the children that we're gone
+  for (nsIWidget* kid = mFirstChild; kid; kid = kid->GetNextSibling()) {
+    nsChildView* childView = NS_STATIC_CAST(nsChildView*, kid);
+    childView->mParentWidget = nsnull;
+  }
+
   TearDownView(); // should have already been done from Destroy
   
   NS_IF_RELEASE(mTempRenderingContext); 
@@ -385,10 +382,8 @@ nsresult nsChildView::StandardCreate(nsIWidget *aParent,
   // that NS_NATIVE_WIDGET is the NSView.
   NSRect r;
   ConvertGeckoToCocoaRect(mBounds, r);
-  mView = [CreateCocoaView() retain];
+  mView = [CreateCocoaView(r) retain];
   if (!mView) return NS_ERROR_FAILURE;
-  
-  [mView setFrame:r];
   
 #if DEBUG
   // if our parent is a popup window, we're most certainly coming from a <select> list dropdown which
@@ -438,6 +433,11 @@ nsresult nsChildView::StandardCreate(nsIWidget *aParent,
     mInWindow = PR_FALSE;
   }
   
+  // if this is a ChildView, make sure that our per-window data
+  // is set up
+  if ([mView isKindOfClass:[ChildView class]])
+    [mView ensureWindowData];
+
   return NS_OK;
 }
 
@@ -449,9 +449,9 @@ nsresult nsChildView::StandardCreate(nsIWidget *aParent,
 // our |ChildView| object. Autoreleases, so caller must retain.
 //
 NSView*
-nsChildView::CreateCocoaView( )
+nsChildView::CreateCocoaView(NSRect inFrame)
 {
-  return [[[ChildView alloc] initWithGeckoChild:this eventSink:nsnull] autorelease];
+  return [[[ChildView alloc] initWithFrame:inFrame geckoChild:this eventSink:nsnull] autorelease];
 }
 
 //-------------------------------------------------------------------------
@@ -548,11 +548,11 @@ NS_IMETHODIMP nsChildView::Destroy()
 #if DEBUG
 static void PrintViewHierarcy(NSView *view)
 {
-	while (view)
-	{
-		NSLog(@"  view is %@, frame %@", view, NSStringFromRect([view frame]));
-		view = [view superview];
-	}
+  while (view)
+  {
+    NSLog(@"  view is %@, frame %@", view, NSStringFromRect([view frame]));
+    view = [view superview];
+  }
 }
 #endif
 
@@ -577,7 +577,7 @@ void* nsChildView::GetNativeData(PRUint32 aDataType)
       break;
       
     case NS_NATIVE_GRAPHIC:           // quickdraw port
-      // XXX this can return NULL if we are not the focussed view
+      // XXX this can return NULL if we are not the focused view
       retVal = [mView qdPort];
       break;
       
@@ -695,95 +695,9 @@ nsChildView::GetParent(void)
 NS_IMETHODIMP nsChildView::ModalEventFilter(PRBool aRealEvent, void *aEvent,
                                          PRBool *aForWindow)
 {
-  *aForWindow = PR_FALSE;
-  EventRecord *theEvent = (EventRecord *) aEvent;
-
-  if (aRealEvent && theEvent->what != nullEvent ) {
-
-    WindowPtr window = (WindowPtr) GetNativeData(NS_NATIVE_DISPLAY);
-    WindowPtr rollupWindow = gRollupWidget ? (WindowPtr) gRollupWidget->GetNativeData(NS_NATIVE_DISPLAY) : nsnull;
-    WindowPtr eventWindow = nsnull;
-    
-    PRInt16 where = ::FindWindow ( theEvent->where, &eventWindow );
-    PRBool inWindow = eventWindow && (eventWindow == window || eventWindow == rollupWindow);
-
-    switch ( theEvent->what ) {
-      // is it a mouse event?
-      case mouseUp:
-          *aForWindow = PR_TRUE;
-        break;
-      case mouseDown:
-        // is it in the given window?
-        // (note we also let some events questionable for modal dialogs pass through.
-        // but it makes sense that the draggability et.al. of a modal window should
-        // be controlled by whether the window has a drag bar).
-        if (inWindow) {
-             if ( where == inContent || where == inDrag   || where == inGrow ||
-                  where == inGoAway  || where == inZoomIn || where == inZoomOut )
-          *aForWindow = PR_TRUE;
-        }
-        else      // we're in another window.
-        {
-          // let's handle dragging of background windows here
-          if (eventWindow && (where == inDrag) && (theEvent->modifiers & cmdKey))
-          {
-            Rect screenRect;
-            ::GetRegionBounds(::GetGrayRgn(), &screenRect);
-            ::DragWindow(eventWindow, theEvent->where, &screenRect);
-          }
-          
-          *aForWindow = PR_FALSE;
-        }
-        break;
-      case keyDown:
-      case keyUp:
-      case autoKey:
-        *aForWindow = PR_TRUE;
-        break;
-
-      case diskEvt:
-          // I think dialogs might want to support floppy insertion, and it doesn't
-          // interfere with modality...
-      case updateEvt:
-        // always let update events through, because if we don't handle them, we're
-        // doomed!
-      case activateEvt:
-        // activate events aren't so much a request as simply informative. might
-        // as well acknowledge them.
-        *aForWindow = PR_TRUE;
-        break;
-
-      case osEvt:
-        // check for mouseMoved or suspend/resume events. We especially need to
-        // let suspend/resume events through in order to make sure the clipboard is
-        // converted correctly.
-        unsigned char eventType = (theEvent->message >> 24) & 0x00ff;
-        if (eventType == mouseMovedMessage) {
-          // I'm guessing we don't want to let these through unless the mouse is
-          // in the modal dialog so we don't see rollover feedback in windows behind
-          // the dialog.
-          if ( where == inContent && inWindow )
-            *aForWindow = PR_TRUE;
-        }
-        if ( eventType == suspendResumeMessage ) {
-          *aForWindow = PR_TRUE;
-          if (theEvent->message & resumeFlag) {
-            // divert it to our window if it isn't naturally
-            if (!inWindow) {
-              StPortSetter portSetter(window);
-              theEvent->where.v = 0;
-              theEvent->where.h = 0;
-              ::LocalToGlobal(&theEvent->where);
-            }
-            }
-        }
-
-        break;
-    } // case of which event type
-  } else
-    *aForWindow = PR_TRUE;
-
-  return NS_OK;
+  if (aForWindow)
+    *aForWindow = PR_FALSE;
+  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 
@@ -1287,6 +1201,12 @@ NS_IMETHODIMP nsChildView::Invalidate(PRBool aIsSynchronous)
 
   if (aIsSynchronous)
     [mView display];
+  else if ([NSView focusView])
+  {
+    // if a view is focussed (i.e. being drawn), then postpone the invalidate so that we
+    // don't lose it.
+    [mView performSelector:@selector(setNeedsDisplayWithValue:) withObject:nil afterDelay:0];
+  }
   else
     [mView setNeedsDisplay:YES];
 
@@ -1300,14 +1220,20 @@ NS_IMETHODIMP nsChildView::Invalidate(PRBool aIsSynchronous)
 //-------------------------------------------------------------------------
 NS_IMETHODIMP nsChildView::Invalidate(const nsRect &aRect, PRBool aIsSynchronous)
 {
-  if ( !mView || !mVisible)
+  if (!mView || !mVisible)
     return NS_OK;
- 
+
   NSRect r;
   ConvertGeckoToCocoaRect ( aRect, r );
   
   if (aIsSynchronous)
     [mView displayRect:r];
+  else if ([NSView focusView])
+  {
+    // if a view is focussed (i.e. being drawn), then postpone the invalidate so that we
+    // don't lose it.
+    [mView performSelector:@selector(setNeedsDisplayWithValue:) withObject:[NSValue valueWithRect:r] afterDelay:0];
+  }
   else
     [mView setNeedsDisplayInRect:r];
   
@@ -2035,45 +1961,52 @@ NS_IMETHODIMP nsChildView::GetAttention(PRInt32 aCycleCount)
 
 #pragma mark -
 
-
+//
+// Force Input Method Editor to commit the uncommited input
+//
 NS_IMETHODIMP nsChildView::ResetInputState()
 {
-#if 0
-  // currently, the nsMacEventHandler is owned by nsCocoaWindow, which is the top level window
-  // we delegate this call to its parent
-  nsCOMPtr<nsIWidget> parent = getter_AddRefs(GetParent());
-  NS_ASSERTION(parent, "cannot get parent");
-  if(parent)
-  {
-    nsCOMPtr<nsIKBStateControl> kb = do_QueryInterface(parent);
-    NS_ASSERTION(kb, "cannot get parent");
-    if(kb) {
-      return kb->ResetInputState();
-    }
-  }
+#ifdef DEBUG_IME
+  NSLog(@"**** ResetInputState");
 #endif
-  return NS_ERROR_ABORT;
+
+  NSInputManager *currentIM = [NSInputManager currentInputManager];
+  
+  // commit the current text
+  [currentIM unmarkText];
+
+  // and clear the input manager's string
+  [currentIM markedTextAbandoned:mView];
+  
+  return NS_OK;
 }
 
+//
+// 'open' means that it can take non-ASCII chars
+//
 NS_IMETHODIMP nsChildView::SetIMEOpenState(PRBool aState)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
+//
+// 'open' means that it can take non-ASCII chars
+//
 NS_IMETHODIMP nsChildView::GetIMEOpenState(PRBool* aState)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
+//
+// Destruct and don't commit the IME composition string.
+//
 NS_IMETHODIMP nsChildView::CancelIMEComposition()
 {
 #ifdef DEBUG_IME
-  NSLog(@"**** CancelIMEComposition\n");
+  NSLog(@"**** CancelIMEComposition");
 #endif
-  // Flush InputManager's markedText
   NSInputManager *currentIM = [NSInputManager currentInputManager];
   [currentIM markedTextAbandoned:mView];
-  [currentIM unmarkText];
   
   return NS_OK;
 }
@@ -2137,7 +2070,7 @@ nsChildView::DragEvent(PRUint32 aMessage, PRInt16 aMouseGlobalX, PRInt16 aMouseG
   // window coordinates for convert:message:toGeckoEvent
   NSPoint pt; pt.x = aMouseGlobalX; pt.y = aMouseGlobalY;
   [[mView window] convertScreenToBase:pt];
-  [mView convert:pt message:aMessage modifiers:0 toGeckoEvent:&geckoEvent];
+  [mView convertLocation:pt message:aMessage modifiers:0 toGeckoEvent:&geckoEvent];
 
 // XXXPINK
 // hack, because we're currently getting the point in Carbon global coordinates,
@@ -2189,57 +2122,65 @@ nsChildView::Idle()
 
 @implementation ChildView
 
--(NSMenu*)menuForEvent:(NSEvent*)theEvent
-{
-  // Fire the context menu event into Gecko.
-  nsMouseEvent geckoEvent(PR_TRUE, 0, nsnull, nsMouseEvent::eReal);
-  [self convert:theEvent message:NS_CONTEXTMENU toGeckoEvent:&geckoEvent];
-  
-  // send event into Gecko by going directly to the
-  // the widget.
-  mGeckoChild->DispatchMouseEvent(geckoEvent);
-  
-  // Go up our view chain to fetch the correct menu to return.
-  return [self getContextMenu];
-}
-
--(NSMenu*)getContextMenu
-{
-  return [[self superview] getContextMenu];
-}
-
 //
-// initWithGeckoChild:eventSink:
+// initWithFrame:geckoChild:eventSink:
 //
 // do init stuff
 //
-- (id)initWithGeckoChild:(nsChildView*)inChild eventSink:(nsIEventSink*)inSink
+- (id)initWithFrame:(NSRect)inFrame geckoChild:(nsChildView*)inChild eventSink:(nsIEventSink*)inSink
 {
-  [super init];
-  
-  mGeckoChild = inChild;
-  mEventSink = inSink;
-  mIsPluginView = NO;
-  mLastKeyEventWasSentToCocoa = NO;
-  mCurEvent = NULL;
+  if ((self = [super initWithFrame:inFrame]))
+  {
+    mGeckoChild = inChild;
+    mEventSink = inSink;
+    mIsPluginView = NO;
+    mLastKeyEventWasSentToCocoa = NO;
+    mCurEvent = NULL;
 
-  // See if hack code for enabling and disabling mouse move
-  // events is necessary. Fixed by at least 10.2.8
-  long version = 0;
-  ::Gestalt(gestaltSystemVersion, &version);
-  mToggleMouseMoveEventWatching = (version < 0x00001028);
+    // See if hack code for enabling and disabling mouse move
+    // events is necessary. Fixed by at least 10.2.8
+    long version = 0;
+    ::Gestalt(gestaltSystemVersion, &version);
+    mToggleMouseMoveEventWatching = (version < 0x00001028);
+    
+    // initialization for NSTextInput
+    mMarkedRange.location = NSNotFound;
+    mMarkedRange.length = 0;
+    mSelectedRange.location = NSNotFound;
+    mSelectedRange.length = 0;
+    mInComposition = NO;
+  }
   
-  // initialization for NSTextInput
-  mMarkedRange.location = NSNotFound;
-  mMarkedRange.length = 0;
-  mSelectedRange.location = NSNotFound;
-  mSelectedRange.length = 0;
-  mInComposition = NO;
-
   return self;
 }
 
-- (NSWindow*) getNativeWindow
+- (void)dealloc
+{
+  NS_ASSERTION(!_savePort || IsValidPort(_savePort), "Bad port");
+
+  [super dealloc];    // This sets the current port to _savePort (which should be
+                      // a valid port, checked with the assertion above.
+  SetPort(NULL);      // Bullet-proof against future changes in NSQDView
+}
+
+//
+// -widget
+// mozView method
+//
+// return our gecko child view widget. Note this does not AddRef.
+//
+- (nsIWidget*) widget
+{
+  return NS_STATIC_CAST(nsIWidget*, mGeckoChild);
+}
+
+//
+// -getNativeWindow
+// mozView method
+//
+// get the window that this view is associated with
+//
+- (NSWindow*)getNativeWindow
 {
   NSWindow* currWin = [self window];
   if (currWin)
@@ -2248,17 +2189,35 @@ nsChildView::Idle()
      return mWindow;
 }
 
-- (void) setNativeWindow: (NSWindow*)aWindow
+//
+// -setNativeWindow:
+// mozView method
+//
+// set the NSWindow that this view is associated with (even when not in the view
+// hierarchy).
+//
+- (void)setNativeWindow:(NSWindow*)aWindow
 {
   mWindow = aWindow;
 }
 
-- (void) dealloc
+//
+// -setNeedsDisplayWithValue:
+//
+//
+- (void)setNeedsDisplayWithValue:(NSValue*)inRectValue
 {
-  [super dealloc];    // this sets the current port to _savePort
-  SetPort(NULL);      // this is safe on OS X; it will set the port to
-                      // an empty fallback port.
+  if (inRectValue)
+  {
+    NSRect theRect = [inRectValue rectValue];
+    [self setNeedsDisplayInRect:theRect];
+  }
+  else
+  {
+    [self setNeedsDisplay:YES];
+  }
 }
+
 
 - (NSString*)description
 {
@@ -2441,6 +2400,8 @@ nsChildView::Idle()
     mGeckoChild->RemovedFromWindow();
   if (mMouseEnterExitTag)
     [self removeTrackingRect:mMouseEnterExitTag];
+
+  [super viewWillMoveToWindow:newWindow];
 }
 
 - (void)viewDidMoveToWindow
@@ -2451,23 +2412,38 @@ nsChildView::Idle()
   mMouseEnterExitTag = [self addTrackingRect:[self bounds] owner:self
                                     userData:nil assumeInside: [[self window]
                                     acceptsMouseMovedEvents]];
+
+  [super viewDidMoveToWindow];
 }
 
 - (void)viewWillStartLiveResize
 {
   if (mGeckoChild && mIsPluginView)
     mGeckoChild->LiveResizeStarted();
+  
+  [super viewWillStartLiveResize];
 }
 
 - (void)viewDidEndLiveResize
 {
   if (mGeckoChild && mIsPluginView)
     mGeckoChild->LiveResizeEnded();
+
+  [super viewDidEndLiveResize];
 }
 
 - (BOOL)mouseDownCanMoveWindow
 {
   return NO;
+}
+
+- (void)lockFocus
+{
+  // Set the current GrafPort to a "safe" port before calling [NSQuickDrawView lockFocus],
+  // so that the NSQuickDrawView stashes a pointer to this known-good port internally.
+  // It will set the port back to this port on destruction.
+  SetPort(NULL);
+  [super lockFocus];
 }
 
 //
@@ -2483,7 +2459,7 @@ nsChildView::Idle()
   if (!isVisible) {
     return;
   }
-    
+
   // tell gecko to paint.
   // If < 10.3, just paint the rect
   if (floor(NSAppKitVersionNumber) <= NSAppKitVersionNumber10_2) {
@@ -2517,7 +2493,7 @@ nsChildView::Idle()
 
   RgnHandle updateRgn = ::NewRgn();
   RectRgn(updateRgn, &updateRect);
-  ::QDFlushPortBuffer([self qdPort], updateRgn);
+  ::QDFlushPortBuffer((CGrafPtr)[self qdPort], updateRgn);
   ::DisposeRgn(updateRgn);
 }
 
@@ -2581,7 +2557,7 @@ nsChildView::Idle()
 #endif
 
   nsMouseEvent geckoEvent(PR_TRUE, 0, nsnull, nsMouseEvent::eReal);
-  [self convert:theEvent message:NS_MOUSE_LEFT_BUTTON_DOWN toGeckoEvent:&geckoEvent];
+  [self convertEvent:theEvent message:NS_MOUSE_LEFT_BUTTON_DOWN toGeckoEvent:&geckoEvent];
   geckoEvent.clickCount = [theEvent clickCount];
   
   NSPoint mouseLoc = [theEvent locationInWindow];
@@ -2591,7 +2567,6 @@ nsChildView::Idle()
   macEvent.what = mouseDown;
   macEvent.message = 0;
   macEvent.when = ::TickCount();
-  // macEvent.where.h = screenLoc.x, macEvent.where.v = screenLoc.y; XXX fix this, they are flipped!
   GetGlobalMouse(&macEvent.where);
   macEvent.modifiers = GetCurrentKeyModifiers();
   geckoEvent.nativeMsg = &macEvent;
@@ -2600,8 +2575,8 @@ nsChildView::Idle()
   // the widget.
   mGeckoChild->DispatchMouseEvent(geckoEvent);
   
-} // mouseDown
-
+  // XXX maybe call markedTextSelectionChanged:client: here?
+}
 
 - (void)mouseUp:(NSEvent *)theEvent
 {
@@ -2611,7 +2586,7 @@ nsChildView::Idle()
     return;
   }
   nsMouseEvent geckoEvent(PR_TRUE, 0, nsnull, nsMouseEvent::eReal);
-  [self convert:theEvent message:NS_MOUSE_LEFT_BUTTON_UP toGeckoEvent:&geckoEvent];
+  [self convertEvent:theEvent message:NS_MOUSE_LEFT_BUTTON_UP toGeckoEvent:&geckoEvent];
   
   NSPoint mouseLoc = [theEvent locationInWindow];
   NSPoint screenLoc = [[self window] convertBaseToScreen: mouseLoc];
@@ -2620,7 +2595,6 @@ nsChildView::Idle()
   macEvent.what = mouseUp;
   macEvent.message = 0;
   macEvent.when = ::TickCount();
-  // macEvent.where.h = screenLoc.x, macEvent.where.v = screenLoc.y; XXX fix this, they are flipped!
   GetGlobalMouse(&macEvent.where);
   macEvent.modifiers = GetCurrentKeyModifiers();
   geckoEvent.nativeMsg = &macEvent;
@@ -2629,7 +2603,7 @@ nsChildView::Idle()
   // the widget.
   mGeckoChild->DispatchMouseEvent(geckoEvent);
   
-} // mouseUp
+}
 
 - (void)mouseMoved:(NSEvent*)theEvent
 {
@@ -2646,7 +2620,7 @@ nsChildView::Idle()
     return;
   }
   nsMouseEvent geckoEvent(PR_TRUE, 0, nsnull, nsMouseEvent::eReal);
-  [self convert:theEvent message:NS_MOUSE_MOVE toGeckoEvent:&geckoEvent];
+  [self convertEvent:theEvent message:NS_MOUSE_MOVE toGeckoEvent:&geckoEvent];
 
   NSPoint mouseLoc = [theEvent locationInWindow];
   NSPoint screenLoc = [[self window] convertBaseToScreen: mouseLoc];
@@ -2655,7 +2629,6 @@ nsChildView::Idle()
   macEvent.what = nullEvent;
   macEvent.message = 0;
   macEvent.when = ::TickCount();
-  // macEvent.where.h = screenLoc.x, macEvent.where.v = screenLoc.y; XXX fix this, they are flipped!
   GetGlobalMouse(&macEvent.where);
   
   macEvent.modifiers = GetCurrentKeyModifiers();
@@ -2674,13 +2647,12 @@ nsChildView::Idle()
     return;
   }
   nsMouseEvent geckoEvent(PR_TRUE, 0, nsnull, nsMouseEvent::eReal);
-  [self convert:theEvent message:NS_MOUSE_MOVE toGeckoEvent:&geckoEvent];
+  [self convertEvent:theEvent message:NS_MOUSE_MOVE toGeckoEvent:&geckoEvent];
 
   EventRecord macEvent;
   macEvent.what = nullEvent;
   macEvent.message = 0;
   macEvent.when = ::TickCount();
-  // macEvent.where.h = screenLoc.x, macEvent.where.v = screenLoc.y; XXX fix this, they are flipped!
   GetGlobalMouse(&macEvent.where);
   macEvent.modifiers = btnState | GetCurrentKeyModifiers();
   geckoEvent.nativeMsg = &macEvent;
@@ -2688,6 +2660,8 @@ nsChildView::Idle()
   // send event into Gecko by going directly to the
   // the widget.
   mGeckoChild->DispatchMouseEvent(geckoEvent);    
+
+  // XXX maybe call markedTextSelectionChanged:client: here?
 }
 
 - (void)mouseEntered:(NSEvent*)theEvent
@@ -2719,7 +2693,7 @@ nsChildView::Idle()
   // then send the context menu event.
   nsMouseEvent geckoEvent(PR_TRUE, 0, nsnull, nsMouseEvent::eReal);
 
-  [self convert: theEvent message: NS_MOUSE_RIGHT_BUTTON_DOWN toGeckoEvent:&geckoEvent];
+  [self convertEvent:theEvent message:NS_MOUSE_RIGHT_BUTTON_DOWN toGeckoEvent:&geckoEvent];
 
   // plugins need a native event here
   EventRecord macEvent;
@@ -2740,7 +2714,7 @@ nsChildView::Idle()
 {
   nsMouseEvent geckoEvent(PR_TRUE, 0, nsnull, nsMouseEvent::eReal);
 
-  [self convert: theEvent message: NS_MOUSE_RIGHT_BUTTON_UP toGeckoEvent:&geckoEvent];
+  [self convertEvent:theEvent message:NS_MOUSE_RIGHT_BUTTON_UP toGeckoEvent:&geckoEvent];
 
   // plugins need a native event here
   EventRecord macEvent;
@@ -2760,7 +2734,7 @@ nsChildView::Idle()
 - (void)otherMouseDown:(NSEvent *)theEvent
 {
   nsMouseEvent geckoEvent(PR_TRUE, 0, nsnull, nsMouseEvent::eReal);
-  [self convert:theEvent message:NS_MOUSE_MIDDLE_BUTTON_DOWN toGeckoEvent:&geckoEvent];
+  [self convertEvent:theEvent message:NS_MOUSE_MIDDLE_BUTTON_DOWN toGeckoEvent:&geckoEvent];
   geckoEvent.clickCount = [theEvent clickCount];
   
   // send event into Gecko by going directly to the
@@ -2773,7 +2747,7 @@ nsChildView::Idle()
 - (void)otherMouseUp:(NSEvent *)theEvent
 {
   nsMouseEvent geckoEvent(PR_TRUE, 0, nsnull, nsMouseEvent::eReal);
-  [self convert:theEvent message:NS_MOUSE_MIDDLE_BUTTON_UP toGeckoEvent:&geckoEvent];
+  [self convertEvent:theEvent message:NS_MOUSE_MIDDLE_BUTTON_UP toGeckoEvent:&geckoEvent];
   
   // send event into Gecko by going directly to the
   // the widget.
@@ -2791,7 +2765,7 @@ const PRInt32 kNumLines = 4;
   // the OS). --dwh
   nsMouseScrollEvent geckoEvent(PR_TRUE, 0, nsnull);
 
-  [self convert:theEvent message:NS_MOUSE_SCROLL toGeckoEvent:&geckoEvent];
+  [self convertEvent:theEvent message:NS_MOUSE_SCROLL toGeckoEvent:&geckoEvent];
   PRInt32 incomingDeltaX = (PRInt32)[theEvent deltaX];
   PRInt32 incomingDeltaY = (PRInt32)[theEvent deltaY];
 
@@ -2814,19 +2788,52 @@ const PRInt32 kNumLines = 4;
   mGeckoChild->DispatchWindowEvent(geckoEvent);
 }
 
+-(NSMenu*)menuForEvent:(NSEvent*)theEvent
+{
+  // Fire the context menu event into Gecko.
+  nsMouseEvent geckoEvent(PR_TRUE, 0, nsnull, nsMouseEvent::eReal);
+  [self convertEvent:theEvent message:NS_CONTEXTMENU toGeckoEvent:&geckoEvent];
+  
+  // send event into Gecko by going directly to the
+  // the widget.
+  mGeckoChild->DispatchMouseEvent(geckoEvent);
+  
+  // Go up our view chain to fetch the correct menu to return.
+  return [self getContextMenu];
+}
+
+-(NSMenu*)getContextMenu
+{
+  return [[self superview] getContextMenu];
+}
+
+- (TopLevelWindowData*)ensureWindowData
+{
+  WindowDataMap* windowMap = [WindowDataMap sharedWindowDataMap];
+
+  TopLevelWindowData* windowData = [windowMap dataForWindow:mWindow];
+  if (mWindow && !windowData)
+  {
+    windowData = [[TopLevelWindowData alloc] initWithWindow:mWindow];
+    [windowMap setData:windowData forWindow:mWindow]; // takes ownership
+    [windowData release];
+  }
+  return windowData;
+}
+
 //
-// -convert:message:toGeckoEvent:
+// -convertEvent:message:toGeckoEvent:
 //
 // convert from one event system to the other for event dispatching
 //
-- (void) convert:(NSEvent*)inEvent message:(PRInt32)inMsg toGeckoEvent:(nsInputEvent*)outGeckoEvent
+- (void) convertEvent:(NSEvent*)inEvent message:(PRInt32)inMsg toGeckoEvent:(nsInputEvent*)outGeckoEvent
 {
   outGeckoEvent->nativeMsg = inEvent;
-  [self convert:[inEvent locationInWindow] message:inMsg modifiers:[inEvent modifierFlags]
+  [self convertLocation:[inEvent locationInWindow] message:inMsg modifiers:[inEvent modifierFlags]
           toGeckoEvent:outGeckoEvent];
 }
 
-- (void) convert:(NSPoint)inPoint message:(PRInt32)inMsg modifiers:(unsigned int)inMods toGeckoEvent:(nsInputEvent*)outGeckoEvent
+- (void) convertLocation:(NSPoint)inPoint message:(PRInt32)inMsg modifiers:(unsigned int)inMods toGeckoEvent:(nsInputEvent*)outGeckoEvent
 {
   outGeckoEvent->message = inMsg;
   outGeckoEvent->widget = [self widget];
@@ -2850,16 +2857,6 @@ const PRInt32 kNumLines = 4;
 }
 
  
-//
-// -widget
-//
-// return our gecko child view widget. Note this does not AddRef.
-//
-- (nsIWidget*) widget
-{
-  return NS_STATIC_CAST(nsIWidget*, mGeckoChild);
-}
-
 static PRBool ConvertUnicodeToCharCode(PRUnichar inUniChar, unsigned char* outChar)
 {
   UnicodeToTextInfo converterInfo;
@@ -2926,7 +2923,7 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
 - (nsRect)sendCompositionEvent:(PRInt32) aEventType
 {
 #ifdef DEBUG_IME
-  NSLog(@"****in sendCompositionEvent; type = %d\n", aEventType);
+  NSLog(@"****in sendCompositionEvent; type = %d", aEventType);
 #endif
 
   // static void init_composition_event( *aEvent, int aType)
@@ -2943,8 +2940,8 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
                       doCommit:(BOOL) doCommit
 {
 #ifdef DEBUG_IME
-  NSLog(@"****in sendTextEvent; string = %@\n", aString);
-  NSLog(@" markRange = %d, %d;  selRange = %d, %d\n", markRange.location, markRange.length, selRange.location, selRange.length);
+  NSLog(@"****in sendTextEvent; string = %@", aString);
+  NSLog(@" markRange = %d, %d;  selRange = %d, %d", markRange.location, markRange.length, selRange.location, selRange.length);
 #endif
 
   nsTextEvent textEvent(PR_TRUE, NS_TEXT_TEXT, mGeckoChild);
@@ -2965,13 +2962,13 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
 - (void)insertText:(id)insertString
 {
 #if DEBUG_IME
-  NSLog(@"****in insertText: %@\n", insertString);
-  NSLog(@" markRange = %d, %d;  selRange = %d, %d\n", mMarkedRange.location, mMarkedRange.length, mSelectedRange.location, mSelectedRange.length);
+  NSLog(@"****in insertText: %@", insertString);
+  NSLog(@" markRange = %d, %d;  selRange = %d, %d", mMarkedRange.location, mMarkedRange.length, mSelectedRange.location, mSelectedRange.length);
 #endif
 
-  if ( ! [insertString isKindOfClass:[NSAttributedString class]])
+  if (![insertString isKindOfClass:[NSAttributedString class]])
     insertString = [[[NSAttributedString alloc] initWithString:insertString] autorelease];
-    
+
   NSString *tmpStr = [insertString string];
   unsigned int len = [tmpStr length];
   PRUnichar buffer[MAX_BUFFER_SIZE];
@@ -2987,7 +2984,10 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
     geckoEvent.charCode  = bufPtr[0]; // gecko expects OS-translated unicode
     geckoEvent.isChar    = PR_TRUE;
     geckoEvent.isShift   = ([mCurEvent modifierFlags] & NSShiftKeyMask) != 0;
-
+    // don't set other modifiers from the current event, because here in
+    // -insertText: they've already been taken into account in creating
+    // the input string.
+        
     // plugins need a native autokey event here, but only if this is a repeat event
     EventRecord macEvent;
     if (mCurEvent && [mCurEvent isARepeat])
@@ -3036,9 +3036,9 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
 - (void) setMarkedText:(id)aString selectedRange:(NSRange)selRange
 {
 #if DEBUG_IME 
-  NSLog(@"****in setMarkedText location: %d, length: %d\n", selRange.location, selRange.length);
-  NSLog(@" markRange = %d, %d;  selRange = %d, %d\n", mMarkedRange.location, mMarkedRange.length, mSelectedRange.location, mSelectedRange.length);
-  NSLog(@" aString = %@\n", aString);
+  NSLog(@"****in setMarkedText location: %d, length: %d", selRange.location, selRange.length);
+  NSLog(@" markRange = %d, %d;  selRange = %d, %d", mMarkedRange.location, mMarkedRange.length, mSelectedRange.location, mSelectedRange.length);
+  NSLog(@" aString = %@", aString);
 #endif
 
   if ( ![aString isKindOfClass:[NSAttributedString class]] )
@@ -3086,9 +3086,9 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
 - (void) unmarkText
 {
 #if DEBUG_IME
-  NSLog(@"****in unmarkText\n");
-  NSLog(@" markedRange   = %d, %d\n", mMarkedRange.location, mMarkedRange.length);
-  NSLog(@" selectedRange = %d, %d\n", mSelectedRange.location, mSelectedRange.length);
+  NSLog(@"****in unmarkText");
+  NSLog(@" markedRange   = %d, %d", mMarkedRange.location, mMarkedRange.length);
+  NSLog(@" selectedRange = %d, %d", mSelectedRange.location, mSelectedRange.length);
 #endif
 
   mSelectedRange = mMarkedRange = NSMakeRange(NSNotFound, 0);
@@ -3100,7 +3100,7 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
 
 - (BOOL) hasMarkedText
 {
-  return mMarkedRange.location != NSNotFound && mMarkedRange.length != 0;
+  return (mMarkedRange.location != NSNotFound) && (mMarkedRange.length != 0);
 }
 
 - (long) conversationIdentifier
@@ -3111,10 +3111,10 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
 - (NSAttributedString *) attributedSubstringFromRange:(NSRange)theRange
 {
 #if DEBUG_IME
-  NSLog(@"****in attributedSubstringFromRange\n");
-  NSLog(@" theRange      = %d, %d\n", theRange.location, theRange.length);
-  NSLog(@" markedRange   = %d, %d\n", mMarkedRange.location, mMarkedRange.length);
-  NSLog(@" selectedRange = %d, %d\n", mSelectedRange.location, mSelectedRange.length);
+  NSLog(@"****in attributedSubstringFromRange");
+  NSLog(@" theRange      = %d, %d", theRange.location, theRange.length);
+  NSLog(@" markedRange   = %d, %d", mMarkedRange.location, mMarkedRange.length);
+  NSLog(@" selectedRange = %d, %d", mSelectedRange.location, mSelectedRange.length);
 #endif
 
   nsReconversionEvent reconversionEvent(PR_TRUE, NS_RECONVERSION_QUERY,
@@ -3136,9 +3136,9 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
 - (NSRange) markedRange
 {
 #if DEBUG_IME
-  NSLog(@"****in markedRange\n");
-  NSLog(@" markedRange   = %d, %d\n", mMarkedRange.location, mMarkedRange.length);
-  NSLog(@" selectedRange = %d, %d\n", mSelectedRange.location, mSelectedRange.length);
+  NSLog(@"****in markedRange");
+  NSLog(@" markedRange   = %d, %d", mMarkedRange.location, mMarkedRange.length);
+  NSLog(@" selectedRange = %d, %d", mSelectedRange.location, mSelectedRange.length);
 #endif
 
   if (![self hasMarkedText]) {
@@ -3151,9 +3151,9 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
 - (NSRange) selectedRange
 {
 #if DEBUG_IME
-  NSLog(@"****in selectedRange\n");
-  NSLog(@" markedRange   = %d, %d\n", mMarkedRange.location, mMarkedRange.length);
-  NSLog(@" selectedRange = %d, %d\n", mSelectedRange.location, mSelectedRange.length);
+  NSLog(@"****in selectedRange");
+  NSLog(@" markedRange   = %d, %d", mMarkedRange.location, mMarkedRange.length);
+  NSLog(@" selectedRange = %d, %d", mSelectedRange.location, mSelectedRange.length);
 #endif
 
   return mSelectedRange;
@@ -3163,10 +3163,10 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
 - (NSRect) firstRectForCharacterRange:(NSRange)theRange
 {
 #if DEBUG_IME
-  NSLog(@"****in firstRectForCharacterRange\n");
-  NSLog(@" theRange      = %d, %d\n", theRange.location, theRange.length);
-  NSLog(@" markedRange   = %d, %d\n", mMarkedRange.location, mMarkedRange.length);
-  NSLog(@" selectedRange = %d, %d\n", mSelectedRange.location, mSelectedRange.length);
+  NSLog(@"****in firstRectForCharacterRange");
+  NSLog(@" theRange      = %d, %d", theRange.location, theRange.length);
+  NSLog(@" markedRange   = %d, %d", mMarkedRange.location, mMarkedRange.length);
+  NSLog(@" selectedRange = %d, %d", mSelectedRange.location, mSelectedRange.length);
 #endif
 
 #if BRADE_GETS_THIS_WORKING
@@ -3184,7 +3184,7 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
 #endif
 
 #if DEBUG_IME
-  NSLog(@"********** cocoa rect (x, y, w, h): %f %f, %f, %f\n", temp.origin.x, temp.origin.y, temp.size.width, temp.size.height);
+  NSLog(@"********** cocoa rect (x, y, w, h): %f %f, %f, %f", temp.origin.x, temp.origin.y, temp.size.width, temp.size.height);
 #endif
   return temp;
 }
@@ -3193,8 +3193,8 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
 - (unsigned int)characterIndexForPoint:(NSPoint)thePoint
 {
 #if DEBUG_IME
-  NSLog(@"****in characterIndexForPoint\n");
-  NSLog(@" markRange = %d, %d;  selectRange = %d, %d\n", mMarkedRange.location, mMarkedRange.length, mSelectedRange.location, mSelectedRange.length);
+  NSLog(@"****in characterIndexForPoint");
+  NSLog(@" markRange = %d, %d;  selectRange = %d, %d", mMarkedRange.location, mMarkedRange.length, mSelectedRange.location, mSelectedRange.length);
 #endif
 
 //  short regionClass;
@@ -3205,8 +3205,8 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
 - (NSArray*) validAttributesForMarkedText
 {
 #if DEBUG_IME
-  NSLog(@"****in validAttributesForMarkedText\n");
-  NSLog(@" markRange = %d, %d;  selectRange = %d, %d\n", mMarkedRange.location, mMarkedRange.length, mSelectedRange.location, mSelectedRange.length);
+  NSLog(@"****in validAttributesForMarkedText");
+  NSLog(@" markRange = %d, %d;  selectRange = %d, %d", mMarkedRange.location, mMarkedRange.length, mSelectedRange.location, mSelectedRange.length);
 #endif
 
   return [NSArray array]; // empty array; we don't support any attributes right now
@@ -3225,7 +3225,6 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
 {
   PRBool isKeyDownEventHandled = PR_TRUE;
   PRBool isKeyEventHandled = PR_FALSE;
-  PRBool isChar = PR_FALSE;
   BOOL isARepeat = [theEvent isARepeat];
 
   mCurEvent = theEvent;
@@ -3239,12 +3238,11 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
     // Fire a key down.
     nsKeyEvent geckoEvent(PR_TRUE, 0, nsnull);
     geckoEvent.point.x = geckoEvent.point.y = 0;
-    [self convert: theEvent message: NS_KEY_DOWN
-          isChar: &isChar
-          toGeckoEvent: &geckoEvent];
-    geckoEvent.isChar = isChar;
+    [self convertKeyEvent:theEvent
+                  message:NS_KEY_DOWN
+             toGeckoEvent:&geckoEvent];
 
-    // As an optimisation, only do this when there is a plugin present.
+    //XXX Maybe we should only do this when there is a plugin present.
     EventRecord macEvent;
     ConvertCocoaKeyEventToMacEvent(theEvent, macEvent);
     geckoEvent.nativeMsg = &macEvent;
@@ -3268,12 +3266,16 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
     // Fire a key press.
     nsKeyEvent geckoEvent(PR_TRUE, 0, nsnull);
     geckoEvent.point.x = geckoEvent.point.y = 0;
-    isChar = PR_FALSE;
-    [self convert: theEvent message: NS_KEY_PRESS
-            isChar: &isChar
-            toGeckoEvent: &geckoEvent];
-    geckoEvent.isChar = isChar;
-    if (isChar)
+
+    [self convertKeyEvent:theEvent
+                  message:NS_KEY_PRESS
+             toGeckoEvent:&geckoEvent];
+
+    // if it's text input, pass it on to interpretKeyEvents: so that it propagates to our
+    // insertText:.
+    // however, if the control key is down, dispatch the keydown here, so that we trap
+    // control-letter combinations before Cocoa tries to use them for emacs-style keybindings.
+    if (geckoEvent.isChar && !geckoEvent.isControl)
     {
       // we'll send the NS_KEY_PRESS event to gecko in [insertText:]
       mLastKeyEventWasSentToCocoa = YES;  // force all events to go through inserttext
@@ -3323,10 +3325,10 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
   // Fire a key up.
   nsKeyEvent geckoEvent(PR_TRUE, 0, nsnull);
   geckoEvent.point.x = geckoEvent.point.y = 0;
-  PRBool isChar;
-  [self convert: theEvent message: NS_KEY_UP
-        isChar: &isChar
-        toGeckoEvent: &geckoEvent];
+
+  [self convertKeyEvent:theEvent
+                message:NS_KEY_UP
+           toGeckoEvent:&geckoEvent];
 
   // As an optimisation, only do this when there is a plugin present.
   EventRecord macEvent;
@@ -3366,8 +3368,8 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
 - (BOOL)becomeFirstResponder
 {
   nsFocusEvent event(PR_TRUE, NS_GOTFOCUS, mGeckoChild);
-
   mGeckoChild->DispatchWindowEvent(event);
+
   return [super becomeFirstResponder];
 }
 
@@ -3375,11 +3377,27 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
 - (BOOL)resignFirstResponder
 {
   nsFocusEvent event(PR_TRUE, NS_LOSTFOCUS, mGeckoChild);
-
   mGeckoChild->DispatchWindowEvent(event);
 
   return [super resignFirstResponder];
 }
+
+- (void)viewsWindowDidBecomeKey
+{
+  nsFocusEvent focusEvent(PR_TRUE, NS_GOTFOCUS, mGeckoChild);
+  mGeckoChild->DispatchWindowEvent(focusEvent);
+
+  nsFocusEvent activateEvent(PR_TRUE, NS_ACTIVATE, mGeckoChild);
+  mGeckoChild->DispatchWindowEvent(activateEvent);
+
+}
+
+- (void)viewsWindowDidResignKey
+{
+  nsFocusEvent event(PR_TRUE, NS_LOSTFOCUS, mGeckoChild);
+  mGeckoChild->DispatchWindowEvent(event);
+}
+
 
 //-------------------------------------------------------------------------
 //
@@ -3391,70 +3409,70 @@ static void ConvertCocoaKeyEventToMacEvent(NSEvent* cocoaEvent, EventRecord& mac
 // Key code constants
 enum
 {
-	kEscapeKeyCode			= 0x35,
-	kCommandKeyCode     = 0x37,
-	kShiftKeyCode				= 0x38,
-	kCapsLockKeyCode		= 0x39,
-	kControlKeyCode			= 0x3B,
-	kOptionkeyCode			= 0x3A,		// left and right option keys
-	kClearKeyCode				= 0x47,
-	
-	// function keys
-	kF1KeyCode					= 0x7A,
-	kF2KeyCode					= 0x78,
-	kF3KeyCode					= 0x63,
-	kF4KeyCode					= 0x76,
-	kF5KeyCode					= 0x60,
-	kF6KeyCode					= 0x61,
-	kF7KeyCode					= 0x62,
-	kF8KeyCode					= 0x64,
-	kF9KeyCode					= 0x65,
-	kF10KeyCode					= 0x6D,
-	kF11KeyCode					= 0x67,
-	kF12KeyCode					= 0x6F,
-	kF13KeyCode					= 0x69,
-	kF14KeyCode					= 0x6B,
-	kF15KeyCode					= 0x71,
-	
-	kPrintScreenKeyCode	= kF13KeyCode,
-	kScrollLockKeyCode	= kF14KeyCode,
-	kPauseKeyCode				= kF15KeyCode,
-	
-	// keypad
-	kKeypad0KeyCode			= 0x52,
-	kKeypad1KeyCode			= 0x53,
-	kKeypad2KeyCode			= 0x54,
-	kKeypad3KeyCode			= 0x55,
-	kKeypad4KeyCode			= 0x56,
-	kKeypad5KeyCode			= 0x57,
-	kKeypad6KeyCode			= 0x58,
-	kKeypad7KeyCode			= 0x59,
-	kKeypad8KeyCode			= 0x5B,
-	kKeypad9KeyCode			= 0x5C,
-	
-	kKeypadMultiplyKeyCode	= 0x43,
-	kKeypadAddKeyCode				= 0x45,
-	kKeypadSubtractKeyCode	= 0x4E,
-	kKeypadDecimalKeyCode		= 0x41,
-	kKeypadDivideKeyCode		= 0x4B,
-	kKeypadEqualsKeyCode		= 0x51,			// no correpsonding raptor key code
-	kEnterKeyCode           = 0x4C,
-	kReturnKeyCode          = 0x24,
-	kPowerbookEnterKeyCode  = 0x34,     // Enter on Powerbook's keyboard is different
-	
-	kInsertKeyCode					= 0x72,				// also help key
-	kDeleteKeyCode					= 0x75,				// also forward delete key
-	kTabKeyCode							= 0x30,
-	kBackspaceKeyCode       = 0x33,
-	kHomeKeyCode						= 0x73,	
-	kEndKeyCode							= 0x77,
-	kPageUpKeyCode					= 0x74,
-	kPageDownKeyCode				= 0x79,
-	kLeftArrowKeyCode				= 0x7B,
-	kRightArrowKeyCode			= 0x7C,
-	kUpArrowKeyCode					= 0x7E,
-	kDownArrowKeyCode				= 0x7D
-	
+  kEscapeKeyCode      = 0x35,
+  kCommandKeyCode     = 0x37,
+  kShiftKeyCode       = 0x38,
+  kCapsLockKeyCode    = 0x39,
+  kControlKeyCode     = 0x3B,
+  kOptionkeyCode      = 0x3A,   // left and right option keys
+  kClearKeyCode       = 0x47,
+  
+  // function keys
+  kF1KeyCode          = 0x7A,
+  kF2KeyCode          = 0x78,
+  kF3KeyCode          = 0x63,
+  kF4KeyCode          = 0x76,
+  kF5KeyCode          = 0x60,
+  kF6KeyCode          = 0x61,
+  kF7KeyCode          = 0x62,
+  kF8KeyCode          = 0x64,
+  kF9KeyCode          = 0x65,
+  kF10KeyCode         = 0x6D,
+  kF11KeyCode         = 0x67,
+  kF12KeyCode         = 0x6F,
+  kF13KeyCode         = 0x69,
+  kF14KeyCode         = 0x6B,
+  kF15KeyCode         = 0x71,
+  
+  kPrintScreenKeyCode = kF13KeyCode,
+  kScrollLockKeyCode  = kF14KeyCode,
+  kPauseKeyCode       = kF15KeyCode,
+  
+  // keypad
+  kKeypad0KeyCode     = 0x52,
+  kKeypad1KeyCode     = 0x53,
+  kKeypad2KeyCode     = 0x54,
+  kKeypad3KeyCode     = 0x55,
+  kKeypad4KeyCode     = 0x56,
+  kKeypad5KeyCode     = 0x57,
+  kKeypad6KeyCode     = 0x58,
+  kKeypad7KeyCode     = 0x59,
+  kKeypad8KeyCode     = 0x5B,
+  kKeypad9KeyCode     = 0x5C,
+  
+  kKeypadMultiplyKeyCode  = 0x43,
+  kKeypadAddKeyCode       = 0x45,
+  kKeypadSubtractKeyCode  = 0x4E,
+  kKeypadDecimalKeyCode   = 0x41,
+  kKeypadDivideKeyCode    = 0x4B,
+  kKeypadEqualsKeyCode    = 0x51,     // no correpsonding raptor key code
+  kEnterKeyCode           = 0x4C,
+  kReturnKeyCode          = 0x24,
+  kPowerbookEnterKeyCode  = 0x34,     // Enter on Powerbook's keyboard is different
+  
+  kInsertKeyCode          = 0x72,       // also help key
+  kDeleteKeyCode          = 0x75,       // also forward delete key
+  kTabKeyCode             = 0x30,
+  kBackspaceKeyCode       = 0x33,
+  kHomeKeyCode            = 0x73, 
+  kEndKeyCode             = 0x77,
+  kPageUpKeyCode          = 0x74,
+  kPageDownKeyCode        = 0x79,
+  kLeftArrowKeyCode       = 0x7B,
+  kRightArrowKeyCode      = 0x7C,
+  kUpArrowKeyCode         = 0x7E,
+  kDownArrowKeyCode       = 0x7D
+  
 };
 
 static PRUint32 ConvertMacToRaptorKeyCode(UInt32 keyCode, nsKeyEvent* aKeyEvent, NSString* characters)
@@ -3466,188 +3484,185 @@ static PRUint32 ConvertMacToRaptorKeyCode(UInt32 keyCode, nsKeyEvent* aKeyEvent,
   else
     charCode = 0;
 
-	switch (keyCode)
-	{
-//	case ??							:				raptorKeyCode = NS_VK_CANCEL;		break;			// don't know what this key means. Nor does joki
+  switch (keyCode)
+  {
+//  case ??             :       raptorKeyCode = NS_VK_CANCEL;   break;      // don't know what this key means. Nor does joki
 
 // modifiers. We don't get separate events for these
-		case kEscapeKeyCode:				raptorKeyCode = NS_VK_ESCAPE;					break;
-		case kShiftKeyCode:					raptorKeyCode = NS_VK_SHIFT;					break;
-//		case kCommandKeyCode:       raptorKeyCode = NS_VK_META;           break;
-		case kCapsLockKeyCode:			raptorKeyCode = NS_VK_CAPS_LOCK;			break;
-		case kControlKeyCode:				raptorKeyCode = NS_VK_CONTROL;				break;
-		case kOptionkeyCode:				raptorKeyCode = NS_VK_ALT;						break;
-		case kClearKeyCode:					raptorKeyCode = NS_VK_CLEAR;					break;
+    case kEscapeKeyCode:        raptorKeyCode = NS_VK_ESCAPE;         break;
+    case kShiftKeyCode:         raptorKeyCode = NS_VK_SHIFT;          break;
+//    case kCommandKeyCode:       raptorKeyCode = NS_VK_META;           break;
+    case kCapsLockKeyCode:      raptorKeyCode = NS_VK_CAPS_LOCK;      break;
+    case kControlKeyCode:       raptorKeyCode = NS_VK_CONTROL;        break;
+    case kOptionkeyCode:        raptorKeyCode = NS_VK_ALT;            break;
+    case kClearKeyCode:         raptorKeyCode = NS_VK_CLEAR;          break;
 
 // function keys
-		case kF1KeyCode:						raptorKeyCode = NS_VK_F1;							break;
-		case kF2KeyCode:						raptorKeyCode = NS_VK_F2;							break;
-		case kF3KeyCode:						raptorKeyCode = NS_VK_F3;							break;
-		case kF4KeyCode:						raptorKeyCode = NS_VK_F4;							break;
-		case kF5KeyCode:						raptorKeyCode = NS_VK_F5;							break;
-		case kF6KeyCode:						raptorKeyCode = NS_VK_F6;							break;
-		case kF7KeyCode:						raptorKeyCode = NS_VK_F7;							break;
-		case kF8KeyCode:						raptorKeyCode = NS_VK_F8;							break;
-		case kF9KeyCode:						raptorKeyCode = NS_VK_F9;							break;
-		case kF10KeyCode:						raptorKeyCode = NS_VK_F10;						break;
-		case kF11KeyCode:						raptorKeyCode = NS_VK_F11;						break;
-		case kF12KeyCode:						raptorKeyCode = NS_VK_F12;						break;
-//	case kF13KeyCode:						raptorKeyCode = NS_VK_F13;						break;		// clash with the 3 below
-//	case kF14KeyCode:						raptorKeyCode = NS_VK_F14;						break;
-//	case kF15KeyCode:						raptorKeyCode = NS_VK_F15;						break;
-		case kPauseKeyCode:					raptorKeyCode = NS_VK_PAUSE;					break;
-		case kScrollLockKeyCode:		raptorKeyCode = NS_VK_SCROLL_LOCK;		break;
-		case kPrintScreenKeyCode:		raptorKeyCode = NS_VK_PRINTSCREEN;		break;
-	
+    case kF1KeyCode:            raptorKeyCode = NS_VK_F1;             break;
+    case kF2KeyCode:            raptorKeyCode = NS_VK_F2;             break;
+    case kF3KeyCode:            raptorKeyCode = NS_VK_F3;             break;
+    case kF4KeyCode:            raptorKeyCode = NS_VK_F4;             break;
+    case kF5KeyCode:            raptorKeyCode = NS_VK_F5;             break;
+    case kF6KeyCode:            raptorKeyCode = NS_VK_F6;             break;
+    case kF7KeyCode:            raptorKeyCode = NS_VK_F7;             break;
+    case kF8KeyCode:            raptorKeyCode = NS_VK_F8;             break;
+    case kF9KeyCode:            raptorKeyCode = NS_VK_F9;             break;
+    case kF10KeyCode:           raptorKeyCode = NS_VK_F10;            break;
+    case kF11KeyCode:           raptorKeyCode = NS_VK_F11;            break;
+    case kF12KeyCode:           raptorKeyCode = NS_VK_F12;            break;
+//  case kF13KeyCode:           raptorKeyCode = NS_VK_F13;            break;    // clash with the 3 below
+//  case kF14KeyCode:           raptorKeyCode = NS_VK_F14;            break;
+//  case kF15KeyCode:           raptorKeyCode = NS_VK_F15;            break;
+    case kPauseKeyCode:         raptorKeyCode = NS_VK_PAUSE;          break;
+    case kScrollLockKeyCode:    raptorKeyCode = NS_VK_SCROLL_LOCK;    break;
+    case kPrintScreenKeyCode:   raptorKeyCode = NS_VK_PRINTSCREEN;    break;
+  
 // keypad
-		case kKeypad0KeyCode:				raptorKeyCode = NS_VK_NUMPAD0;				break;
-		case kKeypad1KeyCode:				raptorKeyCode = NS_VK_NUMPAD1;				break;
-		case kKeypad2KeyCode:				raptorKeyCode = NS_VK_NUMPAD2;				break;
-		case kKeypad3KeyCode:				raptorKeyCode = NS_VK_NUMPAD3;				break;
-		case kKeypad4KeyCode:				raptorKeyCode = NS_VK_NUMPAD4;				break;
-		case kKeypad5KeyCode:				raptorKeyCode = NS_VK_NUMPAD5;				break;
-		case kKeypad6KeyCode:				raptorKeyCode = NS_VK_NUMPAD6;				break;
-		case kKeypad7KeyCode:				raptorKeyCode = NS_VK_NUMPAD7;				break;
-		case kKeypad8KeyCode:				raptorKeyCode = NS_VK_NUMPAD8;				break;
-		case kKeypad9KeyCode:				raptorKeyCode = NS_VK_NUMPAD9;				break;
+    case kKeypad0KeyCode:       raptorKeyCode = NS_VK_NUMPAD0;        break;
+    case kKeypad1KeyCode:       raptorKeyCode = NS_VK_NUMPAD1;        break;
+    case kKeypad2KeyCode:       raptorKeyCode = NS_VK_NUMPAD2;        break;
+    case kKeypad3KeyCode:       raptorKeyCode = NS_VK_NUMPAD3;        break;
+    case kKeypad4KeyCode:       raptorKeyCode = NS_VK_NUMPAD4;        break;
+    case kKeypad5KeyCode:       raptorKeyCode = NS_VK_NUMPAD5;        break;
+    case kKeypad6KeyCode:       raptorKeyCode = NS_VK_NUMPAD6;        break;
+    case kKeypad7KeyCode:       raptorKeyCode = NS_VK_NUMPAD7;        break;
+    case kKeypad8KeyCode:       raptorKeyCode = NS_VK_NUMPAD8;        break;
+    case kKeypad9KeyCode:       raptorKeyCode = NS_VK_NUMPAD9;        break;
 
-		case kKeypadMultiplyKeyCode:	raptorKeyCode = NS_VK_MULTIPLY;			break;
-		case kKeypadAddKeyCode:				raptorKeyCode = NS_VK_ADD;					break;
-		case kKeypadSubtractKeyCode:	raptorKeyCode = NS_VK_SUBTRACT;			break;
-		case kKeypadDecimalKeyCode:		raptorKeyCode = NS_VK_DECIMAL;			break;
-		case kKeypadDivideKeyCode:		raptorKeyCode = NS_VK_DIVIDE;				break;
-//	case ??								:				raptorKeyCode = NS_VK_SEPARATOR;		break;
+    case kKeypadMultiplyKeyCode:  raptorKeyCode = NS_VK_MULTIPLY;     break;
+    case kKeypadAddKeyCode:       raptorKeyCode = NS_VK_ADD;          break;
+    case kKeypadSubtractKeyCode:  raptorKeyCode = NS_VK_SUBTRACT;     break;
+    case kKeypadDecimalKeyCode:   raptorKeyCode = NS_VK_DECIMAL;      break;
+    case kKeypadDivideKeyCode:    raptorKeyCode = NS_VK_DIVIDE;       break;
+//  case ??               :       raptorKeyCode = NS_VK_SEPARATOR;    break;
 
 
 // these may clash with forward delete and help
-    case kInsertKeyCode:				raptorKeyCode = NS_VK_INSERT;					break;
-    case kDeleteKeyCode:				raptorKeyCode = NS_VK_DELETE;					break;
+    case kInsertKeyCode:        raptorKeyCode = NS_VK_INSERT;         break;
+    case kDeleteKeyCode:        raptorKeyCode = NS_VK_DELETE;         break;
 
     case kBackspaceKeyCode:     raptorKeyCode = NS_VK_BACK;           break;
     case kTabKeyCode:           raptorKeyCode = NS_VK_TAB;            break;
     case kHomeKeyCode:          raptorKeyCode = NS_VK_HOME;           break;
     case kEndKeyCode:           raptorKeyCode = NS_VK_END;            break;
-		case kPageUpKeyCode:				raptorKeyCode = NS_VK_PAGE_UP;        break;
-		case kPageDownKeyCode:			raptorKeyCode = NS_VK_PAGE_DOWN;      break;
-		case kLeftArrowKeyCode:			raptorKeyCode = NS_VK_LEFT;           break;
-		case kRightArrowKeyCode:		raptorKeyCode = NS_VK_RIGHT;          break;
-		case kUpArrowKeyCode:				raptorKeyCode = NS_VK_UP;             break;
-		case kDownArrowKeyCode:			raptorKeyCode = NS_VK_DOWN;           break;
+    case kPageUpKeyCode:        raptorKeyCode = NS_VK_PAGE_UP;        break;
+    case kPageDownKeyCode:      raptorKeyCode = NS_VK_PAGE_DOWN;      break;
+    case kLeftArrowKeyCode:     raptorKeyCode = NS_VK_LEFT;           break;
+    case kRightArrowKeyCode:    raptorKeyCode = NS_VK_RIGHT;          break;
+    case kUpArrowKeyCode:       raptorKeyCode = NS_VK_UP;             break;
+    case kDownArrowKeyCode:     raptorKeyCode = NS_VK_DOWN;           break;
 
-		default:
-				if (aKeyEvent->isControl)
-				  charCode += 64;
-	  	
-				// if we haven't gotten the key code already, look at the char code
-				switch (charCode)
-				{
-					case kReturnCharCode:				raptorKeyCode = NS_VK_RETURN;				break;
-					case kEnterCharCode:				raptorKeyCode = NS_VK_RETURN;				break;			// fix me!
-					case ' ':										raptorKeyCode = NS_VK_SPACE;				break;
-					case ';':										raptorKeyCode = NS_VK_SEMICOLON;		break;
-					case '=':										raptorKeyCode = NS_VK_EQUALS;				break;
-					case ',':										raptorKeyCode = NS_VK_COMMA;				break;
-					case '.':										raptorKeyCode = NS_VK_PERIOD;				break;
-					case '/':										raptorKeyCode = NS_VK_SLASH;				break;
-					case '`':										raptorKeyCode = NS_VK_BACK_QUOTE;		break;
-					case '{':
-					case '[':										raptorKeyCode = NS_VK_OPEN_BRACKET;	break;
-					case '\\':									raptorKeyCode = NS_VK_BACK_SLASH;		break;
-					case '}':
-					case ']':										raptorKeyCode = NS_VK_CLOSE_BRACKET;	break;
-					case '\'':
-					case '"':										raptorKeyCode = NS_VK_QUOTE;				break;
-					
-					default:
-						
-						if (charCode >= '0' && charCode <= '9')		// numerals
-						{
-							raptorKeyCode = charCode;
-						}
-						else if (charCode >= 'a' && charCode <= 'z')		// lowercase
-						{
-							raptorKeyCode = toupper(charCode);
-						}
-						else if (charCode >= 'A' && charCode <= 'Z')		// uppercase
-						{
-							raptorKeyCode = charCode;
-						}
+    default:
+        if (aKeyEvent->isControl)
+          charCode += 64;
+      
+        // if we haven't gotten the key code already, look at the char code
+        switch (charCode)
+        {
+          case kReturnCharCode:       raptorKeyCode = NS_VK_RETURN;       break;
+          case kEnterCharCode:        raptorKeyCode = NS_VK_RETURN;       break;      // fix me!
+          case ' ':                   raptorKeyCode = NS_VK_SPACE;        break;
+          case ';':                   raptorKeyCode = NS_VK_SEMICOLON;    break;
+          case '=':                   raptorKeyCode = NS_VK_EQUALS;       break;
+          case ',':                   raptorKeyCode = NS_VK_COMMA;        break;
+          case '.':                   raptorKeyCode = NS_VK_PERIOD;       break;
+          case '/':                   raptorKeyCode = NS_VK_SLASH;        break;
+          case '`':                   raptorKeyCode = NS_VK_BACK_QUOTE;   break;
+          case '{':
+          case '[':                   raptorKeyCode = NS_VK_OPEN_BRACKET; break;
+          case '\\':                  raptorKeyCode = NS_VK_BACK_SLASH;   break;
+          case '}':
+          case ']':                   raptorKeyCode = NS_VK_CLOSE_BRACKET;  break;
+          case '\'':
+          case '"':                   raptorKeyCode = NS_VK_QUOTE;        break;
+          
+          default:
+            
+            if (charCode >= '0' && charCode <= '9')   // numerals
+            {
+              raptorKeyCode = charCode;
+            }
+            else if (charCode >= 'a' && charCode <= 'z')    // lowercase
+            {
+              raptorKeyCode = toupper(charCode);
+            }
+            else if (charCode >= 'A' && charCode <= 'Z')    // uppercase
+            {
+              raptorKeyCode = charCode;
+            }
 
-						break;
-				}
-	}
+            break;
+        }
+  }
 
-	return raptorKeyCode;
+  return raptorKeyCode;
 }
 
 static PRBool IsSpecialRaptorKey(UInt32 macKeyCode)
 {
-	PRBool	isSpecial;
+  PRBool  isSpecial;
 
-	// 
-	// this table is used to determine which keys are special and should not generate a charCode
-	//	
-	switch (macKeyCode)
-	{
+  // 
+  // this table is used to determine which keys are special and should not generate a charCode
+  //  
+  switch (macKeyCode)
+  {
 // modifiers. We don't get separate events for these
 // yet
-		case kEscapeKeyCode:				isSpecial = PR_TRUE; break;
-		case kShiftKeyCode:					isSpecial = PR_TRUE; break;
-		case kCommandKeyCode:       isSpecial = PR_TRUE; break;
-		case kCapsLockKeyCode:			isSpecial = PR_TRUE; break;
-		case kControlKeyCode:				isSpecial = PR_TRUE; break;
-		case kOptionkeyCode:				isSpecial = PR_TRUE; break;
-		case kClearKeyCode:					isSpecial = PR_TRUE; break;
+    case kEscapeKeyCode:        isSpecial = PR_TRUE; break;
+    case kShiftKeyCode:         isSpecial = PR_TRUE; break;
+    case kCommandKeyCode:       isSpecial = PR_TRUE; break;
+    case kCapsLockKeyCode:      isSpecial = PR_TRUE; break;
+    case kControlKeyCode:       isSpecial = PR_TRUE; break;
+    case kOptionkeyCode:        isSpecial = PR_TRUE; break;
+    case kClearKeyCode:         isSpecial = PR_TRUE; break;
 
 // function keys
-		case kF1KeyCode:					isSpecial = PR_TRUE; break;
-		case kF2KeyCode:					isSpecial = PR_TRUE; break;
-		case kF3KeyCode:					isSpecial = PR_TRUE; break;
-		case kF4KeyCode:					isSpecial = PR_TRUE; break;
-		case kF5KeyCode:					isSpecial = PR_TRUE; break;
-		case kF6KeyCode:					isSpecial = PR_TRUE; break;
-		case kF7KeyCode:					isSpecial = PR_TRUE; break;
-		case kF8KeyCode:					isSpecial = PR_TRUE; break;
-		case kF9KeyCode:					isSpecial = PR_TRUE; break;
-		case kF10KeyCode:					isSpecial = PR_TRUE; break;
-		case kF11KeyCode:					isSpecial = PR_TRUE; break;
-		case kF12KeyCode:					isSpecial = PR_TRUE; break;
-		case kPauseKeyCode:				isSpecial = PR_TRUE; break;
-		case kScrollLockKeyCode:	isSpecial = PR_TRUE; break;
-		case kPrintScreenKeyCode:	isSpecial = PR_TRUE; break;
+    case kF1KeyCode:            isSpecial = PR_TRUE; break;
+    case kF2KeyCode:            isSpecial = PR_TRUE; break;
+    case kF3KeyCode:            isSpecial = PR_TRUE; break;
+    case kF4KeyCode:            isSpecial = PR_TRUE; break;
+    case kF5KeyCode:            isSpecial = PR_TRUE; break;
+    case kF6KeyCode:            isSpecial = PR_TRUE; break;
+    case kF7KeyCode:            isSpecial = PR_TRUE; break;
+    case kF8KeyCode:            isSpecial = PR_TRUE; break;
+    case kF9KeyCode:            isSpecial = PR_TRUE; break;
+    case kF10KeyCode:           isSpecial = PR_TRUE; break;
+    case kF11KeyCode:           isSpecial = PR_TRUE; break;
+    case kF12KeyCode:           isSpecial = PR_TRUE; break;
+    case kPauseKeyCode:         isSpecial = PR_TRUE; break;
+    case kScrollLockKeyCode:    isSpecial = PR_TRUE; break;
+    case kPrintScreenKeyCode:   isSpecial = PR_TRUE; break;
 
-		case kInsertKeyCode:        isSpecial = PR_TRUE; break;
-		case kDeleteKeyCode:				isSpecial = PR_TRUE; break;
-		case kTabKeyCode:						isSpecial = PR_TRUE; break;
-		case kBackspaceKeyCode:     isSpecial = PR_TRUE; break;
+    case kInsertKeyCode:        isSpecial = PR_TRUE; break;
+    case kDeleteKeyCode:        isSpecial = PR_TRUE; break;
+    case kTabKeyCode:           isSpecial = PR_TRUE; break;
+    case kBackspaceKeyCode:     isSpecial = PR_TRUE; break;
 
-		case kHomeKeyCode:					isSpecial = PR_TRUE; break;	
-		case kEndKeyCode:						isSpecial = PR_TRUE; break;
-		case kPageUpKeyCode:				isSpecial = PR_TRUE; break;
-		case kPageDownKeyCode:			isSpecial = PR_TRUE; break;
-		case kLeftArrowKeyCode:			isSpecial = PR_TRUE; break;
-		case kRightArrowKeyCode:		isSpecial = PR_TRUE; break;
-		case kUpArrowKeyCode:				isSpecial = PR_TRUE; break;
-		case kDownArrowKeyCode:			isSpecial = PR_TRUE; break;
-		case kReturnKeyCode:        isSpecial = PR_TRUE; break;
-		case kEnterKeyCode:         isSpecial = PR_TRUE; break;
-		case kPowerbookEnterKeyCode: isSpecial = PR_TRUE; break;
+    case kHomeKeyCode:          isSpecial = PR_TRUE; break; 
+    case kEndKeyCode:           isSpecial = PR_TRUE; break;
+    case kPageUpKeyCode:        isSpecial = PR_TRUE; break;
+    case kPageDownKeyCode:      isSpecial = PR_TRUE; break;
+    case kLeftArrowKeyCode:     isSpecial = PR_TRUE; break;
+    case kRightArrowKeyCode:    isSpecial = PR_TRUE; break;
+    case kUpArrowKeyCode:       isSpecial = PR_TRUE; break;
+    case kDownArrowKeyCode:     isSpecial = PR_TRUE; break;
+    case kReturnKeyCode:        isSpecial = PR_TRUE; break;
+    case kEnterKeyCode:         isSpecial = PR_TRUE; break;
+    case kPowerbookEnterKeyCode: isSpecial = PR_TRUE; break;
 
-		default:							isSpecial = PR_FALSE; break;
-	}
-	return isSpecial;
+    default:                    isSpecial = PR_FALSE; break;
+  }
+  return isSpecial;
 }
 
-- (void) convert:(NSEvent*)aKeyEvent message:(PRUint32)aMessage 
-           isChar:(PRBool*)aIsChar
-           toGeckoEvent:(nsKeyEvent*)outGeckoEvent
+- (void) convertKeyEvent:(NSEvent*)aKeyEvent message:(PRUint32)aMessage 
+            toGeckoEvent:(nsKeyEvent*)outGeckoEvent
 {
-  [self convert:aKeyEvent message:aMessage toGeckoEvent:outGeckoEvent];
+  [self convertEvent:aKeyEvent message:aMessage toGeckoEvent:outGeckoEvent];
 
-  // Initialize the out boolean for whether or not we are using
-  // charCodes to false.
-  if (aIsChar)
-    *aIsChar = PR_FALSE;
+  // Initialize whether or not we are using charCodes to false.
+  outGeckoEvent->isChar = PR_FALSE;
     
   // Check to see if the message is a key press that does not involve
   // one of our special key codes.
@@ -3656,10 +3671,23 @@ static PRBool IsSpecialRaptorKey(UInt32 macKeyCode)
     if (!outGeckoEvent->isControl && !outGeckoEvent->isMeta)
       outGeckoEvent->isControl = outGeckoEvent->isAlt = outGeckoEvent->isMeta = 0;
     
+    outGeckoEvent->charCode = 0;
+    outGeckoEvent->keyCode  = 0;
+
+    NSString* unmodifiedChars = [aKeyEvent charactersIgnoringModifiers];
+    if ([unmodifiedChars length] > 0)
+      outGeckoEvent->charCode = [unmodifiedChars characterAtIndex:0];
+    
     // We're not a special key.
-    outGeckoEvent->keyCode	= 0;
-    if (aIsChar)
-      *aIsChar =  PR_TRUE; 
+    outGeckoEvent->isChar = PR_TRUE;
+
+    // convert control-modified charCode to raw charCode (with appropriate case)
+    if (outGeckoEvent->isControl && outGeckoEvent->charCode <= 26)
+      outGeckoEvent->charCode += (outGeckoEvent->isShift) ? ('A' - 1) : ('a' - 1);
+
+    // gecko also wants charCode to be in the appropriate case
+    if (outGeckoEvent->isShift && (outGeckoEvent->charCode >= 'a' && outGeckoEvent->charCode <= 'z'))
+      outGeckoEvent->charCode -= 32;    // convert to uppercase
   }
   else
   {

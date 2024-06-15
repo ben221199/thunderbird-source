@@ -60,7 +60,7 @@
 typedef nsDataHashtable<nsCStringHashKey, PRUint32> nsFailedProxyTable;
 
 class nsProxyInfo;
-class nsProtocolInfo;
+struct nsProtocolInfo;
 
 class nsProtocolProxyService : public nsPIProtocolProxyService
                              , public nsIObserver
@@ -370,7 +370,6 @@ protected:
     PRInt32                      mSOCKSProxyVersion;
     PRBool                       mSOCKSProxyRemoteDNS;
 
-    nsCString                    mPACURI;
     nsRefPtr<nsPACMan>           mPACMan;  // non-null if we are using PAC
 
     PRTime                       mSessionStart;

@@ -370,29 +370,43 @@ var gFeedSubscriptionsWindow = {
       }
     }
 
-    var msgdb = aFolder.QueryInterface(Components.interfaces.nsIMsgFolder).getMsgDatabase(null);
-    var folderInfo = msgdb.dBFolderInfo;
-    var feedurls = folderInfo.getCharPtrProperty("feedUrl");
-    var feedUrlArray = feedurls.split("|"); 
-
-    for (url in feedUrlArray)
+    var feeds = this.getFeedsInFolder(aFolder);
+    
+    for (feed in feeds)
     {
-      if (!feedUrlArray[url])
-        continue;
-      var feedResource  = rdf.GetResource(feedUrlArray[url]);
-      var feed = new Feed(feedResource, this.mRSSServer);
-
       // Special case, if a folder only has a single feed associated with it, then just use the feed
       // in the view and don't show the folder at all. 
 //      if (feedUrlArray.length <= 2 && !aFolder.hasSubFolders) // Note: split always adds an empty element to the array...
 //        this.mFeedContainers[aCurrentLength] = this.makeFeedObject(feed, aCurrentLevel);
 //      else // now add any feed urls for the folder
-        folderObject.children.push(this.makeFeedObject(feed, aCurrentLevel + 1));           
+        folderObject.children.push(this.makeFeedObject(feeds[feed], aCurrentLevel + 1));           
     }
 
     return folderObject;
   },
 
+  getFeedsInFolder: function (aFolder)
+  {
+    var feeds = new Array();
+    try
+    {
+      var msgdb = aFolder.QueryInterface(Components.interfaces.nsIMsgFolder).getMsgDatabase(null);
+      var folderInfo = msgdb.dBFolderInfo;
+      var feedurls = folderInfo.getCharPtrProperty("feedUrl");
+      var feedUrlArray = feedurls.split("|");
+      for (url in feedUrlArray)
+      {
+        if (!feedUrlArray[url])
+          continue;
+        var feedResource  = rdf.GetResource(feedUrlArray[url]);
+        var feed = new Feed(feedResource, this.mRSSServer);
+        feeds.push(feed);
+      }
+    }
+    catch(ex) {}
+    return feeds;
+  },
+  
   makeFeedObject: function (aFeed, aLevel)
   {
     // look inside the data source for the feed properties
@@ -800,22 +814,141 @@ var gFeedSubscriptionsWindow = {
     },
   },
 
+  exportOPML: function()
+  {
+    if (this.mRSSServer.rootFolder.hasSubFolders)
+    {
+      var opmlDoc = document.implementation.createDocument("","opml",null);
+      var opmlRoot = opmlDoc.documentElement;
+      opmlRoot.setAttribute("version","1.0");
+
+      this.generatePPSpace(opmlRoot,"  ");
+
+      // Make the <head> element
+      var head = opmlDoc.createElement("head");
+      this.generatePPSpace(head, "    ");
+      var title = opmlDoc.createElement("title");
+      title.appendChild(opmlDoc.createTextNode(this.mBundle.getString("subscribe-OPMLExportFileTitle")));
+      head.appendChild(title);
+      this.generatePPSpace(head, "    ");
+      var dt = opmlDoc.createElement("dateCreated");
+      dt.appendChild(opmlDoc.createTextNode((new Date()).toGMTString()));
+      head.appendChild(dt);
+      this.generatePPSpace(head, "  ");
+      opmlRoot.appendChild(head);
+
+      this.generatePPSpace(opmlRoot, "  ");
+
+      //add <outline>s to the <body>
+      var body = opmlDoc.createElement("body");
+      this.generateOutline(this.mRSSServer.rootFolder, body, 4);
+      this.generatePPSpace(body, "  ");
+      opmlRoot.appendChild(body);
+
+      this.generatePPSpace(opmlRoot, "");
+
+      var serial=new XMLSerializer();
+      var rv = pickSaveAs(this.mBundle.getString("subscribe-OPMLExportTitle"),'$all',
+                          this.mBundle.getString("subscribe-OPMLExportFileName"));
+      if(rv.reason == PICK_CANCEL)
+        return;
+      else if(rv)
+      {
+        //debug("opml:\n"+serial.serializeToString(opmlDoc)+"\n");
+        var file = new LocalFile(rv.file, MODE_WRONLY | MODE_CREATE);
+        serial.serializeToStream(opmlDoc,file.outputStream,opmlDoc.xmlEncoding);
+        file.close();
+      }
+    }
+  },
+
+  generatePPSpace: function(aNode, indentString)
+  {
+    aNode.appendChild(aNode.ownerDocument.createTextNode("\n"));
+    aNode.appendChild(aNode.ownerDocument.createTextNode(indentString));
+  },
+  
+  generateOutline: function(baseFolder, parent, indentLevel)
+  {
+    var folderEnumerator = baseFolder.GetSubFolders();
+    var done = false;
+
+    // pretty printing
+    var indentString = "";
+    for(i = 0; i < indentLevel; i++)
+      indentString = indentString + " ";
+ 
+    while (!done) 
+    {
+      var folder = folderEnumerator.currentItem().QueryInterface(Components.interfaces.nsIMsgFolder);
+      if (folder && !folder.getFlag(MSG_FOLDER_FLAG_TRASH)) 
+      {
+        var outline;
+        if(folder.hasSubFolders)
+        {
+          // Make a mostly empty outline element
+          outline = parent.ownerDocument.createElement("outline");
+          outline.setAttribute("text",folder.prettiestName);
+          this.generateOutline(folder, outline, indentLevel+2); // recurse
+          this.generatePPSpace(parent, indentString);
+          this.generatePPSpace(outline, indentString);
+          parent.appendChild(outline);
+        }
+        else
+        {
+          // Add outline elements with xmlUrls
+          var feeds = this.getFeedsInFolder(folder);
+          for (feed in feeds)
+          {
+            outline = this.opmlFeedToOutline(feeds[feed],parent.ownerDocument);
+            this.generatePPSpace(parent, indentString);
+            parent.appendChild(outline);
+          }
+        }
+      }
+      
+      try {
+        folderEnumerator.next();
+      } 
+      catch (ex)
+      {
+        done = true;
+      }
+    }
+  },
+  
+  opmlFeedToOutline: function(aFeed,aDoc)
+  {
+    var outRv = aDoc.createElement("outline");
+    outRv.setAttribute("title",aFeed.title);
+    outRv.setAttribute("text",aFeed.title);
+    outRv.setAttribute("type","rss");
+    outRv.setAttribute("version","RSS");
+    outRv.setAttribute("xmlUrl",aFeed.url);
+    outRv.setAttribute("htmlUrl",aFeed.link);
+    return outRv;
+  },
+
   importOPML: function()
   {
     var rv = pickOpen(this.mBundle.getString("subscribe-OPMLImportTitle"), '$xml $opml $all');
     if(rv.reason == PICK_CANCEL)
-      return; 
+      return;
     
-    var file = new LocalFile(rv.file, MODE_RDONLY);
     var promptService = Components.classes["@mozilla.org/embedcomp/prompt-service;1"].getService(IPS);
-    
-    // return if we couldn't open the file at all...
-    if(!file)      
-      return promptService.alert(window, null, this.mBundle.getString("subscribe-errorOpeningFile"));
+    var stream = Components.classes["@mozilla.org/network/file-input-stream;1"].createInstance(Components.interfaces.nsIFileInputStream);
+    var opmlDom = null;
 
-    var text = file.read();  
-    var parser = new DOMParser();
-    var opmlDom = parser.parseFromString(text, 'application/xml');
+    // read in file as raw bytes, so Expat can do the decoding for us
+    try{
+      stream.init(rv.file, MODE_RDONLY, PERM_IROTH, 0);
+      var parser = new DOMParser();
+      opmlDom = parser.parseFromStream(stream, null, stream.available(), 'application/xml');
+    }catch(e){
+      return promptService.alert(window, null, this.mBundle.getString("subscribe-errorOpeningFile"));
+    }finally{
+      stream.close();
+    }
 
     // return if the user didn't give us an OPML file
     if(!opmlDom || !(opmlDom.documentElement.tagName == "opml"))

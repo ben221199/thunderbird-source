@@ -163,7 +163,8 @@ nsMsgAccountManager::nsMsgAccountManager() :
   m_haveShutdown(PR_FALSE),
   m_shutdownInProgress(PR_FALSE),
   m_userAuthenticated(PR_FALSE),
-  m_loadingVirtualFolders(PR_FALSE)
+  m_loadingVirtualFolders(PR_FALSE),
+  m_virtualFoldersLoaded(PR_FALSE)
 {
 }
 
@@ -2973,7 +2974,7 @@ NS_IMETHODIMP nsMsgAccountManager::LoadVirtualFolders()
   }
 
   m_loadingVirtualFolders = PR_FALSE;
-
+  m_virtualFoldersLoaded = PR_TRUE;
   return rv;
 }
 
@@ -2981,7 +2982,8 @@ NS_IMETHODIMP nsMsgAccountManager::LoadVirtualFolders()
 
 NS_IMETHODIMP nsMsgAccountManager::SaveVirtualFolders()
 {
-
+  if (!m_virtualFoldersLoaded)
+    return NS_OK;
   nsCOMPtr<nsISupportsArray> allServers;
   nsresult rv = GetAllServers(getter_AddRefs(allServers));
   nsCOMPtr <nsILocalFile> file;
@@ -3111,7 +3113,8 @@ NS_IMETHODIMP nsMsgAccountManager::OnItemRemoved(nsIRDFResource *parentItem, nsI
   folder->GetFlags(&folderFlags);
   if (folderFlags & MSG_FOLDER_FLAG_VIRTUAL) // if we removed a VF, flush VF list to disk.
     rv = SaveVirtualFolders();
-
+  // clear flags on deleted folder, especially MSG_FOLDER_FLAG_VIRTUAL
+  folder->SetFlags(0);
   // need to check if the underlying folder for a VF was removed, in which case we need to
   // remove the virtual folder.
 

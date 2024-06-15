@@ -69,8 +69,6 @@ public:
 
   NS_IMETHOD  GetScrollPosition(nscoord &aX, nscoord &aY) const;
   NS_IMETHOD  ScrollTo(nscoord aX, nscoord aY, PRUint32 aUpdateFlags);
-  NS_IMETHOD  GetScrollbarVisibility(PRBool *aVerticalVisible,
-                                     PRBool *aHorizontalVisible) const;
   NS_IMETHOD  SetScrollProperties(PRUint32 aProperties);
   NS_IMETHOD  GetScrollProperties(PRUint32 *aProperties);
   NS_IMETHOD  SetLineHeight(nscoord aHeight);
@@ -79,7 +77,8 @@ public:
   NS_IMETHOD  GetPageScrollDistances(nsSize *aDistances);
   NS_IMETHOD  ScrollByPages(PRInt32 aNumPagesX, PRInt32 aNumPagesY);
   NS_IMETHOD  ScrollByWhole(PRBool aTop);
-  
+  NS_IMETHOD  CanScroll(PRBool aHorizontal, PRBool aForward, PRBool &aResult);
+
   NS_IMETHOD_(nsIView*) View();
 
   NS_IMETHOD  AddScrollPositionListener(nsIScrollPositionListener* aListener);

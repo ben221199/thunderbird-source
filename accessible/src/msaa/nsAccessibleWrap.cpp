@@ -282,7 +282,16 @@ NS_IMETHODIMP nsAccessibleWrap::GetDescription(nsAString& aDescription)
       (currentRole != ROLE_LISTITEM && currentRole != ROLE_MENUITEM &&
        currentRole != ROLE_RADIOBUTTON && currentRole != ROLE_PAGETAB &&
        currentRole != ROLE_OUTLINEITEM)) {
-    return rv;
+    nsAutoString description;
+    nsAccessible::GetDescription(description);
+    if (!description.IsEmpty()) {
+      // Signal to screen readers that this description is speakable
+      // and is not a formatted positional information description
+      // Don't localize the "Description: " part of this string, it will be 
+      // parsed out by assistive technologies.
+      aDescription = NS_LITERAL_STRING("Description: ") + description;
+    }
+    return NS_OK;
   }
   
   nsCOMPtr<nsIAccessible> parent;
@@ -396,7 +405,7 @@ STDMETHODIMP nsAccessibleWrap::get_accRole(
     return E_FAIL;
 
   // -- Try enumerated role
-  if (role != ROLE_NOTHING) {
+  if (role != ROLE_NOTHING && role != ROLE_CLIENT) {
     pvarRole->vt = VT_I4;
     pvarRole->lVal = role;  // Normal enumerated role
     return S_OK;
@@ -408,12 +417,14 @@ STDMETHODIMP nsAccessibleWrap::get_accRole(
   nsCOMPtr<nsIDOMNode> domNode;
   nsCOMPtr<nsIAccessNode> accessNode(do_QueryInterface(xpAccessible));
   NS_ASSERTION(accessNode, "No accessnode for accessible");
-  accessNode->GetDOMNode(getter_AddRefs(domNode));
-  nsCOMPtr<nsIContent> content(do_QueryInterface(domNode));
+  accessNode->GetDOMNode(getter_AddRefs(domNode));  
+  nsIContent *content = GetRoleContent(domNode);
   NS_ASSERTION(content, "No content for accessible");
   if (content) {
     nsAutoString roleString;
-    content->GetAttr(kNameSpaceID_XHTML2_Unofficial, nsAccessibilityAtoms::role, roleString);
+    if (role != ROLE_CLIENT) {
+      content->GetAttr(kNameSpaceID_XHTML2_Unofficial, nsAccessibilityAtoms::role, roleString);
+    }
     if (roleString.IsEmpty()) {
       nsINodeInfo *nodeInfo = content->GetNodeInfo();
       if (nodeInfo) {
@@ -687,6 +698,7 @@ STDMETHODIMP nsAccessibleWrap::accNavigate(
     return E_FAIL;
 
   VariantInit(pvarEndUpAt);
+  PRUint32 xpRelation = 0;
 
   switch(navDir) {
     case NAVDIR_DOWN: 
@@ -713,6 +725,33 @@ STDMETHODIMP nsAccessibleWrap::accNavigate(
     case NAVDIR_UP:
       xpAccessibleStart->GetAccessibleAbove(getter_AddRefs(xpAccessibleResult));
       break;
+    // MSAA relationship extensions to accNavigate
+    case NAVRELATION_CONTROLLED_BY:    xpRelation = RELATION_CONTROLLED_BY;    break;
+    case NAVRELATION_CONTROLLER_FOR:   xpRelation = RELATION_CONTROLLER_FOR;   break;
+    case NAVRELATION_LABEL_FOR:        xpRelation = RELATION_LABEL_FOR;        break;
+    case NAVRELATION_LABELLED_BY:      xpRelation = RELATION_LABELLED_BY;      break;
+    case NAVRELATION_MEMBER_OF:        xpRelation = RELATION_MEMBER_OF;        break;
+    case NAVRELATION_NODE_CHILD_OF:    xpRelation = RELATION_NODE_CHILD_OF;    break;
+    case NAVRELATION_FLOWS_TO:         xpRelation = RELATION_FLOWS_TO;         break;
+    case NAVRELATION_FLOWS_FROM:       xpRelation = RELATION_FLOWS_FROM;       break;
+    case NAVRELATION_SUBWINDOW_OF:     xpRelation = RELATION_SUBWINDOW_OF;     break;
+    case NAVRELATION_EMBEDS:           xpRelation = RELATION_EMBEDS;           break;
+    case NAVRELATION_EMBEDDED_BY:      xpRelation = RELATION_EMBEDDED_BY;      break;
+    case NAVRELATION_POPUP_FOR:        xpRelation = RELATION_POPUP_FOR;        break;
+    case NAVRELATION_PARENT_WINDOW_OF: xpRelation = RELATION_PARENT_WINDOW_OF; break;
+    case NAVRELATION_DEFAULT_BUTTON:   xpRelation = RELATION_DEFAULT_BUTTON;   break;
+    case NAVRELATION_DESCRIBED_BY:     xpRelation = RELATION_DESCRIBED_BY;     break;
+    case NAVRELATION_DESCRIPTION_FOR:  xpRelation = RELATION_DESCRIPTION_FOR;  break;
+  }
+
+  pvarEndUpAt->vt = VT_EMPTY;
+
+  if (xpRelation) {
+    nsresult rv = GetAccessibleRelated(xpRelation,
+                                       getter_AddRefs(xpAccessibleResult));
+    if (rv == NS_ERROR_NOT_IMPLEMENTED) {
+      return E_NOTIMPL;
+    }
   }
 
   if (xpAccessibleResult) {
@@ -720,7 +759,6 @@ STDMETHODIMP nsAccessibleWrap::accNavigate(
     pvarEndUpAt->vt = VT_DISPATCH;
     return NS_OK;
   } 
-  pvarEndUpAt->vt = VT_EMPTY;
   return E_FAIL;
 }
 

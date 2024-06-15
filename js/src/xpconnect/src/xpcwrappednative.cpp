@@ -310,14 +310,8 @@ XPCWrappedNative::GetNewOrUsed(XPCCallContext& ccx,
         if(NS_FAILED(rv))
             return rv;
 
-        // Make sure to get the actual wrapped native for |parent| if
-        // it got wrapped in an XPCNativeWrapper.
-        if(parent != plannedParent &&
-           XPCNativeWrapper::IsNativeWrapper(ccx, parent))
-        {
-            parent = XPCNativeWrapper::GetWrappedNative(ccx, parent)->
-                GetFlatJSObject();
-        }
+        NS_ASSERTION(!XPCNativeWrapper::IsNativeWrapper(ccx, parent),
+                     "Parent should never be an XPCNativeWrapper here");
 
         if(parent != plannedParent)
         {
@@ -407,6 +401,17 @@ XPCWrappedNative::GetNewOrUsed(XPCCallContext& ccx,
         NS_ASSERTION(NS_FAILED(rv), "returning NS_OK on failure");
         return rv;
     }
+
+#if DEBUG_XPCNativeWrapper
+    {
+        char* s = wrapper->ToString(ccx);
+        NS_ASSERTION(wrapper->GetFlatJSObject(), "eh?");
+        printf("Created wrapped native %s, flat JSObject is %p\n",
+               s, (void*)wrapper->GetFlatJSObject());
+        if (s)
+            JS_smprintf_free(s);
+    }
+#endif
 
     // Redundant wrapper must be killed outside of the map lock.
     XPCWrappedNative* wrapperToKill = nsnull;
@@ -1306,7 +1311,13 @@ XPCWrappedNative::FindTearOff(XPCCallContext& ccx,
             {
                 if(needJSObject && !to->GetJSObject())
                 {
+                    AutoMarkingWrappedNativeTearOffPtr tearoff(ccx, to);
                     rv = InitTearOffJSObject(ccx, to);
+                    // During shutdown, we don't sweep tearoffs.  So make sure
+                    // to unmark manually in case the auto-marker marked us.
+                    // We shouldn't ever be getting here _during_ our
+                    // Mark/Sweep cycle, so this should be safe.
+                    to->Unmark();
                     if(NS_FAILED(rv))
                         to = nsnull;
                 }
@@ -1332,9 +1343,17 @@ XPCWrappedNative::FindTearOff(XPCCallContext& ccx,
         to = newChunk->mTearOffs;
     }
 
-    rv = InitTearOff(ccx, to, aInterface, needJSObject);
-    if(NS_FAILED(rv))
-        to = nsnull;
+    {
+        // Scope keeps |tearoff| from leaking across the return_result: label
+        AutoMarkingWrappedNativeTearOffPtr tearoff(ccx, to);
+        rv = InitTearOff(ccx, to, aInterface, needJSObject);
+        // During shutdown, we don't sweep tearoffs.  So make sure to unmark
+        // manually in case the auto-marker marked us.  We shouldn't ever be
+        // getting here _during_ our Mark/Sweep cycle, so this should be safe.
+        to->Unmark();
+        if(NS_FAILED(rv))
+            to = nsnull;
+    }
 
 return_result:
 
@@ -2468,9 +2487,11 @@ XPCWrappedNative::ToString(XPCCallContext& ccx,
 {
 #ifdef DEBUG
 #  define FMT_ADDR " @ 0x%p"
+#  define FMT_STR(str) str
 #  define PARAM_ADDR(w) , w
 #else
 #  define FMT_ADDR ""
+#  define FMT_STR(str)
 #  define PARAM_ADDR(w)
 #endif
 
@@ -2516,12 +2537,13 @@ XPCWrappedNative::ToString(XPCCallContext& ccx,
     {
         return nsnull;
     }
-    const char* fmt = "[xpconnect wrapped %s" FMT_ADDR "]";
+    const char* fmt = "[xpconnect wrapped %s" FMT_ADDR FMT_STR(" (native")
+        FMT_ADDR FMT_STR(")") "]";
     if(si)
     {
-        fmt = "[object %s" FMT_ADDR "]";
+        fmt = "[object %s" FMT_ADDR FMT_STR(" (native") FMT_ADDR FMT_STR(")") "]";
     }
-    sz = JS_smprintf(fmt, name PARAM_ADDR(this));
+    sz = JS_smprintf(fmt, name PARAM_ADDR(this) PARAM_ADDR(mIdentity));
 
     JS_smprintf_free(name);
 

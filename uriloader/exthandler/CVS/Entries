@@ -1,17 +1,17 @@
-/.cvsignore/1.1/Tue Jun 20 20:43:54 2000//TTHUNDERBIRD_1_1a1_RELEASE
-/Makefile.in/1.60/Mon May  2 16:30:03 2005//TTHUNDERBIRD_1_1a1_RELEASE
-/nsCExternalHandlerService.idl/1.6/Fri May 21 00:28:52 2004//TTHUNDERBIRD_1_1a1_RELEASE
-/nsExternalHelperAppService.cpp/1.289/Sun Apr 24 21:16:27 2005//TTHUNDERBIRD_1_1a1_RELEASE
-/nsExternalHelperAppService.h/1.73/Sun Apr 24 21:16:27 2005//TTHUNDERBIRD_1_1a1_RELEASE
-/nsExternalProtocolHandler.cpp/1.30/Wed Nov 24 22:48:43 2004//TTHUNDERBIRD_1_1a1_RELEASE
-/nsExternalProtocolHandler.h/1.6/Fri May 21 00:28:52 2004//TTHUNDERBIRD_1_1a1_RELEASE
-/nsHelperAppRDF.h/1.6/Sat Apr 17 16:52:02 2004//TTHUNDERBIRD_1_1a1_RELEASE
-/nsIExternalHelperAppService.idl/1.24/Fri Apr 15 19:41:07 2005//TTHUNDERBIRD_1_1a1_RELEASE
-/nsIExternalProtocolService.idl/1.9/Fri Oct 29 16:48:38 2004//TTHUNDERBIRD_1_1a1_RELEASE
-/nsIHelperAppLauncherDialog.idl/1.10/Sun Mar 13 17:03:44 2005//TTHUNDERBIRD_1_1a1_RELEASE
-/nsIInternetConfigService.idl/1.11/Sat Apr 17 16:52:02 2004//TTHUNDERBIRD_1_1a1_RELEASE
-/nsMIMEInfoImpl.cpp/1.53/Fri Feb 25 09:02:14 2005//TTHUNDERBIRD_1_1a1_RELEASE
-/nsMIMEInfoImpl.h/1.25/Fri Feb 25 09:02:14 2005//TTHUNDERBIRD_1_1a1_RELEASE
+/.cvsignore/1.1/Tue Jun 20 20:43:54 2000//TTHUNDERBIRD_1_1a2_RELEASE
+/Makefile.in/1.60/Mon May  2 16:30:03 2005//TTHUNDERBIRD_1_1a2_RELEASE
+/nsCExternalHandlerService.idl/1.6/Fri May 21 00:28:52 2004//TTHUNDERBIRD_1_1a2_RELEASE
+/nsExternalHelperAppService.cpp/1.290/Wed Jul  6 23:12:21 2005//TTHUNDERBIRD_1_1a2_RELEASE
+/nsExternalHelperAppService.h/1.73/Sun Apr 24 21:16:27 2005//TTHUNDERBIRD_1_1a2_RELEASE
+/nsExternalProtocolHandler.cpp/1.30/Wed Nov 24 22:48:43 2004//TTHUNDERBIRD_1_1a2_RELEASE
+/nsExternalProtocolHandler.h/1.6/Fri May 21 00:28:52 2004//TTHUNDERBIRD_1_1a2_RELEASE
+/nsHelperAppRDF.h/1.6/Sat Apr 17 16:52:02 2004//TTHUNDERBIRD_1_1a2_RELEASE
+/nsIExternalHelperAppService.idl/1.24/Fri Apr 15 19:41:07 2005//TTHUNDERBIRD_1_1a2_RELEASE
+/nsIExternalProtocolService.idl/1.9/Fri Oct 29 16:48:38 2004//TTHUNDERBIRD_1_1a2_RELEASE
+/nsIHelperAppLauncherDialog.idl/1.10/Sun Mar 13 17:03:44 2005//TTHUNDERBIRD_1_1a2_RELEASE
+/nsIInternetConfigService.idl/1.11/Sat Apr 17 16:52:02 2004//TTHUNDERBIRD_1_1a2_RELEASE
+/nsMIMEInfoImpl.cpp/1.53/Fri Feb 25 09:02:14 2005//TTHUNDERBIRD_1_1a2_RELEASE
+/nsMIMEInfoImpl.h/1.25/Fri Feb 25 09:02:14 2005//TTHUNDERBIRD_1_1a2_RELEASE
 D/beos////
 D/mac////
 D/os2////

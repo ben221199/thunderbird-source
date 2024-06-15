@@ -85,6 +85,7 @@ static NS_DEFINE_CID(kZipReaderCID, NS_ZIPREADER_CID);
 nsIIOService    *nsScriptSecurityManager::sIOService = nsnull;
 nsIXPConnect    *nsScriptSecurityManager::sXPConnect = nsnull;
 nsIStringBundle *nsScriptSecurityManager::sStrBundle = nsnull;
+JSRuntime       *nsScriptSecurityManager::sRuntime   = 0;
 
 ///////////////////////////
 // Convenience Functions //
@@ -119,6 +120,17 @@ inline void SetPendingException(JSContext *cx, const PRUnichar *aMsg)
     if (str)
         JS_SetPendingException(cx, STRING_TO_JSVAL(str));
 }
+
+// DomainPolicy members
+#ifdef DEBUG_CAPS_DomainPolicyLifeCycle
+PRUint32 DomainPolicy::sObjects=0;
+void DomainPolicy::_printPopulationInfo()
+{
+    printf("CAPS.DomainPolicy: Gen. %d, %d DomainPolicy objects.\n",
+        sGeneration, sObjects);
+}
+#endif
+PRUint32 DomainPolicy::sGeneration = 0;
 
 // Helper class to get stuff from the ClassInfo and not waste extra time with
 // virtual method calls for things it has already gotten
@@ -444,11 +456,8 @@ nsScriptSecurityManager::CheckObjectAccess(JSContext *cx, JSObject *obj,
     //    a different trust domain.
     // 2. A user-defined getter or setter function accessible on another
     //    trust domain's window or document object.
-    // If *vp is not a primitive, some new JS engine call to this hook was
-    // added, but we can handle that case too -- if a primitive value in a
-    // property of obj is being accessed, we should use obj as the target
+    // *vp can be a primitive, in that case, we use obj as the target
     // object.
-    NS_ASSERTION(!JSVAL_IS_PRIMITIVE(*vp), "unexpected target property value");
     JSObject* target = JSVAL_IS_PRIMITIVE(*vp) ? obj : JSVAL_TO_OBJECT(*vp);
 
     // Do the same-origin check -- this sets a JS exception if the check fails.
@@ -1156,7 +1165,6 @@ nsScriptSecurityManager::GetBaseURIScheme(nsIURI* aURI,
         if(NS_FAILED(aURI->GetPath(path)))
             return NS_ERROR_FAILURE;
         if (path.EqualsLiteral("blank")   ||
-            path.IsEmpty()                ||
             path.EqualsLiteral("mozilla") ||
             path.EqualsLiteral("logo")    ||
             path.EqualsLiteral("license") ||
@@ -2862,14 +2870,13 @@ nsresult nsScriptSecurityManager::Init()
         do_GetService("@mozilla.org/js/xpc/RuntimeService;1", &rv);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    JSRuntime *rt;
-    rv = runtimeService->GetRuntime(&rt);
+    rv = runtimeService->GetRuntime(&sRuntime);
     NS_ENSURE_SUCCESS(rv, rv);
 
 #ifdef DEBUG
     JSCheckAccessOp oldCallback =
 #endif
-        JS_SetCheckObjectAccessCallback(rt, CheckObjectAccess);
+        JS_SetCheckObjectAccessCallback(sRuntime, CheckObjectAccess);
 
     // For now, assert that no callback was set previously
     NS_ASSERTION(!oldCallback, "Someone already set a JS CheckObjectAccess callback");
@@ -2891,6 +2898,14 @@ nsScriptSecurityManager::~nsScriptSecurityManager(void)
 void
 nsScriptSecurityManager::Shutdown()
 {
+    if (sRuntime) {
+#ifdef DEBUG
+        JSCheckAccessOp oldCallback =
+#endif
+            JS_SetCheckObjectAccessCallback(sRuntime, nsnull);
+        NS_ASSERTION(oldCallback == CheckObjectAccess, "Oops, we just clobbered someone else, oh well.");
+        sRuntime = nsnull;
+    }
     sEnabledID = JSVAL_VOID;
 
     NS_IF_RELEASE(sIOService);
@@ -2949,25 +2964,36 @@ nsScriptSecurityManager::SystemPrincipalSingletonConstructor()
 nsresult
 nsScriptSecurityManager::InitPolicies()
 {
-    // Reset the "dirty" flag
-    mPolicyPrefsChanged = PR_FALSE;
-
     // Clear any policies cached on XPConnect wrappers
     NS_ENSURE_STATE(sXPConnect);
     nsresult rv = sXPConnect->ClearAllWrappedNativeSecurityPolicies();
     if (NS_FAILED(rv)) return rv;
 
-    //-- Reset mOriginToPolicyMap
+    //-- Clear mOriginToPolicyMap: delete mapped DomainEntry items,
+    //-- whose dtor decrements refcount of stored DomainPolicy object
     delete mOriginToPolicyMap;
+    
+    //-- Marks all the survivor DomainPolicy objects (those cached
+    //-- by nsPrincipal objects) as invalid: they will be released
+    //-- on first nsPrincipal::GetSecurityPolicy() attempt.
+    DomainPolicy::InvalidateAll();
+    
+    //-- Release old default policy
+    if(mDefaultPolicy)
+        mDefaultPolicy->Drop();
+    
+    //-- Initialize a new mOriginToPolicyMap
     mOriginToPolicyMap =
       new nsObjectHashtable(nsnull, nsnull, DeleteDomainEntry, nsnull);
-
-    //-- Reset and initialize the default policy
-    delete mDefaultPolicy;
-    mDefaultPolicy = new DomainPolicy();
-    if (!mOriginToPolicyMap || !mDefaultPolicy)
+    if (!mOriginToPolicyMap)
         return NS_ERROR_OUT_OF_MEMORY;
 
+    //-- Create, refcount and initialize a new default policy 
+    mDefaultPolicy = new DomainPolicy();
+    if (!mDefaultPolicy)
+        return NS_ERROR_OUT_OF_MEMORY;
+
+    mDefaultPolicy->Hold();
     if (!mDefaultPolicy->Init())
         return NS_ERROR_UNEXPECTED;
 
@@ -3097,6 +3123,9 @@ nsScriptSecurityManager::InitPolicies()
         if (NS_FAILED(rv))
             return rv;
     }
+
+    // Reset the "dirty" flag
+    mPolicyPrefsChanged = PR_FALSE;
 
 #ifdef DEBUG_CAPS_HACKER
     PrintPolicyDB();

@@ -43,6 +43,7 @@
 #include "nsChildView.h"
 #include <Controls.h>
 #include "nsIContent.h"
+
 #import "mozView.h"
 
 class nsIScrollbarMediator;
@@ -87,9 +88,11 @@ protected:
   
   void RecreateHorizontalScrollbar();
 
-  virtual NSView*   CreateCocoaView() ;
-  virtual GrafPtr   GetQuickDrawPort() ;
+  virtual NSView*   CreateCocoaView(NSRect inFrame);
+  virtual GrafPtr   GetQuickDrawPort();
 
+  void              UpdateScroller();
+  
 // DATA
 private:
 
@@ -100,7 +103,8 @@ private:
   PRUint32          mValue;
   PRUint32          mMaxValue;
   PRUint32          mVisibleImageSize;
-  PRUint32          mLineIncrement;  
+  PRUint32          mLineIncrement;
+  PRBool            mIsEnabled;
 };
 
 

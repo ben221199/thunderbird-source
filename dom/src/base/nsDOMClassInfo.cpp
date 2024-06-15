@@ -207,6 +207,8 @@
 #include "nsIDOMPopupBlockedEvent.h"
 #include "nsIDOMBeforeUnloadEvent.h"
 #include "nsIDOMMutationEvent.h"
+#include "nsIDOMSmartCardEvent.h"
+#include "nsIDOMPageTransitionEvent.h"
 #include "nsIDOMNSDocumentStyle.h"
 #include "nsIDOMDocumentRange.h"
 #include "nsIDOMDocumentTraversal.h"
@@ -334,7 +336,9 @@
 #include "nsIDOMSVGEllipseElement.h"
 #include "nsIDOMSVGException.h"
 #include "nsIDOMSVGFitToViewBox.h"
+#ifdef MOZ_SVG_FOREIGNOBJECT
 #include "nsIDOMSVGForeignObjectElem.h"
+#endif
 #include "nsIDOMSVGGElement.h"
 #include "nsIDOMSVGGradientElement.h"
 #include "nsIDOMSVGImageElement.h"
@@ -855,8 +859,6 @@ static nsDOMClassInfoData sClassInfoData[] = {
                            ELEMENT_SCRIPTABLE_FLAGS)
   NS_DEFINE_CLASSINFO_DATA(SVGEllipseElement, nsElementSH,
                            ELEMENT_SCRIPTABLE_FLAGS)
-  NS_DEFINE_CLASSINFO_DATA(SVGForeignObjectElement, nsElementSH,
-                           ELEMENT_SCRIPTABLE_FLAGS)
   NS_DEFINE_CLASSINFO_DATA(SVGGElement, nsElementSH,
                            ELEMENT_SCRIPTABLE_FLAGS)
   NS_DEFINE_CLASSINFO_DATA(SVGGradientElement, nsElementSH,
@@ -1001,6 +1003,19 @@ static nsDOMClassInfoData sClassInfoData[] = {
   NS_DEFINE_CLASSINFO_DATA(CanvasPattern, nsDOMGenericSH,
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
 #endif // MOZ_ENABLE_CANVAS
+
+ NS_DEFINE_CLASSINFO_DATA(SmartCardEvent, nsDOMGenericSH,
+                          DOM_DEFAULT_SCRIPTABLE_FLAGS)
+ NS_DEFINE_CLASSINFO_DATA(PageTransitionEvent, nsDOMGenericSH,
+                          DOM_DEFAULT_SCRIPTABLE_FLAGS)
+
+  // Define MOZ_SVG_FOREIGNOBJECT here so that when it gets switched on,
+  // we preserve binary compatibility. New classes should be added
+  // at the end.
+#if defined(MOZ_SVG) && defined(MOZ_SVG_FOREIGNOBJECT)
+  NS_DEFINE_CLASSINFO_DATA(SVGForeignObjectElement, nsElementSH,
+                           ELEMENT_SCRIPTABLE_FLAGS)
+#endif
 };
 
 nsIXPConnect *nsDOMClassInfo::sXPConnect = nsnull;
@@ -1728,6 +1743,15 @@ nsDOMClassInfo::Init()
     DOM_CLASSINFO_EVENT_MAP_ENTRIES
   DOM_CLASSINFO_MAP_END
 
+  DOM_CLASSINFO_MAP_BEGIN(SmartCardEvent, nsIDOMSmartCardEvent)
+    DOM_CLASSINFO_MAP_ENTRY(nsIDOMSmartCardEvent)
+  DOM_CLASSINFO_MAP_END
+
+  DOM_CLASSINFO_MAP_BEGIN(PageTransitionEvent, nsIDOMPageTransitionEvent)
+    DOM_CLASSINFO_MAP_ENTRY(nsIDOMPageTransitionEvent)
+    DOM_CLASSINFO_EVENT_MAP_ENTRIES
+  DOM_CLASSINFO_MAP_END
+
   DOM_CLASSINFO_MAP_BEGIN(MutationEvent, nsIDOMMutationEvent)
     DOM_CLASSINFO_MAP_ENTRY(nsIDOMMutationEvent)
     DOM_CLASSINFO_EVENT_MAP_ENTRIES
@@ -2369,11 +2393,6 @@ nsDOMClassInfo::Init()
     DOM_CLASSINFO_SVG_GRAPHIC_ELEMENT_MAP_ENTRIES
   DOM_CLASSINFO_MAP_END
 
-  DOM_CLASSINFO_MAP_BEGIN(SVGForeignObjectElement, nsIDOMSVGForeignObjectElement)
-    DOM_CLASSINFO_MAP_ENTRY(nsIDOMSVGForeignObjectElement)
-    DOM_CLASSINFO_SVG_GRAPHIC_ELEMENT_MAP_ENTRIES
-  DOM_CLASSINFO_MAP_END
-
   DOM_CLASSINFO_MAP_BEGIN(SVGGElement, nsIDOMSVGGElement)
     DOM_CLASSINFO_MAP_ENTRY(nsIDOMSVGGElement)
     DOM_CLASSINFO_SVG_GRAPHIC_ELEMENT_MAP_ENTRIES
@@ -2696,6 +2715,13 @@ nsDOMClassInfo::Init()
     DOM_CLASSINFO_MAP_ENTRY(nsIDOMCanvasPattern)
   DOM_CLASSINFO_MAP_END
 #endif // MOZ_ENABLE_CANVAS
+
+#if defined(MOZ_SVG) && defined(MOZ_SVG_FOREIGNOBJECT)
+  DOM_CLASSINFO_MAP_BEGIN(SVGForeignObjectElement, nsIDOMSVGForeignObjectElement)
+    DOM_CLASSINFO_MAP_ENTRY(nsIDOMSVGForeignObjectElement)
+    DOM_CLASSINFO_SVG_GRAPHIC_ELEMENT_MAP_ENTRIES
+  DOM_CLASSINFO_MAP_END
+#endif
 
 #ifdef NS_DEBUG
   {
@@ -4345,7 +4371,7 @@ nsDOMClassInfo::InitDOMJSClass(JSContext *cx, JSObject *obj)
  * See https://bugzilla.mozilla.org/show_bug.cgi?id=283129 for more details.
  */
 
-#if defined(DEBUG_dbaron) || defined(DEBUG_jst)
+#if defined(DEBUG_dbaron)
 #define DEBUG_PRESERVE_WRAPPERS
 #endif
 
@@ -4375,7 +4401,8 @@ struct PreservedWrapperEntry : public PLDHashEntryHdr {
  * walking up to the top of the parent chain.  This function finds that
  * root node for any DOM node.
  */
-static nsIDOMNode* GetSCCRootFor(nsIDOMNode *aDOMNode)
+static nsIDOMNode *
+GetSCCRootFor(nsIDOMNode *aDOMNode)
 {
   nsCOMPtr<nsIDOMNode> cur(aDOMNode), next;
 #ifdef DEBUG_NOISY_PRESERVE_WRAPPERS
@@ -6453,7 +6480,9 @@ nsHTMLDocumentSH::DocumentOpen(JSContext *cx, JSObject *obj, uintN argc,
     nsAutoString type;
     type.Assign(nsDependentJSString(jsstr));
     ToLowerCase(type);
-    if (!type.EqualsLiteral("text/html")) {
+    nsCAutoString actualType, dummy;
+    NS_ParseContentType(NS_ConvertUTF16toUTF8(type), actualType, dummy);
+    if (!actualType.EqualsLiteral("text/html")) {
       contentType = "text/plain";
     }
   }
@@ -6789,9 +6818,9 @@ nsHTMLDocumentSH::CallToGetPropMapper(JSContext *cx, JSObject *obj, uintN argc,
 
   JSObject *self;
 
-  if (JS_GET_CLASS(cx, obj) == &sHTMLDocumentAllClass) {
-    // If obj is our document.all object, we're called through
-    // document.all.item(), or something similar. In such a case, self
+  if (::JS_TypeOfValue(cx, argv[-2]) == JSTYPE_FUNCTION) {
+    // If argv[-2] is a function, we're called through
+    // document.all.item() or something similar. In such a case, self
     // is passed as obj.
 
     self = obj;

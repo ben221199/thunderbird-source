@@ -180,7 +180,14 @@ nsPACMan::GetProxyForURI(nsIURI *uri, nsACString &result)
 {
   NS_ENSURE_STATE(!mShutdown);
 
-  if (!mPAC || IsLoading())
+  if (IsPACURI(uri)) {
+    result.Truncate();
+    return NS_OK;
+  }
+
+  if (IsLoading())
+    return NS_ERROR_IN_PROGRESS;
+  if (!mPAC)
     return NS_ERROR_NOT_AVAILABLE;
 
   nsCAutoString spec, host;
@@ -202,8 +209,11 @@ nsPACMan::AsyncGetProxyForURI(nsIURI *uri, nsPACManCallback *callback)
   PR_APPEND_LINK(query, &mPendingQ);
 
   // If we're waiting for the PAC file to load, then delay starting the query.
-  // See OnStreamComplete.
-  if (IsLoading())
+  // See OnStreamComplete.  However, if this is the PAC URI then query right
+  // away since we know the result will be DIRECT.  We could shortcut some code
+  // in this case by issuing the callback directly from here, but that would
+  // require extra code, so we just go through the usual async code path.
+  if (IsLoading() && !IsPACURI(uri))
     return NS_OK;
 
   nsresult rv = query->Start();
@@ -233,7 +243,7 @@ nsPACMan::LoadEvent_Destroy(PLEvent *ev)
 }
 
 nsresult
-nsPACMan::LoadPACFromURI(const nsACString &uriSpec)
+nsPACMan::LoadPACFromURI(nsIURI *pacURI)
 {
   NS_ENSURE_STATE(!mShutdown);
 
@@ -266,7 +276,7 @@ nsPACMan::LoadPACFromURI(const nsACString &uriSpec)
   CancelExistingLoad();
 
   mLoader = loader;
-  mPACSpec = uriSpec;
+  mPACURI = pacURI;
   mPAC = nsnull;
   return NS_OK;
 }
@@ -284,7 +294,10 @@ nsPACMan::StartLoading()
   nsCOMPtr<nsIIOService> ios = do_GetIOService();
   if (ios) {
     nsCOMPtr<nsIChannel> channel;
-    ios->NewChannel(mPACSpec, nsnull, nsnull, getter_AddRefs(channel));
+
+    // NOTE: This results in GetProxyForURI being called
+    ios->NewChannelFromURI(mPACURI, getter_AddRefs(channel));
+
     if (channel) {
       channel->SetLoadFlags(nsIRequest::LOAD_BYPASS_CACHE);
       channel->SetNotificationCallbacks(this);
@@ -332,7 +345,8 @@ nsPACMan::ProcessPendingQ(nsresult status)
   }
 }
 
-NS_IMPL_ISUPPORTS2(nsPACMan, nsIStreamLoaderObserver, nsIInterfaceRequestor)
+NS_IMPL_ISUPPORTS3(nsPACMan, nsIStreamLoaderObserver, nsIInterfaceRequestor,
+                   nsIChannelEventSink)
 
 NS_IMETHODIMP
 nsPACMan::OnStreamComplete(nsIStreamLoader *loader,
@@ -373,16 +387,11 @@ nsPACMan::OnStreamComplete(nsIStreamLoader *loader,
         NS_WARNING("failed to instantiate PAC component");
     }
     if (NS_SUCCEEDED(status)) {
-      // We assume that the PAC text is ASCII.  We've had this assumption
-      // forever, so no reason to change this now.
+      // We assume that the PAC text is ASCII (or ISO-Latin-1).  We've had this
+      // assumption forever, and some real-world PAC scripts actually have some
+      // non-ASCII text in comment blocks (see bug 296163).
       const char *text = (const char *) data;
-      if (!nsCRT::IsAscii(text, dataLen)) {
-        NS_WARNING("PAC text is not ASCII");
-        status = NS_ERROR_UNEXPECTED;
-      }
-      else {
-        status = mPAC->Init(pacURI, NS_ConvertASCIItoUTF16(text, dataLen));
-      }
+      status = mPAC->Init(pacURI, NS_ConvertASCIItoUTF16(text, dataLen));
     }
   }
 
@@ -402,5 +411,19 @@ nsPACMan::GetInterface(const nsIID &iid, void **result)
     return CallCreateInstance(NS_DEFAULTAUTHPROMPT_CONTRACTID,
                               nsnull, iid, result);
 
+  // In case loading the PAC file results in a redirect.
+  if (iid.Equals(NS_GET_IID(nsIChannelEventSink))) {
+    NS_ADDREF_THIS();
+    *result = NS_STATIC_CAST(nsIChannelEventSink *, this);
+    return NS_OK;
+  }
+
   return NS_ERROR_NO_INTERFACE;
+}
+
+NS_IMETHODIMP
+nsPACMan::OnChannelRedirect(nsIChannel *oldChannel, nsIChannel *newChannel,
+                            PRUint32 flags)
+{
+  return newChannel->GetURI(getter_AddRefs(mPACURI));
 }

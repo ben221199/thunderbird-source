@@ -95,6 +95,7 @@
 #define EDEADLK             __LINE__
 #define ERANGE              __LINE__
 #define EPERM               __LINE__
+#define ENOSYS              __LINE__
 
 // From signal.h
 #define SIGABRT         0
@@ -139,6 +140,7 @@ typedef long _off_t;
 #define _S_IFREG    0100000 /* stat, is a normal file */
 #define _S_IREAD    0000400 /* stat, can read */
 #define _S_IWRITE   0000200 /* stat, can write */
+#define	_S_IEXEC	0000100
 
 struct mozce_stat
 {
@@ -295,6 +297,15 @@ typedef struct _BLENDFUNCTION
 
 #ifndef DFCS_SCROLLSIZEGRIP
 #define DFCS_SCROLLSIZEGRIP     0x0008
+#endif
+
+
+#ifndef RDW_NOINTERNALPAINT
+#define RDW_NOINTERNALPAINT 0
+#endif
+
+#ifndef LR_LOADFROMFILE
+#define LR_LOADFROMFILE 0
 #endif
 
 #endif

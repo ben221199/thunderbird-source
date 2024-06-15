@@ -66,7 +66,7 @@ function InspectorApp_initialize()
   // If passed via a command line handler, it will be a uri string.
   // If passed via navigator hooks, it will be a dom node to inspect.
   var initNode, initURI;
-  if (window.arguments.length) {
+  if (window.arguments && window.arguments.length) {
     if (typeof window.arguments[0] == "string") {
       initURI = window.arguments[0];
     }
@@ -110,7 +110,7 @@ InspectorApp.prototype =
     //this.initSearch();
 
     var el = document.getElementById("bxBrowser");
-    el.addEventListener("load", BrowserLoadListener, true);
+    el.addEventListener("PageShow", BrowserPageShowListener, true);
 
     this.setBrowser(false, true);
     //this.setSearch(false, true);
@@ -576,9 +576,9 @@ InspectorApp.prototype =
 ////////////////////////////////////////////////////////////////////////////
 //// event listeners
 
-function BrowserLoadListener(aEvent) 
+function BrowserPageShowListener(aEvent) 
 {
-  // since we will also get load events for frame documents,
+  // since we will also get PageShow events for frame documents,
   // make sure we respond to the top-level document load
   if (aEvent.target.defaultView == _content)
     inspector.documentLoaded();

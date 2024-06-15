@@ -318,10 +318,6 @@ nsresult COtherDTD::WillBuildModel(const CParserContext& aParserContext,
     if(result==NS_OK) {
       result = aSink->WillBuildModel();
 
-#ifdef DEBUG
-      mBodyContext->ResetCounters();
-#endif
-
       MOZ_TIMER_DEBUGLOG(("Start: Parse Time: COtherDTD::WillBuildModel(), this=%p\n", this));
       START_TIMER();
 
@@ -554,37 +550,6 @@ nsresult COtherDTD::DidHandleStartTag(nsIParserNode& aNode,eHTMLTags aChildTag){
       }
       break;
 
-#ifdef DEBUG
-    case eHTMLTag_meta:
-      {
-          //we should only enable user-defined entities in debug builds...
-
-        PRInt32 theCount=aNode.GetAttributeCount();
-        const nsAString* theNamePtr=0;
-        const nsAString* theValuePtr=0;
-
-        if(theCount) {
-          PRInt32 theIndex=0;
-          for(theIndex=0;theIndex<theCount;++theIndex){
-            const nsAString& theKey = aNode.GetKeyAt(theIndex);
-            if(theKey.LowerCaseEqualsLiteral("entity")) {
-              const nsAString& theName=aNode.GetValueAt(theIndex);
-              theNamePtr=&theName;
-            }
-            else if(theKey.LowerCaseEqualsLiteral("value")) {
-              //store the named enity with the context...
-              const nsAString& theValue=aNode.GetValueAt(theIndex);
-              theValuePtr=&theValue;
-            }
-          }
-        }
-        if(theNamePtr && theValuePtr) {
-          mBodyContext->RegisterEntity(*theNamePtr,*theValuePtr);
-        }
-      }
-      break; 
-#endif
-
     default:
       break;
   }//switch 
@@ -800,24 +765,12 @@ nsresult COtherDTD::HandleEntityToken(CToken* aToken) {
   CToken    *theToken=0;
 
   if((kHashsign!=theChar) && (-1==nsHTMLEntities::EntityToUnicode(theStr))){
-
-#ifdef DEBUG
-    //before we just toss this away as a bogus entity, let's check...
-    CNamedEntity *theEntity=mBodyContext->GetEntity(theStr);
-    if(theEntity) {
-      theToken=(CTextToken*)mTokenAllocator->CreateTokenOfType(eToken_text,eHTMLTag_text,theEntity->mValue);
-    }
-    else {
-#endif
-      //if you're here we have a bogus entity.
-      //convert it into a text token.
-      nsAutoString entityName;
-      entityName.AssignLiteral("&");
-      entityName.Append(theStr); //should append the entity name; fix bug 51161.
-      theToken=(CTextToken*)mTokenAllocator->CreateTokenOfType(eToken_text,eHTMLTag_text,entityName);
-#ifdef DEBUG
-    }
-#endif
+    //if you're here we have a bogus entity.
+    //convert it into a text token.
+    nsAutoString entityName;
+    entityName.AssignLiteral("&");
+    entityName.Append(theStr); //should append the entity name; fix bug 51161.
+    theToken=(CTextToken*)mTokenAllocator->CreateTokenOfType(eToken_text,eHTMLTag_text,entityName);
     result=HandleStartToken(theToken);
   }
   else {
@@ -860,79 +813,6 @@ PRBool COtherDTD::CanContain(PRInt32 aParent,PRInt32 aChild) const {
   return PR_FALSE;
 } 
 
-/** 
- * Give rest of world access to our tag enums, so that CanContain(), etc,
- * become useful.
- */ 
-NS_IMETHODIMP
-COtherDTD::StringTagToIntTag(const nsAString &aTag,
-                             PRInt32* aIntTag) const
-{
-  *aIntTag = nsHTMLTags::LookupTag(aTag);
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP_(const PRUnichar *)
-COtherDTD::IntTagToStringTag(PRInt32 aIntTag) const
-{
-  const PRUnichar *str_ptr = nsHTMLTags::GetStringValue((nsHTMLTag)aIntTag);
-
-  NS_ASSERTION(str_ptr, "Bad tag enum passed to COtherDTD::IntTagToStringTag()"
-               "!!");
-
-  return str_ptr;
-}  
-
-NS_IMETHODIMP_(nsIAtom *)
-COtherDTD::IntTagToAtom(PRInt32 aIntTag) const
-{
-  nsIAtom *atom = nsHTMLTags::GetAtom((nsHTMLTag)aIntTag);
-
-  NS_ASSERTION(atom, "Bad tag enum passed to COtherDTD::IntTagToAtom()"
-               "!!");
-
-  return atom;
-}  
-
-/**
- *  This method is called to determine whether or not
- *  the given childtag is a block element.
- *
- *  @update  gess 6June2000
- *  @param   aChildID -- tag id of child 
- *  @param   aParentID -- tag id of parent (or eHTMLTag_unknown)
- *  @return  PR_TRUE if this tag is a block tag
- */
-PRBool COtherDTD::IsBlockElement(PRInt32 aChildID,PRInt32 aParentID) const {
-  PRBool result=PR_FALSE;
-
-  if(gElementTable) {
-    CElement *theElement=gElementTable->GetElement((eHTMLTags)aChildID);
-    result = (theElement) ? theElement->IsBlockElement((eHTMLTags)aParentID) : PR_FALSE;
-  }
-  return result;
-}
-
-/**
- *  This method is called to determine whether or not
- *  the given childtag is an inline element.
- *
- *  @update  gess 6June2000
- *  @param   aChildID -- tag id of child 
- *  @param   aParentID -- tag id of parent (or eHTMLTag_unknown)
- *  @return  PR_TRUE if this tag is an inline element
- */
-PRBool COtherDTD::IsInlineElement(PRInt32 aChildID,PRInt32 aParentID) const {
-  PRBool result=PR_FALSE;
-
-  if(gElementTable) {
-    CElement *theElement=gElementTable->GetElement((eHTMLTags)aChildID);
-    result = (theElement) ? theElement->IsInlineElement((eHTMLTags)aParentID) : PR_FALSE;
-  }
-  return result;
-}
-     
 /**
  *  This method gets called to determine whether a given 
  *  tag is itself a container 

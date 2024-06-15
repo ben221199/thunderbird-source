@@ -40,24 +40,68 @@
 #expand pref("general.useragent.locale", "__AB_CD__");
 pref("general.skins.selectedSkin", "classic/1.0");
 
-pref("app.extensions.version", "1.0+");
-
 #ifdef XP_MACOSX
 pref("browser.chromeURL", "chrome://messenger/content/messengercompose/messengercompose.xul");
 pref("mail.biff.animate_dock_icon", false);
 #endif
 
+pref("app.extensions.version", "1.0+");
+pref("update.app.enabled", true); // Whether or not app updates are enabled 
+pref("update.app.url", "chrome://mozapps/locale/update/update.properties");	
+pref("update.extensions.enabled", true);
+
 // App-specific update preferences
-pref("app.update.enabled", true);               // Whether or not app updates are enabled
-pref("app.update.autoUpdateEnabled", true);     // Whether or not background app updates 
-                                                // are enabled
-pref("app.update.url", "chrome://mozapps/locale/update/update.properties");
-pref("app.update.updatesAvailable", false);
-pref("app.update.interval", 86400000);          // Check for updates to Firefox every day
-pref("app.update.lastUpdateDate", 0);           // UTC offset when last App update was 
-                                                // performed. 
-pref("app.update.performed", false);            // Whether or not an update has been 
-                                                // performed this session. 
+
+// Whether or not app updates are enabled
+pref("app.update.enabled", false);               
+
+// This preference turns on app.update.mode and allows automatic download and
+// install to take place. We use a separate boolean toggle for this to make     
+// the UI easier to construct.
+pref("app.update.auto", true);
+
+// Defines how the Application Update Service notifies the user about updates:
+//
+// AUM Set to:        Minor Releases:     Major Releases:
+// 0                  download no prompt  download no prompt
+// 1                  download no prompt  download no prompt if no incompatibilities
+// 2                  download no prompt  prompt
+//
+// See chart in nsUpdateService.js.in for more details
+//
+pref("app.update.mode", 1);
+// If set to true, the Update Service will present no UI for any event.
+pref("app.update.silent", false);
+pref("app.update.logEnabled", true);
+
+// Default service URL for testing.
+pref("app.update.url", "chrome://mozapps/locale/update/updates.properties");
+// URL user can browse to manually if for some reason all update installation
+// attempts fail.
+pref("app.update.url.manual", "chrome://mozapps/locale/update/updates.properties");
+// User-settable update preference that overrides app.update.url for testing 
+// purposes.
+pref("app.update.url.override", "chrome://mozapps/locale/update/updates.properties");
+
+// Interval: Time between checks for a new version (in seconds)
+//           default=1 day
+pref("app.update.interval", 86400);
+// Interval: Time before prompting the user to download a new version that 
+//           is available (in seconds) default=1 day
+pref("app.update.nagTimer.download", 86400);
+// Interval: Time before prompting the user to restart to install the latest
+//           download (in seconds) default=30 minutes
+pref("app.update.nagTimer.restart", 1800);
+// Interval: When all registered timers should be checked (in milliseconds)
+//           default=5 seconds
+pref("app.update.timer", 5000);
+
+// Whether or not we show a dialog box informing the user that the update was
+// successfully applied. This is off in Firefox by default since we show a 
+// upgrade start page instead! Other apps may wish to show this UI, and supply
+// a whatsNewURL field in their brand.properties that contains a link to a page
+// which tells users what's new in this new update.
+pref("app.update.showInstalledUI", false);
 
 // Developers can set this to |true| if they are constantly changing files in their
 // extensions directory so that the extension system does not constantly think that
@@ -373,11 +417,6 @@ pref("alerts.slideIncrement", 1);
 pref("alerts.slideIncrementTime", 10);
 pref("alerts.totalOpenTime", 4000);
 pref("alerts.height", 50);
-
-// update notifications prefs
-pref("update_notifications.enabled", true);
-pref("update_notifications.provider.0.frequency", 7); // number of days
-pref("update_notifications.provider.0.datasource", "chrome://communicator-region/locale/region.properties");
 
 // 0 opens the download manager
 // 1 opens a progress dialog

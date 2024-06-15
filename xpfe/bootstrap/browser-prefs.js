@@ -56,6 +56,8 @@ pref("general.open_location.last_window_choice", 0);
 
 pref("general.smoothScroll", false);
 
+#expand pref("general.useragent.extra.__MOZ_APP_NAME__", "__MOZ_APP_DISPLAYNAME__/__MOZ_APP_VERSION__");
+
 // 0 = blank, 1 = home (browser.startup.homepage), 2 = last
 pref("browser.startup.page",                1);
 pref("browser.startup.homepage",	   "chrome://navigator-region/locale/region.properties");
@@ -111,6 +113,7 @@ pref("browser.search.param.Google.1.default", "chrome://navigator/content/search
 
 pref("browser.history.grouping", "day");
 pref("browser.sessionhistory.max_entries", 50);
+pref("browser.sessionhistory.max_viewers", 3);
 
 // Tabbed browser
 pref("browser.tabs.loadDivertedInBackground", false);
@@ -220,6 +223,9 @@ pref("privacy.popups.sound_url",                  "");
 pref("privacy.popups.statusbar_icon_enabled",     true);
 pref("privacy.popups.prefill_whitelist",          false);
 pref("privacy.popups.remove_blacklist",           true);
+
+// Show XUL error pages instead of alerts for errors
+pref("browser.xul.error_pages.enabled", true);
 
 #ifdef XP_MACOSX
 // determines the behavior upon starting a download.

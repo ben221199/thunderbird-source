@@ -761,6 +761,11 @@ FunctionDef(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
 
     /* Scan the optional function name into funAtom. */
     funAtom = js_MatchToken(cx, ts, TOK_NAME) ? CURRENT_TOKEN(ts).t_atom : NULL;
+    if (!funAtom && !lambda) {
+        js_ReportCompileErrorNumber(cx, ts, JSREPORT_TS | JSREPORT_ERROR,
+                                    JSMSG_SYNTAX_ERROR);
+        return NULL;
+    }
 
     /* Find the nearest variable-declaring scope and use it as our parent. */
     fp = cx->fp;
@@ -830,7 +835,7 @@ FunctionDef(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
                                           js_GetLocalVariable,
                                           js_SetLocalVariable,
                                           SPROP_INVALID_SLOT,
-                                          JSPROP_ENUMERATE | JSPROP_SHARED,
+                                          JSPROP_PERMANENT | JSPROP_SHARED,
                                           SPROP_HAS_SHORTID, fp->fun->nvars)) {
                     return NULL;
                 }
@@ -896,8 +901,7 @@ FunctionDef(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
             if (!js_AddHiddenProperty(cx, fun->object, ATOM_TO_JSID(argAtom),
                                       js_GetArgument, js_SetArgument,
                                       SPROP_INVALID_SLOT,
-                                      JSPROP_ENUMERATE | JSPROP_PERMANENT |
-                                      JSPROP_SHARED,
+                                      JSPROP_PERMANENT | JSPROP_SHARED,
                                       dupflag | SPROP_HAS_SHORTID,
                                       fun->nargs)) {
                 return NULL;
@@ -950,13 +954,14 @@ FunctionDef(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
 #endif
 
 #if JS_HAS_LEXICAL_CLOSURE
-    if (lambda || !funAtom) {
+    JS_ASSERT(lambda || funAtom);
+    if (lambda) {
         /*
          * ECMA ed. 3 standard: function expression, possibly anonymous (even
          * if at top-level, an unnamed function is an expression statement, not
          * a function declaration).
          */
-        op = fun->atom ? JSOP_NAMEDFUNOBJ : JSOP_ANONFUNOBJ;
+        op = funAtom ? JSOP_NAMEDFUNOBJ : JSOP_ANONFUNOBJ;
     } else if (tc->topStmt) {
         /*
          * ECMA ed. 3 extension: a function expression statement not at the
@@ -2198,13 +2203,13 @@ Variables(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         pn2->pn_expr = NULL;
         pn2->pn_slot = -1;
         pn2->pn_attrs = (pn->pn_op == JSOP_DEFCONST)
-                        ? JSPROP_ENUMERATE | JSPROP_PERMANENT |
-                          JSPROP_READONLY
-                        : JSPROP_ENUMERATE | JSPROP_PERMANENT;
+                        ? JSPROP_PERMANENT | JSPROP_READONLY
+                        : JSPROP_PERMANENT;
         PN_APPEND(pn, pn2);
 
         if (!fun) {
-            prop = NULL; /* don't lookup global variables at compile time */
+            /* Don't lookup global variables at compile time. */
+            prop = NULL;
         } else if (OBJ_IS_NATIVE(obj)) {
             if (!js_LookupHiddenProperty(cx, obj, ATOM_TO_JSID(atom),
                                          &pobj, &prop)) {

@@ -41,6 +41,7 @@
 #include "nsAccessibleTreeWalker.h"
 #include "nsBulletFrame.h"
 #include "nsIAccessibleDocument.h"
+#include "nsIAccessibleEvent.h"
 #include "nsIFrame.h"
 #include "nsPresContext.h"
 #include "nsIPresShell.h"
@@ -53,13 +54,18 @@ nsTextAccessibleWrap(aDomNode, aShell), mFrame(aFrame)
 }
 
 NS_IMETHODIMP nsHTMLTextAccessible::GetName(nsAString& aName)
-{ 
-  nsAutoString accName;
-  if (NS_FAILED(mDOMNode->GetNodeValue(accName)))
+{
+  aName.Truncate();
+  if (!mDOMNode) {
     return NS_ERROR_FAILURE;
-  accName.CompressWhitespace();
-  aName = accName;
-  return NS_OK;
+  }
+  nsAutoString name;
+  nsresult rv = mDOMNode->GetNodeValue(name);
+  if (NS_SUCCEEDED(rv)) {
+    name.ReplaceChar("\r\n\t", ' ');
+    aName = name;
+  }
+  return rv;
 }
 
 nsIFrame* nsHTMLTextAccessible::GetFrame()
@@ -71,6 +77,16 @@ nsIFrame* nsHTMLTextAccessible::GetFrame()
     mFrame = nsTextAccessible::GetFrame();
   }
   return mFrame;
+}
+
+NS_IMETHODIMP nsHTMLTextAccessible::FireToolkitEvent(PRUint32 aEvent,
+                                                     nsIAccessible *aTarget,
+                                                     void *aData)
+{
+  if (aEvent == nsIAccessibleEvent::EVENT_HIDE) {
+    mFrame = nsnull;  // Invalidate cached frame
+  }
+  return nsTextAccessibleWrap::FireToolkitEvent(aEvent, aTarget, aData);
 }
 
 NS_IMETHODIMP nsHTMLTextAccessible::GetState(PRUint32 *aState)

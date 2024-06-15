@@ -38,6 +38,8 @@
 
 <?xml-stylesheet href="chrome://messenger/skin/folderMenus.css" type="text/css"?>
 <?xml-stylesheet href="chrome://communicator/skin/tasksOverlay.css" type="text/css"?> 
+<?xml-stylesheet href="chrome://mozapps/skin/extensions/update.css" type="text/css"?> 
+<?xml-stylesheet href="chrome://mozapps/content/update/update.css" type="text/css"?> 
 
 <?xul-overlay href="chrome://global/content/charsetOverlay.xul"?>
 <?xul-overlay href="chrome://messenger/content/mailWindowExtrasOverlay.xul"?>
@@ -1194,7 +1196,7 @@
 #ifdef XP_UNIX
 #ifndef XP_MACOSX
       <menuitem id="menu_accountmgr" label="&accountManagerCmd.label;" accesskey="&accountManagerCmdUnix.accesskey;" oncommand="MsgAccountManager(null);"/>
-      <menuitem id="menu_preferences" oncommand="openOptionsDialog('mailnews', 'chrome://messenger/content/pref-mailnews.xul','mailnews')"/>
+      <menuitem id="menu_preferences" oncommand="openOptionsDialog()"/>
 #endif
 #endif
       </menupopup>
@@ -1665,12 +1667,12 @@
 #ifndef XP_UNIX
         <menuseparator id="prefSep"/>
         <menuitem id="menu_accountmgr" label="&accountManagerCmd.label;" accesskey="&accountManagerCmd.accesskey;" oncommand="MsgAccountManager(null);"/>
-        <menuitem id="menu_preferences" oncommand="openOptionsDialog('mailnews', 'chrome://messenger/content/pref-mailnews.xul','mailnews')"/>
+        <menuitem id="menu_preferences" oncommand="openOptionsDialog()"/>
 #else
 #ifdef XP_MACOSX
         <menuseparator id="prefSep"/>
         <menuitem id="menu_accountmgr" label="&accountManagerCmd.label;" accesskey="&accountManagerCmd.accesskey;" oncommand="MsgAccountManager(null);"/>
-        <menuitem id="menu_preferences" oncommand="openOptionsDialog('mailnews', 'chrome://messenger/content/pref-mailnews.xul','mailnews')"/>
+        <menuitem id="menu_preferences" oncommand="openOptionsDialog()"/>
 #endif
 #endif
        </menupopup>
@@ -1703,7 +1705,7 @@
 #endif
       
       <!-- Help -->  
-      <menu label="&helpMenu.label;" accesskey="&helpMenu.accesskey;">
+      <menu label="&helpMenu.label;" accesskey="&helpMenu.accesskey;" onpopupshowing="buildHelpMenu();">
         <menupopup id="menu_HelpPopup">
 #ifdef XP_MACOSX
           <menuitem id="hintsAndTips" label="&hintsAndTips.label;" key="key_macHelp" oncommand="loadThrobberUrl('mailnews.hints_and_tips.url');"/>
@@ -1713,6 +1715,8 @@
           <menuitem id="hintsAndTips" accesskey="&hintsAndTips.accesskey;" label="&hintsAndTips.label;" oncommand="loadThrobberUrl('mailnews.hints_and_tips.url');"/>
 #endif
           <menuseparator id="menu_HelpAboutSeparator"/>
+          <menuitem id="checkForUpdates" accesskey="&updateCmd.accesskey;" 
+                    label="&updateCmd.label;" oncommand="checkForUpdates();"/>
           <menuitem id="aboutName" accesskey="&aboutCmd.accesskey;"
                     label="&aboutCmd.label;"
                     oncommand="openAboutDialog();"/>
@@ -1721,6 +1725,10 @@
 
       <spacer flex="100%"/>
       </menubar>
+    </toolbaritem>
+    
+    <toolbaritem id="softwareupdate-item" title="&updatesItem.title;" align="center" pack="center">
+      <toolbarbutton type="updates" id="softwareupdate" updateCount="0"/>
     </toolbaritem>
   </toolbar>
 
@@ -1923,6 +1931,8 @@
                   oncommand="changeQuickSearchMode(this)" />
         <menuitem value="2" label="&searchSubjectOrSenderMenu.label;" type="radio" 
                   checked="true" oncommand="changeQuickSearchMode(this)"/>
+        <menuitem value="5" label="&searchRecipient.label;" type="radio" 
+                  oncommand="changeQuickSearchMode(this)"/>
         <menuitem value="3" label="&searchMessageBody.label;" type="radio" 
                   oncommand="changeQuickSearchMode(this)"/>
         <menuitem value="4" label="&findInMessageMenu.label;" type="radio" 
@@ -1948,7 +1958,7 @@
     <image id="junkBarImage"/>
     <description flex="1" class="msgNotificationBarText">&junkBarMessage.label;</description>
     <spacer flex="1"/>
-    <button label="&notJunkButton.label;" oncommand="JunkSelectedMessages(false);"/>
+    <button label="&junkBarButton.label;" oncommand="JunkSelectedMessages(false);"/>
   </hbox>
 
   <hbox id="remoteContentBar" class="msgNotificationBar" align="center">

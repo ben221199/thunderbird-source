@@ -150,6 +150,16 @@ struct nsXREAppData
   "@mozilla.org/xre/app-info;1"
 
 /**
+ * A directory service key which provides a list of all enabled extension
+ * directories. The list includes compatible platform-specific extension
+ * subdirectories.
+ *
+ * @note The directory list will have no members when the application is
+ *       launched in safe mode.
+ */
+#define XRE_EXTENSIONS_DIR_LIST "XREExtDL"
+
+/**
  * Begin an XUL application. Does not return until the user exits the
  * application.
  *
@@ -178,5 +188,14 @@ XRE_main(int argc, char* argv[],
  */
 extern "C" XULAPI nsresult
 XRE_GetFileFromPath(const char *aPath, nsILocalFile* *aResult);
+
+/**
+ * Get the path of the running application binary and store it in aResult.
+ * @param argv0   The value passed as argv[0] of main(). This value is only
+ *                used on *nix, and only when other methods of determining
+ *                the binary path have failed.
+ */
+extern "C" XULAPI nsresult
+XRE_GetBinaryPath(const char *argv0, nsILocalFile* *aResult);
 
 #endif // _nsXULAppAPI_h__

@@ -39,7 +39,7 @@
 
 #include "nsIGenericFactory.h"
 #include "nsEditorCID.h"
-#include "nsEditor.h"				// for gInstanceCount
+#include "nsEditor.h"
 #include "nsPlaintextEditor.h"
 #include "nsEditorController.h" //CID
 #include "nsIController.h"
@@ -49,6 +49,7 @@
 #include "nsIObserver.h"
 #include "nsIObserverService.h"
 #include "nsCOMPtr.h"
+#include "nsIParserService.h"
 
 #ifndef MOZILLA_PLAINTEXT_EDITOR_ONLY
 #include "nsHTMLEditor.h"
@@ -57,7 +58,7 @@
 #endif
 
 #define NS_EDITORCOMMANDTABLE_CID \
-{ 0x8b975b0a, 0x6ae5, 0x11d7, { 0xa44c, 0x00, 0x03, 0x93, 0x63, 0x65, 0x92 } }
+{ 0x4f5e62b8, 0xd659, 0x4156, { 0x84, 0xfc, 0x2f, 0x60, 0x99, 0x40, 0x03, 0x69 }}
 
 static NS_DEFINE_CID(kEditorCommandTableCID, NS_EDITORCOMMANDTABLE_CID);
 
@@ -85,6 +86,8 @@ EditorShutdownObserver::Observe(nsISupports *aSubject,
 
 static PRBool gInitialized = PR_FALSE;
 
+nsIParserService *sParserService;
+
 PR_STATIC_CALLBACK(nsresult)
 Initialize(nsIModule* self)
 {
@@ -95,6 +98,13 @@ Initialize(nsIModule* self)
 
   gInitialized = PR_TRUE;
 
+  nsresult rv = CallGetService("@mozilla.org/parser/parser-service;1",
+                               &sParserService);
+  if (NS_FAILED(rv)) {
+    gInitialized = PR_FALSE;
+
+    return rv;
+  }
 #ifndef MOZILLA_PLAINTEXT_EDITOR_ONLY
   nsEditProperty::RegisterAtoms();
   nsTextServicesDocument::RegisterAtoms();
@@ -129,6 +139,8 @@ Shutdown()
   NS_PRECONDITION(gInitialized, "module not initialized");
   if (!gInitialized)
     return;
+
+  NS_IF_RELEASE(sParserService);
 
 #ifndef MOZILLA_PLAINTEXT_EDITOR_ONLY
   nsHTMLEditor::Shutdown();

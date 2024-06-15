@@ -21,6 +21,7 @@
  *
  * Contributor(s):
  *   Pierre Phaneuf <pp@ludusdesign.com>
+ *   Mats Palmgren <mats.palmgren@bredband.net>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -90,6 +91,7 @@
 #include "nsIDOMMouseListener.h"
 #include "nsIDOMMouseMotionListener.h"
 #include "nsIDOMKeyListener.h"
+#include "nsLayoutUtils.h"
 
 // Constants
 const nscoord kMaxDropDownRows          = 20; // This matches the setting for 4.x browsers
@@ -1726,13 +1728,6 @@ nsListControlFrame::OnOptionSelected(nsPresContext* aPresContext,
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsListControlFrame::OnOptionTextChanged(nsIDOMHTMLOptionElement* option)
-{
-  return NS_OK;
-}
-
-
 //---------------------------------------------------------
 PRIntn
 nsListControlFrame::GetSkipSides() const
@@ -2270,6 +2265,7 @@ nsListControlFrame::AboutToDropDown()
     FireMenuItemActiveEvent(); // Inform assistive tech what got focus
 #endif
   }
+  mItemSelectionStarted = PR_FALSE;
 
   return NS_OK;
 }
@@ -2398,6 +2394,8 @@ nsListControlFrame::MouseUp(nsIDOMEvent* aMouseEvent)
 {
   NS_ASSERTION(aMouseEvent != nsnull, "aMouseEvent is null.");
 
+  UpdateInListState(aMouseEvent);
+
   REFLOW_DEBUG_MSG("--------------------------- MouseUp ----------------------------\n");
 
   mButtonDown = PR_FALSE;
@@ -2411,7 +2409,7 @@ nsListControlFrame::MouseUp(nsIDOMEvent* aMouseEvent)
   // or on the select when in listbox mode, then let the click through
   if (!IsLeftButton(aMouseEvent)) {
     if (IsInDropDownMode()) {
-      if (!IsClickingInCombobox(aMouseEvent)) {
+      if (!IgnoreMouseEventForSelection(aMouseEvent)) {
         aMouseEvent->PreventDefault();
 
         nsCOMPtr<nsIDOMNSEvent> nsevent(do_QueryInterface(aMouseEvent));
@@ -2483,7 +2481,7 @@ nsListControlFrame::MouseUp(nsIDOMEvent* aMouseEvent)
       mouseEvent->clickCount = 1;
     } else {
       // the click was out side of the select or its dropdown
-      mouseEvent->clickCount = IsClickingInCombobox(aMouseEvent) ? 1 : 0;
+      mouseEvent->clickCount = IgnoreMouseEventForSelection(aMouseEvent) ? 1 : 0;
     }
   } else {
     REFLOW_DEBUG_MSG(">>>>>> Didn't find");
@@ -2505,26 +2503,51 @@ nsListControlFrame::MouseUp(nsIDOMEvent* aMouseEvent)
   return NS_OK;
 }
 
-//---------------------------------------------------------
-// helper method
-PRBool nsListControlFrame::IsClickingInCombobox(nsIDOMEvent* aMouseEvent)
+/**
+ * If the dropdown is showing and the mouse has moved below our
+ * border-inner-edge, then set mItemSelectionStarted.
+ */
+void
+nsListControlFrame::UpdateInListState(nsIDOMEvent* aEvent)
 {
-  // Cheesey way to figure out if we clicking in the ListBox portion
-  // or the Combobox portion
-  // Return TRUE if we are clicking in the combobox frame
-  if (mComboboxFrame) {
-    nsCOMPtr<nsIDOMMouseEvent> mouseEvent(do_QueryInterface(aMouseEvent));
-    PRInt32 scrX;
-    PRInt32 scrY;
-    mouseEvent->GetScreenX(&scrX);
-    mouseEvent->GetScreenY(&scrY);
-    nsRect rect;
-    mComboboxFrame->GetAbsoluteRect(&rect);
-    if (rect.Contains(scrX, scrY)) {
-      return PR_TRUE;
-    }
+  if (!mComboboxFrame)
+    return;
+
+  PRBool isDroppedDown;
+  mComboboxFrame->IsDroppedDown(&isDroppedDown);
+  if (!isDroppedDown)
+    return;
+
+  nsPoint pt = nsLayoutUtils::GetDOMEventCoordinatesRelativeTo(aEvent, this);
+  nsRect borderInnerEdge = GetScrollableView()->View()->GetBounds();
+  if (pt.y >= borderInnerEdge.y && pt.y < borderInnerEdge.YMost()) {
+    mItemSelectionStarted = PR_TRUE;
   }
-  return PR_FALSE;
+}
+
+/**
+ * When the user clicks on the comboboxframe to show the dropdown
+ * listbox, they then have to move the mouse into the list. We don't
+ * want to process those mouse events as selection events (i.e., to
+ * scroll list items into view). So we ignore the events until
+ * the mouse moves below our border-inner-edge, when
+ * mItemSelectionStarted is set.
+ *
+ * @param aPoint relative to this frame
+ */
+PRBool nsListControlFrame::IgnoreMouseEventForSelection(nsIDOMEvent* aEvent)
+{
+  if (!mComboboxFrame)
+    return PR_FALSE;
+
+  // Our DOM listener does get called when the dropdown is not
+  // showing, because it listens to events on the SELECT element
+  PRBool isDroppedDown;
+  mComboboxFrame->IsDroppedDown(&isDroppedDown);
+  if (!isDroppedDown)
+    return PR_TRUE;
+
+  return !mItemSelectionStarted;
 }
 
 //----------------------------------------------------------------------
@@ -2567,29 +2590,30 @@ nsListControlFrame::FireMenuItemActiveEvent()
 //----------------------------------------------------------------------
 // Sets the mSelectedIndex and mOldSelectedIndex from figuring out what 
 // item was selected using content
-// Returns NS_OK if it successfully found the selection
+// @param aPoint the event point, in listcontrolframe coordinates
+// @return NS_OK if it successfully found the selection
 //----------------------------------------------------------------------
 nsresult
 nsListControlFrame::GetIndexFromDOMEvent(nsIDOMEvent* aMouseEvent, 
                                          PRInt32&     aCurIndex)
 {
-  if (IsClickingInCombobox(aMouseEvent)) {
+  if (IgnoreMouseEventForSelection(aMouseEvent)) {
     return NS_ERROR_FAILURE;
   }
 
-#ifdef DEBUG_rodsX
-  nsCOMPtr<nsIDOMMouseEvent> mouseEvent(do_QueryInterface(aMouseEvent));
-  nsCOMPtr<nsIDOMNode> node;
-  mouseEvent->GetTarget(getter_AddRefs(node));
-  nsCOMPtr<nsIContent> content = do_QueryInterface(node);
-  nsIFrame * frame;
-  GetPresContext()->PresShell()->GetPrimaryFrameFor(content, &frame);
-  printf("Target Frame: %p  this: %p\n", frame, this);
-  printf("-->\n");
-#endif
+  nsIView* view = GetScrolledFrame()->GetView();
+  nsIViewManager* viewMan = view->GetViewManager();
+  nsIView* curGrabber;
+  viewMan->GetMouseEventGrabber(curGrabber);
+  if (curGrabber != view) {
+    // If we're not capturing, then ignore movement in the border
+    nsPoint pt = nsLayoutUtils::GetDOMEventCoordinatesRelativeTo(aMouseEvent, this);
+    nsRect borderInnerEdge = GetScrollableView()->View()->GetBounds();
+    if (!borderInnerEdge.Contains(pt)) {
+      return NS_ERROR_FAILURE;
+    }
+  }
 
-  nsresult rv;
-  
   nsCOMPtr<nsIContent> content;
   GetPresContext()->EventStateManager()->
     GetEventTargetContent(nsnull, getter_AddRefs(content));
@@ -2597,12 +2621,47 @@ nsListControlFrame::GetIndexFromDOMEvent(nsIDOMEvent* aMouseEvent,
   nsCOMPtr<nsIContent> optionContent = GetOptionFromContent(content);
   if (optionContent) {
     aCurIndex = GetIndexFromContent(optionContent);
-    rv = NS_OK;
-  } else {
-    rv = NS_ERROR_FAILURE;
+    return NS_OK;
   }
 
-  return rv;
+  nsIPresShell *presShell = GetPresContext()->PresShell();
+  PRInt32 numOptions;
+  GetNumberOfOptions(&numOptions);
+  if (numOptions < 1)
+    return NS_ERROR_FAILURE;
+
+  nsPoint pt = nsLayoutUtils::GetDOMEventCoordinatesRelativeTo(aMouseEvent, this);
+
+  // If the event coordinate is above the first option frame, then target the
+  // first option frame
+  nsIContent* firstOption = GetOptionContent(0);
+  NS_ASSERTION(firstOption, "Can't find first option that's supposed to be there");
+  nsIFrame* optionFrame;
+  nsresult rv = presShell->GetPrimaryFrameFor(firstOption, &optionFrame);
+  if (NS_SUCCEEDED(rv)) {
+    nsPoint ptInOptionFrame = pt - optionFrame->GetOffsetTo(this);
+    if (ptInOptionFrame.y < 0 && ptInOptionFrame.x >= 0 &&
+        ptInOptionFrame.x < optionFrame->GetSize().width) {
+      aCurIndex = 0;
+      return NS_OK;
+    }
+  }
+
+  nsIContent* lastOption = GetOptionContent(numOptions - 1);
+  // If the event coordinate is below the last option frame, then target the
+  // last option frame
+  NS_ASSERTION(lastOption, "Can't find last option that's supposed to be there");
+  rv = presShell->GetPrimaryFrameFor(lastOption, &optionFrame);
+  if (NS_SUCCEEDED(rv)) {
+    nsPoint ptInOptionFrame = pt - optionFrame->GetOffsetTo(this);
+    if (ptInOptionFrame.y >= optionFrame->GetSize().height && ptInOptionFrame.x >= 0 &&
+        ptInOptionFrame.x < optionFrame->GetSize().width) {
+      aCurIndex = numOptions - 1;
+      return NS_OK;
+    }
+  }
+
+  return NS_ERROR_FAILURE;
 }
 
 //----------------------------------------------------------------------
@@ -2610,6 +2669,8 @@ nsresult
 nsListControlFrame::MouseDown(nsIDOMEvent* aMouseEvent)
 {
   NS_ASSERTION(aMouseEvent != nsnull, "aMouseEvent is null.");
+
+  UpdateInListState(aMouseEvent);
 
   REFLOW_DEBUG_MSG("--------------------------- MouseDown ----------------------------\n");
 
@@ -2624,7 +2685,7 @@ nsListControlFrame::MouseDown(nsIDOMEvent* aMouseEvent)
   // or on the select when in listbox mode, then let the click through
   if (!IsLeftButton(aMouseEvent)) {
     if (IsInDropDownMode()) {
-      if (!IsClickingInCombobox(aMouseEvent)) {
+      if (!IgnoreMouseEventForSelection(aMouseEvent)) {
         aMouseEvent->PreventDefault();
 
         nsCOMPtr<nsIDOMNSEvent> nsevent(do_QueryInterface(aMouseEvent));
@@ -2644,15 +2705,13 @@ nsListControlFrame::MouseDown(nsIDOMEvent* aMouseEvent)
 
   PRInt32 selectedIndex;
   if (NS_SUCCEEDED(GetIndexFromDOMEvent(aMouseEvent, selectedIndex))) {
-    if (!IsInDropDownMode()) {
-      // Handle Like List
-      CaptureMouseEvents(GetPresContext(), PR_TRUE);
-      mChangesSinceDragStart = HandleListSelection(aMouseEvent, selectedIndex);
-    }
+    // Handle Like List
+    CaptureMouseEvents(GetPresContext(), PR_TRUE);
+    mChangesSinceDragStart = HandleListSelection(aMouseEvent, selectedIndex);
   } else {
     // NOTE: the combo box is responsible for dropping it down
     if (mComboboxFrame) {
-      if (!IsClickingInCombobox(aMouseEvent)) {
+      if (!IgnoreMouseEventForSelection(aMouseEvent)) {
         return NS_OK;
       }
 
@@ -2679,6 +2738,8 @@ nsListControlFrame::MouseMove(nsIDOMEvent* aMouseEvent)
 {
   NS_ASSERTION(aMouseEvent, "aMouseEvent is null.");
   //REFLOW_DEBUG_MSG("MouseMove\n");
+
+  UpdateInListState(aMouseEvent);
 
   if (IsInDropDownMode()) { 
     PRBool isDroppedDown = PR_FALSE;
@@ -2708,6 +2769,8 @@ nsListControlFrame::DragMove(nsIDOMEvent* aMouseEvent)
 {
   NS_ASSERTION(aMouseEvent, "aMouseEvent is null.");
   //REFLOW_DEBUG_MSG("DragMove\n");
+
+  UpdateInListState(aMouseEvent);
 
   if (!IsInDropDownMode()) { 
     PRInt32 selectedIndex;

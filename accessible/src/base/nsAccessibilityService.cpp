@@ -74,6 +74,7 @@
 #include "nsRootAccessibleWrap.h"
 #include "nsTextFragment.h"
 #include "nsPIAccessNode.h"
+#include "nsUnicharUtils.h"
 #include "nsIWebProgress.h"
 
 #ifdef MOZ_XUL
@@ -187,20 +188,6 @@ NS_IMETHODIMP nsAccessibilityService::OnStateChange(nsIWebProgress *aWebProgress
   docShellTreeItem->GetSameTypeRootTreeItem(getter_AddRefs(sameTypeRoot));
   if (sameTypeRoot != docShellTreeItem) {
     return NS_OK;  // Not interested in frames or iframes, just the root content
-  }
-
-  if (nsAccessNode::gLastFocusedNode) {
-    nsCOMPtr<nsIDocShellTreeItem> focusedDocShellTreeItem =
-      nsAccessNode::GetDocShellTreeItemFor(nsAccessNode::gLastFocusedNode);
-    NS_ENSURE_TRUE(focusedDocShellTreeItem, NS_ERROR_FAILURE);
-    nsCOMPtr<nsIDocShellTreeItem> focusedRootTreeItem;
-    focusedDocShellTreeItem->GetSameTypeRootTreeItem(getter_AddRefs(focusedRootTreeItem));
-
-    if (focusedRootTreeItem != sameTypeRoot) {
-      // Load is not occuring in the currently focused tab, so don't fire 
-      // doc load event there, otherwise assistive technology may become confused
-      return NS_OK;
-    }
   }
 
   // Get the accessible for the new document.
@@ -483,10 +470,20 @@ nsAccessibilityService::CreateHTMLButtonAccessibleXBL(nsIDOMNode *aNode, nsIAcce
   return NS_OK;
 }
 
-NS_IMETHODIMP
+PRBool nsAccessibilityService::GetRole(nsIContent *aContent,
+                                       nsIWeakReference *aWeakShell,
+                                       nsAString& aRole)
+{
+  return NS_CONTENT_ATTR_HAS_VALUE ==
+         aContent->GetAttr(kNameSpaceID_XHTML2_Unofficial,
+                           nsAccessibilityAtoms::role, aRole);
+}
+
+nsresult
 nsAccessibilityService::CreateHTMLAccessibleByMarkup(nsISupports *aFrame,
                                                      nsIWeakReference *aWeakShell,
                                                      nsIDOMNode *aNode,
+                                                     const nsAString& aRole,
                                                      nsIAccessible **aAccessible)
 {
   // aFrame type was generic, we'll use the DOM to decide 
@@ -508,12 +505,7 @@ nsAccessibilityService::CreateHTMLAccessibleByMarkup(nsISupports *aFrame,
   else if (tag == nsAccessibilityAtoms::a) {
     *aAccessible = new nsHTMLLinkAccessible(aNode, aWeakShell, NS_STATIC_CAST(nsIFrame*, aFrame));
   }
-#endif
-  else if (content->HasAttr(kNameSpaceID_None, nsAccessibilityAtoms::tabindex) ||
-           content->HasAttr(kNameSpaceID_XHTML2_Unofficial, nsAccessibilityAtoms::role)
-#ifndef MOZ_ACCESSIBILITY_ATK
-           ||
-           tag == nsAccessibilityAtoms::abbr ||
+  else if (tag == nsAccessibilityAtoms::abbr ||
            tag == nsAccessibilityAtoms::acronym ||
            tag == nsAccessibilityAtoms::blockquote ||
            tag == nsAccessibilityAtoms::form ||
@@ -526,9 +518,14 @@ nsAccessibilityService::CreateHTMLAccessibleByMarkup(nsISupports *aFrame,
            tag == nsAccessibilityAtoms::q ||
            tag == nsAccessibilityAtoms::tbody ||
            tag == nsAccessibilityAtoms::tfoot ||
-           tag == nsAccessibilityAtoms::thead
+           tag == nsAccessibilityAtoms::thead ||
+#else
+  else if (
 #endif
-           ) {
+           content->HasAttr(kNameSpaceID_None, nsAccessibilityAtoms::tabindex) ||
+           // The role from a <body> or doc element is already exposed in nsDocAccessible
+           (tag != nsAccessibilityAtoms::body && content->GetParent() &&
+           !aRole.IsEmpty())) {
     *aAccessible = new nsAccessibleWrap(aNode, aWeakShell);
   }
   NS_IF_ADDREF(*aAccessible);
@@ -1867,11 +1864,47 @@ NS_IMETHODIMP nsAccessibilityService::GetAccessible(nsIDOMNode *aNode,
   }
   else {
     // --- Try creating accessible for HTML ---
+    nsAutoString role;
+    GetRole(content, aWeakShell, role);
+    if (!content->HasAttr(kNameSpaceID_None, nsAccessibilityAtoms::tabindex)) {
+      // If no tabindex, check for a Presentation role, which 
+      // tells us not to expose this to the accessibility hierarchy.
+      if (StringEndsWith(role, NS_LITERAL_STRING(":presentation"),
+                         nsCaseInsensitiveStringComparator())) {
+        return NS_ERROR_FAILURE;
+      }
+      else {
+        // If we're in table-related subcontent, check for the
+        // Presentation role on the containing table
+        nsIAtom *tag = content->Tag();
+        if (tag == nsAccessibilityAtoms::td ||
+            tag == nsAccessibilityAtoms::th ||
+            tag == nsAccessibilityAtoms::tr ||
+            tag == nsAccessibilityAtoms::tbody ||
+            tag == nsAccessibilityAtoms::tfoot ||
+            tag == nsAccessibilityAtoms::thead) {
+          nsIContent *tableContent = content;
+          nsAutoString tableRole;
+          while ((tableContent = tableContent->GetParent()) != nsnull) {
+            if (tableContent->Tag() == nsAccessibilityAtoms::table) {
+              if (GetRole(tableContent, aWeakShell, tableRole) &&
+                  StringEndsWith(tableRole, NS_LITERAL_STRING(":presentation"),
+                  nsCaseInsensitiveStringComparator())) {
+                // Table that we're a descendant of is presentational
+                return NS_ERROR_FAILURE;
+              }
+              break;
+            }
+          }
+        }
+      }
+    }
+
     frame->GetAccessible(getter_AddRefs(newAcc)); // Try using frame to do it
     if (!newAcc) {
       // Use markup (mostly tag name, perhaps attributes) to
       // decide if and what kind of accessible to create.
-      CreateHTMLAccessibleByMarkup(frame, aWeakShell, aNode, getter_AddRefs(newAcc));
+      CreateHTMLAccessibleByMarkup(frame, aWeakShell, aNode, role, getter_AddRefs(newAcc));
     }
   }
 
@@ -1880,8 +1913,14 @@ NS_IMETHODIMP nsAccessibilityService::GetAccessible(nsIDOMNode *aNode,
 
 // Called from layout when the frame tree owned by a node changes significantly
 NS_IMETHODIMP nsAccessibilityService::InvalidateSubtreeFor(nsIPresShell *aShell,
-                                                           nsIContent *aContainerContent)
+                                                           nsIContent *aChangeContent,
+                                                           PRUint32 aEvent)
 {
+  NS_ASSERTION(aEvent == nsIAccessibleEvent::EVENT_REORDER ||
+               aEvent == nsIAccessibleEvent::EVENT_SHOW ||
+               aEvent == nsIAccessibleEvent::EVENT_HIDE,
+               "Incorrect aEvent passed in");
+
   nsCOMPtr<nsIWeakReference> weakShell(do_GetWeakReference(aShell));
   NS_ASSERTION(aShell, "No pres shell in call to InvalidateSubtreeFor");
   nsCOMPtr<nsIAccessibleDocument> accessibleDoc =
@@ -1891,9 +1930,7 @@ NS_IMETHODIMP nsAccessibilityService::InvalidateSubtreeFor(nsIPresShell *aShell,
   if (!privateAccessibleDoc) {
     return NS_OK;
   }
-  nsCOMPtr<nsIDOMNode> domNode(do_QueryInterface(aContainerContent));
-  NS_ASSERTION(domNode, "No DOM node in call to InvalidateSubtreeFor");
-  return privateAccessibleDoc->InvalidateCacheSubtree(domNode, nsIAccessibleEvent::EVENT_REORDER);
+  return privateAccessibleDoc->InvalidateCacheSubtree(aChangeContent, aEvent);
 }
 
 //////////////////////////////////////////////////////////////////////

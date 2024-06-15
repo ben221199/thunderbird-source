@@ -1479,15 +1479,15 @@ nsRenderingContextMac::UseBackbuffer(PRBool* aUseBackbuffer)
 
 
 PRBool
-nsRenderingContextMac::OnJaguar()
+nsRenderingContextMac::OnTigerOrLater()
 {
   static PRBool sInitVer = PR_FALSE;
-  static PRBool sOnJaguar = PR_FALSE;
+  static PRBool sOnTigerOrLater = PR_FALSE;
   if (!sInitVer) {
     long version;
     OSErr err = ::Gestalt(gestaltSystemVersion, &version);
-    sOnJaguar = (err == noErr && version >= 0x00001020);
+    sOnTigerOrLater = ((err == noErr) && (version >= 0x00001040));
     sInitVer = PR_TRUE;
   }
-  return sOnJaguar;
+  return sOnTigerOrLater;
 }

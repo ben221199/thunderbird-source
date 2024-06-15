@@ -146,7 +146,11 @@ CPPSRCS		+= nsSigHandlers.cpp nsStackFrameUnix.cpp
 endif
 
 ifdef BUILD_STATIC_LIBS
+ifneq ($(MOZ_OS2_TOOLS),VACPP)
+ifneq (WINNT_,$(OS_ARCH)_$(GNU_CC))
 STATIC_COMPONENTS_LINKER_PATH = -L$(DIST)/lib/components
+endif
+endif
 endif
 
 LIBS	= \
@@ -154,6 +158,10 @@ LIBS	= \
 	$(EXTRA_DSO_LIBS) \
 	$(NULL)
 
+ifdef MOZ_ENABLE_XREMOTE
+LIBS += $(DEPTH)/widget/src/xremoteclient/$(LIB_PREFIX)xremote_client_s.$(LIB_SUFFIX)
+LOCAL_INCLUDES += -I$(topsrcdir)/widget/src/xremoteclient
+endif
 
 ifndef BUILD_STATIC_LIBS
 
@@ -348,11 +356,6 @@ ifneq (,$(filter-out OS2 WINNT,$(OS_ARCH)))
 GARBAGE         += $(STACKWALK_SRC_LCSRCS) $(wildcard *.$(OBJ_SUFFIX))
 endif
 
-ifdef MOZ_ENABLE_XREMOTE
-LIBS += $(DEPTH)/widget/src/xremoteclient/$(LIB_PREFIX)xremote_client_s.$(LIB_SUFFIX)
-LOCAL_INCLUDES += -I$(topsrcdir)/widget/src/xremoteclient
-endif
-
 include $(topsrcdir)/config/rules.mk
 
 ifneq (,$(filter-out OS2 WINNT,$(OS_ARCH)))
@@ -482,7 +485,10 @@ libs:: $(PROGRAM)
 	rm -f $(DIST)/$(APP_NAME).app/Contents/MacOS/$(PROGRAM)
 	rsync -aL $(PROGRAM) $(DIST)/$(APP_NAME).app/Contents/MacOS
 	mkdir -p $(DIST)/$(APP_NAME).app/Contents/Plug-Ins
-	cp -R $(DIST)/package/PrintPDE.plugin $(DIST)/$(APP_NAME).app/Contents/Plug-Ins/
+# Bug 297227: the next line only exists to repair broken depend builds, it can
+# go away once that bug has been closed for a while.
+	rm -rf $(DIST)/$(APP_NAME).app/Contents/Plug-Ins/PrintPDE.plugin
+	rsync -a --copy-unsafe-links $(DIST)/package/PrintPDE.plugin $(DIST)/$(APP_NAME).app/Contents/Plug-Ins
 	cp -RL $(DIST)/package/mozillaSuite.rsrc $(DIST)/$(APP_NAME).app/Contents/Resources/$(PROGRAM).rsrc
 	echo -n APPLMOZZ > $(DIST)/$(APP_NAME).app/Contents/PkgInfo
 

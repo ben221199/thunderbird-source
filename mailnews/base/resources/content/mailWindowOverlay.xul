@@ -1041,6 +1041,9 @@
           <menuitem id="menu_newFolder" label="&newFolderCmd.label;"
                      oncommand="MsgNewFolder(NewFolder);"
                      accesskey="&newFolderCmd.accesskey;"/>
+          <menuitem id="menu_newVirtualFolder" label="&newVirtualFolderCmd.label;"
+                    oncommand="MsgVirtualFolderProperties(false);"
+                    accesskey="&newVirtualFolderCmd.accesskey;"/>
           <menuitem id="newAccountMenuItem" label="&newAccountCmd.label;"
                      accesskey="&newAccountCmd.accesskey;"
                      oncommand="MsgAccountWizard();"/>
@@ -1829,7 +1832,7 @@
   <label id="junkBarMessage" value="&junkBarMessage.label;"/>
   <spacer flex="1"/>
   <button label="&junkInfoButton.label;" oncommand="MsgJunkMailInfo(false)"/>
-  <button label="&notJunkButton.label;" oncommand="JunkSelectedMessages(false)"/>
+  <button label="&junkBarButton.label;" oncommand="JunkSelectedMessages(false)"/>
 </hbox>
 
 <statusbar class="chromeclass-status" id="status-bar"> 

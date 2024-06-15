@@ -629,7 +629,7 @@ nsTextEditRules::WillInsertText(PRInt32          aAction,
   if (NS_FAILED(res)) return res;
 
   // don't put text in places that can't have it
-  if (!mEditor->IsTextNode(selNode) && !mEditor->CanContainTag(selNode, NS_LITERAL_STRING("__moz_text")))
+  if (!mEditor->IsTextNode(selNode) && !mEditor->CanContainTag(selNode, NS_LITERAL_STRING("#text")))
     return NS_ERROR_FAILURE;
 
   // we need to get the doc
@@ -1201,7 +1201,7 @@ nsTextEditRules::ReplaceNewlines(nsIDOMRange *aRange)
       if (!txn)  return NS_ERROR_OUT_OF_MEMORY;
       res = mEditor->DoTransaction(txn); 
       if (NS_FAILED(res))  return res; 
-      // The transaction system (if any) has taken ownwership of txn
+      // The transaction system (if any) has taken ownership of txn
       NS_IF_RELEASE(txn);
       
       // insert a break

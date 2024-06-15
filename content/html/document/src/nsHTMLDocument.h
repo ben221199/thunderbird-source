@@ -229,8 +229,6 @@ protected:
   static PRBool MatchNameAttribute(nsIContent* aContent, PRInt32 aNamespaceID,
                                    nsIAtom* aAtom, const nsAString& aData);
 
-  static nsIPrincipal *GetCallerPrincipal();
-
   static void DocumentWriteTerminationFunc(nsISupports *aRef);
 
   PRBool GetBodyContent();
@@ -246,12 +244,12 @@ protected:
   nsresult CreateAndAddWyciwygChannel(void);
   nsresult RemoveWyciwygChannel(void);
 
+  void *GenerateParserKey(void);
+
   PRInt32 GetDefaultNamespaceID() const
   {
     return mDefaultNamespaceID;
   };
-
-  nsCOMPtr<nsIChannel>     mChannel;
 
   nsCompatibility mCompatMode;
 

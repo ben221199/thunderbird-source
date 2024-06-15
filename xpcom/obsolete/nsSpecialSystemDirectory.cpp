@@ -56,6 +56,8 @@
 #include <shlobj.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <ctype.h>
+#include "nsNativeCharsetUtils.h"
 #elif defined(XP_OS2)
 #define MAX_PATH _MAX_PATH
 #define INCL_WINWORKPLACE
@@ -87,19 +89,6 @@
 
 #include "nsHashtable.h"
 #include "prlog.h"
-
-#if defined (XP_MAC) && UNIVERSAL_INTERFACES_VERSION < 0x0340
-    enum {
-      kSystemDomain                 = -32766, /* Read-only system hierarchy.*/
-      kLocalDomain                  = -32765, /* All users of a single machine have access to these resources.*/
-      kNetworkDomain                = -32764, /* All users configured to use a common network server has access to these resources.*/
-      kUserDomain                   = -32763, /* Read/write. Resources that are private to the user.*/
-      kClassicDomain                = -32762, /* Domain referring to the currently configured Classic System Folder*/
-
-      kDomainLibraryFolderType      = FOUR_CHAR_CODE('dlib')
-    };
-#endif
-
 
 class SystemDirectoriesKey : public nsHashKey {
 public:
@@ -143,44 +132,34 @@ static HINSTANCE gShell32DLLInst = NULL;
 
 #if defined (XP_WIN)
 
-static PRBool gGlobalOSInitialized = PR_FALSE;
-static PRBool gGlobalDBCSEnabledOS = PR_FALSE;
-
 //----------------------------------------------------------------------------------------
 static char* MakeUpperCase(char* aPath)
 //----------------------------------------------------------------------------------------
 {
-  // check if the Windows is DBCSEnabled once.
-  if (PR_FALSE == gGlobalOSInitialized) {
-#ifndef WINCE
-    if (GetSystemMetrics(SM_DBCSENABLED))
-      gGlobalDBCSEnabledOS = PR_TRUE;
-#endif
-    gGlobalOSInitialized = PR_TRUE;
+  // windows does not care about case.  push to uppercase:
+  nsAutoString widePath;
+  nsDependentCString path(aPath);
+  nsresult rv = NS_CopyNativeToUnicode(path, widePath);
+  if (NS_FAILED(rv)) {
+      NS_ERROR("failed to convert a path to Unicode");
+      return aPath;
   }
 
-  // windows does not care about case.  pu sh to uppercase:
-  int length = strlen(aPath);
-  int i = 0; /* C++ portability guide #20 */
-  if (!gGlobalDBCSEnabledOS)  {
-    // for non-DBCS windows
-    for (i = 0; i < length; i++)
-        if (islower(aPath[i]))
-          aPath[i] = _toupper(aPath[i]);
+  PRUnichar *start = widePath.BeginWriting();
+  PRUnichar *end = widePath.EndWriting();
+
+  while (start != end) {
+      // XXX this doesn't change any non-ASCII character 
+      *start = towupper(*start);
+      ++start;
   }
-  else {
-    // for DBCS windows
-    for (i = 0; i < length; i++)  {
-      if (IsDBCSLeadByte(aPath[i])) {
-        // begining of the double bye char
-        i++;
-      }
-      else  {
-        if ( islower(aPath[i]))
-          aPath[i] = _toupper(aPath[i]);
-      }
-    } //end of for loop
-  }
+
+  nsCAutoString newCPath;
+  NS_CopyUnicodeToNative(widePath, newCPath); 
+  NS_ASSERTION(path.Length() >= newCPath.Length(), 
+               "uppercased string is longer than original");
+  ::strcpy(aPath, newCPath.get());
+
   return aPath;
 }
 
@@ -281,69 +260,6 @@ static void GetCurrentProcessDirectory(nsFileSpec& aFileSpec)
     aFileSpec = buffer;
     return;
 
-
-#elif defined(XP_MAC)
-    // get info for the the current process to determine the directory
-    // its located in
-    OSErr err;
-	ProcessSerialNumber psn = {kNoProcess, kCurrentProcess};
-    ProcessInfoRec pInfo;
-    FSSpec         tempSpec;
-
-    // initialize ProcessInfoRec before calling
-    // GetProcessInformation() or die horribly.
-    pInfo.processName = nil;
-    pInfo.processAppSpec = &tempSpec;
-    pInfo.processInfoLength = sizeof(ProcessInfoRec);
-
-    if (!(err = GetProcessInformation(&psn, &pInfo)))
-    {
-        FSSpec appFSSpec = *(pInfo.processAppSpec);
-        long theDirID = appFSSpec.parID;
-
-        Str255 name;
-        CInfoPBRec catInfo;
-        catInfo.dirInfo.ioCompletion = NULL;
-        catInfo.dirInfo.ioNamePtr = (StringPtr)&name;
-        catInfo.dirInfo.ioVRefNum = appFSSpec.vRefNum;
-        catInfo.dirInfo.ioDrDirID = theDirID;
-        catInfo.dirInfo.ioFDirIndex = -1; // -1 = query dir in ioDrDirID
-
-        if (!(err = PBGetCatInfoSync(&catInfo)))
-        {
-            aFileSpec = nsFileSpec(appFSSpec.vRefNum,
-                                   catInfo.dirInfo.ioDrParID,
-                                   name,
-                                   PR_TRUE);
-            return;
-        }
-    }
-#if defined(DEBUG)
-    else
-    {
-        // In the absence of a good way to get the executable directory let
-        // us try this for unix:
-        //	- if MOZILLA_FIVE_HOME is defined, that is it
-        char *moz5 = PR_GetEnv("MOZILLA_FIVE_HOME");
-        if (moz5)
-        {
-            printf( "nsSpecialSystemDirectory::MOZILLA_FIVE_HOME is set to %s\n", moz5 );
-            aFileSpec = moz5;
-            return;
-        }
-        else
-        {
-            static PRBool firstWarning = PR_TRUE;
-
-            if(firstWarning) {
-                // Warn that MOZILLA_FIVE_HOME not set, once.
-                printf("***Warning: MOZILLA_FIVE_HOME not set.\n");
-                firstWarning = PR_FALSE;
-            }
-        }
-    }
-#endif /* DEBUG */
-
 #elif defined(XP_UNIX)
 
     // In the absence of a good way to get the executable directory let
@@ -440,12 +356,6 @@ void nsSpecialSystemDirectory::operator = (SystemDirectories aSystemSystemDirect
     // IT's VERY IMPORTANT that needToAppend is initialized to PR_TRUE.
     PRBool needToAppend = PR_TRUE;
 
-#ifdef XP_MAC
-    OSErr err;
-    short vRefNum;
-    long dirID;
-#endif
-
     *this = (const char*)nsnull;
     switch (aSystemSystemDirectory)
     {
@@ -475,10 +385,6 @@ void nsSpecialSystemDirectory::operator = (SystemDirectories aSystemSystemDirect
 #ifdef DEBUG
             printf( "Got OS_DriveDirectory: %s\n", buffer);
 #endif
-        }
-#elif defined(XP_MAC)
-        {
-            *this = kVolumeRootFolderType;
         }
 #else
         *this = "/";
@@ -510,10 +416,7 @@ void nsSpecialSystemDirectory::operator = (SystemDirectories aSystemSystemDirect
              if( c) *this = buffer;
              // use exe's directory if not set
              else GetCurrentProcessDirectory(*this);
-          }
-#elif defined(XP_MAC)
-            *this = kTemporaryFolderType;
-        
+          }        
 #elif defined(XP_UNIX) || defined(XP_BEOS)
 		{
 			static const char *tPath = nsnull;
@@ -573,11 +476,7 @@ void nsSpecialSystemDirectory::operator = (SystemDirectories aSystemSystemDirect
 
                 if (needToAppend) {
                     // XXX We need to unify these names across all platforms
-#if defined(XP_MAC)
-                    *this += "Component Registry";
-#else
                     *this += "component.reg";
-#endif /* XP_MAC */
                 }
             }
             break;
@@ -611,11 +510,7 @@ void nsSpecialSystemDirectory::operator = (SystemDirectories aSystemSystemDirect
 
                 if (needToAppend) {
                     // XXX We need to unify these names across all platforms
-#if defined(XP_MAC)
-                    *this += "Components";
-#else
                     *this += "components";
-#endif /* XP_MAC */
                 }
             }
             break;
@@ -637,93 +532,6 @@ void nsSpecialSystemDirectory::operator = (SystemDirectories aSystemSystemDirect
                 }
             }
             break;
-
-#if defined(XP_MAC)
-        case Mac_SystemDirectory:
-            *this = kSystemFolderType;
-            break;
-
-        case Mac_DesktopDirectory:
-            *this = kDesktopFolderType;
-            break;
-
-        case Mac_TrashDirectory:
-            *this = kTrashFolderType;
-            break;
-
-        case Mac_StartupDirectory:
-            *this = kStartupFolderType;
-            break;
-
-        case Mac_ShutdownDirectory:
-            *this = kShutdownFolderType;
-            break;
-
-        case Mac_AppleMenuDirectory:
-            *this = kAppleMenuFolderType;
-            break;
-
-        case Mac_ControlPanelDirectory:
-            *this = kControlPanelFolderType;
-            break;
-
-        case Mac_ExtensionDirectory:
-            *this = kExtensionFolderType;
-            break;
-
-        case Mac_FontsDirectory:
-            *this = kFontsFolderType;
-            break;
-
-        case Mac_ClassicPreferencesDirectory:
-        {
-        	// whether Mac OS X or pre-Mac OS X, return Classic's Prefs folder
-            short domain;
-            long response;
-            err = ::Gestalt(gestaltSystemVersion, &response);
-            domain = (!err && response >= 0x00001000) ? kClassicDomain : kOnSystemDisk;
-            err = ::FindFolder(domain, kPreferencesFolderType, true, &vRefNum, &dirID);
-            if (!err) {
-                err = ::FSMakeFSSpec(vRefNum, dirID, "\p", &mSpec);
-            }
-            mError = NS_FILE_RESULT(err);
-            break;
-        }
-
-        case Mac_PreferencesDirectory:
-		{
-			// if Mac OS X, return Mac OS X's Prefs folder
-			// if pre-Mac OS X, return Mac OS's Prefs folder
-            err = ::FindFolder(kOnSystemDisk, kPreferencesFolderType, true, &vRefNum, &dirID);
-            if (!err) {
-                err = ::FSMakeFSSpec(vRefNum, dirID, "\p", &mSpec);
-            }
-            mError = NS_FILE_RESULT(err);
-            break;
-		}
-
-        case Mac_DocumentsDirectory:
-            *this = kDocumentsFolderType;
-            break;
-
-        case Mac_InternetSearchDirectory:
-            *this = kInternetSearchSitesFolderType;
-            break;
-
-        case Mac_DefaultDownloadDirectory:
-            *this = kDefaultDownloadFolderType;
-            break;
-            
-        case Mac_UserLibDirectory:
-        {
-            err = ::FindFolder(kUserDomain, kDomainLibraryFolderType, true, &vRefNum, &dirID);
-            if (!err) {
-                err = ::FSMakeFSSpec(vRefNum, dirID, "\p", &mSpec);
-            }
-            mError = NS_FILE_RESULT(err);
-            break;
-        }
-#endif
             
 #if defined (XP_WIN)
         case Win_SystemDirectory:
@@ -1089,75 +897,3 @@ nsSpecialSystemDirectory::Set(SystemDirectories dirToSet, nsFileSpec *dirSpec)
     
     return;
 }
-
-#if defined(XP_MAC)
-//----------------------------------------------------------------------------------------
-nsSpecialSystemDirectory::nsSpecialSystemDirectory(OSType folderType)
-//----------------------------------------------------------------------------------------
-{
-	*this = folderType;
-}
-
-//----------------------------------------------------------------------------------------
-void nsSpecialSystemDirectory::operator = (OSType folderType)
-//----------------------------------------------------------------------------------------
-{
-    CInfoPBRec cinfo;
-    DirInfo *dipb=(DirInfo *)&cinfo;
-    
-    // hack: first check for kDefaultDownloadFolderType
-    // if it is, get Internet Config Download folder, if that's
-    // not availble use desktop folder
-    if (folderType == kDefaultDownloadFolderType)
-    {
-      nsCOMPtr<nsIInternetConfigService> icService (do_GetService(NS_INTERNETCONFIGSERVICE_CONTRACTID));
-      if (icService)
-      {
-        if (NS_SUCCEEDED(icService->GetDownloadFolder(&mSpec)))
-          return;
-        else
-          folderType = kDesktopFolderType;
-      }
-      else
-      {
-        folderType = kDesktopFolderType;
-      }
-    }
-    // Call FindFolder to fill in the vrefnum and dirid
-    for (int attempts = 0; attempts < 2; attempts++)
-    {
-        mError = NS_FILE_RESULT(
-            FindFolder(
-                kOnSystemDisk,
-                folderType,
-                true,
-                &dipb->ioVRefNum,
-                &dipb->ioDrDirID));
-        if (NS_SUCCEEDED(mError))
-            break;
-        if (attempts > 0)
-		    return;
-		switch (folderType)
-		{
-	    case kDocumentsFolderType:
-	        // Find folder will find this, as long as it exists.
-	        // The "create" parameter, however, is sadly ignored.
-	        // How do we internationalize this?
-	        *this = kVolumeRootFolderType;
-	        *this += "Documents";
-	        CreateDirectory();
-	        break;
-		} // switch
-    } // for
-    StrFileName filename;
-    filename[0] = '\0';
-    dipb->ioNamePtr = (StringPtr)&filename;
-    dipb->ioFDirIndex = -1;
-    
-    mError = NS_FILE_RESULT(PBGetCatInfoSync(&cinfo));
-    if (NS_SUCCEEDED(mError))
-    {
-	    mError = NS_FILE_RESULT(FSMakeFSSpec(dipb->ioVRefNum, dipb->ioDrParID, filename, &mSpec));
-    }
-}
-#endif // XP_MAC

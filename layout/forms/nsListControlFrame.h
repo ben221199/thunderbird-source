@@ -20,6 +20,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
+ *   Mats Palmgren <mats.palmgren@bredband.net>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -182,7 +183,6 @@ public:
   NS_IMETHOD OnOptionSelected(nsPresContext* aPresContext,
                               PRInt32 aIndex,
                               PRBool aSelected);
-  NS_IMETHOD OnOptionTextChanged(nsIDOMHTMLOptionElement* option);
   NS_IMETHOD GetDummyFrame(nsIFrame** aFrame);
   NS_IMETHOD SetDummyFrame(nsIFrame* aFrame);
   NS_IMETHOD OnSetSelectedIndex(PRInt32 aOldIndex, PRInt32 aNewIndex);
@@ -221,7 +221,8 @@ protected:
   nsresult   IsOptionDisabled(PRInt32 anIndex, PRBool &aIsDisabled);
   nsresult   ScrollToFrame(nsIContent * aOptElement);
   nsresult   ScrollToIndex(PRInt32 anIndex);
-  PRBool     IsClickingInCombobox(nsIDOMEvent* aMouseEvent);
+  PRBool     IgnoreMouseEventForSelection(nsIDOMEvent* aEvent);
+  void       UpdateInListState(nsIDOMEvent* aEvent);
   void       AdjustIndexForDisabledOpt(PRInt32 aStartIndex, PRInt32 &anNewIndex,
                                        PRInt32 aNumOptions, PRInt32 aDoAdjustInc, PRInt32 aDoAdjustIncNext);
   virtual void ResetList(PRBool aAllowScrolling);
@@ -267,24 +268,27 @@ protected:
   nscoord      mMaxWidth;
   nscoord      mMaxHeight;
   PRInt32      mNumDisplayRows;
-  PRPackedBool mChangesSinceDragStart;
-  PRPackedBool mButtonDown;
+  PRPackedBool mChangesSinceDragStart:1;
+  PRPackedBool mButtonDown:1;
+  // Has the user selected a visible item since we showed the
+  // dropdown?
+  PRPackedBool mItemSelectionStarted:1;
 
-  PRPackedBool mIsAllContentHere;
-  PRPackedBool mIsAllFramesHere;
-  PRPackedBool mHasBeenInitialized;
-  PRPackedBool mNeedToReset;
-  PRPackedBool mPostChildrenLoadedReset;
+  PRPackedBool mIsAllContentHere:1;
+  PRPackedBool mIsAllFramesHere:1;
+  PRPackedBool mHasBeenInitialized:1;
+  PRPackedBool mNeedToReset:1;
+  PRPackedBool mPostChildrenLoadedReset:1;
 
-  PRPackedBool mOverrideReflowOpt;
+  PRPackedBool mOverrideReflowOpt:1;
 
   //bool value for multiple discontiguous selection
-  PRPackedBool mControlSelectMode;
-
-  nsRefPtr<nsListEventListener> mEventListener;
+  PRPackedBool mControlSelectMode:1;
 
   PRInt16 mPassId;
   nscoord mCachedDesiredMEW;
+
+  nsRefPtr<nsListEventListener> mEventListener;
 
   nsIFrame* mDummyFrame;
 

@@ -420,22 +420,42 @@ nsHTMLScrollFrame::TryLayout(ScrollReflowState* aState,
   aState->mScrollPortRect = nsRect(scrollPortOrigin, scrollPortSize);
   aState->mAscent = aKidMetrics.ascent;
   if (aKidMetrics.mComputeMEW) {
-    nscoord kidContentMEW = aKidMetrics.mMaxElementWidth -
+    // XXXBernd the following code is controversial see bug 295459 and bug
+    // 234593, however to get the main customer of MEW  - tables happy. It
+    // seems to be necessary
+    // It looks at the MEW as the minimum width that the parent has to give its
+    // children so that the childs margin box can layout its content without
+    // overflowing the parents content box. If the child has a fixed width
+    // the MEW will be allways this width regardless whether it makes the grand
+    // children overflow the child. Please notice that fixed widths for table
+    // related frames are not covered by this as they mean more a min-width.
+    //
+    // This means for scrolling boxes that if the width is auto or percent
+    // their content box can be squeezed down to 0, as they will either create
+    // a scrollbar so that content of the scrollframe will not leak out or it
+    // will cut the content at the frame boundaries.
+    
+    // The width of the vertical scrollbar comes out of the budget for the
+    // content width (see above where we include the scrollbar width before
+    // we call ComputeInsideBorderSize, which overrides the given
+    // width with the style computed width if there is one). So allow
+    // the vertical scrollbar width to be overridden by style information
+    // here, too.
+    nscoord minContentWidth =
+      aState->mReflowState.AdjustIntrinsicMinContentWidthForStyle(vScrollbarActualWidth);
+    aState->mMaxElementWidth = minContentWidth +
       aState->mReflowState.mComputedPadding.LeftRight();
-    NS_ASSERTION(kidContentMEW >= 0, "MEW didn't include padding?");
-    aState->mMaxElementWidth = vScrollbarActualWidth +
-      aState->mReflowState.mComputedPadding.LeftRight() +
-      aState->mReflowState.AdjustIntrinsicMinContentWidthForStyle(kidContentMEW);
     // borders get added on the way out of Reflow()
   }
   if (aKidMetrics.mFlags & NS_REFLOW_CALC_MAX_WIDTH) {
+    // We need to do what we did above: include the vertical scrollbar width in the
+    // content width before applying style.
     nscoord kidMaxWidth = aKidMetrics.mMaximumWidth;
     if (kidMaxWidth != NS_UNCONSTRAINEDSIZE) {
       nscoord kidContentMaxWidth = kidMaxWidth -
-        aState->mReflowState.mComputedPadding.LeftRight();
+        aState->mReflowState.mComputedPadding.LeftRight() + vScrollbarActualWidth;
       NS_ASSERTION(kidContentMaxWidth >= 0, "max-width didn't include padding?");
-      kidMaxWidth = vScrollbarActualWidth +
-        aState->mReflowState.mComputedPadding.LeftRight() +
+      kidMaxWidth = aState->mReflowState.mComputedPadding.LeftRight() +
         aState->mReflowState.AdjustIntrinsicContentWidthForStyle(kidContentMaxWidth);
     }
     aState->mMaximumWidth = kidMaxWidth;
@@ -499,10 +519,11 @@ nsHTMLScrollFrame::ReflowScrolledFrame(const ScrollReflowState& aState,
   // setting their mOverflowArea. This is wrong because every frame should
   // always set mOverflowArea. In fact nsObjectFrame and nsFrameFrame don't
   // support the 'outline' property because of this. Rather than fix the world
-  // right now, just fix up the overflow area if necessary.
-  if (!(mInner.mScrolledFrame->GetStateBits() & NS_FRAME_OUTSIDE_CHILDREN)) {
-    aMetrics->mOverflowArea.SetRect(0, 0, aMetrics->width, aMetrics->height);
-  }
+  // right now, just fix up the overflow area if necessary. Note that we don't
+  // check NS_FRAME_OUTSIDE_CHILDREN because it could be set even though the
+  // overflow area doesn't include the frame bounds.
+  aMetrics->mOverflowArea.UnionRect(aMetrics->mOverflowArea,
+                                    nsRect(0, 0, aMetrics->width, aMetrics->height));
 
   return rv;
 }
@@ -1553,7 +1574,7 @@ nsGfxScrollFrameInner::CreateAnonymousContent(nsISupportsArray& aAnonymousChildr
   if (presContext->IsPaginated()) {
     // allow scrollbars if this is the child of the viewport, because
     // we must be the scrollbars for the print preview window
-    if (!OuterIsRootScrollframe()) {
+    if (!mIsRoot) {
       mNeverHasVerticalScrollbar = mNeverHasHorizontalScrollbar = PR_TRUE;
       return;
     }
@@ -2349,7 +2370,7 @@ nsGfxScrollFrameInner::LayoutScrollbars(nsBoxLayoutState& aState,
   // be re-laid out anyway)
   if (aOldScrollArea.Size() != aScrollArea.Size()
       && nsBoxLayoutState::Dirty == aState.LayoutReason() &&
-      OuterIsRootScrollframe()) {
+      mIsRoot) {
     // Usually there are no fixed children, so don't do anything unless there's
     // at least one fixed child
     nsIFrame* parentFrame = mOuter->GetParent();
@@ -2439,14 +2460,6 @@ nsGfxScrollFrameInner::SetScrollbarVisibility(nsIBox* aScrollbar, PRBool aVisibl
       mediator->VisibilityChanged(scrollbar, aVisible);
     }
   }
-}
-
-PRBool
-nsGfxScrollFrameInner::OuterIsRootScrollframe()
-{
-  nsIFrame* parent = mOuter->GetParent();
-  return parent && parent->GetType() == nsLayoutAtoms::viewportFrame &&
-    parent->GetFirstChild(nsnull) == mOuter;
 }
 
 PRInt32

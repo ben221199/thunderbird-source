@@ -787,7 +787,7 @@ nsFormHistory::AutoCompleteSearch(const nsAString &aInputName,
         result->AddRow(matchingRows[items[i]]);
 
         // Free up these strings we owned.
-        delete (PRUnichar *) matchingValues[i];
+        NS_Free(matchingValues[i]);
       }
 
       delete[] items;

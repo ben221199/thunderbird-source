@@ -66,7 +66,7 @@
 #include "nsISSLSocketControl.h"
 #include "nsIPipe.h"
 
-#if defined(XP_WIN) && !defined (WINCE)
+#if defined(XP_WIN)
 #include "nsNativeConnectionHelper.h"
 #endif
 
@@ -724,6 +724,9 @@ nsSocketTransport::Init(const char **types, PRUint32 typeCount,
                         const nsACString &host, PRUint16 port,
                         nsIProxyInfo *givenProxyInfo)
 {
+    if (!mLock)
+        return NS_ERROR_OUT_OF_MEMORY;
+
     nsCOMPtr<nsProxyInfo> proxyInfo;
     if (givenProxyInfo) {
         proxyInfo = do_QueryInterface(givenProxyInfo);
@@ -742,7 +745,8 @@ nsSocketTransport::Init(const char **types, PRUint32 typeCount,
         // grab proxy type (looking for "socks" for example)
         proxyType = proxyInfo->Type();
         if (proxyType && (strcmp(proxyType, "http") == 0 ||
-                          strcmp(proxyType, "direct") == 0))
+                          strcmp(proxyType, "direct") == 0 ||
+                          strcmp(proxyType, "unknown") == 0))
             proxyType = nsnull;
     }
 
@@ -751,44 +755,48 @@ nsSocketTransport::Init(const char **types, PRUint32 typeCount,
 
     // include proxy type as a socket type if proxy type is not "http"
     mTypeCount = typeCount + (proxyType != nsnull);
-    if (mTypeCount) {
-        mTypes = (char **) malloc(mTypeCount * sizeof(char *));
-        if (!mTypes)
-            return NS_ERROR_OUT_OF_MEMORY;
+    if (!mTypeCount)
+        return NS_OK;
 
+    // if we have socket types, then the socket provider service had
+    // better exist!
+    nsresult rv;
+    nsCOMPtr<nsISocketProviderService> spserv =
+        do_GetService(kSocketProviderServiceCID, &rv);
+    if (NS_FAILED(rv)) return rv;
+
+    mTypes = (char **) malloc(mTypeCount * sizeof(char *));
+    if (!mTypes)
+        return NS_ERROR_OUT_OF_MEMORY;
+
+    // now verify that each socket type has a registered socket provider.
+    for (PRUint32 i = 0, type = 0; i < mTypeCount; ++i) {
         // store socket types
-        PRUint32 i, type = 0;
-        if (proxyType)
-            mTypes[type++] = PL_strdup(proxyType);
-        for (i=0; i<typeCount; ++i)
-            mTypes[type++] = PL_strdup(types[i]);
+        if (i == 0 && proxyType)
+            mTypes[i] = PL_strdup(proxyType);
+        else
+            mTypes[i] = PL_strdup(types[type++]);
 
-        // if we have socket types, then the socket provider service had
-        // better exist!
-        nsresult rv;
-        nsCOMPtr<nsISocketProviderService> spserv =
-            do_GetService(kSocketProviderServiceCID, &rv);
-        if (NS_FAILED(rv)) return rv;
+        if (!mTypes[i]) {
+            mTypeCount = i;
+            return NS_ERROR_OUT_OF_MEMORY;
+        }
+        nsCOMPtr<nsISocketProvider> provider;
+        rv = spserv->GetSocketProvider(mTypes[i], getter_AddRefs(provider));
+        if (NS_FAILED(rv)) {
+            NS_WARNING("no registered socket provider");
+            return rv;
+        }
 
-        // now verify that each socket type has a registered socket provider.
-        for (i=0; i<mTypeCount; ++i) {
-            nsCOMPtr<nsISocketProvider> provider;
-            rv = spserv->GetSocketProvider(mTypes[i], getter_AddRefs(provider));
-            if (NS_FAILED(rv)) {
-                NS_WARNING("no registered socket provider");
-                return rv;
-            }
+        // note if socket type corresponds to a transparent proxy
+        if ((strcmp(mTypes[i], "socks") == 0) ||
+            (strcmp(mTypes[i], "socks4") == 0)) {
+            mProxyTransparent = PR_TRUE;
 
-            // note if socket type corresponds to a transparent proxy
-            if ((strcmp(mTypes[i], "socks") == 0) ||
-                (strcmp(mTypes[i], "socks4") == 0)) {
-                mProxyTransparent = PR_TRUE;
-
-                if (proxyInfo->Flags() & nsIProxyInfo::TRANSPARENT_PROXY_RESOLVES_HOST) {
-                    // we want the SOCKS layer to send the hostname
-                    // and port to the proxy and let it do the DNS.
-                    mProxyTransparentResolvesHost = PR_TRUE;
-                }
+            if (proxyInfo->Flags() & nsIProxyInfo::TRANSPARENT_PROXY_RESOLVES_HOST) {
+                // we want the SOCKS layer to send the hostname
+                // and port to the proxy and let it do the DNS.
+                mProxyTransparentResolvesHost = PR_TRUE;
             }
         }
     }
@@ -799,6 +807,9 @@ nsSocketTransport::Init(const char **types, PRUint32 typeCount,
 nsresult
 nsSocketTransport::InitWithConnectedSocket(PRFileDesc *fd, const PRNetAddr *addr)
 {
+    if (!mLock)
+        return NS_ERROR_OUT_OF_MEMORY;
+
     NS_ASSERTION(!mFD, "already initialized");
 
     char buf[64];
@@ -1206,7 +1217,7 @@ nsSocketTransport::RecoverFromError()
         }
     }
 
-#if defined(XP_WIN) && !defined (WINCE)
+#if defined(XP_WIN)
     // If not trying next address, try to make a connection using dialup. 
     // Retry if that connection is made.
     if (!tryAgain) {

@@ -20,6 +20,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
+ *   Mats Palmgren <mats.palmgren@bredband.net>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -117,6 +118,7 @@ public:
   NS_IMETHOD SetContentState(nsIContent *aContent, PRInt32 aState);
   NS_IMETHOD GetFocusedContent(nsIContent **aContent);
   NS_IMETHOD SetFocusedContent(nsIContent* aContent);
+  NS_IMETHOD GetLastFocusedContent(nsIContent **aContent);
   NS_IMETHOD GetFocusedFrame(nsIFrame **aFrame);
   NS_IMETHOD ContentRemoved(nsIContent* aContent);
   NS_IMETHOD EventStatusOK(nsGUIEvent* aEvent, PRBool *aOK);
@@ -128,7 +130,9 @@ public:
   NS_IMETHOD RegisterAccessKey(nsIContent* aContent, PRUint32 aKey);
   NS_IMETHOD UnregisterAccessKey(nsIContent* aContent, PRUint32 aKey);
 
-  NS_IMETHOD SetCursor(PRInt32 aCursor, imgIContainer* aContainer, nsIWidget* aWidget, PRBool aLockCursor);
+  NS_IMETHOD SetCursor(PRInt32 aCursor, imgIContainer* aContainer,
+                       PRBool aHaveHotspot, float aHotspotX, float aHotspotY,
+                       nsIWidget* aWidget, PRBool aLockCursor);
 
   //Method for centralized distribution of new DOM events
   NS_IMETHOD DispatchNewEvent(nsISupports* aTarget, nsIDOMEvent* aEvent, PRBool *aDefaultActionEnabled);
@@ -289,7 +293,12 @@ protected:
 
   // member variables for the d&d gesture state machine
   nsPoint mGestureDownPoint; // screen coordinates
+  // The content to use as target if we start a d&d (what we drag).
   nsCOMPtr<nsIContent> mGestureDownContent;
+  // The content of the frame where the mouse-down event occurred. It's the same
+  // as the target in most cases but not always - for example when dragging
+  // an <area> of an image map this is the image. (bug 289667)
+  nsCOMPtr<nsIContent> mGestureDownFrameOwner;
   // State of keys when the original gesture-down happened
   PRPackedBool mGestureDownShift;
   PRPackedBool mGestureDownControl;
@@ -305,6 +314,7 @@ protected:
   nsCOMPtr<nsIContent> mDragOverContent;
   nsCOMPtr<nsIContent> mURLTargetContent;
   nsCOMPtr<nsIContent> mCurrentFocus;
+  nsCOMPtr<nsIContent> mLastFocus;
   nsIFrame* mCurrentFocusFrame;
   PRInt32 mCurrentTabIndex;
 

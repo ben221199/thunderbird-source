@@ -501,7 +501,7 @@ nsTypeAheadFind::UseInWindow(nsIDOMWindow *aDOMWin)
     return NS_OK;
   }
 
-  nsCOMPtr<nsIPresShell> oldPresShell(do_QueryReferent(mFocusedWeakShell));
+  nsCOMPtr<nsIPresShell> oldPresShell(GetPresShell());
 
   if (!oldPresShell || oldPresShell != presShell) {
     CancelFind();
@@ -556,7 +556,7 @@ nsTypeAheadFind::HandleEvent(nsIDOMEvent* aEvent)
     nsCOMPtr<nsIDOMEventTarget> eventTarget;
     event->GetOriginalTarget(getter_AddRefs(eventTarget));
     nsCOMPtr<nsIDocument> doc(do_QueryInterface(eventTarget));
-    nsCOMPtr<nsIPresShell> focusedShell(do_QueryReferent(mFocusedWeakShell));
+    nsCOMPtr<nsIPresShell> focusedShell(GetPresShell());
     if (!focusedShell || !doc) {
       return NS_ERROR_FAILURE;
     }
@@ -933,7 +933,7 @@ nsTypeAheadFind::HandleChar(PRUnichar aChar)
       // If not, make sure the selection is in sync with the focus, so we can 
       // start our search from there.
       nsCOMPtr<nsIContent> focusedContent;
-      nsCOMPtr<nsIPresShell> presShell(do_QueryReferent(mFocusedWeakShell));
+      nsCOMPtr<nsIPresShell> presShell(GetPresShell());
       NS_ENSURE_TRUE(presShell, NS_OK);
       nsPresContext *presContext = presShell->GetPresContext();
       NS_ENSURE_TRUE(presContext, NS_OK);
@@ -1224,8 +1224,7 @@ nsTypeAheadFind::FindItNow(nsIPresShell *aPresShell,
                            PRBool aIsFirstVisiblePreferred)
 {
   nsCOMPtr<nsIPresShell> presShell(aPresShell);
-  nsCOMPtr<nsIPresShell> startingPresShell =
-    do_QueryReferent(mFocusedWeakShell);
+  nsCOMPtr<nsIPresShell> startingPresShell = GetPresShell();
 
   if (!presShell) {
     presShell = startingPresShell;  // this is the current document
@@ -1362,10 +1361,11 @@ nsTypeAheadFind::FindItNow(nsIPresShell *aPresShell,
         // Get selection controller and selection for new frame/iframe
         GetSelection(presShell, getter_AddRefs(mFocusedDocSelCon), 
                      getter_AddRefs(mFocusedDocSelection));
-        if (!mFocusedDocSelection || !mFocusedDocSelCon) {
-          // Apparently these can go away even though presshell/prescontext exist
-          return NS_ERROR_FAILURE;
-        }
+      }
+ 
+     if (!mFocusedDocSelection || !mFocusedDocSelCon) {
+        // Apparently these can go away even though presshell/prescontext exist
+        return NS_ERROR_FAILURE;
       }
 
       // Select the found text and focus it
@@ -1525,8 +1525,7 @@ nsTypeAheadFind::GetSearchContainers(nsISupports *aContainer,
   // Consider current selection as null if
   // it's not in the currently focused document
   nsCOMPtr<nsIDOMRange> currentSelectionRange;
-  nsCOMPtr<nsIPresShell> selectionPresShell =
-    do_QueryReferent(mFocusedWeakShell);
+  nsCOMPtr<nsIPresShell> selectionPresShell = GetPresShell();
 
   if (aCanUseDocSelection && selectionPresShell == presShell && mFocusedDocSelection) {
     mFocusedDocSelection->GetRangeAt(0, getter_AddRefs(currentSelectionRange));
@@ -1707,7 +1706,7 @@ nsTypeAheadFind::NotifySelectionChanged(nsIDOMDocument *aDoc,
     if (mRepeatingMode != eRepeatingNone) {
       // Selection had changed color for Type Ahead Find's version of Accel+G
       // We change it back when the selection changes from someone else
-      nsCOMPtr<nsIPresShell> presShell(do_QueryReferent(mFocusedWeakShell));
+      nsCOMPtr<nsIPresShell> presShell(GetPresShell());
       SetSelectionLook(presShell, PR_FALSE, PR_FALSE);
     }
     CancelFind();
@@ -1736,7 +1735,7 @@ nsTypeAheadFind::FindNext(PRBool aFindBackwards, nsISupportsInterfacePointer *aC
   // with the top level content pres shell window where find next is happening
   // If they're different, exit so that webbrowswerfind can handle FindNext()
 
-  nsCOMPtr<nsIPresShell> typeAheadPresShell(do_QueryReferent(mFocusedWeakShell));
+  nsCOMPtr<nsIPresShell> typeAheadPresShell(GetPresShell());
   NS_ENSURE_TRUE(typeAheadPresShell, NS_OK);
 
   nsPresContext *presContext = typeAheadPresShell->GetPresContext();
@@ -1869,7 +1868,7 @@ nsTypeAheadFind::StartNewFind(nsIDOMWindow *aWindow, PRBool aLinksOnly)
     mIsFindingText = PR_TRUE;  // Turn off side effects from selection listener
     mFocusedDocSelection->CollapseToStart();
     mIsFindingText = PR_FALSE;
-    nsCOMPtr<nsIPresShell> presShell(do_QueryReferent(mFocusedWeakShell));
+    nsCOMPtr<nsIPresShell> presShell(GetPresShell());
     SetSelectionLook(presShell, PR_TRUE, PR_TRUE);
   }
   DisplayStatus(PR_TRUE, nsnull, PR_FALSE);
@@ -2033,7 +2032,7 @@ nsTypeAheadFind::CancelFind()
   if (mIsTypeAheadOn || mRepeatingMode != eRepeatingNone) {
     mTypeAheadBuffer.Truncate();
     DisplayStatus(PR_FALSE, nsnull, PR_TRUE); // Clear status
-    nsCOMPtr<nsIPresShell> presShell(do_QueryReferent(mFocusedWeakShell));
+    nsCOMPtr<nsIPresShell> presShell(GetPresShell());
     SetSelectionLook(presShell, PR_FALSE, PR_FALSE);
   }
 
@@ -2214,7 +2213,7 @@ nsTypeAheadFind::SetSelectionLook(nsIPresShell *aPresShell,
 void
 nsTypeAheadFind::RemoveDocListeners()
 {
-  nsCOMPtr<nsIPresShell> presShell(do_QueryReferent(mFocusedWeakShell));
+  nsCOMPtr<nsIPresShell> presShell(GetPresShell());
   nsIViewManager* vm = nsnull;
 
   if (presShell) {
@@ -2490,7 +2489,7 @@ nsTypeAheadFind::GetTargetIfTypeAheadOkay(nsIDOMEvent *aEvent,
     return NS_OK;
   }
 
-  nsCOMPtr<nsIPresShell> lastShell(do_QueryReferent(mFocusedWeakShell));
+  nsCOMPtr<nsIPresShell> lastShell(GetPresShell());
 
   if (lastShell != presShell || topContentWin != mFocusedWindow) {
     GetAutoStart(topContentWin, &mIsFindAllowedInWindow);
@@ -2723,7 +2722,7 @@ nsTypeAheadFind::DisplayStatus(PRBool aSuccess, nsIContent *aFocusedContent,
   // pres shell -> pres context -> container -> tree item ->
   // tree owner -> browser chrome
 
-  nsCOMPtr<nsIPresShell> presShell(do_QueryReferent(mFocusedWeakShell));
+  nsCOMPtr<nsIPresShell> presShell(GetPresShell());
   if (!presShell) {
     return;
   }
@@ -3011,4 +3010,22 @@ nsTypeAheadController::EnsureContentWindow(nsIDOMWindowInternal *aFocusedWin,
   *aStartContentWin = startContentWin;
   NS_IF_ADDREF(*aStartContentWin);
   return NS_OK;
+}
+
+already_AddRefed<nsIPresShell>
+nsTypeAheadFind::GetPresShell()
+{
+  if (!mFocusedWeakShell)
+    return nsnull;
+
+  nsIPresShell *shell = nsnull;
+  CallQueryReferent(mFocusedWeakShell.get(), &shell);
+  if (shell) {
+    nsPresContext *pc = shell->GetPresContext();
+    if (!pc || !nsCOMPtr<nsISupports>(pc->GetContainer())) {
+      NS_RELEASE(shell);
+    }
+  }
+
+  return shell;
 }

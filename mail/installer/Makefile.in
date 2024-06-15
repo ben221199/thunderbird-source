@@ -42,8 +42,6 @@ VPATH		= @srcdir@
 
 include $(DEPTH)/config/autoconf.mk
 
-NO_GECKO_SDK=1
-
 NO_PKG_FILES = \
 	TestGtkEmbed \
 	bloaturls.txt \
@@ -59,7 +57,6 @@ NO_PKG_FILES = \
 	msmap* \
 	nm2tsv* \
 	nsinstall* \
-	regchrome* \
 	regxpcom* \
 	res/samples \
 	res/throbber \
@@ -75,13 +72,11 @@ NO_PKG_FILES = \
 	res/arrowd.gif \
 	res/boatcycle.html \
 	res/cmessage.txt \
-	res/dtd \
 	res/html \
 	res/loading-image.gif \
 	res/rdf \
 	res/viewer.properties \
 	res/viewsource.css \
-	chrome/app-chrome.manifest \
 	chrome/chromelist.txt \
 	chrome/embed-sample.jar \
 	PalmSyncInstall.exe \
@@ -90,28 +85,26 @@ NO_PKG_FILES = \
 	components/gkplugin.dll \
 	$(NULL)
 
-ifeq ($(OS_ARCH), Darwin)
-MOZ_PKG_APPNAME = Thunderbird
-endif
+include $(topsrcdir)/config/rules.mk
 
-include $(DEPTH)/config/autoconf.mk
-
-include $(DEPTH)/xpinstall/packager/Makefile
-
-# Rename the archive after it's created, so that we can differentiate between
-# the gtk1 and gtk2 packages on ftp, and so the Windows package has a
-# friendlier name.
-
-ifeq ($(OS_ARCH)_$(TARGET_CPU)_$(MOZ_WIDGET_TOOLKIT)_$(MOZ_ENABLE_XFT), Linux_i686_gtk2_1)
-PACKAGE_NAME = thunderbird-i686-linux-gtk2+xft.tar.gz
-else
-ifeq ($(OS_ARCH), WINNT)
-PACKAGE_NAME = thunderbird-win32.zip
+ifdef BUILD_STATIC_LIBS
+ifeq (WINNT,$(OS_ARCH))
+MOZ_PKG_MANIFEST_P = $(srcdir)/windows/packages-static
 endif
 endif
 
-ifdef PACKAGE_NAME
-libs:: $(PACKAGE)
-	@rm -f $(DIST)/$(PACKAGE_NAME)
-	@mv $(DIST)/$(PACKAGE) $(DIST)/$(PACKAGE_NAME)
+DEFINES += -DAB_CD=$(AB_CD)
+
+ifdef MOZ_PKG_MANIFEST_P
+MOZ_PKG_MANIFEST = packages-static
+
+$(MOZ_PKG_MANIFEST): $(MOZ_PKG_MANIFEST_P)
+	$(PERL) $(topsrcdir)/config/preprocessor.pl $(DEFINES) $(ACDEFINES) $< > $@
+endif
+
+include $(topsrcdir)/toolkit/mozapps/installer/packager.mk
+
+installer:
+ifdef INSTALLER_DIR
+	$(MAKE) -C $(INSTALLER_DIR)
 endif

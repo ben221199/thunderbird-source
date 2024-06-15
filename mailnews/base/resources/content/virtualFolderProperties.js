@@ -105,14 +105,9 @@ function onLoad()
 function setupSearchRows(aSearchTerms)
 {
   if (aSearchTerms && aSearchTerms.Count() > 0)
-  {
-    // load the search terms for the folder
-    initializeSearchRows(nsMsgSearchScope.offlineMail, aSearchTerms);
-    if (aSearchTerms.Count() == 1)
-      document.getElementById("less0").setAttribute("disabled", "true");
-  }
+    initializeSearchRows(nsMsgSearchScope.offlineMail, aSearchTerms); // load the search terms for the folder
   else
-    onMore(null, 0);
+    onMore(null);
 }
 
 function updateOnlineSearchState()
@@ -165,7 +160,7 @@ function InitDialogWithVirtualFolder(aVirtualFolderURI)
 
   // update the window title based on the name of the saved search
   var messengerBundle = document.getElementById("bundle_messenger");
-  document.getElementById('virtualFolderPropertiesDialog').setAttribute('title',messengerBundle.getFormattedString('editVirtualFolderPropertiesTitle', [msgFolder.prettyName]));
+  document.title = messengerBundle.getFormattedString('editVirtualFolderPropertiesTitle', [msgFolder.prettyName]);
 }
 
 function onOK()

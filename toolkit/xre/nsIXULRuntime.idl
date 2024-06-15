@@ -44,11 +44,40 @@
  *                    stable/frozen, please contact Benjamin Smedberg.
  */
 
-[scriptable, uuid(28e8652b-3e9e-4e35-a8f7-e65f8d2399e0)]
+[scriptable, uuid(2848AB92-D912-11D9-89F7-001124787B2E)]
 interface nsIXULRuntime : nsISupports
 {
   /**
    * Whether the application was launched in safe mode.
    */
   readonly attribute boolean inSafeMode;
+
+  /**
+   * Whether to write console errors to a log file. If a component
+   * encounters startup errors that might prevent the app from showing
+   * proper UI, it should set this flag to "true".
+   */
+  attribute boolean logConsoleErrors;
+
+  /**
+   * A string tag identifying the current operating system. This is taken
+   * from the OS_TARGET configure variable. It will always be available.
+   */
+  readonly attribute AUTF8String OS;
+
+  /**
+   * A string tag identifying the binary ABI of the current processor and
+   * compiler vtable. This is taken from the TARGET_XPCOM_ABI configure
+   * variable. It may not be available on all platforms, especially
+   * unusual processor or compiler combinations.
+   *
+   * The result takes the form <processor>-<compilerABI>, for example:
+   *   x86-msvc
+   *   ppc-gcc3
+   *
+   * This value should almost always be used in combination with "OS".
+   *
+   * @throw NS_ERROR_NOT_AVAILABLE if not available.
+   */
+  readonly attribute AUTF8String XPCOMABI;
 };

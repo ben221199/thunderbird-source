@@ -506,6 +506,15 @@ JS_ResolveStandardClass(JSContext *cx, JSObject *obj, jsval id,
 extern JS_PUBLIC_API(JSBool)
 JS_EnumerateStandardClasses(JSContext *cx, JSObject *obj);
 
+/*
+ * Enumerate any already-resolved standard class ids into ida, or into a new
+ * JSIdArray if ida is null.  Return the augmented array on success, null on
+ * failure with ida (if it was non-null on entry) destroyed.
+ */
+extern JS_PUBLIC_API(JSIdArray *)
+JS_EnumerateResolvedStandardClasses(JSContext *cx, JSObject *obj,
+                                    JSIdArray *ida);
+
 extern JS_PUBLIC_API(JSObject *)
 JS_GetScopeChain(JSContext *cx);
 
@@ -1265,12 +1274,16 @@ JS_SetReservedSlot(JSContext *cx, JSObject *obj, uint32 index, jsval v);
  */
 struct JSPrincipals {
     char *codebase;
+
+    /* XXX unspecified and unused by Mozilla code -- can we remove these? */
     void * (* JS_DLL_CALLBACK getPrincipalArray)(JSContext *cx, JSPrincipals *);
     JSBool (* JS_DLL_CALLBACK globalPrivilegesEnabled)(JSContext *cx, JSPrincipals *);
 
     /* Don't call "destroy"; use reference counting macros below. */
     jsrefcount refcount;
-    void (* JS_DLL_CALLBACK destroy)(JSContext *cx, struct JSPrincipals *);
+
+    void   (* JS_DLL_CALLBACK destroy)(JSContext *cx, JSPrincipals *);
+    JSBool (* JS_DLL_CALLBACK subsume)(JSPrincipals *, JSPrincipals *);
 };
 
 #ifdef JS_THREADSAFE

@@ -135,7 +135,7 @@ public:
    *  for someone to derive from the nsEditor later? I dont believe so.
    */
   virtual ~nsEditor();
-  
+
 //Interfaces for addref and release and queryinterface
 //NOTE: Use   NS_DECL_ISUPPORTS_INHERITED in any class inherited from nsEditor
   NS_DECL_ISUPPORTS
@@ -636,8 +636,6 @@ protected:
   nsCOMPtr<nsIDOMEventListener> mCompositionListenerP;
   nsCOMPtr<nsIDOMEventListener> mDragListenerP;
   nsCOMPtr<nsIDOMEventListener> mFocusListenerP;
-
-  static PRInt32 gInstanceCount;
 
   friend PRBool NSCanUnload(nsISupports* serviceMgr);
   friend class nsAutoTxnsConserveSelection;

@@ -54,6 +54,7 @@
 #include "nsIDocument.h"
 #include "nsSVGMarkerFrame.h"
 #include "nsSVGPathGeometryFrame.h"
+#include "nsISVGRendererCanvas.h"
 
 NS_IMETHODIMP_(nsrefcnt)
   nsSVGMarkerFrame::AddRef()
@@ -249,6 +250,7 @@ nsSVGMarkerFrame::InitSVG()
   marker->GetOrientType(getter_AddRefs(mOrientType));
 
   mMarkerParent = nsnull;
+  mInUse = PR_FALSE;
 
   return NS_OK;
 }
@@ -321,11 +323,50 @@ nsSVGMarkerFrame::PaintMark(nsISVGRendererCanvas *aCanvas,
                             nsSVGPathGeometryFrame *aParent,
                             nsSVGMark *aMark, float aStrokeWidth)
 {
+  // If the flag is set when we get here, it means this marker frame
+  // has already been used painting the current mark, and the document
+  // has a marker reference loop.
+  if (mInUse)
+    return;
+
+  mInUse = PR_TRUE;
   mStrokeWidth = aStrokeWidth;
   mX = aMark->x;
   mY = aMark->y;
   mAngle = aMark->angle;
   mMarkerParent = aParent;
+
+  if (GetStyleDisplay()->IsScrollableOverflow()) {
+    aCanvas->PushClip();
+
+    nsCOMPtr<nsIDOMSVGMatrix> parentTransform, markerTransform, clipTransform;
+    nsCOMPtr<nsIDOMSVGMatrix> viewTransform;
+
+    nsISVGGeometrySource *parent;
+    CallQueryInterface(mMarkerParent, &parent);
+    if (parent)
+      parent->GetCanvasTM(getter_AddRefs(parentTransform));
+
+    nsCOMPtr<nsIDOMSVGMarkerElement> element = do_QueryInterface(mContent);
+    element->GetMarkerTransform(mStrokeWidth, mX, mY, mAngle,
+                                getter_AddRefs(markerTransform));
+
+    element->GetViewboxToViewportTransform(getter_AddRefs(viewTransform));
+
+    if (parentTransform && markerTransform)
+      parentTransform->Multiply(markerTransform,
+                                getter_AddRefs(clipTransform));
+
+    if (clipTransform && viewTransform) {
+      float x, y, width, height;
+
+      viewTransform->GetE(&x);
+      viewTransform->GetF(&y);
+      mMarkerWidth->GetValue(&width);
+      mMarkerHeight->GetValue(&height);
+      aCanvas->SetClipRect(clipTransform, x, y, width, height);
+    }
+  }
 
   nsRect dirtyRectTwips;
   for (nsIFrame* kid = mFrames.FirstChild(); kid;
@@ -337,7 +378,12 @@ nsSVGMarkerFrame::PaintMark(nsISVGRendererCanvas *aCanvas,
       SVGFrame->PaintSVG(aCanvas, dirtyRectTwips);
     }
   }
+
+  if (GetStyleDisplay()->IsScrollableOverflow())
+    aCanvas->PopClip();
+
   mMarkerParent = nsnull;
+  mInUse = PR_FALSE;
 }
 
 

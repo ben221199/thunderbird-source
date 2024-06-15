@@ -48,6 +48,8 @@
 #include "nsIXFormsSubmissionElement.h"
 #include "nsIChannelEventSink.h"
 #include "nsIInterfaceRequestor.h"
+#include "nsHashSets.h"
+
 
 class nsIMultiplexInputStream;
 class nsIDOMElement;
@@ -99,7 +101,7 @@ public:
   NS_HIDDEN_(nsresult) GetSelectedInstanceData(nsIDOMNode **result);
   NS_HIDDEN_(nsresult) SerializeData(nsIDOMNode *data, nsCString &uri, nsIInputStream **, nsCString &contentType);
   NS_HIDDEN_(nsresult) SerializeDataXML(nsIDOMNode *data, nsIInputStream **, nsCString &contentType, SubmissionAttachmentArray *);
-  NS_HIDDEN_(nsresult) CreateSubmissionDoc(nsIDOMDocument *source, const nsString &encoding, SubmissionAttachmentArray *, nsIDOMDocument **result);
+  NS_HIDDEN_(nsresult) CreateSubmissionDoc(nsIDOMNode *source, const nsString &encoding, SubmissionAttachmentArray *, nsIDOMDocument **result);
   NS_HIDDEN_(nsresult) CopyChildren(nsIDOMNode *source, nsIDOMNode *dest, nsIDOMDocument *destDoc, SubmissionAttachmentArray *, const nsString &cdataElements, PRBool indent, PRUint32 depth);
   NS_HIDDEN_(nsresult) SerializeDataURLEncoded(nsIDOMNode *data, nsCString &uri, nsIInputStream **, nsCString &contentType);
   NS_HIDDEN_(void)     AppendURLEncodedData(nsIDOMNode *data, const nsCString &sep, nsCString &buf);
@@ -126,7 +128,10 @@ private:
    * there is no need for a same origin check.
    */
   PRBool CheckSameOrigin(nsIURI *aBaseURI, nsIURI *aTestURI);
-  nsresult AddNameSpaces(nsIDOMElement* aTarget, nsIDOMNode* aSource);
+  PRBool CheckPermissionManager(nsIURI *aBaseURI);
+  nsresult AddNameSpaces(nsIDOMElement* aTarget, nsIDOMNode* aSource,
+                         nsStringHashSet* aPrefixHash);
+  nsresult GetIncludeNSPrefixesAttr(nsStringHashSet** aHash);
 };
 
 NS_HIDDEN_(nsresult)

@@ -2783,13 +2783,10 @@ nsresult
 nsFrame::MakeFrameName(const nsAString& aType, nsAString& aResult) const
 {
   aResult = aType;
-  if (mContent) {
-    nsIAtom *tag = mContent->Tag();
-    if (tag != nsLayoutAtoms::textTagName) {
-      nsAutoString buf;
-      tag->ToString(buf);
-      aResult.Append(NS_LITERAL_STRING("(") + buf + NS_LITERAL_STRING(")"));
-    }
+  if (mContent && !mContent->IsContentOfType(nsIContent::eTEXT)) {
+    nsAutoString buf;
+    mContent->Tag()->ToString(buf);
+    aResult.Append(NS_LITERAL_STRING("(") + buf + NS_LITERAL_STRING(")"));
   }
   char buf[40];
   PR_snprintf(buf, sizeof(buf), "(%d)", ContentIndexInContainer(this));
@@ -3270,7 +3267,7 @@ nsFrame::GetNextPrevLineFromeBlockFrame(nsPresContext* aPresContext,
       //resultFrame is not a block frame
 
       nsCOMPtr<nsIBidirectionalEnumerator> frameTraversal;
-      result = NS_NewFrameTraversal(getter_AddRefs(frameTraversal), LEAF,
+      result = NS_NewFrameTraversal(getter_AddRefs(frameTraversal), EXTENSIVE,
                                     aPresContext, resultFrame, aPos->mScrollViewStop);
       if (NS_FAILED(result))
         return result;
@@ -3453,12 +3450,11 @@ nsPeekOffsetStruct nsIFrame::GetExtremeCaretPosition(PRBool aStart)
   if (!content)
     return result;
   
-  // special case: if this is not a __moz_text element,
+  // special case: if this is not a textnode,
   // position the caret to the offset of its parent instead
   // (position the caret to non-text element may make the caret missing)
 
-  nsIAtom* tag = content->Tag();
-  if (tag != nsLayoutAtoms::textTagName) {
+  if (!content->IsContentOfType(nsIContent::eTEXT)) {
     // special case in effect
     nsIContent* parent = content->GetParent();
     NS_ASSERTION(parent,"element has no parent!");
@@ -4103,11 +4099,11 @@ nsFrame::GetFrameFromDirection(nsPresContext* aPresContext, nsPeekOffsetStruct *
       if (aPos->mDirection == eDirNext)
       {
         aPos->mPreferLeft = (PRBool)!(aPos->mPreferLeft);//drift to other side
-#ifdef IBMBIDI
-        if (lineIsRTL)
-          aPos->mAmount = eSelectNoAmount;
-#endif
       }
+#ifdef IBMBIDI
+      if (lineIsRTL)
+        aPos->mAmount = eSelectNoAmount;
+#endif
     }
 
   }
@@ -4738,14 +4734,20 @@ void nsFrame::FillCursorInformationFromStyle(const nsStyleUserInterface* ui,
                                              nsIFrame::Cursor& aCursor)
 {
   aCursor.mCursor = ui->mCursor;
+  aCursor.mHaveHotspot = PR_FALSE;
+  aCursor.mHotspotX = aCursor.mHotspotY = 0.0f;
 
-  PRInt32 count = ui->mCursorArray.Count();
-  for (int i = 0; i < count; i++) {
+  for (nsCursorImage *item = ui->mCursorArray,
+                 *item_end = ui->mCursorArray + ui->mCursorArrayLength;
+       item < item_end; ++item) {
     PRUint32 status;
-    nsresult rv = ui->mCursorArray[i]->GetImageStatus(&status);
+    nsresult rv = item->mImage->GetImageStatus(&status);
     if (NS_SUCCEEDED(rv) && (status & imgIRequest::STATUS_FRAME_COMPLETE)) {
       // This is the one we want
-      ui->mCursorArray[i]->GetImage(getter_AddRefs(aCursor.mContainer));
+      item->mImage->GetImage(getter_AddRefs(aCursor.mContainer));
+      aCursor.mHaveHotspot = item->mHaveHotspot;
+      aCursor.mHotspotX = item->mHotspotX;
+      aCursor.mHotspotY = item->mHotspotY;
       break;
     }
   }

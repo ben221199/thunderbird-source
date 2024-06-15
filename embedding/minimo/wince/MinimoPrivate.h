@@ -42,13 +42,15 @@
 #include "nsIDOMWindow.h"
 #include "nsIComponentRegistrar.h"
 
-#include "PromptService.h"
+#include "nsIPrefBranch.h"
+#include "nsIPrefService.h"
+
+#include "nsIWidget.h"
 
 // Local header files
-#include "winEmbed.h"
 #include "WebBrowserChrome.h"
 #include "WindowCreator.h"
-#include "resource.h"
 
-#include "PromptService.h"
+nsresult ResizeEmbedding(nsIWebBrowserChrome* chrome);
+
 #endif // MINIMO_PRIVATE_H

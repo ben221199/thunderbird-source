@@ -64,7 +64,7 @@ bin\components\xpcom_compat_c.dll
 [browser]
 bin\README.txt,bin\readme.txt
 bin\LICENSE,bin\license.txt
-bin\mozilla.exe
+bin\seamonkey.exe
 bin\plugins\npnul32.dll
 bin\res\cmessage.txt
 bin\regxpcom.exe
@@ -248,6 +248,7 @@ bin\chrome\chromelist.txt
 bin\greprefs\*
 bin\defaults\pref\*
 bin\defaults\autoconfig\*
+bin\res\hiddenWindow.html
 bin\res\ua.css
 bin\res\html.css
 bin\res\quirk.css
@@ -337,3 +338,6 @@ bin\chrome\inspector.jar
 bin\defaults\pref\inspector.js
 bin\res\inspector\viewer-registry.rdf
 bin\res\inspector\search-registry.rdf
+
+[reporter]
+bin\chrome\reporter.jar

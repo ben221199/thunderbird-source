@@ -1295,6 +1295,8 @@ nsComponentManagerImpl::ReadPersistentRegistry()
     if (ReadSectionHeader(reader, "CATEGORIES"))
         goto out;
 
+    mCategoryManager->SuppressNotifications(PR_TRUE);
+
     while (1)
     {
         if (!reader.NextLine())
@@ -1311,6 +1313,8 @@ nsComponentManagerImpl::ReadPersistentRegistry()
                                            PR_TRUE,
                                            0);
     }
+
+    mCategoryManager->SuppressNotifications(PR_FALSE);
 
     mRegistryDirty = PR_FALSE;
 out:
@@ -1445,7 +1449,8 @@ nsComponentManagerImpl::WritePersistentRegistry()
     localFile->SetNativeLeafName(leafName);
 
     PRFileDesc* fd = nsnull;
-    nsresult rv = localFile->OpenNSPRFileDesc(PR_WRONLY | PR_CREATE_FILE | PR_TRUNCATE, 0666, &fd);
+    // Owner and group can setup components, everyone else should be able to see but not poison them.
+    nsresult rv = localFile->OpenNSPRFileDesc(PR_WRONLY | PR_CREATE_FILE | PR_TRUNCATE, 0664, &fd);
     if (NS_FAILED(rv))
         return rv;
 

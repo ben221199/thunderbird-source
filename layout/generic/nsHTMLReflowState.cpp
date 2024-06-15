@@ -386,9 +386,12 @@ nsHTMLReflowState::AdjustIntrinsicMinContentWidthForStyle(nscoord aWidth) const
   if (eStyleUnit_Percent == widthUnit) {
     aWidth = 0;
   } else if (eStyleUnit_Coord == widthUnit) {
-    NS_ASSERTION(NS_UNCONSTRAINEDSIZE != mComputedWidth,
-                 "Should be a computed width here");
-    aWidth = mComputedWidth;
+    // Sometimes we can get an unconstrained size here because we're
+    // computing the maximum-width. Although it doesn't seem right
+    // for max-width computation to change our computed width.
+    if (NS_UNCONSTRAINEDSIZE != mComputedWidth) {
+      aWidth = mComputedWidth;
+    }
   }
 
   nsStyleUnit maxWidthUnit = mStylePosition->mMaxWidth.GetUnit();
@@ -415,9 +418,12 @@ nsHTMLReflowState::AdjustIntrinsicContentWidthForStyle(nscoord aWidth) const
 {
   nsStyleUnit widthUnit = mStylePosition->mWidth.GetUnit();
   if (eStyleUnit_Coord == widthUnit) {
-    NS_ASSERTION(NS_UNCONSTRAINEDSIZE != mComputedWidth,
-                 "Should be a computed width here");
-    aWidth = mComputedWidth;
+    // Sometimes we can get an unconstrained size here because we're
+    // computing the maximum-width. Although it doesn't seem right
+    // for max-width computation to change our computed width.
+    if (NS_UNCONSTRAINEDSIZE != mComputedWidth) {
+      aWidth = mComputedWidth;
+    }
   }
 
   nsStyleUnit maxWidthUnit = mStylePosition->mMaxWidth.GetUnit();
@@ -2165,11 +2171,13 @@ nsHTMLReflowState::CalculateBlockSideMargins(nscoord aAvailWidth,
     // First check if there is an HTML alignment that we should honor
     const nsHTMLReflowState* prs = parentReflowState;
     if (prs &&
-        (prs->mStyleText->mTextAlign == NS_STYLE_TEXT_ALIGN_MOZ_CENTER ||
+        (prs->mStyleText->mTextAlign == NS_STYLE_TEXT_ALIGN_MOZ_LEFT ||
+         prs->mStyleText->mTextAlign == NS_STYLE_TEXT_ALIGN_MOZ_CENTER ||
          prs->mStyleText->mTextAlign == NS_STYLE_TEXT_ALIGN_MOZ_RIGHT)) {
-      isAutoLeftMargin = PR_TRUE;
+      isAutoLeftMargin =
+        prs->mStyleText->mTextAlign != NS_STYLE_TEXT_ALIGN_MOZ_LEFT;
       isAutoRightMargin =
-        prs->mStyleText->mTextAlign == NS_STYLE_TEXT_ALIGN_MOZ_CENTER;
+        prs->mStyleText->mTextAlign != NS_STYLE_TEXT_ALIGN_MOZ_RIGHT;
     }
     // Otherwise apply the CSS rules, and ignore one margin by forcing
     // it to 'auto', depending on 'direction'.

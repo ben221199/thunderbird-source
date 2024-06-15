@@ -485,16 +485,9 @@ rdf/base/Makefile
 rdf/base/idl/Makefile
 rdf/base/public/Makefile
 rdf/base/src/Makefile
-rdf/chrome/Makefile
-rdf/chrome/public/Makefile
-rdf/chrome/build/Makefile
-rdf/chrome/src/Makefile
-rdf/chrome/tools/Makefile
-rdf/chrome/tools/chromereg/Makefile
 rdf/util/Makefile
 rdf/util/public/Makefile
 rdf/util/src/Makefile
-rdf/resources/Makefile
 rdf/build/Makefile
 rdf/datasource/Makefile
 rdf/datasource/public/Makefile
@@ -517,6 +510,20 @@ caps/idl/Makefile
 caps/include/Makefile
 caps/src/Makefile
 "
+
+MAKEFILES_chrome="
+chrome/Makefile
+chrome/public/Makefile
+chrome/src/Makefile
+embedding/minimo/chromelite/Makefile
+rdf/chrome/Makefile
+rdf/chrome/public/Makefile
+rdf/chrome/build/Makefile
+rdf/chrome/src/Makefile
+rdf/chrome/tools/Makefile
+rdf/chrome/tools/chromereg/Makefile
+"
+
 
 MAKEFILES_view="
 view/Makefile
@@ -669,10 +676,15 @@ xpfe/components/shistory/src/Makefile
 xpfe/components/bookmarks/Makefile
 xpfe/components/bookmarks/public/Makefile
 xpfe/components/bookmarks/src/Makefile
+xpfe/components/bookmarks/resources/Makefile
 xpfe/components/directory/Makefile
 xpfe/components/download-manager/Makefile
 xpfe/components/download-manager/src/Makefile
 xpfe/components/download-manager/public/Makefile
+xpfe/components/download-manager/resources/Makefile
+xpfe/components/extensions/Makefile
+xpfe/components/extensions/src/Makefile
+xpfe/components/extensions/public/Makefile
 xpfe/components/find/Makefile
 xpfe/components/find/public/Makefile
 xpfe/components/find/src/Makefile
@@ -682,6 +694,7 @@ xpfe/components/filepicker/src/Makefile
 xpfe/components/history/Makefile
 xpfe/components/history/src/Makefile
 xpfe/components/history/public/Makefile
+xpfe/components/intl/Makefile
 xpfe/components/prefwindow/Makefile
 xpfe/components/prefwindow/resources/Makefile
 xpfe/components/prefwindow/resources/content/Makefile
@@ -691,6 +704,7 @@ xpfe/components/prefwindow/resources/locale/Makefile
 xpfe/components/prefwindow/resources/locale/en-US/Makefile
 xpfe/components/prefwindow/resources/locale/en-US/unix/Makefile
 xpfe/components/prefwindow/resources/locale/en-US/win/Makefile
+xpfe/components/prefwindow/resources/locale/en-US/mac/Makefile
 xpfe/components/related/Makefile
 xpfe/components/related/src/Makefile
 xpfe/components/related/public/Makefile
@@ -707,8 +721,11 @@ xpfe/components/startup/src/Makefile
 xpfe/components/autocomplete/Makefile
 xpfe/components/autocomplete/public/Makefile
 xpfe/components/autocomplete/src/Makefile
+xpfe/components/updates/Makefile
+xpfe/components/updates/src/Makefile
 xpfe/components/urlwidget/Makefile
 xpfe/components/winhooks/Makefile
+xpfe/components/windowds/Makefile
 xpfe/components/alerts/Makefile
 xpfe/components/alerts/public/Makefile
 xpfe/components/alerts/src/Makefile
@@ -781,7 +798,6 @@ embedding/tests/mfcembed/components/Makefile
 MAKEFILES_minimo="
 embedding/minimo/Makefile
 embedding/minimo/app/Makefile
-embedding/minimo/chromelite/Makefile
 embedding/minimo/popuplite/Makefile
 "
 
@@ -892,6 +908,7 @@ browser/components/bookmarks/Makefile
 browser/components/bookmarks/public/Makefile
 browser/components/bookmarks/src/Makefile
 browser/components/build/Makefile
+browser/components/dirprovider/Makefile
 browser/components/history/Makefile
 browser/components/migration/Makefile
 browser/components/migration/public/Makefile
@@ -920,6 +937,8 @@ browser/themes/winstripe/Makefile
 
 MAKEFILES_suite="
 suite/Makefile
+suite/components/Makefile
+suite/components/xulappinfo/Makefile
 "
 
 MAKEFILES_xulrunner="
@@ -932,9 +951,6 @@ xulrunner/installer/Makefile
 "
 
 MAKEFILES_xulapp="
-chrome/Makefile
-chrome/public/Makefile
-chrome/src/Makefile
 toolkit/Makefile
 toolkit/library/Makefile
 toolkit/content/Makefile
@@ -1021,7 +1037,6 @@ toolkit/themes/winstripe/help/Makefile
 toolkit/themes/winstripe/mozapps/Makefile
 toolkit/xre/Makefile
 toolkit/components/passwordmgr/resources/content/contents.rdf
-toolkit/mozapps/contents-content.rdf
 "
 
 
@@ -1040,7 +1055,6 @@ mail/components/gnome/Makefile
 mail/extensions/Makefile
 mail/extensions/smime/Makefile
 mail/extensions/offline/Makefile
-mail/extensions/inspector/Makefile
 mail/config/Makefile
 mail/installer/Makefile
 mail/installer/windows/Makefile
@@ -1190,6 +1204,20 @@ MAKEFILES_zlib="
     modules/zlib/standalone/Makefile
 "
 
+MAKEFILES_libbz2="
+    modules/libbz2/Makefile
+    modules/libbz2/src/Makefile
+"
+
+MAKEFILES_libmar="
+    modules/libmar/Makefile
+    modules/libmar/src/Makefile
+    modules/libmar/tool/Makefile
+"
+
+if test -n "$MOZ_UPDATE_PACKAGING"; then
+    MAKEFILES_update_packaging="tools/update-packaging/Makefile"
+fi
 
 if [ ! "$SYSTEM_PNG" ]; then
     MAKEFILES_libimg="$MAKEFILES_libimg modules/libimg/png/Makefile"
@@ -1504,6 +1532,12 @@ for extension in $MOZ_EXTENSIONS; do
             extensions/xmlterm/tests/Makefile
             extensions/xmlterm/ui/Makefile
             " ;;
+        python/xpcom ) MAKEFILES_extensions="$MAKEFILES_extensions
+            extensions/python/xpcom/Makefile
+            extensions/python/xpcom/src/Makefile
+            extensions/python/xpcom/src/loader/Makefile
+            extensions/python/xpcom/test/test_component/Makefile
+            " ;;
         sql ) MAKEFILES_extensions="$MAKEFILES_extensions
             $MAKEFILES_sql"
             ;;
@@ -1529,6 +1563,7 @@ MAKEFILES_themes=`cat ${srcdir}/themes/makefiles`
 
 add_makefiles "
 $MAKEFILES_caps
+$MAKEFILES_chrome
 $MAKEFILES_db
 $MAKEFILES_dbm
 $MAKEFILES_docshell
@@ -1587,6 +1622,9 @@ $MAKEFILES_xpconnect
 $MAKEFILES_xpinstall
 $MAKEFILES_xpfe
 $MAKEFILES_zlib
+$MAKEFILES_libbz2
+$MAKEFILES_libmar
+$MAKEFILES_update_packaging
 "
 
 if test -n "$MOZ_PSM"; then
@@ -1644,8 +1682,9 @@ if test -n "$MOZ_PROFILESHARING"; then
     add_makefiles "$MAKEFILES_profilesharingsetup"
 fi
 
-if test -z "$MOZ_XUL"; then
+if test -n "MINIMO"; then
     add_makefiles "$MAKEFILES_minimo"
+    add_makefiles "$MAKEFILES_xulapp"
 fi
 
 if test -n "$MOZ_ENABLE_GTK2"; then
@@ -2024,6 +2063,7 @@ MAKEFILES_zlib="modules/zlib/standalone/Makefile"
         build) add_makefiles "$MAKEFILES_build" ;;
         calendar) add_makefiles "$MAKEFILES_calendar" ;;
         caps) add_makefiles "$MAKEFILES_caps" ;;
+        chrome) add_makefiles "$MAKEFILES_chrome" ;;
         chardet) add_makefiles "$MAKEFILES_chardet" ;;
         chatzilla) add_makefiles "$MAKEFILES_chatzilla" ;;
         chrome) add_makefiles "$MAKEFILES_chrome" ;;

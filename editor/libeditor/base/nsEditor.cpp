@@ -113,6 +113,7 @@
 #include "nsIInlineSpellChecker.h"
 #include "nsINameSpaceManager.h"
 #include "nsIHTMLDocument.h"
+#include "nsIParserService.h"
 
 #define NS_ERROR_EDITOR_NO_SELECTION NS_ERROR_GENERATE_FAILURE(NS_ERROR_MODULE_EDITOR,1)
 #define NS_ERROR_EDITOR_NO_TEXTNODE  NS_ERROR_GENERATE_FAILURE(NS_ERROR_MODULE_EDITOR,2)
@@ -122,12 +123,13 @@ static PRBool gNoisy = PR_FALSE;
 #endif
 
 
-PRInt32 nsEditor::gInstanceCount = 0;
-
 // Value of "ime.password.onFocus.dontCare"
 static PRBool gDontCareForIMEOnFocusPassword = PR_FALSE;
 // Value of "ime.password.onBlur.dontCare"
 static PRBool gDontCareForIMEOnBlurPassword  = PR_FALSE;
+
+// Defined in nsEditorRegistration.cpp
+extern nsIParserService *sParserService;
 
 //---------------------------------------------------------------------------
 //
@@ -168,9 +170,6 @@ nsEditor::nsEditor()
 ,  mPhonetic(nsnull)
 {
   //initialize member variables here
-
-  PR_AtomicIncrement(&gInstanceCount);
-
   if (!gTypingTxnName)
     gTypingTxnName = NS_NewAtom("Typing");
   else
@@ -249,11 +248,8 @@ nsEditor::~nsEditor()
 
   delete mPhonetic;
  
-  PR_AtomicDecrement(&gInstanceCount);
-
   NS_IF_RELEASE(mViewManager);
 }
-
 
 NS_IMPL_ISUPPORTS4(nsEditor, nsIEditor, nsIEditorIMESupport, nsISupportsWeakReference, nsIPhonetic)
 
@@ -1230,7 +1226,7 @@ nsEditor::SetAttribute(nsIDOMElement *aElement, const nsAString & aAttribute, co
   if (NS_SUCCEEDED(result))  {
     result = DoTransaction(txn);  
   }
-  // The transaction system (if any) has taken ownwership of txn
+  // The transaction system (if any) has taken ownership of txn
   NS_IF_RELEASE(txn);
   return result;
 }
@@ -1266,7 +1262,7 @@ nsEditor::RemoveAttribute(nsIDOMElement *aElement, const nsAString& aAttribute)
   if (NS_SUCCEEDED(result))  {
     result = DoTransaction(txn);  
   }
-  // The transaction system (if any) has taken ownwership of txn
+  // The transaction system (if any) has taken ownership of txn
   NS_IF_RELEASE(txn);
   return result;
 }
@@ -1336,7 +1332,7 @@ NS_IMETHODIMP nsEditor::CreateNode(const nsAString& aTag,
       NS_ASSERTION((NS_SUCCEEDED(result)), "GetNewNode can't fail if txn::DoTransaction succeeded.");
     }
   }
-  // The transaction system (if any) has taken ownwership of txn
+  // The transaction system (if any) has taken ownership of txn
   NS_IF_RELEASE(txn);
   
   mRangeUpdater.SelAdjCreateNode(aParent, aPosition);
@@ -1378,7 +1374,7 @@ NS_IMETHODIMP nsEditor::InsertNode(nsIDOMNode * aNode,
   if (NS_SUCCEEDED(result))  {
     result = DoTransaction(txn);  
   }
-  // The transaction system (if any) has taken ownwership of txn
+  // The transaction system (if any) has taken ownership of txn
   NS_IF_RELEASE(txn);
 
   mRangeUpdater.SelAdjInsertNode(aParent, aPosition);
@@ -1427,7 +1423,7 @@ nsEditor::SplitNode(nsIDOMNode * aNode,
       NS_ASSERTION((NS_SUCCEEDED(result)), "result must succeeded for GetNewNode");
     }
   }
-  // The transaction system (if any) has taken ownwership of txn
+  // The transaction system (if any) has taken ownership of txn
   NS_IF_RELEASE(txn);
 
   mRangeUpdater.SelAdjSplitNode(aNode, aOffset, *aNewLeftNode);
@@ -1484,7 +1480,7 @@ nsEditor::JoinNodes(nsIDOMNode * aLeftNode,
     result = DoTransaction(txn);  
   }
 
-  // The transaction system (if any) has taken ownwership of txn
+  // The transaction system (if any) has taken ownership of txn
   NS_IF_RELEASE(txn);
 
   mRangeUpdater.SelAdjJoinNodes(aLeftNode, aRightNode, aParent, offset, (PRInt32)oldLeftNodeLen);
@@ -1530,7 +1526,7 @@ NS_IMETHODIMP nsEditor::DeleteNode(nsIDOMNode * aElement)
     result = DoTransaction(txn);  
   }
 
-  // The transaction system (if any) has taken ownwership of txn
+  // The transaction system (if any) has taken ownership of txn
   NS_IF_RELEASE(txn);
 
   if (mActionListeners)
@@ -2782,7 +2778,7 @@ NS_IMETHODIMP nsEditor::InsertTextIntoTextNodeImpl(const nsAString& aStringToIns
     }
   }
   
-  // The transaction system (if any) has taken ownwership of txns.
+  // The transaction system (if any) has taken ownership of txns.
   // aggTxn released at end of routine.
   NS_IF_RELEASE(txn);
   return result;
@@ -2969,7 +2965,7 @@ NS_IMETHODIMP nsEditor::DeleteText(nsIDOMCharacterData *aElement,
       }
     }
   }
-  // The transaction system (if any) has taken ownwership of txn
+  // The transaction system (if any) has taken ownership of txn
   NS_IF_RELEASE(txn);
   return result;
 }
@@ -3833,7 +3829,7 @@ nsEditor::TagCanContain(const nsAString &aParentTag, nsIDOMNode* aChild)
   
   if (IsTextNode(aChild)) 
   {
-    childStringTag.AssignLiteral("__moz_text");
+    childStringTag.AssignLiteral("#text");
   }
   else
   {
@@ -3849,14 +3845,19 @@ nsEditor::TagCanContainTag(const nsAString &aParentTag, const nsAString &aChildT
 {
   // if we don't have a dtd then assume we can insert whatever want
   if (!mDTD) return PR_TRUE;
-  
-  PRInt32 childTagEnum, parentTagEnum;
-  nsAutoString non_const_childTag(aChildTag);
-  nsresult res = mDTD->StringTagToIntTag(non_const_childTag,&childTagEnum);
-  if (NS_FAILED(res)) return PR_FALSE;
-  nsAutoString non_const_parentTag(aParentTag);
-  res = mDTD->StringTagToIntTag(non_const_parentTag,&parentTagEnum);
-  if (NS_FAILED(res)) return PR_FALSE;
+
+  PRInt32 childTagEnum;
+  // XXX Should this handle #cdata-section too?
+  if (aChildTag.EqualsLiteral("#text")) {
+    childTagEnum = eHTMLTag_text;
+  }
+  else {
+    childTagEnum = sParserService->HTMLStringTagToId(aChildTag);
+  }
+
+  PRInt32 parentTagEnum = sParserService->HTMLStringTagToId(aParentTag);
+  NS_ASSERTION(parentTagEnum < NS_HTML_TAG_MAX,
+               "Fix the caller, this type of node can never contain children.");
 
   return mDTD->CanContain(parentTagEnum, childTagEnum);
 }
@@ -3901,11 +3902,10 @@ nsEditor::IsContainer(nsIDOMNode *aNode)
 {
   if (!aNode) return PR_FALSE;
   nsAutoString stringTag;
-  PRInt32 tagEnum;
   nsresult res = aNode->GetNodeName(stringTag);
   if (NS_FAILED(res)) return PR_FALSE;
-  res = mDTD->StringTagToIntTag(stringTag,&tagEnum);
-  if (NS_FAILED(res)) return PR_FALSE;
+  PRInt32 tagEnum = sParserService->HTMLStringTagToId(stringTag);
+
   return mDTD->IsContainer(tagEnum);
 }
 
@@ -4628,7 +4628,7 @@ nsEditor::DeleteSelectionImpl(nsIEditor::EDirection aAction)
     }
   }
 
-  // The transaction system (if any) has taken ownwership of txn
+  // The transaction system (if any) has taken ownership of txn
   NS_IF_RELEASE(txn);
 
   return res;

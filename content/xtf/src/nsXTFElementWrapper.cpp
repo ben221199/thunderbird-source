@@ -51,10 +51,12 @@
 #include "nsGUIEvent.h"
 #include "nsContentUtils.h"
 #include "nsIXTFService.h"
+#include "nsDOMAttributeMap.h"
 
 nsXTFElementWrapper::nsXTFElementWrapper(nsINodeInfo* aNodeInfo)
     : nsXTFElementWrapperBase(aNodeInfo),
-      mNotificationMask(0)
+      mNotificationMask(0),
+      mIntrinsicState(0)
 {
 }
 
@@ -331,7 +333,17 @@ nsXTFElementWrapper::UnsetAttr(PRInt32 aNameSpaceID, nsIAtom* aAttr,
       NS_WARNING("setattr: xtf elements don't do namespaced attribs yet!");
       return NS_ERROR_FAILURE;
     }  
+    nsDOMSlots *slots = GetExistingDOMSlots();
+    if (slots && slots->mAttributeMap) {
+      slots->mAttributeMap->DropAttribute(aNameSpaceID, aAttr);
+    }
     rv = mAttributeHandler->RemoveAttribute(aAttr);
+
+    // XXX if the RemoveAttribute() call fails, we might end up having removed
+    // the attribute from the attribute map even though the attribute is still
+    // on the element
+    // https://bugzilla.mozilla.org/show_bug.cgi?id=296205
+
     // XXX mutation events?
   }
   else { // try wrapper
@@ -402,6 +414,12 @@ nsXTFElementWrapper::GetExistingAttrNameFromQName(const nsAString& aStr) const
   }
   
   return nodeInfo;
+}
+
+PRInt32
+nsXTFElementWrapper::IntrinsicState() const
+{
+  return mIntrinsicState;
 }
 
 //----------------------------------------------------------------------
@@ -693,3 +711,78 @@ nsXTFElementWrapper::HandleDOMEvent(nsPresContext* aPresContext,
   return rv;
 }
 
+NS_IMETHODIMP
+nsXTFElementWrapper::SetIntrinsicState(PRInt32 aNewState)
+{
+  nsIDocument *doc = GetCurrentDoc();
+  PRInt32 bits = mIntrinsicState ^ aNewState;
+  
+  if (!doc || !bits)
+    return NS_OK;
+
+  mIntrinsicState = aNewState;
+  mozAutoDocUpdate(doc, UPDATE_CONTENT_STATE, PR_TRUE);
+  doc->ContentStatesChanged(this, nsnull, bits);
+
+  return NS_OK;
+}
+
+// nsXTFStyleableElementWrapper
+
+nsXTFStyledElementWrapper::nsXTFStyledElementWrapper(nsINodeInfo* aNodeInfo)
+: nsXTFElementWrapper(aNodeInfo)
+{
+}
+
+nsIAtom *
+nsXTFStyledElementWrapper::GetClassAttributeName() const
+{
+  return mClassAttributeName;
+}
+
+const nsAttrValue*
+nsXTFStyledElementWrapper::GetClasses() const
+{
+  const nsAttrValue* val = nsnull;
+  nsIAtom* clazzAttr = GetClassAttributeName();
+  if (clazzAttr) {
+    val = mAttrsAndChildren.GetAttr(clazzAttr);
+    // This is possibly the first time we need any classes.
+    if (val && val->Type() == nsAttrValue::eString) {
+      nsAutoString value;
+      val->ToString(value);
+      nsAttrValue newValue;
+      newValue.ParseAtomArray(value);
+      NS_CONST_CAST(nsAttrAndChildArray*, &mAttrsAndChildren)->
+        SetAndTakeAttr(clazzAttr, newValue);
+    }
+  }
+  return val;
+}
+
+PRBool
+nsXTFStyledElementWrapper::HasClass(nsIAtom* aClass, PRBool /*aCaseSensitive*/) const
+{
+  const nsAttrValue* val = GetClasses();
+  if (val) {
+    if (val->Type() == nsAttrValue::eAtom) {
+      return aClass == val->GetAtomValue();
+    }
+
+    if (val->Type() == nsAttrValue::eAtomArray) {
+      return val->GetAtomArrayValue()->IndexOf(aClass) >= 0;
+    }
+  }
+  return PR_FALSE;
+}
+
+nsresult
+nsXTFStyledElementWrapper::SetClassAttributeName(nsIAtom* aName)
+{
+  // The class attribute name can be set only once
+  if (mClassAttributeName || !aName)
+    return NS_ERROR_FAILURE;
+  
+  mClassAttributeName = aName;
+  return NS_OK;
+}

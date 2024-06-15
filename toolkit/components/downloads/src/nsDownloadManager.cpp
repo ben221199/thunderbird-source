@@ -499,6 +499,7 @@ nsDownloadManager::AddDownload(DownloadType aDownloadType,
                                const nsAString& aIconURL, 
                                nsIMIMEInfo *aMIMEInfo,
                                PRTime aStartTime,
+                               nsILocalFile* aTempFile,
                                nsICancelable* aCancelable,
                                nsIDownload** aDownload)
 {
@@ -534,6 +535,7 @@ nsDownloadManager::AddDownload(DownloadType aDownloadType,
   internalDownload->SetDownloadManager(this);
   internalDownload->SetTarget(aTarget);
   internalDownload->SetSource(aSource);
+  internalDownload->SetTempFile(aTempFile);
 
   // The path is the uniquifier of the download resource. 
   // XXXben - this is a little risky - really we should be using anonymous
@@ -716,8 +718,20 @@ nsDownloadManager::CancelDownload(const PRUnichar* aPath)
   internalDownload->GetCancelable(getter_AddRefs(cancelable));
   if (cancelable)
     cancelable->Cancel(NS_BINDING_ABORTED);
- 
+
   DownloadEnded(aPath, nsnull);
+
+  // dump the temp file.  This should really be done when the transfer
+  // is cancelled, but there's other cancelallation causes that shouldn't 
+  // remove this, we need to improve those bits
+  nsCOMPtr<nsILocalFile> tempFile;
+  internalDownload->GetTempFile(getter_AddRefs(tempFile));
+  if (tempFile) {
+    PRBool exists;
+    tempFile->Exists(&exists);
+    if (exists)
+      tempFile->Remove(PR_FALSE);
+  }
 
   gObserverService->NotifyObservers(internalDownload, "dl-cancel", nsnull);
 
@@ -730,7 +744,7 @@ nsDownloadManager::CancelDownload(const PRUnichar* aPath)
     rv = observer->Observe(internalDownload, "oncancel", nsnull);
     if (NS_FAILED(rv)) return rv;
   }
-  
+
   return rv;
 }
 
@@ -1835,6 +1849,21 @@ nsDownload::GetDialog(nsIProgressDialog** aDialog)
   return NS_OK;
 }
 
+nsresult
+nsDownload::SetTempFile(nsILocalFile* aTempFile)
+{
+  mTempFile = aTempFile;
+  return NS_OK;
+}
+
+nsresult
+nsDownload::GetTempFile(nsILocalFile** aTempFile)
+{
+  *aTempFile = mTempFile;
+  NS_IF_ADDREF(*aTempFile);
+  return NS_OK;
+}
+
 DownloadState
 nsDownload::GetDownloadState()
 {
@@ -2161,6 +2190,7 @@ nsDownload::Init(nsIURI* aSource,
                  const nsAString& aDisplayName,
                  nsIMIMEInfo *aMIMEInfo,
                  PRTime aStartTime,
+                 nsILocalFile* aTempFile,
                  nsICancelable* aCancelable)
 {
   NS_WARNING("Huh...how did we get here?!");

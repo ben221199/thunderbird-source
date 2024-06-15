@@ -97,6 +97,8 @@
 
 #include "nsXBLPrototypeBinding.h"
 #include "nsXBLBinding.h"
+#include "nsIPrincipal.h"
+#include "nsIScriptSecurityManager.h"
 
 #include "prprf.h"
 
@@ -719,18 +721,22 @@ nsXBLBinding::InstallEventHandlers()
     mNextBinding->InstallEventHandlers();
 }
 
-void
+nsresult
 nsXBLBinding::InstallImplementation()
 {
   // Always install the base class properties first, so that
   // derived classes can reference the base class properties.
 
-  if (mNextBinding)
-    mNextBinding->InstallImplementation();
-
+  if (mNextBinding) {
+    nsresult rv = mNextBinding->InstallImplementation();
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+  
   // iterate through each property in the prototype's list and install the property.
   if (AllowScripts())
-    mPrototypeBinding->InstallImplementation(mBoundElement);
+    return mPrototypeBinding->InstallImplementation(mBoundElement);
+
+  return NS_OK;
 }
 
 nsIAtom*
@@ -1168,7 +1174,45 @@ nsXBLBinding::AllowScripts()
 {
   PRBool result;
   mPrototypeBinding->GetAllowScripts(&result);
-  return result;
+  if (!result) {
+    return result;
+  }
+
+  // Nasty hack.  Use the JSContext of the bound node, since the
+  // security manager API expects to get the docshell type from
+  // that.  But use the nsIPrincipal of our document.
+  nsIScriptSecurityManager* mgr = nsContentUtils::GetSecurityManager();
+  if (!mgr) {
+    return PR_FALSE;
+  }
+  
+  nsIDocument* doc = mBoundElement->GetOwnerDoc();
+  if (!doc) {
+    return PR_FALSE;
+  }
+
+  nsIScriptGlobalObject* global = doc->GetScriptGlobalObject();
+  if (!global) {
+    return PR_FALSE;
+  }
+
+  nsCOMPtr<nsIScriptContext> context = global->GetContext();
+  if (!context) {
+    return PR_FALSE;
+  }
+  
+  JSContext* cx = (JSContext*) context->GetNativeContext();
+
+  nsCOMPtr<nsIDocument> ourDocument;
+  mPrototypeBinding->XBLDocumentInfo()->GetDocument(getter_AddRefs(ourDocument));
+  nsIPrincipal* principal = ourDocument->GetPrincipal();
+  if (!principal) {
+    return PR_FALSE;
+  }
+
+  PRBool canExecute;
+  nsresult rv = mgr->CanExecuteScripts(cx, principal, &canExecute);
+  return NS_SUCCEEDED(rv) && canExecute;
 }
 
 PR_STATIC_CALLBACK(PRBool)

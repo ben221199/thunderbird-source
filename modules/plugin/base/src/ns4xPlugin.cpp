@@ -65,7 +65,7 @@
 
 #include "nsIXPConnect.h"
 
-#if defined(XP_MAC) || defined(XP_MACOSX)
+#if defined(XP_MACOSX)
 #include <Resources.h>
 #endif
 
@@ -169,14 +169,11 @@ PR_BEGIN_EXTERN_C
   static void NP_EXPORT
   _forceredraw(NPP npp);
 
-  ////////////////////////////////////////////////////////////////////////
-  // Anything that returns a pointer needs to be _HERE_ for 68K Mac to
-  // work.
-  //
+  static void NP_EXPORT
+  _pushpopupsenabledstate(NPP npp, NPBool enabled);
 
-#if defined(XP_MAC) && !defined(powerc)
-#pragma pointers_in_D0
-#endif
+  static void NP_EXPORT
+  _poppopupsenabledstate(NPP npp);
 
   static const char* NP_EXPORT
   _useragent(NPP npp);
@@ -196,16 +193,14 @@ PR_BEGIN_EXTERN_C
 #endif
 #endif /* OJI */
 
-#if defined(XP_MAC) && !defined(powerc)
-#pragma pointers_in_A0
-#endif
-
 PR_END_EXTERN_C
 
 #ifdef XP_MACOSX
 
+#define TV2FP(tvp) _TV2FP((void *)tvp)
+
 static void*
-TV2FP(void *tvp)
+_TV2FP(void *tvp)
 {
     static uint32 glue[6] = {
       0x3D800000, 0x618C0000, 0x800C0000, 0x804C0004, 0x7C0903A6, 0x4E800420
@@ -224,8 +219,10 @@ TV2FP(void *tvp)
     return newGlue;
 }
 
+#define FP2TV(fp) _FP2TV((void *)fp)
+
 static void*
-FP2TV(void *fp)
+_FP2TV(void *fp)
 {
     void **newGlue = NULL;
     if (fp != NULL) {
@@ -384,6 +381,12 @@ ns4xPlugin::CheckClassInitialized(void)
   CALLBACKS.setexception =
     NewNPN_SetExceptionProc(FP2TV(_setexception));
 
+  CALLBACKS.pushpopupsenabledstate =
+    NewNPN_PushPopupsEnabledStateProc(FP2TV(_pushpopupsenabledstate));
+
+  CALLBACKS.poppopupsenabledstate =
+    NewNPN_PopPopupsEnabledStateProc(FP2TV(_poppopupsenabledstate));
+
   initialized = TRUE;
 
   NPN_PLUGIN_LOG(PLUGIN_LOG_NORMAL,("NPN callbacks initialized\n"));
@@ -420,30 +423,7 @@ ns4xPlugin::ns4xPlugin(NPPluginFuncs* callbacks, PRLibrary* aLibrary,
                "callback version is less than NP version");
 
   fShutdownEntry = (NP_PLUGINSHUTDOWN)PR_FindSymbol(aLibrary, "NP_Shutdown");
-#elif defined(XP_MAC) && !TARGET_CARBON
-  // get the main entry point
-  NP_MAIN pfnMain = (NP_MAIN) PR_FindSymbol(aLibrary, "mainRD");
-
-  if (pfnMain == NULL)
-    return;
-
-  // call into the entry point
-  NPError error;
-  NS_TRY_SAFE_CALL_RETURN(error,
-                          CallNPP_MainEntryProc(pfnMain,
-                                                &(ns4xPlugin::CALLBACKS),
-                                                &fCallbacks,
-                                                &fShutdownEntry),
-                          aLibrary, nsnull);
-
-  NPP_PLUGIN_LOG(PLUGIN_LOG_NORMAL,
-                 ("NPP MainEntryProc called, return=%d\n",error));
-
-  if (error != NPERR_NO_ERROR ||
-      ((fCallbacks.version >> 8) < NP_VERSION_MAJOR))
-    return;
-
-#elif defined(XP_MACOSX) || (defined(XP_MAC) && TARGET_CARBON)
+#elif defined(XP_MACOSX)
   // call into the entry point
   NP_MAIN pfnMain = (NP_MAIN) PR_FindSymbol(aLibrary, "main");
 
@@ -510,35 +490,35 @@ ns4xPlugin::~ns4xPlugin(void)
 #if defined(XP_MACOSX)
   // release all wrapped plugin entry points.
   if (fCallbacks.newp)
-    free(fCallbacks.newp);
+    free((void *)fCallbacks.newp);
   if (fCallbacks.destroy)
-    free(fCallbacks.destroy);
+    free((void *)fCallbacks.destroy);
   if (fCallbacks.setwindow)
-    free(fCallbacks.setwindow);
+    free((void *)fCallbacks.setwindow);
   if (fCallbacks.newstream)
-    free(fCallbacks.newstream);
+    free((void *)fCallbacks.newstream);
   if (fCallbacks.asfile)
-    free(fCallbacks.asfile);
+    free((void *)fCallbacks.asfile);
   if (fCallbacks.writeready)
-    free(fCallbacks.writeready);
+    free((void *)fCallbacks.writeready);
   if (fCallbacks.write)
-    free(fCallbacks.write);
+    free((void *)fCallbacks.write);
   if (fCallbacks.print)
-    free(fCallbacks.print);
+    free((void *)fCallbacks.print);
   if (fCallbacks.event)
-    free(fCallbacks.event);
+    free((void *)fCallbacks.event);
   if (fCallbacks.urlnotify)
-    free(fCallbacks.urlnotify);
+    free((void *)fCallbacks.urlnotify);
   if (fCallbacks.getvalue)
-    free(fCallbacks.getvalue);
+    free((void *)fCallbacks.getvalue);
   if (fCallbacks.setvalue)
-    free(fCallbacks.setvalue);
+    free((void *)fCallbacks.setvalue);
 #endif
   memset((void*) &fCallbacks, 0, sizeof(fCallbacks));
 }
 
 
-#if defined(XP_MAC) || defined(XP_MACOSX)
+#if defined(XP_MACOSX)
 ////////////////////////////////////////////////////////////////////////
 void
 ns4xPlugin::SetPluginRefNum(short aRefNum)
@@ -732,7 +712,7 @@ ns4xPlugin::CreatePlugin(nsIServiceManagerObsolete* aServiceMgr,
   }
 #endif
 
-#if defined(XP_MAC) || defined(XP_MACOSX)
+#if defined(XP_MACOSX)
   short appRefNum = ::CurResFile();
   short pluginRefNum;
 
@@ -759,7 +739,7 @@ ns4xPlugin::CreatePlugin(nsIServiceManagerObsolete* aServiceMgr,
   }
 
   plugin->SetPluginRefNum(pluginRefNum);
-#endif  // XP_MAC || XP_MACOSX
+#endif  // XP_MACOSX
 
 #ifdef XP_BEOS
   // I just copied UNIX version.
@@ -866,7 +846,7 @@ ns4xPlugin::Shutdown(void)
                  ("NPP Shutdown to be called: this=%p\n", this));
 
   if (nsnull != fShutdownEntry) {
-#if defined(XP_MAC) || defined(XP_MACOSX)
+#if defined(XP_MACOSX)
     CallNPP_ShutdownProc(fShutdownEntry);
     ::CloseResFile(fPluginRefNum);
 #else
@@ -875,7 +855,7 @@ ns4xPlugin::Shutdown(void)
 
 #if defined(XP_MACOSX)
     // release the wrapped plugin function.
-    free(fShutdownEntry);
+    free((void *)fShutdownEntry);
 #endif
     fShutdownEntry = nsnull;
   }
@@ -1890,27 +1870,16 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
   }
 
   case NPNVDOMWindow: {
-    ns4xPluginInstance *inst = (ns4xPluginInstance *) npp->ndata;
+    ns4xPluginInstance *inst = (ns4xPluginInstance *)npp->ndata;
     NS_ENSURE_TRUE(inst, NPERR_GENERIC_ERROR);
 
-    nsCOMPtr<nsIPluginInstancePeer> pip;
-    inst->GetPeer(getter_AddRefs(pip));
-    nsCOMPtr<nsPIPluginInstancePeer> pp (do_QueryInterface(pip));
-    if (pp) {
-      nsCOMPtr<nsIPluginInstanceOwner> owner;
-      pp->GetOwner(getter_AddRefs(owner));
-      if (owner) {
-        nsCOMPtr<nsIDocument> doc;
-        owner->GetDocument(getter_AddRefs(doc));
-        if (doc) {
-          nsCOMPtr<nsIDOMWindow> domWindow =
-            do_QueryInterface(doc->GetScriptGlobalObject());
-          if (domWindow) {
-            NS_ADDREF(*(nsIDOMWindow**)result = domWindow.get());
-            return NPERR_NO_ERROR;
-          }
-        }
-      }
+    nsIDOMWindow *domWindow = inst->GetDOMWindow().get();
+
+    if (domWindow) {
+      // Pass over ownership of domWindow to the caller.
+      (*(nsIDOMWindow**)result) = domWindow;
+
+      return NPERR_NO_ERROR;
     }
     return NPERR_GENERIC_ERROR;
   }
@@ -2064,16 +2033,6 @@ _requestread(NPStream *pstream, NPByteRange *rangeList)
 }
 
 ////////////////////////////////////////////////////////////////////////
-//
-// On 68K Mac (XXX still supported?), we need to make sure that the
-// pointers are in D0 for the following functions that return pointers.
-//
-
-#if defined(XP_MAC) && !defined(powerc)
-#pragma pointers_in_D0
-#endif
-
-////////////////////////////////////////////////////////////////////////
 #ifdef OJI
 JRIEnv* NP_EXPORT
 _getJavaEnv(void)
@@ -2118,5 +2077,24 @@ _getJavaPeer(NPP npp)
 
 #endif /* OJI */
 
+void NP_EXPORT
+_pushpopupsenabledstate(NPP npp, NPBool enabled)
+{
+  ns4xPluginInstance *inst = (ns4xPluginInstance *)npp->ndata;
+  if (!inst)
+    return;
+
+  inst->PushPopupsEnabledState(enabled);
+}
+
+void NP_EXPORT
+_poppopupsenabledstate(NPP npp)
+{
+  ns4xPluginInstance *inst = (ns4xPluginInstance *)npp->ndata;
+  if (!inst)
+    return;
+
+  inst->PopPopupsEnabledState();
+}
 
 NPP NPPStack::sCurrentNPP = nsnull;

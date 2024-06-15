@@ -48,7 +48,7 @@
 <prefwindow id="SoundNotificationsDialog" type="child"
             xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
             dlgbuttons="accept,cancel"
-            style="width: 30em !important;"
+            style="width: &window.width; !important;"
             title="&notificationsDialog.title;">
 
   <prefpane id="NotificationsDialogPane" onpaneload="gNotificationsDialog.init();">
@@ -64,7 +64,12 @@
     <groupbox>
       <caption label="&soundNotification.caption;"/>
         <radiogroup id="newMailNotificationType" preference="mail.biff.play_sound.type" orient="vertical">
-          <radio value="0" label="&systemsound.label;" 
+          <radio value="0" 
+#ifdef XP_MACOSX
+                 label="&systemsoundMac.label;"         
+#else
+                 label="&systemsound.label;" 
+#endif
                  accesskey="&systemsound.accesskey;" id="system"/>
           <radio value="1" label="&customsound.label;" 
                  accesskey="&customsound.accesskey;" id="custom"/>
@@ -75,7 +80,7 @@
           <hbox class="indent">
             <filefield id="soundUrlLocation" flex="1" preference="mail.biff.play_sound.url"
                        preference-editable="true"
-                       onpreferenceread="return gNotificationsDialog.readSoundLocation();"/>
+                       onsyncfrompreference="return gNotificationsDialog.readSoundLocation();"/>
             <button id="browse" label="&browse.label;" 
                     accesskey="&browse.accesskey;" oncommand="gNotificationsDialog.browseForSoundFile();"/>
           </hbox>

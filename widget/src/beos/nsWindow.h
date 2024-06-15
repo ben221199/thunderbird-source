@@ -53,16 +53,12 @@
 #include "nsIEventListener.h"
 #include "nsString.h"
 
-#include "nsVoidArray.h"
-
 #include <Window.h>
 #include <View.h>
 #include <Region.h>
 
 #define NSRGB_2_COLOREF(color) \
             RGB(NS_GET_R(color),NS_GET_G(color),NS_GET_B(color))
-
-//#define DRAG_DROP
 
 // forward declaration
 class nsViewBeOS;
@@ -218,14 +214,12 @@ protected:
 
 
 	BView           *mView;
-	nsIWidget       *mParent;
 	PRBool           mIsTopWidgetWindow;
 	BView           *mBorderlessParent;
 
 	// I would imagine this would be in nsBaseWidget, but alas, it is not
 	PRBool           mIsMetaDown;
 
-	PRBool           mIsDestroying;
 	PRBool           mOnDestroyCalled;
 	PRBool           mIsVisible;
 	// XXX Temporary, should not be caching the font
@@ -262,7 +256,7 @@ public:	// public on BeOS to allow BViews to access it
 	    BTNCLICK,
 	    ONACTIVATE,
 	    ONMOVE,
-	    ONWORKSPACE,
+	    ONWORKSPACE
 	};
 	nsToolkit *GetToolkit() { return (nsToolkit *)nsBaseWidget::GetToolkit(); }
 };
@@ -341,6 +335,8 @@ private:
 	float                 lastViewWidth;
 	float                 lastViewHeight;
 	BPoint               lastViewPoint;
+	uint32               mouseMask;
+	bool                  restoreMouseMask;	
 };
 
 //

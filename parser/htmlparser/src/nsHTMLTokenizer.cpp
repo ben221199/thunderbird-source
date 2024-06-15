@@ -1,4 +1,5 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set sw=2 ts=2 et tw=78: */
 /* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -343,6 +344,23 @@ void nsHTMLTokenizer::PrependTokens(nsDeque& aDeque)
 }
 
 /**
+ * Copies the state flags from aTokenizer into this tokenizer. This is used
+ * to pass information around between the main tokenizer and tokenizers
+ * created for document.write() calls.
+ *
+ * @param aTokenizer The tokenizer with more information in it.
+ * @return NS_OK
+ */
+nsresult nsHTMLTokenizer::CopyState(nsITokenizer* aTokenizer)
+{
+  if (aTokenizer) {
+    mFlags = ((nsHTMLTokenizer*)aTokenizer)->mFlags;
+  }
+
+  return NS_OK;
+}
+
+/**
  * This is a utilty method for ScanDocStructure, which finds a given
  * tag in the stack. The return value is meant to be used with
  * nsDeque::ObjectAt() on aTagStack.
@@ -426,15 +444,23 @@ nsresult nsHTMLTokenizer::ScanDocStructure(PRBool aFinalChunk)
                 PRInt32 earlyPos = FindLastIndexOfTag(theTag, theStack);
                 if (earlyPos != kNotFound) {
                   // Uh-oh, we've found a tag that is not allowed to nest at
-                  // all. Mark the previous one as malformed to increase our
-                  // chances of doing RS handling on it. We want to do this
-                  // for cases such as: <a><div><a></a></div></a>.
+                  // all. Mark the previous one and all of its children as 
+                  // malformed to increase our chances of doing RS handling
+                  // on all of them. We want to do this for cases such as:
+                  // <a><div><a></a></div></a>.
+                  // Note that we have to iterate through all of the chilren
+                  // of the original malformed tag to protect against:
+                  // <a><font><div><a></a></div></font></a>, so that the <font>
+                  // is allowed to contain the <div>.
                   // XXX What about <a><span><a>, where the second <a> closes
                   // the <span>?
-                  CHTMLToken *theMalformedToken = 
-                    NS_STATIC_CAST(CHTMLToken*, theStack.ObjectAt(earlyPos));
+                  nsDequeIterator it(theStack, earlyPos), end(theStack.End());
+                  while (it < end) {
+                    CHTMLToken *theMalformedToken = 
+                        NS_STATIC_CAST(CHTMLToken*, it++);
                   
-                  theMalformedToken->SetContainerInfo(eMalformed);
+                    theMalformedToken->SetContainerInfo(eMalformed);
+                  }
                 }
               }
 
@@ -781,9 +807,7 @@ nsresult nsHTMLTokenizer::ConsumeStartTag(PRUnichar aChar,
     result= aToken->Consume(aChar,aScanner,mFlags);
 
     if(NS_SUCCEEDED(result)) {
-     
       AddToken(aToken,result,&mTokenDeque,theAllocator);
-      NS_ENSURE_SUCCESS(result, result);
 
       eHTMLTags theTag=(eHTMLTags)aToken->GetTypeID();
 
@@ -826,6 +850,16 @@ nsresult nsHTMLTokenizer::ConsumeStartTag(PRUnichar aChar,
           isCDATA = PR_TRUE;
         }
 
+        // Plaintext contains CDATA, but it's special, so we handle it
+        // differently than the other CDATA elements
+        if (eHTMLTag_plaintext == theTag) {
+          isCDATA = PR_FALSE;
+
+          // Note: We check in ConsumeToken() for this flag, and if we see it
+          // we only construct text tokens (which is what we want).
+          mFlags |= NS_IPARSER_FLAG_PLAIN_TEXT;
+        }
+
 
         if (isCDATA || isPCDATA) {
           PRBool done = PR_FALSE;
@@ -838,8 +872,7 @@ nsresult nsHTMLTokenizer::ConsumeStartTag(PRUnichar aChar,
           if (isCDATA) {
             // The only tags that consume conservatively are <script> and
             // <style>, the rest all consume until the end of the document.
-            result = textToken->ConsumeCharacterData(0,
-                                                     theTag==eHTMLTag_script ||
+            result = textToken->ConsumeCharacterData(theTag==eHTMLTag_script ||
                                                      theTag==eHTMLTag_style,
                                                      theTag!=eHTMLTag_script,
                                                      aScanner,
@@ -854,12 +887,13 @@ nsresult nsHTMLTokenizer::ConsumeStartTag(PRUnichar aChar,
           else if (isPCDATA) {
             // Title is consumed conservatively in order to not regress
             // bug 42945
-            result = textToken->ConsumeParsedCharacterData(0,
-                                                           theTag==eHTMLTag_title,
-                                                           aScanner,
-                                                           endTagName,
-                                                           mFlags,
-                                                           done);
+            result = textToken->ConsumeParsedCharacterData(
+                                                        theTag==eHTMLTag_textarea,
+                                                        theTag==eHTMLTag_title,
+                                                        aScanner,
+                                                        endTagName,
+                                                        mFlags,
+                                                        done);
 
             // Note: we *don't* set aFlushTokens here.
           }
@@ -944,8 +978,13 @@ nsresult nsHTMLTokenizer::ConsumeEndTag(PRUnichar aChar,
     // Tell the new token to finish consuming text...
     result= aToken->Consume(aChar,aScanner,mFlags);
     AddToken(aToken,result,&mTokenDeque,theAllocator);
-    NS_ENSURE_SUCCESS(result, result);
-      
+    if (NS_FAILED(result)) {
+      // Note that this early-return here is safe because we have not yet
+      // added any of our tokens to the queue (AddToken only adds the token if
+      // result is a success), so we don't need to fall through.
+      return result;
+    }
+
     result = aScanner.Peek(aChar);
     if (NS_FAILED(result)) {
       aToken->SetInError(PR_TRUE);
@@ -1002,7 +1041,7 @@ nsresult nsHTMLTokenizer::ConsumeEntity(PRUnichar aChar,
         IF_FREE(aToken, mTokenAllocator);
       }
       else {
-        if (mIsFinalChunk && result == kEOF) {
+        if (!aScanner.IsIncremental() && result == kEOF) {
           result=NS_OK; // Use as much of the entity as you can get.
         }
         AddToken(aToken,result,&mTokenDeque,theAllocator);
@@ -1011,6 +1050,13 @@ nsresult nsHTMLTokenizer::ConsumeEntity(PRUnichar aChar,
     }
     // Oops, we're actually looking at plain text...
     result = ConsumeText(aToken,aScanner);
+  }
+  else if (result == kEOF && !aScanner.IsIncremental()) {
+    // If the last character in the file is an &, consume it as text.
+    result = ConsumeText(aToken, aScanner);
+    if (aToken) {
+      aToken->SetInError(PR_TRUE);
+    }
   }
   return result;
 }

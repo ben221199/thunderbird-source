@@ -65,6 +65,7 @@
 #
 # Other common MOZ_CO_MODULE options include the following:
 #   mozilla/other-licenses/libart_lgpl
+#   mozilla/other-licenses/bsdiff
 #   mozilla/tools/codesighs
 #
 # Other targets (gmake -f client.mk [targets...]),
@@ -102,6 +103,8 @@ MODULES_core :=                                \
   SeaMonkeyAll                                  \
   mozilla/ipc/ipcd                              \
   mozilla/modules/libpr0n                       \
+  mozilla/modules/libmar                        \
+  mozilla/modules/libbz2                        \
   mozilla/accessible                            \
   mozilla/security/manager                      \
   mozilla/toolkit                               \
@@ -160,6 +163,8 @@ MODULES_mail :=                                 \
 LOCALES_mail :=                                 \
   $(LOCALES_toolkit)                            \
   mail                                          \
+  other-licenses/branding/thunderbird           \
+  editor/ui                                     \
   $(NULL)
 
 BOOTSTRAP_mail := mozilla/mail/config/mozconfig
@@ -201,11 +206,11 @@ BOOTSTRAP_macbrowser := mozilla/camino/config/mozconfig
 #
 # For branches, uncomment the MOZ_CO_TAG line with the proper tag,
 # and commit this file on that tag.
-MOZ_CO_TAG           = THUNDERBIRD_1_1a1_RELEASE
-NSPR_CO_TAG          = THUNDERBIRD_1_1a1_RELEASE
-NSS_CO_TAG           = THUNDERBIRD_1_1a1_RELEASE
-LDAPCSDK_CO_TAG      = THUNDERBIRD_1_1a1_RELEASE
-LOCALES_CO_TAG       = THUNDERBIRD_1_1a1_RELEASE
+MOZ_CO_TAG           = THUNDERBIRD_1_1a2_RELEASE
+NSPR_CO_TAG          = THUNDERBIRD_1_1a2_RELEASE
+NSS_CO_TAG           = THUNDERBIRD_1_1a2_RELEASE
+LDAPCSDK_CO_TAG      = THUNDERBIRD_1_1a2_RELEASE
+LOCALES_CO_TAG       =
 
 BUILD_MODULES = all
 

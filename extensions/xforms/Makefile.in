@@ -70,6 +70,8 @@ REQUIRES	= \
 		transformiix \
 		schemavalidation \
 		intl \
+		pref \
+		htmlparser \
 		$(NULL)
 
 XPIDLSRCS	= \
@@ -88,6 +90,9 @@ XPIDLSRCS	= \
 		nsIXFormsRepeatItemElement.idl \
 		nsIXFormsSubmitElement.idl \
 		nsIXFormsSubmissionElement.idl \
+		nsIXFormsControlBase.idl \
+		nsIXFormsDelegate.idl \
+		nsIXFormsUIWidget.idl \
 		$(NULL)
 
 CPPSRCS		= \
@@ -140,6 +145,8 @@ CPPSRCS		= \
 		nsXFormsNodeState.cpp \
 		nsXFormsControlStub.cpp \
 		nsXFormsUtilityService.cpp \
+		nsXFormsDelegateStub.cpp \
+		nsXFormsLazyInstanceElement.cpp \
 		$(NULL)
 
 EXTRA_DSO_LDOPTS = $(MOZ_COMPONENT_LIBS)

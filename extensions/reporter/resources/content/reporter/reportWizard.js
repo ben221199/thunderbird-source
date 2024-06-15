@@ -120,10 +120,14 @@ function setPrivacyPref(){
 }
 
 function initForm() {
+  var strbundle=document.getElementById("strings");
   var reportWizard = document.getElementById('reportWizard');
-  reportWizard.canRewind = false;
 
+  reportWizard.canRewind = false;
   document.getElementById('url').value = gURL;
+
+  // Change next button to "submit report"
+  reportWizard.getButton('next').label = strbundle.getString("submitReport") + ">";
 
   // We don't let the user go forward until they fufill certain requirements - see validateform()
   reportWizard.canAdvance = false;
@@ -161,6 +165,7 @@ function getSysID() {
 function sendReport() {
   // we control the user path from here.
   var reportWizard = document.getElementById('reportWizard');
+
   reportWizard.canRewind = false;
   reportWizard.canAdvance = false;
   // why would we need a cancel button?
@@ -237,13 +242,17 @@ function sendReport() {
     // If there was an error from the server
     finishExtendedSuccess.setAttribute("class", "hide");
 
+    // Change the label on the page so users know we have an error
+    var finishPage = document.getElementById('finish');
+    finishPage.setAttribute("label",strbundle.getString("finishError"));
+
     reportWizard.canAdvance = true;
     reportWizard.advance();
 
     finishSummary.setAttribute("value",strbundle.getString("failedCreatingReport"));
 
     finishExtendedDoc = finishExtendedFailed.contentDocument;
-    finishExtendedDoc.getElementById('faultCode').textContent = gFaultCode;
+    //finishExtendedDoc.getElementById('faultCode').textContent = gFaultCode;
     finishExtendedDoc.getElementById('faultMessage').textContent = gFaultMessage;
   }
   document.getElementById('finishExtendedFrame').collapsed = true;
@@ -287,7 +296,7 @@ function getBuildConfig() {
     return text.substring(start);
   } catch(ex) {
     dump(ex);
-    return;
+    return "Unknown";
   }
 }
 

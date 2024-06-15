@@ -1530,6 +1530,7 @@ mime_type_requires_b64_p (const char *type)
     static const char *app_and_image_types_which_are_really_text[] = {
     "application/mac-binhex40",   /* APPLICATION_BINHEX */
     "application/pgp",        /* APPLICATION_PGP */
+    "application/pgp-keys",
     "application/x-pgp-message",  /* APPLICATION_PGP2 */
     "application/postscript",   /* APPLICATION_POSTSCRIPT */
     "application/x-uuencode",   /* APPLICATION_UUENCODE */
@@ -1538,6 +1539,8 @@ mime_type_requires_b64_p (const char *type)
     "application/uuencode",     /* APPLICATION_UUENCODE3 */
     "application/sgml",
     "application/x-csh",
+    "application/javascript",
+    "application/ecmascript",
     "application/x-javascript",
     "application/x-latex",
     "application/x-macbinhex40",

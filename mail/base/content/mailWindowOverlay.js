@@ -540,32 +540,8 @@ function InitMessageLabel(menuType)
 
     try
     {
-        var msgFolder = GetLoadedMsgFolder();
-        var msgDatabase = msgFolder.getMsgDatabase(msgWindow);
-        var numSelected = GetNumSelectedMessages();
-        var indices = GetSelectedIndices(gDBView);
         var isChecked = true;
-        var checkedLabel;
-        var msgKey;
-
-        if (numSelected > 0) {
-            msgKey = gDBView.getKeyAt(indices[0]);
-            checkedLabel = msgDatabase.GetMsgHdrForKey(msgKey).label;
-            if (numSelected > 1) {
-                for (var i = 1; i < indices.length; i++)
-                {
-                    msgKey = gDBView.getKeyAt(indices[i]);
-                    if (msgDatabase.GetMsgHdrForKey(msgKey).label == checkedLabel) {
-                        continue;
-                    }
-                    isChecked = false;
-                    break;
-                }
-            }
-        }
-        else {
-            isChecked = false;
-        }
+        var checkedLabel = gDBView.hdrForFirstSelectedMessage.label;
     }
     catch(ex)
     {
@@ -2538,4 +2514,62 @@ function loadThrobberUrl(urlPref)
         url = gPrefBranch.getComplexValue(urlPref, Components.interfaces.nsIPrefLocalizedString).data;
         messenger.launchExternalURL(url);  
     } catch (ex) {}
+}
+
+/**
+ * Opens the update manager and checks for updates to the application.
+ */
+
+function checkForUpdates()
+{
+  var prompter = Components.classes["@mozilla.org/updates/update-prompt;1"]
+                           .createInstance(Components.interfaces.nsIUpdatePrompt);
+  prompter.checkForUpdates();
+}
+
+function buildHelpMenu()
+{
+  var updates = 
+      Components.classes["@mozilla.org/updates/update-service;1"].
+      getService(Components.interfaces.nsIApplicationUpdateService);
+  var um = 
+      Components.classes["@mozilla.org/updates/update-manager;1"].
+      getService(Components.interfaces.nsIUpdateManager);
+  
+  // Disable the UI if the update enabled pref has been locked by the
+  // administrator or if we cannot update for some other reason 
+  var checkForUpdates = document.getElementById("checkForUpdates");
+  var canUpdate = updates.canUpdate;
+  checkForUpdates.setAttribute("disabled", !canUpdate);
+  if (!canUpdate)
+    return;
+
+  if (!gMessengerBundle)
+    gMessengerBundle = document.getElementById("bundle_messenger");
+  
+  var label = gMessengerBundle.getString("updates_checkForUpdates");
+  var activeUpdate = um.activeUpdate;
+  if (activeUpdate) 
+  {
+    if (updates.isDownloading) 
+    {
+      if (activeUpdate.name) 
+        label = gMessengerBundle.getFormattedString("updates_downloadingUpdates", [activeUpdate.name]);
+      else
+        label = gMessengerBundle.getString("updates_downloadingUpdatesFallback");
+    }
+    else 
+    {
+      if (activeUpdate.name) 
+        label = gMessengerBundle.getFormattedString("updates_resumeDownloading", [activeUpdate.name]);
+      else
+        label = gMessengerBundle.getString("updates_resumeDownloadingFallback");
+    }
+  }
+
+  checkForUpdates.label = label;
+  if (um.activeUpdate && updates.isDownloading)
+    checkForUpdates.setAttribute("loading", "true");
+  else
+    checkForUpdates.removeAttribute("loading");
 }

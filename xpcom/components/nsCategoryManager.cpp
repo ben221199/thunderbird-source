@@ -53,8 +53,10 @@
 #include "nsSupportsPrimitives.h"
 #include "nsServiceManagerUtils.h"
 #include "nsIObserver.h"
+#include "nsIObserverService.h"
 #include "nsReadableUtils.h"
 #include "nsCRT.h"
+#include "nsQuickSort.h"
 #include "nsEnumeratorUtils.h"
 
 class nsIComponentLoaderManager;
@@ -90,6 +92,9 @@ public:
   NS_DECL_NSIUTF8STRINGENUMERATOR
 
 protected:
+  // Callback function for NS_QuickSort to sort mArray
+  static int SortCallback(const void *, const void *, void *);
+
   BaseStringEnumerator()
     : mArray(nsnull),
       mCount(0),
@@ -104,6 +109,8 @@ protected:
     if (mArray)
       delete[] mArray;
   }
+
+  void Sort();
 
   const char** mArray;
   PRUint32 mCount;
@@ -155,6 +162,21 @@ BaseStringEnumerator::GetNext(nsACString& _retval)
   return NS_OK;
 }
 
+int
+BaseStringEnumerator::SortCallback(const void *e1, const void *e2,
+                                   void * /*unused*/)
+{
+  char const *const *s1 = NS_REINTERPRET_CAST(char const *const *, e1);
+  char const *const *s2 = NS_REINTERPRET_CAST(char const *const *, e2);
+
+  return strcmp(*s1, *s2);
+}
+
+void
+BaseStringEnumerator::Sort()
+{
+  NS_QuickSort(mArray, mCount, sizeof(mArray[0]), SortCallback, nsnull);
+}
 
 //
 // EntryEnumerator is the wrapper that allows nsICategoryManager::EnumerateCategory
@@ -194,6 +216,8 @@ EntryEnumerator::Create(nsTHashtable<CategoryLeaf>& aTable)
   }
 
   aTable.EnumerateEntries(enumfunc_createenumerator, enumObj);
+
+  enumObj->Sort();
 
   return enumObj;
 }
@@ -494,6 +518,39 @@ nsCategoryManager::get_category(const char* aName) {
   return node;
 }
 
+void
+nsCategoryManager::NotifyObservers( const char *aTopic,
+                                    const char *aCategoryName,
+                                    const char *aEntryName )
+{
+  if (mSuppressNotifications)
+    return;
+
+  nsCOMPtr<nsIObserverService> observerService
+    (do_GetService("@mozilla.org/observer-service;1"));
+  if (!observerService)
+    return;
+ 
+  if (aEntryName) {
+    nsCOMPtr<nsISupportsCString> entry
+      (do_CreateInstance (NS_SUPPORTS_CSTRING_CONTRACTID));
+    if (!entry)
+      return;
+
+    nsresult rv = entry->SetData(nsDependentCString(aEntryName));
+    if (NS_FAILED(rv))
+      return;
+
+    observerService->NotifyObservers
+                       (entry, aTopic,
+                        NS_ConvertUTF8toUTF16(aCategoryName).get());
+  } else {
+    observerService->NotifyObservers
+                       (this, aTopic,
+                        NS_ConvertUTF8toUTF16(aCategoryName).get());
+  }
+}
+
 NS_IMETHODIMP
 nsCategoryManager::GetCategoryEntry( const char *aCategoryName,
                                      const char *aEntryName,
@@ -545,12 +602,19 @@ nsCategoryManager::AddCategoryEntry( const char *aCategoryName,
   if (!category)
     return NS_ERROR_OUT_OF_MEMORY;
 
-  return category->AddLeaf(aEntryName,
-                           aValue,
-                           aPersist,
-                           aReplace,
-                           _retval,
-                           &mArena);
+  nsresult rv = category->AddLeaf(aEntryName,
+                                  aValue,
+                                  aPersist,
+                                  aReplace,
+                                  _retval,
+                                  &mArena);
+
+  if (NS_SUCCEEDED(rv)) {
+    NotifyObservers(NS_XPCOM_CATEGORY_ENTRY_ADDED_OBSERVER_ID,
+                    aCategoryName, aEntryName);
+  }
+
+  return rv;
 }
 
 NS_IMETHODIMP
@@ -574,8 +638,15 @@ nsCategoryManager::DeleteCategoryEntry( const char *aCategoryName,
   if (!category)
     return NS_OK;
 
-  return category->DeleteLeaf(aEntryName,
-                              aDontPersist);
+  nsresult rv = category->DeleteLeaf(aEntryName,
+                                     aDontPersist);
+
+  if (NS_SUCCEEDED(rv)) {
+    NotifyObservers(NS_XPCOM_CATEGORY_ENTRY_REMOVED_OBSERVER_ID,
+                    aCategoryName, aEntryName);
+  }
+
+  return rv;
 }
 
 NS_IMETHODIMP
@@ -591,8 +662,11 @@ nsCategoryManager::DeleteCategory( const char *aCategoryName )
   CategoryNode* category = get_category(aCategoryName);
   PR_Unlock(mLock);
 
-  if (category)
+  if (category) {
     category->Clear();
+    NotifyObservers(NS_XPCOM_CATEGORY_CLEARED_OBSERVER_ID,
+                    aCategoryName, nsnull);
+  }
 
   return NS_OK;
 }
@@ -668,6 +742,13 @@ nsCategoryManager::WriteCategoryManagerToRegistry(PRFileDesc* fd)
     return NS_ERROR_UNEXPECTED;
   }
 
+  return NS_OK;
+}
+
+NS_METHOD
+nsCategoryManager::SuppressNotifications(PRBool aSuppress)
+{
+  mSuppressNotifications = aSuppress;
   return NS_OK;
 }
 

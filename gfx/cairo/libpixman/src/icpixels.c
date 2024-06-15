@@ -1,5 +1,5 @@
 /*
- * $Id: icpixels.c,v 1.2 2005/03/23 19:53:40 tor%cs.brown.edu Exp $
+ * $Id: icpixels.c,v 1.3 2005/06/04 07:03:28 vladimir%pobox.com Exp $
  *
  * Copyright © 1998 Keith Packard
  *

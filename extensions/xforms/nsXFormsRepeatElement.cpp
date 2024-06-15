@@ -330,6 +330,10 @@ public:
     mLevel(1),
     mIsParent(PR_FALSE)
     {}
+
+#ifdef DEBUG_smaug
+  virtual const char* Name() { return "repeat"; }
+#endif
 };
 
 NS_IMPL_ISUPPORTS_INHERITED1(nsXFormsRepeatElement,
@@ -645,6 +649,7 @@ nsXFormsRepeatElement::Refresh()
 {
   if (!mHTMLElement || mAddingChildren || mIsParent)
     return NS_OK;
+  nsPostRefresh postRefresh = nsPostRefresh();
 
   nsresult rv;
 
@@ -694,9 +699,6 @@ nsXFormsRepeatElement::Refresh()
   rv = mHTMLElement->GetOwnerDocument(getter_AddRefs(domDoc));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsAutoString strSize;
-  strSize.AppendInt(contextSize);
-
   mMaxIndex = contextSize;
   for (PRUint32 i = 1; i < mMaxIndex + 1; ++i) {
     // Create <contextcontainer>
@@ -706,15 +708,12 @@ nsXFormsRepeatElement::Refresh()
                                  getter_AddRefs(riElement));
     NS_ENSURE_SUCCESS(rv, rv);
       
-    // Set context size, context position, and model as attributes
+    // Set model as attribute
     if (!modelID.IsEmpty()) {
       riElement->SetAttribute(NS_LITERAL_STRING("model"), modelID);
     }  
-    nsAutoString strPos; strPos.AppendInt(i);
-    riElement->SetAttribute(NS_LITERAL_STRING("contextposition"), strPos);
-    riElement->SetAttribute(NS_LITERAL_STRING("contextsize"), strSize);
 
-    // Get and set context node
+    // Get context node
     nsCOMPtr<nsIXFormsContextControl> riContext = do_QueryInterface(riElement);
     NS_ENSURE_TRUE(riContext, NS_ERROR_FAILURE);
 
@@ -724,8 +723,9 @@ nsXFormsRepeatElement::Refresh()
         
     nsCOMPtr<nsIDOMElement> contextElement = do_QueryInterface(contextNode);
     NS_ENSURE_TRUE(contextElement, NS_ERROR_FAILURE);
-        
-    rv = riContext->SetContextNode(contextElement);
+
+    // Set context node, position, and size
+    rv = riContext->SetContext(contextElement, i, contextSize);
     NS_ENSURE_SUCCESS(rv, rv);
 
     // Iterate over template children, clone them, and append them to <contextcontainer>

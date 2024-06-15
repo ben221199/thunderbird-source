@@ -1,4 +1,5 @@
 /* -*- Mode: C; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+ * vim: set sw=4 ts=8 et tw=80:
  *
  * ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
@@ -61,10 +62,6 @@
 #include "jsregexp.h"
 #include "jsscan.h"
 #include "jsstr.h"
-
-#ifdef XP_MAC
-#include <MacMemory.h>
-#endif
 
 #if JS_HAS_REGEXPS
 
@@ -1185,9 +1182,17 @@ doSimple:
         state->result->u.ucclass.startIndex = termStart - state->cpbegin;
         while (JS_TRUE) {
             if (state->cp == state->cpend) {
+                char *bytes = js_DeflateString(state->context, termStart,
+                                               state->cpend - termStart);
+                if (!bytes)
+                    return JS_FALSE;
+
                 js_ReportCompileErrorNumber(state->context, state->tokenStream,
                                             JSREPORT_TS | JSREPORT_ERROR,
-                                            JSMSG_UNTERM_CLASS, termStart);
+                                            JSMSG_UNTERM_CLASS, bytes);
+
+                JS_free(state->context, bytes);
+
                 return JS_FALSE;
             }
             if (*state->cp == '\\') {
@@ -3436,10 +3441,14 @@ regexp_mark(JSContext *cx, JSObject *obj, void *arg)
 JSClass js_RegExpClass = {
     js_RegExp_str,
     JSCLASS_HAS_PRIVATE | JSCLASS_HAS_RESERVED_SLOTS(1),
-    JS_PropertyStub,  JS_PropertyStub,  regexp_getProperty, regexp_setProperty,
-    JS_EnumerateStub, JS_ResolveStub,   JS_ConvertStub,     regexp_finalize,
-    NULL,             NULL,             regexp_call,        NULL,
-    regexp_xdrObject, NULL,             regexp_mark,        0
+    JS_PropertyStub,    JS_PropertyStub,
+    regexp_getProperty, regexp_setProperty,
+    JS_EnumerateStub,   JS_ResolveStub,
+    JS_ConvertStub,     regexp_finalize,
+    NULL,               NULL,
+    regexp_call,        NULL,
+    regexp_xdrObject,   NULL,
+    regexp_mark,        0
 };
 
 static const jschar empty_regexp_ucstr[] = {'(', '?', ':', ')', 0};

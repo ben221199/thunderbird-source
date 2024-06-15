@@ -125,6 +125,11 @@ ifdef MOZ_INSTALLER
 tier_1_dirs	+= modules/zlib/standalone
 endif
 
+ifdef MOZ_UPDATER
+tier_1_dirs += modules/libbz2
+tier_1_dirs += modules/libmar
+endif
+
 ifdef MOZ_SVG_RENDERER_LIBART
 tier_1_dirs	+= other-licenses/libart_lgpl
 endif
@@ -259,10 +264,6 @@ ifdef MOZ_XPINSTALL
 tier_50_dirs     +=  xpinstall
 endif
 
-ifdef NS_TRACE_MALLOC
-tier_50_dirs += tools/trace-malloc
-endif
-
 ifdef MOZ_JSDEBUGGER
 tier_50_dirs += js/jsd
 endif
@@ -272,6 +273,10 @@ tier_50_dirs += \
 		toolkit/library \
 		xpcom/stub \
 		$(NULL)
+endif
+
+ifdef NS_TRACE_MALLOC
+tier_50_dirs += tools/trace-malloc
 endif
 
 ifdef MOZ_PSM
@@ -378,7 +383,9 @@ tier_99_dirs     +=  toolkit/mozapps/installer
 endif
 else
 ifneq (,$(MOZ_XPFE_COMPONENTS)$(MOZ_XUL))
+ifndef MINIMO
 tier_99_dirs	+= xpfe/bootstrap
+endif
 endif
 endif
 

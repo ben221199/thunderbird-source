@@ -2,9 +2,8 @@
   padding: 0;
 }
 
-view {
+richlistbox {
   -moz-appearance: none !important;
-  -moz-user-focus: normal;
   margin: 0;
   padding: 0;
 }
@@ -101,16 +100,19 @@ view {
 }
 
 #optionsButton {
-  list-style-image: url("chrome://mozapps/skin/extensions/extensionOptions.png");
-  margin-bottom: 2px;
+  margin: 0px;
+  list-style-image: url("chrome://mozapps/skin/extensions/actionbuttons.png");
+  -moz-image-region: rect(0px, 160px, 26px, 128px);
 }
 
 #optionsButton:not([disabled]):hover:active {
-  list-style-image: url("chrome://mozapps/skin/extensions/extensionOptions-pressed.png");
+  list-style-image: url("chrome://mozapps/skin/extensions/actionbuttons.png");
+  -moz-image-region: rect(26px, 160px, 52px, 128px);
 }
 
 #optionsButton[disabled="true"] {
-  opacity: 0.5;
+  list-style-image: url("chrome://mozapps/skin/extensions/actionbuttons.png");
+  -moz-image-region: rect(52px, 160px, 78px, 128px) !important;
 }
 
 .button-text {
@@ -156,6 +158,11 @@ extension[odd] {
 extension[disabled="true"] {
   color: GrayText;
   background-image: none;
+}
+
+extension[disabled="true"][compatible="false"] .extension-item-description,
+extension[incompatibleUpdate="true"] .extension-item-description {
+  color: #C77173;
 }
 
 extension[disabled="true"][selected="true"] {

@@ -1,4 +1,5 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set sw=2 ts=2 et tw=78: */
 /* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -36,11 +37,6 @@
  *
  * ***** END LICENSE BLOCK ***** */
   
-#define XMLENCODING_PEEKBYTES 64
-#define DISABLE_TRANSITIONAL_MODE
-
-
-
 #include "nsIAtom.h"
 #include "nsParser.h"
 #include "nsString.h"
@@ -1358,6 +1354,12 @@ CParserContext* nsParser::PopContext()
       if (mParserContext->mStreamListenerState != eOnStop) {
         mParserContext->mStreamListenerState = oldContext->mStreamListenerState;
       }
+      // Update the current context's tokenizer to any information gleaned
+      // while parsing document.write() calls (such as "a plaintext tag was
+      // found")
+      if (mParserContext->mTokenizer) {
+        mParserContext->mTokenizer->CopyState(oldContext->mTokenizer);
+      }
     }
   }
   return oldContext;
@@ -1407,7 +1409,8 @@ NS_IMETHODIMP nsParser::Terminate(void)
   else if (mSink) {
     // We have no parser context or no DTD yet (so we got terminated before we
     // got any data).  Manually break the reference cycle with the sink.
-    mSink->SetParser(nsnull);
+    result = mSink->DidBuildModel();
+    NS_ENSURE_SUCCESS(result, result);
   }
   return NS_OK;
 }
@@ -1696,10 +1699,12 @@ nsParser::Parse(const nsAString& aSourceBuffer,
 
   nsresult result=NS_OK;
 
-  if(aLastCall && aSourceBuffer.IsEmpty()) {
+  if(!aLastCall && aSourceBuffer.IsEmpty()) {
     // Nothing is being passed to the parser so return
     // immediately. mUnusedInput will get processed when
     // some data is actually passed in.
+    // But if this is the last call, make sure to finish up
+    // stuff correctly.
     return result;
   }
 
@@ -1712,7 +1717,7 @@ nsParser::Parse(const nsAString& aSourceBuffer,
   // till we're completely done. 
   nsCOMPtr<nsIParser> kungFuDeathGrip(this);
 
-  if(!aSourceBuffer.IsEmpty() || !mUnusedInput.IsEmpty()) {
+  if(aLastCall || !aSourceBuffer.IsEmpty() || !mUnusedInput.IsEmpty()) {
     
     if (aVerifyEnabled) {
       mFlags |= NS_PARSER_FLAG_DTD_VERIFICATION;
@@ -1777,7 +1782,7 @@ nsParser::Parse(const nsAString& aSourceBuffer,
         pc->mDTDMode = aMode;
       }
 
-      mUnusedInput.Truncate(0); 
+      mUnusedInput.Truncate(); 
 
       //printf("Parse(string) iterate: %i",PR_FALSE); 
       pc->mScanner->Append(aSourceBuffer); 
@@ -1791,6 +1796,7 @@ nsParser::Parse(const nsAString& aSourceBuffer,
         // to guarantee DidBuildModel() call - Fix 36148
         if(aLastCall) {
           mParserContext->mStreamListenerState=eOnStop;
+          mParserContext->mScanner->SetIncremental(PR_FALSE);
         }
         ResumeParse(PR_FALSE, PR_FALSE, PR_FALSE);
       }
@@ -1828,15 +1834,6 @@ nsParser::ParseFragment(const nsAString& aSourceBuffer,
     theContext.AppendLiteral(">");
   }
 
-  if (!aXMLMode) {
-    // Make sure we flush the context out if there wasn't a body tag. This is
-    // safe, since the fragment sink doesn't make a distinction between the
-    // head and body context. This is needed because if there wasn't a body
-    // tag, the DTD will store tags that belong in the body until it sees
-    // text or a body tag. This flushes all context tags out of the DTD.
-    theContext.AppendLiteral("<BODY>");
-  }
-
   // First, parse the context to build up the DTD's tag stack. Note that we
   // pass PR_FALSE for the aLastCall parameter.
   result = Parse(theContext, (void*)&theContext, aMimeType, 
@@ -1848,6 +1845,42 @@ nsParser::ParseFragment(const nsAString& aSourceBuffer,
 
   nsCOMPtr<nsIFragmentContentSink> fragSink = do_QueryInterface(mSink);
   NS_ASSERTION(fragSink, "ParseFragment requires a fragment content sink");
+
+  if (!aXMLMode) {
+    // First, we have to flush any tags that don't belong in the head if there
+    // was no <body> in the context.
+    // XXX This is extremely ugly. Maybe CNavDTD should have FlushMisplaced()?
+    NS_ASSERTION(mParserContext, "Parsing didn't create a parser context?");
+    nsCOMPtr<CNavDTD> dtd = do_QueryInterface(mParserContext->mDTD);
+
+    if (dtd) {
+      CStartToken bodyToken(NS_LITERAL_STRING("BODY"), eHTMLTag_body);
+      nsCParserNode bodyNode(&bodyToken, 0);
+
+      dtd->OpenBody(&bodyNode);
+
+      // Now parse the flushed out tags.
+      result = BuildModel();
+      if (NS_FAILED(result)) {
+        mFlags |= NS_PARSER_FLAG_OBSERVERS_ENABLED;
+        return result;
+      }
+    }
+
+    // Now that we've flushed all of the tags out of the body, we have to make
+    // sure that there aren't any context tags left in the scanner.
+    NS_ASSERTION(mParserContext->mScanner, "Where'd the scanner go?");
+
+    PRUnichar next;
+    if (NS_SUCCEEDED(mParserContext->mScanner->Peek(next))) {
+      // Uh, oh. This must mean that the context stack has a special tag on
+      // it, such as <textarea> or <title> that requires its end tag before it
+      // will be consumed. Tell the content sink that it will be coming.
+      // Note: For now, we can assume that there is only one such tag.
+      NS_ASSERTION(next == '<', "The tokenizer failed to consume a token");
+      fragSink->IgnoreFirstContainer();
+    }
+  }
 
   fragSink->WillBuildContent();
   // Now, parse the actual content. Note that this is the last call for HTML

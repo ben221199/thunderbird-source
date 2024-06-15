@@ -255,6 +255,8 @@ function searchOnLoad()
   CreateMessenger();
 
   gSearchBundle = document.getElementById("bundle_search");
+  gSearchStopButton.setAttribute("label", gSearchBundle.getString("labelForSearchButton"));
+  gSearchStopButton.setAttribute("accesskey", gSearchBundle.getString("accesskeyForSearchButton"));
   gMessengerBundle = document.getElementById("bundle_messenger");
   setupDatasource();
   setupSearchListener();
@@ -262,7 +264,7 @@ function searchOnLoad()
   if (window.arguments && window.arguments[0])
       selectFolder(window.arguments[0].folder);
 
-  onMore(null, 0);
+  onMore(null);
   UpdateMailSearch("onload");
   
   // hide and remove these columns from the column picker.  you can't thread search results
@@ -365,7 +367,15 @@ function updateSearchFolderPicker(folderURI)
     gCurrentFolder =
         RDF.GetResource(folderURI).QueryInterface(nsIMsgFolder);
 
+    var searchLocalSystem = document.getElementById("checkSearchLocalSystem");
+    if (searchLocalSystem)
+        searchLocalSystem.disabled = gCurrentFolder.server.searchScope == nsMsgSearchScope.offlineMail;
     setSearchScope(GetScopeForFolder(gCurrentFolder));
+}
+
+function updateSearchLocalSystem()
+{
+  setSearchScope(GetScopeForFolder(gCurrentFolder));
 }
 
 function UpdateAfterCustomHeaderChange()
@@ -508,7 +518,8 @@ function AddSubFoldersToURI(folder)
 
 function GetScopeForFolder(folder) 
 {
-  return folder.server.searchScope;
+  var searchLocalSystem = document.getElementById("checkSearchLocalSystem");
+  return searchLocalSystem && searchLocalSystem.checked ? nsMsgSearchScope.offlineMail : folder.server.searchScope;
 }
 
 var nsMsgViewSortType = Components.interfaces.nsMsgViewSortType;

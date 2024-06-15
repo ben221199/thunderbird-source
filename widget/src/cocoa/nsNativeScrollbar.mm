@@ -67,6 +67,7 @@ nsNativeScrollbar::nsNativeScrollbar()
   , mMaxValue(0)
   , mVisibleImageSize(0)
   , mLineIncrement(0)
+  , mIsEnabled(PR_TRUE)
 {
   WIDGET_SET_CLASSNAME("nsNativeScrollbar");
 }
@@ -94,14 +95,9 @@ nsNativeScrollbar::Destroy()
 // we find we're horizontal, we can update then.
 //
 NSView*
-nsNativeScrollbar::CreateCocoaView ( )
+nsNativeScrollbar::CreateCocoaView(NSRect inFrame)
 {
-  NSRect orientation;
-  orientation.origin.x = orientation.origin.y = 0;
-  orientation.size.width = 20;
-  orientation.size.height = 100;
-
-  return [[[NativeScrollbarView alloc] initWithFrame:orientation geckoChild:this] autorelease];
+  return [[[NativeScrollbarView alloc] initWithFrame:inFrame geckoChild:this] autorelease];
 }
 
 
@@ -145,7 +141,7 @@ nsNativeScrollbar::DoScroll(NSScrollerPart inPart)
     // to check if one is greater than the other to indicate direction.
     //
 
-    case NSScrollerDecrementLine: 				// scroll up/left
+    case NSScrollerDecrementLine:           // scroll up/left
       newPos = oldPos - (mLineIncrement ? mLineIncrement : 1);
       if ( mMediator ) {
         BoundsCheck(0, newPos, mMaxValue);
@@ -155,7 +151,7 @@ nsNativeScrollbar::DoScroll(NSScrollerPart inPart)
       }
       break;
     
-    case NSScrollerIncrementLine:					// scroll down/right
+    case NSScrollerIncrementLine:           // scroll down/right
       newPos = oldPos + (mLineIncrement ? mLineIncrement : 1);
       if ( mMediator ) {
         BoundsCheck(0, newPos, mMaxValue);
@@ -173,7 +169,7 @@ nsNativeScrollbar::DoScroll(NSScrollerPart inPart)
     // signed values first.
     //
 
-    case NSScrollerDecrementPage:				// scroll up a page
+    case NSScrollerDecrementPage:           // scroll up a page
       newPos = oldPos - visibleImageSize;
       UpdateContentPosition(newPos);
       if ( mMediator ) {
@@ -184,7 +180,7 @@ nsNativeScrollbar::DoScroll(NSScrollerPart inPart)
       }
       break;
     
-    case NSScrollerIncrementPage:			// scroll down a page
+    case NSScrollerIncrementPage:           // scroll down a page
       newPos = oldPos + visibleImageSize;
       UpdateContentPosition(newPos);
       if ( mMediator ) {
@@ -265,14 +261,11 @@ nsNativeScrollbar::DispatchMouseEvent(nsMouseEvent &aEvent)
 NS_IMETHODIMP
 nsNativeScrollbar::SetMaxRange(PRUint32 aEndRange)
 {
-  mMaxValue = ((int)aEndRange) > 0 ? aEndRange : 10;
-  if ( GetControl() ) {
-    // Update the current value based on the new range. We need to recompute the
-    // float value in case we had to set the value to 0 because gecko cheated
-    // and set the position before it set the max value.
-    PRInt32 fullVisibleArea = mVisibleImageSize + mMaxValue;
-    [mView setFloatValue:(mValue / (float)mMaxValue) knobProportion:(mVisibleImageSize / (float)fullVisibleArea)];
-  }
+  if ((PRInt32)aEndRange < 0)
+    aEndRange = 0;
+
+  mMaxValue = aEndRange;
+  UpdateScroller();
   return NS_OK;
 }
 
@@ -343,13 +336,12 @@ nsNativeScrollbar::GetPosition(PRUint32* aPos)
 NS_IMETHODIMP
 nsNativeScrollbar::SetViewSize(PRUint32 aSize)
 {
-  mVisibleImageSize = ((int)aSize) > 0 ? aSize : 1;
+  if ((PRInt32)aSize < 0)
+    aSize = 0;
+
+  mVisibleImageSize = aSize;
   
-  // Update the current value based on the new range. We need to recompute the
-  // float value in case we had to set the value to 0 because gecko cheated
-  // and set the position before it set the max value.
-  PRInt32 fullVisibleArea = mVisibleImageSize + mMaxValue;
-  [mView setFloatValue:(mValue / (float)mMaxValue) knobProportion:(mVisibleImageSize / (float)fullVisibleArea)];
+  UpdateScroller();
   return NS_OK;
 }
 
@@ -461,7 +453,7 @@ nsNativeScrollbar::RecreateHorizontalScrollbar()
   NSRect oldBounds = [mView bounds];
   float oldValue = [mView floatValue];
   float oldProportion = [mView knobProportion];
-  mVisible = PR_TRUE;														// ensure that hide does the work
+  mVisible = PR_TRUE;           // ensure that hide does the work
   Show(PR_FALSE);
   [mView release];
   
@@ -509,7 +501,8 @@ nsNativeScrollbar::Show(PRBool bState)
 NS_IMETHODIMP
 nsNativeScrollbar::Enable(PRBool bState)
 {
-  [mView setEnabled:(bState ? YES : NO)];
+  mIsEnabled = bState;
+  UpdateScroller();
   return NS_OK;
 }
 
@@ -518,8 +511,24 @@ NS_IMETHODIMP
 nsNativeScrollbar::IsEnabled(PRBool *aState)
 {
   if (aState)
-   *aState = [mView isEnabled] ? PR_TRUE : PR_FALSE;
+   *aState = mIsEnabled;
   return NS_OK;
+}
+
+
+void
+nsNativeScrollbar::UpdateScroller()
+{
+  // Update the current value based on the new range. We need to recompute the
+  // float value in case we had to set the value to 0 because gecko cheated
+  // and set the position before it set the max value.
+  float knobProp = 1.0f;
+  if ((mVisibleImageSize + mMaxValue) > 0)
+    knobProp = (float)mVisibleImageSize / (float)(mVisibleImageSize + mMaxValue);
+  [mView setFloatValue:(mValue / (float)mMaxValue) knobProportion:knobProp];
+  
+  BOOL enableScrollbar = (mIsEnabled && (mMaxValue > 0));
+  [mView setEnabled:enableScrollbar];
 }
 
 
@@ -596,6 +605,23 @@ nsNativeScrollbar::IsEnabled(PRBool *aState)
   return NS_STATIC_CAST(nsIWidget*, mGeckoChild);
 }
 
+//
+// -setNeedsDisplayWithValue:
+//
+// call -setNeedsDisplay or setNeedsDisplayInRect:
+//
+- (void)setNeedsDisplayWithValue:(NSValue*)inRectValue
+{
+  if (inRectValue)
+  {
+    NSRect theRect = [inRectValue rectValue];
+    [self setNeedsDisplayInRect:theRect];
+  }
+  else
+  {
+    [self setNeedsDisplay:YES];
+  }
+}
 
 //
 // -mouseMoved

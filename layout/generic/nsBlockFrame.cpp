@@ -734,7 +734,7 @@ nsBlockFrame::Reflow(nsPresContext*          aPresContext,
   }
 
   nsBlockReflowState state(aReflowState, aPresContext, this, aMetrics,
-                           aReflowState.mFlags.mHasClearance || (NS_BLOCK_MARGIN_ROOT & mState),
+                           (NS_BLOCK_MARGIN_ROOT & mState),
                            (NS_BLOCK_MARGIN_ROOT & mState));
 
   // The condition for doing Bidi resolutions includes a test for the
@@ -1454,7 +1454,8 @@ nsBlockFrame::ComputeFinalSize(const nsHTMLReflowState& aReflowState,
       aMetrics.mMaximumWidth = aMetrics.width;
     } else {
       // We need to add in for the right border/padding
-      // XXXldb Why right and not left?
+      // The maximum width in the reflow state includes the left
+      // border/padding but not the right.
       aMetrics.mMaximumWidth = aState.mMaximumWidth + borderPadding.right;
     }
 #ifdef NOISY_MAXIMUM_WIDTH
@@ -3239,7 +3240,7 @@ nsBlockFrame::ReflowBlockFrame(nsBlockReflowState& aState,
       // Only record the first frame that requires clearance
       if (!*aState.mReflowState.mDiscoveredClearance) {
         *aState.mReflowState.mDiscoveredClearance = frame;
-    }
+      }
       // Exactly what we do now is flexible since we'll definitely be
       // reflowed.
     }
@@ -3568,7 +3569,9 @@ nsBlockFrame::ReflowBlockFrame(nsBlockReflowState& aState,
         // If we asked the block to update its maximum width, then record the
         // updated value in the line, and update the current maximum width
         if (aState.GetFlag(BRS_COMPUTEMAXWIDTH)) {
-          aLine->mMaximumWidth = brc.GetMaximumWidth();
+          // The maximum width in the line box includes the left
+          // border/padding of this block, but not the right.
+          aLine->mMaximumWidth = brc.GetMaximumWidth() + availSpace.x;
           aState.UpdateMaximumWidth(aLine->mMaximumWidth);
         }
         PostPlaceLine(aState, aLine, maxElementWidth);
@@ -4077,13 +4080,11 @@ nsBlockFrame::ReflowInlineFrame(nsBlockReflowState& aState,
         return rv;
       }
 
-      if (NS_FRAME_IS_NOT_COMPLETE(frameReflowStatus)) {
-        // Mark next line dirty in case SplitLine didn't end up
-        // pushing any frames.
-        nsLineList_iterator next = aLine.next();
-        if (next != end_lines() && !next->IsBlock()) {
-          next->MarkDirty();
-        }
+      // Mark next line dirty, since a line followed by a <BR>
+      // needs to continue to reflow.
+      nsLineList_iterator next = aLine.next();
+      if (next != end_lines() && !next->IsBlock()) {
+        next->MarkDirty();
       }
     }
   }
@@ -5360,6 +5361,23 @@ nsBlockFrame::RemoveFloat(nsIFrame* aFloat) {
   return line_end;
 }
 
+static void MarkAllDescendantLinesDirty(nsBlockFrame* aBlock)
+{
+  nsLineList::iterator line = aBlock->begin_lines();
+  nsLineList::iterator endLine = aBlock->end_lines();
+  while (line != endLine) {
+    if (line->IsBlock()) {
+      nsIFrame* f = line->mFirstChild;
+      void* bf;
+      if (NS_SUCCEEDED(f->QueryInterface(kBlockFrameCID, &bf))) {
+        MarkAllDescendantLinesDirty(NS_STATIC_CAST(nsBlockFrame*, f));
+      }
+    }
+    line->MarkDirty();
+    ++line;
+  }
+}
+
 NS_IMETHODIMP
 nsBlockFrame::RemoveFrame(nsIAtom*        aListName,
                           nsIFrame*       aOldFrame)
@@ -5380,14 +5398,23 @@ nsBlockFrame::RemoveFrame(nsIAtom*        aListName,
     return mAbsoluteContainer.RemoveFrame(this, aListName, aOldFrame);
   }
   else if (nsLayoutAtoms::floatList == aListName) {
-    line_iterator line = RemoveFloat(aOldFrame);
-    line_iterator line_end = end_lines();
+    RemoveFloat(aOldFrame);
 
-    // Mark every line at and below the line where the float was dirty
-    // XXXldb This could be done more efficiently.
-    for ( ; line != line_end; ++line) {
-      line->MarkDirty();
+    nsBlockFrame* blockWithSpaceMgr = this;
+    while (!(blockWithSpaceMgr->GetStateBits() & NS_BLOCK_SPACE_MGR)) {
+      void* bf;
+      if (NS_FAILED(blockWithSpaceMgr->GetParent()->
+                    QueryInterface(kBlockFrameCID, &bf))) {
+        break;
+      }
+      blockWithSpaceMgr = NS_STATIC_CAST(nsBlockFrame*, blockWithSpaceMgr->GetParent());
     }
+
+    // Mark every line at and below the line where the float was
+    // dirty, and mark their lines dirty too. We could probably do
+    // something more efficient --- e.g., just dirty the lines that intersect
+    // the float vertically.
+    MarkAllDescendantLinesDirty(blockWithSpaceMgr);
   }
 #ifdef IBMBIDI
   else if (nsLayoutAtoms::nextBidi == aListName) {

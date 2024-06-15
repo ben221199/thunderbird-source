@@ -128,8 +128,11 @@ static NS_DEFINE_CID(kDOMEventGroupCID, NS_DOMEVENTGROUP_CID);
 #include "nsBindingManager.h"
 #include "nsIDOMHTMLFormElement.h"
 #include "nsIRequest.h"
+#include "nsILink.h"
 
 #include "nsICharsetAlias.h"
+#include "nsIParser.h"
+
 static NS_DEFINE_CID(kCharsetAliasCID, NS_CHARSETALIAS_CID);
 
 // Helper structs for the content->subdoc map
@@ -1029,6 +1032,8 @@ nsDocument::StartDocumentLoad(const char* aCommand, nsIChannel* aChannel,
   }
 
   RetrieveRelevantHeaders(aChannel);
+
+  mChannel = aChannel;
 
   return NS_OK;
 }
@@ -2965,6 +2970,10 @@ nsDocument::SetTitle(const nsAString& aTitle)
   CreateEvent(NS_LITERAL_STRING("Events"), getter_AddRefs(event));
   if (event) {
     event->InitEvent(NS_LITERAL_STRING("DOMTitleChanged"), PR_TRUE, PR_TRUE);
+    // There might be script running, so the event might have ended up
+    // untrusted.  Make it trusted.
+    nsCOMPtr<nsIPrivateDOMEvent> privEvt(do_QueryInterface(event));
+    privEvt->SetTrusted(PR_TRUE);
     PRBool defaultActionEnabled;
     DispatchEvent(event, &defaultActionEnabled);
   }
@@ -3922,6 +3931,9 @@ nsDocument::HandleDOMEvent(nsPresContext* aPresContext, nsEvent* aEvent,
                            nsIDOMEvent** aDOMEvent, PRUint32 aFlags,
                            nsEventStatus* aEventStatus)
 {
+  // Make sure to tell the event that dispatch has started.
+  NS_MARK_EVENT_DISPATCH_STARTED(aEvent);
+
   nsresult mRet = NS_OK;
   PRBool externalDOMEvent = PR_FALSE;
 
@@ -3988,6 +4000,10 @@ nsDocument::HandleDOMEvent(nsPresContext* aPresContext, nsEvent* aEvent,
       }
       aDOMEvent = nsnull;
     }
+
+    // Now that we're done with this event, remove the flag that says
+    // we're in the process of dispatching this event.
+    NS_MARK_EVENT_DISPATCH_DONE(aEvent);
   }
 
   return mRet;
@@ -4026,14 +4042,8 @@ nsDocument::AddEventListener(const nsAString& aType,
                              nsIDOMEventListener* aListener,
                              PRBool aUseCapture)
 {
-  PRBool permitUntrustedEvents = PR_FALSE;
-  if (mDocumentURI) {
-    PRBool isChrome = PR_TRUE;
-    nsresult rv = mDocumentURI->SchemeIs("chrome", &isChrome);
-    NS_ENSURE_SUCCESS(rv, rv);
-    permitUntrustedEvents = !isChrome;
-  }
-  return AddEventListener(aType, aListener, aUseCapture, permitUntrustedEvents);
+  return AddEventListener(aType, aListener, aUseCapture,
+                          !nsContentUtils::IsChromeDoc(this));
 }
 
 nsresult
@@ -4908,4 +4918,74 @@ nsDocument::UnblockOnload()
       loadGroup->RemoveRequest(mOnloadBlocker, nsnull, NS_OK);
     }
   }    
+}
+
+void
+nsDocument::OnPageShow(PRBool aPersisted)
+{
+  if (aPersisted) {
+    // Send out notifications that our <link> elements are attached.
+    nsRefPtr<nsContentList> links = NS_GetContentList(this,
+                                                      nsHTMLAtoms::link,
+                                                      kNameSpaceID_Unknown,
+                                                      mRootContent);
+
+    if (links) {
+      PRUint32 linkCount = links->Length(PR_TRUE);
+      for (PRUint32 i = 0; i < linkCount; ++i) {
+        nsCOMPtr<nsILink> link = do_QueryInterface(links->Item(i, PR_FALSE));
+        if (link) {
+          link->LinkAdded();
+        }
+      }
+    }
+  }
+
+  nsIPresShell *shell = NS_STATIC_CAST(nsIPresShell*, mPresShells[0]);
+  if (shell && mScriptGlobalObject) {
+    nsPresContext *pc = shell->GetPresContext();
+    if (pc) {
+      nsPageTransitionEvent event(PR_TRUE, NS_PAGE_SHOW, aPersisted);
+      nsEventStatus status = nsEventStatus_eIgnore;
+
+      mScriptGlobalObject->HandleDOMEvent(pc, &event, nsnull,
+                                          NS_EVENT_FLAG_INIT, &status);
+    }
+  }
+}
+
+void
+nsDocument::OnPageHide(PRBool aPersisted)
+{
+  // Send out notifications that our <link> elements are detached,
+  // but only if this is not a full unload.
+  if (aPersisted) {
+    nsRefPtr<nsContentList> links = NS_GetContentList(this,
+                                                      nsHTMLAtoms::link,
+                                                      kNameSpaceID_Unknown,
+                                                      mRootContent);
+
+    if (links) {
+      PRUint32 linkCount = links->Length(PR_TRUE);
+      for (PRUint32 i = 0; i < linkCount; ++i) {
+        nsCOMPtr<nsILink> link = do_QueryInterface(links->Item(i, PR_FALSE));
+        if (link) {
+          link->LinkRemoved();
+        }
+      }
+    }
+  }
+
+  // Now send out a PageHide event.
+  nsIPresShell *shell = NS_STATIC_CAST(nsIPresShell*, mPresShells[0]);
+  if (shell && mScriptGlobalObject) {
+    nsPresContext *pc = shell->GetPresContext();
+    if (pc) {
+      nsPageTransitionEvent event(PR_TRUE, NS_PAGE_HIDE, aPersisted);
+      nsEventStatus status = nsEventStatus_eIgnore;
+
+      mScriptGlobalObject->HandleDOMEvent(pc, &event, nsnull,
+                                          NS_EVENT_FLAG_INIT, &status);
+    }
+  }
 }

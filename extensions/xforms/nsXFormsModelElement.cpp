@@ -23,6 +23,7 @@
  *  Brian Ryner <bryner@brianryner.com>
  *  Allan Beaufour <abeaufour@novell.com>
  *  Darin Fisher <darin@meer.net>
+ *  Olli Pettay <Olli.Pettay@helsinki.fi>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -57,7 +58,7 @@
 #include "nsIDOMXPathResult.h"
 #include "nsIXFormsXPathEvaluator.h"
 #include "nsIDOMXPathNSResolver.h"
-#include "nsIDOMXPathExpression.h"
+#include "nsIDOMNSXPathExpression.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsIContent.h"
 #include "nsIURL.h"
@@ -69,11 +70,13 @@
 #include "nsIInstanceElementPrivate.h"
 #include "nsXFormsUtils.h"
 #include "nsXFormsSchemaValidator.h"
-
+#include "nsIXFormsUIWidget.h"
+#include "nsIAttribute.h"
 #include "nsISchemaLoader.h"
 #include "nsISchema.h"
 #include "nsAutoPtr.h"
 #include "nsArray.h"
+#include "nsXFormsLazyInstanceElement.h"
 
 #ifdef DEBUG
 //#define DEBUG_MODEL
@@ -175,23 +178,91 @@ static const nsIID sScriptingIIDs[] = {
 
 static nsIAtom* sModelPropsList[eModel__count];
 
+// This can be nsVoidArray because elements will remove
+// themselves from the list if they are deleted during refresh.
+static nsVoidArray* sPostRefreshList = nsnull;
+
+static PRInt32 sRefreshing = 0;
+
+nsPostRefresh::nsPostRefresh()
+{
+#ifdef DEBUG_smaug
+  printf("nsPostRefresh\n");
+#endif
+  ++sRefreshing;
+}
+
+nsPostRefresh::~nsPostRefresh()
+{
+#ifdef DEBUG_smaug
+  printf("~nsPostRefresh\n");
+#endif
+  --sRefreshing;
+  if (sPostRefreshList && !sRefreshing) {
+    while (sPostRefreshList->Count()) {
+      // Iterating this way because refresh can lead to
+      // additions/deletions in sPostRefreshList.
+      // Iterating from last to first saves possibly few memcopies,
+      // see nsVoidArray::RemoveElementsAt().
+      PRInt32 last = sPostRefreshList->Count() - 1;
+      nsIXFormsControl* control =
+        NS_STATIC_CAST(nsIXFormsControl*, sPostRefreshList->ElementAt(last));
+      sPostRefreshList->RemoveElementAt(last);
+      if (control)
+        control->Refresh();
+    }
+    delete sPostRefreshList;
+    sPostRefreshList = nsnull;
+  }
+}
+
+nsresult
+nsXFormsModelElement::NeedsPostRefresh(nsIXFormsControl* aControl)
+{
+  if (sRefreshing) {
+    if (!sPostRefreshList) {
+      sPostRefreshList = new nsVoidArray();
+      NS_ENSURE_TRUE(sPostRefreshList, NS_ERROR_OUT_OF_MEMORY);
+    }
+
+    if (sPostRefreshList->IndexOf(aControl) < 0) {
+      sPostRefreshList->AppendElement(aControl);
+    }
+  } else {
+    // We are not refreshing any models, so the control
+    // can be refreshed immediately.
+    aControl->Refresh();
+  }
+  return NS_OK;
+}
+
+void
+nsXFormsModelElement::CancelPostRefresh(nsIXFormsControl* aControl)
+{
+  if (sPostRefreshList)
+    sPostRefreshList->RemoveElement(aControl);
+}
+
 nsXFormsModelElement::nsXFormsModelElement()
   : mElement(nsnull),
     mSchemaCount(0),
     mSchemaTotal(0),
     mPendingInstanceCount(0),
     mDocumentLoaded(PR_FALSE),
-    mNeedsRefresh(PR_FALSE)
+    mNeedsRefresh(PR_FALSE),
+    mInstanceList(16),
+    mLazyModel(PR_FALSE)
 {
 }
 
-NS_IMPL_ISUPPORTS_INHERITED5(nsXFormsModelElement,
+NS_IMPL_ISUPPORTS_INHERITED6(nsXFormsModelElement,
                              nsXFormsStubElement,
                              nsIXFormsModelElement,
                              nsIModelElementPrivate,
                              nsISchemaLoadListener,
                              nsIWebServiceErrorHandler,
-                             nsIDOMEventListener)
+                             nsIDOMEventListener,
+                             nsIXFormsContextControl)
 
 NS_IMETHODIMP
 nsXFormsModelElement::OnDestroyed()
@@ -200,6 +271,8 @@ nsXFormsModelElement::OnDestroyed()
 
   mElement = nsnull;
   mSchemas = nsnull;
+
+  mInstanceList.Clear();
   return NS_OK;
 }
 
@@ -257,15 +330,6 @@ nsXFormsModelElement::DocumentChanged(nsIDOMDocument* aNewDocument)
 NS_IMETHODIMP
 nsXFormsModelElement::DoneAddingChildren()
 {
-  // We wait until all children are added to dispatch xforms-model-construct,
-  // since the model may have an action handler for this event.
-
-  nsresult rv = nsXFormsUtils::DispatchEvent(mElement, eEvent_ModelConstruct);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  // xforms-model-construct is not cancellable, so always proceed.
-  // We continue here rather than doing this in HandleEvent since we know
-  // it only makes sense to perform this default action once.
 
   // (XForms 4.2.1)
   // 1. load xml schemas
@@ -286,6 +350,7 @@ nsXFormsModelElement::DoneAddingChildren()
     mSchemaTotal = schemas.Count();
 
     for (PRInt32 i=0; i<mSchemaTotal; ++i) {
+      nsresult rv = NS_OK;
       nsCOMPtr<nsIURI> newURI;
       NS_NewURI(getter_AddRefs(newURI), *schemas[i], nsnull, baseURI);
       nsCOMPtr<nsIURL> newURL = do_QueryInterface(newURI);
@@ -335,6 +400,22 @@ nsXFormsModelElement::DoneAddingChildren()
         nsXFormsUtils::DispatchEvent(mElement, eEvent_LinkException);
         return NS_OK;
       }
+    }
+  }
+
+  // If all of the children are added and there aren't any instance elements,
+  // yet, then we need to make sure that one is ready in case the form author
+  // is using lazy authoring.
+  PRUint32 instCount = mInstanceList.Count();
+  if (!instCount) {
+    nsCOMPtr<nsIDOMDocument> domDoc;
+    mElement->GetOwnerDocument(getter_AddRefs(domDoc));
+    if (domDoc) {
+      nsXFormsLazyInstanceElement *lazyInstance = 
+                                             new nsXFormsLazyInstanceElement();
+      lazyInstance->CreateLazyInstanceDocument(domDoc);
+      AddInstanceElement(lazyInstance);
+      mLazyModel = PR_TRUE;
     }
   }
 
@@ -399,10 +480,6 @@ nsXFormsModelElement::ConstructDone()
   nsresult rv = InitializeControls();
   NS_ENSURE_SUCCESS(rv, rv);
 
-  /// @bug This is not entirely correct. xforms-ready should be sent when
-  /// _all_ models have initialized their controls.
-  nsXFormsUtils::DispatchEvent(mElement, eEvent_Ready);  
-  
   return NS_OK;
 }
 
@@ -709,6 +786,7 @@ nsXFormsModelElement::Refresh()
 #ifdef DEBUG
   printf("nsXFormsModelElement::Refresh()\n");
 #endif
+  nsPostRefresh postRefresh = nsPostRefresh();
 
   if (mDocumentLoaded) { // if not during initialization phase
     PRInt32 controlCount = mControlsNeedingRefresh.Count();
@@ -769,6 +847,20 @@ nsXFormsModelElement::HandleEvent(nsIDOMEvent* aEvent)
     return NS_OK;
 
   mDocumentLoaded = PR_TRUE;
+
+  // dispatch xforms-model-construct, xforms-rebuild, xforms-recalculate,
+  // xforms-revalidate
+
+  // We wait until DOMContentLoaded to dispatch xforms-model-construct,
+  // since the model may have an action handler for this event and Mozilla
+  // doesn't register XML Event listeners until the document is loaded.
+
+  // xforms-model-construct is not cancellable, so always proceed.
+
+  nsXFormsUtils::DispatchEvent(mElement, eEvent_ModelConstruct);
+  nsXFormsUtils::DispatchEvent(mElement, eEvent_Rebuild);
+  nsXFormsUtils::DispatchEvent(mElement, eEvent_Recalculate);
+  nsXFormsUtils::DispatchEvent(mElement, eEvent_Revalidate);
 
   if (mPendingInlineSchemas.Count() > 0) {
     nsCOMPtr<nsIDOMElement> el;
@@ -919,32 +1011,34 @@ nsXFormsModelElement::FindInstanceElement(const nsAString &aID,
 {
   *aElement = nsnull;
 
-  nsCOMPtr<nsIDOMNodeList> children;
-  mElement->GetChildNodes(getter_AddRefs(children));
+  PRUint32 instCount = mInstanceList.Count();
+  if (instCount) {
+    nsCOMPtr<nsIDOMElement> element;
+    nsAutoString id;
+    for (PRUint32 i = 0; i < instCount; ++i) {
+      nsIInstanceElementPrivate* instEle = mInstanceList.ObjectAt(i);
+      instEle->GetElement(getter_AddRefs(element));
 
-  if (!children)
-    return NS_OK;
-
-  PRUint32 childCount = 0;
-  children->GetLength(&childCount);
-
-  nsCOMPtr<nsIDOMNode> node;
-  nsCOMPtr<nsIDOMElement> element;
-  nsAutoString id;
-
-  for (PRUint32 i = 0; i < childCount; ++i) {
-    children->Item(i, getter_AddRefs(node));
-    NS_ASSERTION(node, "incorrect NodeList length?");
-
-    element = do_QueryInterface(node);
-    if (!element)
-      continue;
-
-    element->GetAttribute(NS_LITERAL_STRING("id"), id);
-    if (aID.IsEmpty() || aID.Equals(id)) {
-      CallQueryInterface(element, aElement);
-      if (*aElement)
+      if (aID.IsEmpty()) {
+        NS_ADDREF(instEle);
+        *aElement = instEle;
         break;
+      } else if (!element) {
+        // this should only happen if the instance on the list is lazy authored
+        // and as far as I can tell, a lazy authored instance should be the
+        // first (and only) instance in the model and unable to have an ID.  
+        // But that isn't clear to me reading the spec, so for now
+        // we'll play it safe in case the WG more clearly defines lazy authoring
+        // in the future.
+        continue;
+      }
+
+      element->GetAttribute(NS_LITERAL_STRING("id"), id);
+      if (aID.Equals(id)) {
+        NS_ADDREF(instEle);
+        *aElement = instEle;
+        break;
+      }
     }
   }
 
@@ -1026,6 +1120,68 @@ nsXFormsModelElement::HandleInstanceDataNode(nsIDOMNode *aInstanceDataNode, unsi
     *aResult = SUBMIT_SERIALIZE_NODE;
   }
 
+  return NS_OK;
+}
+
+// nsIXFormsContextControl
+
+NS_IMETHODIMP
+nsXFormsModelElement::SetContext(nsIDOMNode *aContextNode,
+                                 PRInt32     aContextPosition,
+                                 PRInt32     aContextSize)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+nsXFormsModelElement::GetContext(nsAString      &aModelID,
+                                 nsIDOMNode    **aContextNode,
+                                 PRInt32        *aContextPosition,
+                                 PRInt32        *aContextSize)
+{
+  // Adding the nsIXFormsContextControl interface to model to allow 
+  // submission elements to call our binding evaluation methods, like
+  // EvaluateNodeBinding.  If GetContext can get called outside of the binding
+  // codepath, then this MIGHT lead to problems.
+
+  NS_ENSURE_ARG(aContextSize);
+  NS_ENSURE_ARG(aContextPosition);
+  *aContextNode = nsnull;
+
+  // better get the stuff most likely to fail out of the way first.  No sense
+  // changing the other values that we are returning unless this is successful.
+  nsresult rv = NS_ERROR_FAILURE;
+
+  // Anybody (like a submission element) asking a model element for its context 
+  // for XPath expressions will want the root node of the default instance
+  // document
+  nsCOMPtr<nsIDOMDocument> firstInstanceDoc =
+    FindInstanceDocument(EmptyString());
+  NS_ENSURE_TRUE(firstInstanceDoc, rv);
+
+  nsCOMPtr<nsIDOMElement> firstInstanceRoot;
+  rv = firstInstanceDoc->GetDocumentElement(getter_AddRefs(firstInstanceRoot));
+  NS_ENSURE_TRUE(firstInstanceRoot, rv);
+
+  nsCOMPtr<nsIDOMNode>rootNode = do_QueryInterface(firstInstanceRoot);
+  rootNode.swap(*aContextNode);
+
+  // found the context, so can finish up assinging the rest of the values that
+  // we are returning
+  *aContextPosition = 1;
+  *aContextSize = 1;
+
+  nsAutoString id;
+  mElement->GetAttribute(NS_LITERAL_STRING("id"), id);
+  aModelID.Assign(id);
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsXFormsModelElement::GetLazyAuthored(PRBool *aLazyInstance)
+{
+  *aLazyInstance = mLazyModel;
   return NS_OK;
 }
 
@@ -1117,40 +1273,23 @@ nsXFormsModelElement::Ready()
 void
 nsXFormsModelElement::BackupOrRestoreInstanceData(PRBool restore)
 {
-  // I imagine that this can be done more elegantly.  But in the end, the
-  // bulk of the work is walking the model's children looking for instance
-  // elements.  After one is found, just need to ask the instance element to
-  // backup or restore.
 
-  nsCOMPtr<nsIDOMNodeList> children;
-  mElement->GetChildNodes(getter_AddRefs(children));
+  PRUint32 instCount = mInstanceList.Count();
+  if (instCount) {
+    for (PRUint32 i = 0; i < instCount; ++i) {
+      nsIInstanceElementPrivate *instance = mInstanceList.ObjectAt(i);
 
-  if (!children)
-    return;
-
-  PRUint32 childCount = 0;
-  children->GetLength(&childCount);
-
-  nsCOMPtr<nsIDOMNode> node;
-  nsCOMPtr<nsIInstanceElementPrivate> instance;
-
-  for (PRUint32 i = 0; i < childCount; ++i) {
-    children->Item(i, getter_AddRefs(node));
-    NS_ASSERTION(node, "incorrect NodeList length?");
-
-    instance = do_QueryInterface(node);
-    if (!instance)
-      continue;
-
-    // Don't know what to do with error if we get one.
-    // Restore/BackupOriginalDocument will already output warnings.
-    if(restore) {
-      instance->RestoreOriginalDocument();
-    }
-    else {
-      instance->BackupOriginalDocument();
+      // Don't know what to do with error if we get one.
+      // Restore/BackupOriginalDocument will already output warnings.
+      if(restore) {
+        instance->RestoreOriginalDocument();
+      }
+      else {
+        instance->BackupOriginalDocument();
+      }
     }
   }
+
 }
 
 
@@ -1199,12 +1338,6 @@ nsXFormsModelElement::FinishConstruction()
 
   // we get the instance data from our instance child nodes
 
-  // 5. dispatch xforms-rebuild, xforms-recalculate, xforms-revalidate
-
-  nsXFormsUtils::DispatchEvent(mElement, eEvent_Rebuild);
-  nsXFormsUtils::DispatchEvent(mElement, eEvent_Recalculate);
-  nsXFormsUtils::DispatchEvent(mElement, eEvent_Revalidate);
-
   // We're done initializing this model.
 
   return NS_OK;
@@ -1213,6 +1346,11 @@ nsXFormsModelElement::FinishConstruction()
 nsresult
 nsXFormsModelElement::InitializeControls()
 {
+#ifdef DEBUG
+  printf("nsXFormsModelElement::InitializeControls()\n");
+#endif
+  nsPostRefresh postRefresh = nsPostRefresh();
+
   PRInt32 controlCount = mFormControls.Count();
   nsresult rv;
   for (PRInt32 i = 0; i < controlCount; ++i) {
@@ -1275,6 +1413,21 @@ nsXFormsModelElement::MaybeNotifyCompletion()
   }
 
   nsXFormsModelElement::ProcessDeferredBinds(domDoc);
+
+  for (i = 0; i < models->Count(); ++i) {
+    nsXFormsModelElement *model =
+        NS_STATIC_CAST(nsXFormsModelElement *, models->ElementAt(i));
+    nsXFormsUtils::DispatchEvent(model->mElement, eEvent_Ready);  
+  }
+}
+
+static void
+DeleteAutoString(void    *aObject,
+                 nsIAtom *aPropertyName,
+                 void    *aPropertyValue,
+                 void    *aData)
+{
+  delete NS_STATIC_CAST(nsAutoString*, aPropertyValue);
 }
 
 nsresult
@@ -1285,12 +1438,12 @@ nsXFormsModelElement::ProcessBind(nsIXFormsXPathEvaluator *aEvaluator,
                                   nsIDOMElement           *aBindElement)
 {
   // Get the model item properties specified by this \<bind\>.
-  nsCOMPtr<nsIDOMXPathExpression> props[eModel__count];
+  nsCOMPtr<nsIDOMNSXPathExpression> props[eModel__count];
   nsAutoString propStrings[eModel__count];
   nsresult rv;
   nsAutoString attrStr;
 
-  for (int i = 0; i < eModel__count; ++i) {
+  for (PRUint32 i = 0; i < eModel__count; ++i) {
     sModelPropsList[i]->ToString(attrStr);
 
     aBindElement->GetAttribute(attrStr, propStrings[i]);
@@ -1317,9 +1470,8 @@ nsXFormsModelElement::ProcessBind(nsIXFormsXPathEvaluator *aEvaluator,
   if (expr.IsEmpty()) {
     expr = NS_LITERAL_STRING(".");
   }
-  ///
-  /// @todo use aContextSize and aContextPosition in evaluation (XXX)
-  rv = aEvaluator->Evaluate(expr, aContextNode, aBindElement,
+  rv = aEvaluator->Evaluate(expr, aContextNode, aContextSize, aContextPosition,
+                            aBindElement,
                             nsIDOMXPathResult::ORDERED_NODE_SNAPSHOT_TYPE,
                             nsnull, getter_AddRefs(result));
   if (NS_FAILED(rv)) {
@@ -1358,60 +1510,55 @@ nsXFormsModelElement::ProcessBind(nsIXFormsXPathEvaluator *aEvaluator,
     nsXFormsXPathParser parser;
     nsXFormsXPathAnalyzer analyzer(aEvaluator, aBindElement);
     PRBool multiMIP = PR_FALSE;
-    for (int j = 0; j < eModel__count; ++j) {
+    for (PRUint32 j = 0; j < eModel__count; ++j) {
       if (propStrings[j].IsEmpty())
         continue;
 
-      // type and p3ptype are applied as attributes on the instance node
+      // type and p3ptype are stored as properties on the instance node
       if (j == eModel_type || j == eModel_p3ptype) {
-        nsCOMPtr<nsIDOMElement> nodeElem = do_QueryInterface(node, &rv);
-
-        if (NS_FAILED(rv)) {
-          NS_WARNING("nsXFormsModelElement::ProcessBind(): Node is not nsIDOMElement!\n");
-          continue;
-        }
-
-        // Check whether attribute already exists
-        if (j == eModel_type) {
-          rv = nodeElem->HasAttributeNS(NS_LITERAL_STRING(NS_NAMESPACE_XML_SCHEMA_INSTANCE),
-                                        NS_LITERAL_STRING("type"),
-                                        &multiMIP);
+        nsAutoPtr<nsAutoString> prop (new nsAutoString(propStrings[j]));
+        nsCOMPtr<nsIContent> content = do_QueryInterface(node);
+        if (content) {
+          rv = content->SetProperty(sModelPropsList[j],
+                                    prop,
+                                    DeleteAutoString);
         } else {
-          rv = nodeElem->HasAttributeNS(NS_LITERAL_STRING(NS_NAMESPACE_XFORMS),
-                                        NS_LITERAL_STRING("p3ptype"),
-                                        &multiMIP);
+          nsCOMPtr<nsIAttribute> attribute = do_QueryInterface(node);
+          if (attribute) {
+            rv = attribute->SetProperty(sModelPropsList[j],
+                                        prop,
+                                        DeleteAutoString);
+          } else {
+            NS_WARNING("node is neither nsIContent or nsIAttribute");
+            continue;
+          }
         }
-        NS_ENSURE_SUCCESS(rv, rv);
-
-        // It is an error to set a MIP twice, so break and emit an exception.
-        if (multiMIP) {
+        if (NS_SUCCEEDED(rv)) {
+          prop.forget();
+        } else {
+          return rv;
+        }
+        if (rv == NS_PROPTABLE_PROP_OVERWRITTEN) {
+          multiMIP = PR_TRUE;
           break;
         }
- 
-        // Set attribute
-        if (j == eModel_type) {
-          rv = nodeElem->SetAttributeNS(NS_LITERAL_STRING(NS_NAMESPACE_XML_SCHEMA_INSTANCE),
-                                        NS_LITERAL_STRING("type"),
-                                        propStrings[j]);
-          NS_ENSURE_SUCCESS(rv, rv);
 
+        if (j == eModel_type) {
           // Inform MDG that it needs to check type. The only arguments
           // actually used are |eModel_constraint| and |node|.
-          rv = mMDG.AddMIP(eModel_constraint, nsnull, nsnull, PR_FALSE, node, 1, 1);
-        } else {
-          rv = nodeElem->SetAttributeNS(NS_LITERAL_STRING(NS_NAMESPACE_XFORMS),
-                                        NS_LITERAL_STRING("p3ptype"),
-                                        propStrings[j]);
+          rv = mMDG.AddMIP(eModel_constraint, nsnull, nsnull, PR_FALSE, node, 1,
+                           1);
+          NS_ENSURE_SUCCESS(rv, rv);
         }
-        NS_ENSURE_SUCCESS(rv, rv);
       } else {
         // the rest of the MIPs are given to the MDG
-        nsCOMPtr<nsIDOMXPathExpression> expr = props[j];
+        nsCOMPtr<nsIDOMNSXPathExpression> expr = props[j];
 
         // Get node dependencies
         nsAutoPtr<nsXFormsXPathNode> xNode(parser.Parse(propStrings[j]));
         deps.Clear();
-        rv = analyzer.Analyze(node, xNode, expr, &propStrings[j], &deps);
+        rv = analyzer.Analyze(node, xNode, expr, &propStrings[j], &deps,
+                              snapItem + 1, snapLen);
         NS_ENSURE_SUCCESS(rv, rv);
 
         // Insert into MDG
@@ -1487,6 +1634,26 @@ nsXFormsModelElement::SetStates(nsIXFormsControl *aControl, nsIDOMNode *aBoundNo
   return SetStatesInternal(aControl, aBoundNode, PR_TRUE);
 }
 
+NS_IMETHODIMP
+nsXFormsModelElement::GetInstanceList(nsCOMArray<nsIInstanceElementPrivate> **aInstanceList)
+{
+  if (aInstanceList) {
+    *aInstanceList = &mInstanceList;
+  }
+  return NS_OK;  
+}
+
+nsresult
+nsXFormsModelElement::AddInstanceElement(nsIInstanceElementPrivate *aInstEle) 
+{
+  // always append to the end of the list.  We need to keep the elements in
+  // document order since the first instance element is the default instance
+  // document for the model.
+  mInstanceList.AppendObject(aInstEle);
+
+  return NS_OK;
+}
+
 /* static */ void
 nsXFormsModelElement::Startup()
 {
@@ -1510,7 +1677,7 @@ DeleteBindList(void    *aObject,
 
 /* static */ nsresult
 nsXFormsModelElement::DeferElementBind(nsIDOMDocument *aDoc, 
-                                       nsIXFormsControl *aControl)
+                                       nsIXFormsControlBase *aControl)
 {
   nsCOMPtr<nsIDocument> doc = do_QueryInterface(aDoc);
 
@@ -1518,12 +1685,12 @@ nsXFormsModelElement::DeferElementBind(nsIDOMDocument *aDoc,
     return NS_ERROR_FAILURE;
   }
 
-  nsCOMArray<nsIXFormsControl> *deferredBindList =
-      NS_STATIC_CAST(nsCOMArray<nsIXFormsControl> *,
+  nsCOMArray<nsIXFormsControlBase> *deferredBindList =
+      NS_STATIC_CAST(nsCOMArray<nsIXFormsControlBase> *,
                     doc->GetProperty(nsXFormsAtoms::deferredBindListProperty));
 
   if (!deferredBindList) {
-    deferredBindList = new nsCOMArray<nsIXFormsControl>(16);
+    deferredBindList = new nsCOMArray<nsIXFormsControlBase>(16);
     NS_ENSURE_TRUE(deferredBindList, NS_ERROR_OUT_OF_MEMORY);
 
     doc->SetProperty(nsXFormsAtoms::deferredBindListProperty, deferredBindList,
@@ -1548,18 +1715,20 @@ nsXFormsModelElement::ProcessDeferredBinds(nsIDOMDocument *aDoc)
     return;
   }
 
+  nsPostRefresh postRefresh = nsPostRefresh();
+
   doc->SetProperty(nsXFormsAtoms::readyForBindProperty, doc);
 
-  nsCOMArray<nsIXFormsControl> *deferredBindList =
-      NS_STATIC_CAST(nsCOMArray<nsIXFormsControl> *,
-                    doc->GetProperty(nsXFormsAtoms::deferredBindListProperty));
+  nsCOMArray<nsIXFormsControlBase> *deferredBindList =
+      NS_STATIC_CAST(nsCOMArray<nsIXFormsControlBase> *,
+                     doc->GetProperty(nsXFormsAtoms::deferredBindListProperty));
 
   if (deferredBindList) {
     for (int i = 0; i < deferredBindList->Count(); ++i) {
-      nsIXFormsControl *control = deferredBindList->ObjectAt(i);
-      if (control) {
-        control->Bind();
-        control->Refresh();
+      nsIXFormsControlBase *base = deferredBindList->ObjectAt(i);
+      if (base) {
+        base->Bind();
+        base->Refresh();
       }
     }
 

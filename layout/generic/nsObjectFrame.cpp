@@ -61,6 +61,7 @@
 #include "nsIDocument.h"
 #include "nsIHTMLDocument.h"
 #include "nsINodeInfo.h"
+#include "nsIPluginElement.h"
 #include "nsIURL.h"
 #include "nsNetUtil.h"
 #include "nsIPluginInstanceOwner.h"
@@ -1370,8 +1371,8 @@ nsObjectFrame::InstantiatePlugin(nsPresContext* aPresContext,
     if (NS_SUCCEEDED(rv))
       pDoc->SetStreamListener(stream);
   } else {   /* embedded mode */
-    rv = aPluginHost->InstantiateEmbededPlugin(aMimeType, aURI,
-                                               mInstanceOwner);
+    rv = aPluginHost->InstantiateEmbeddedPlugin(aMimeType, aURI,
+                                                mInstanceOwner);
   }
 #ifdef DEBUG
   mInstantiating = PR_FALSE;
@@ -1563,11 +1564,11 @@ nsObjectFrame::CreateDefaultFrames(nsPresContext *aPresContext,
     id = kNameSpaceID_XHTML;
 
   nsCOMPtr<nsIContent> anchor;
-  nsresult rv = doc->CreateElem(nsHTMLAtoms::a, nsnull, id,
-                                PR_TRUE, getter_AddRefs(anchor));
+  nsresult rv = doc->CreateElem(nsHTMLAtoms::a, nsnull, id, htmldoc != nsnull,
+                                getter_AddRefs(anchor));
 
   nsCOMPtr<nsIContent> img;
-  rv |= doc->CreateElem(nsHTMLAtoms::img, nsnull, id, PR_TRUE,
+  rv |= doc->CreateElem(nsHTMLAtoms::img, nsnull, id, htmldoc != nsnull,
                         getter_AddRefs(img));
 
   nsCOMPtr<nsITextContent> text;
@@ -3080,26 +3081,20 @@ nsObjectFrame::PluginNotAvailable(const char *aMimeType)
     return;
   }
   
+  nsDependentCString type(aMimeType);
+
   // Tell mContent about the mime type
 
-  nsCOMPtr<nsIDOMHTMLObjectElement> object(do_QueryInterface(mContent));
-  NS_ConvertASCIItoUTF16 mimeType(aMimeType);
+  nsCOMPtr<nsIPluginElement> pluginElement(do_QueryInterface(mContent));
 
-  if (object) {
-    object->SetType(mimeType);
-  } else {
-    nsCOMPtr<nsIDOMHTMLEmbedElement> embed(do_QueryInterface(mContent));
-    if (embed) {
-      embed->SetType(mimeType);
-    }
+  if (pluginElement) {
+    pluginElement->SetActualType(type);
   }
 
   if (!sDefaultPluginDisabled) {
     // The default plugin is enabled, don't fire events etc.
     return;
   }
-
-  nsDependentCString type(aMimeType);
 
   // For non-image and non-document mime types, fire the plugin not
   // found event and mark this plugin as broken.

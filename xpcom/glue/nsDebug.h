@@ -160,14 +160,14 @@ public:
 
 /**
  * This macros triggers a program failure if executed. It indicates that
- * an attempt was made to execute some unimplimented functionality.
+ * an attempt was made to execute some unimplemented functionality.
  */
 #define NS_NOTYETIMPLEMENTED(str)                             \
   nsDebug::Assertion(str, "NotYetImplemented", __FILE__, __LINE__)
 
 /**
  * This macros triggers a program failure if executed. It indicates that
- * an attempt was made to execute some unimplimented functionality.
+ * an attempt was made to execute some unimplemented functionality.
  */
 #define NS_NOTREACHED(str)                                    \
   nsDebug::Assertion(str, "Not Reached", __FILE__, __LINE__)
@@ -270,7 +270,11 @@ public:
 
 ///////////////////////////////////////////////////////////////////////////////
 
+#ifdef XPCOM_GLUE
+#define NS_CheckThreadSafe
+#else
 #define NS_CheckThreadSafe(owningThread, msg)                 \
   NS_ASSERTION(owningThread == PR_GetCurrentThread(), msg)
+#endif
 
 #endif /* nsDebug_h___ */

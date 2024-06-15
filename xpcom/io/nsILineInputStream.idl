@@ -53,6 +53,8 @@ interface nsILineInputStream : nsISupports
    *         (aLine is valid).
    * @retval true
    *         The file contains further lines.
+   * @note Do not mix readLine with other read functions.
+   *       Doing so can cause various problems and is not supported.
    */
   boolean readLine(out ACString aLine);
 };

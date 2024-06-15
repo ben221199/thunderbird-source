@@ -76,89 +76,23 @@ FINAL_TARGET = $(if $(XPI_NAME),$(DIST)/xpi-stage/$(XPI_NAME),$(DIST)/bin)
 #
 VERSION_NUMBER		= 50
 
+ifeq ($(HOST_OS_ARCH),WINNT)
+win_srcdir	:= $(subst $(topsrcdir),$(WIN_TOP_SRC),$(srcdir))
+BUILD_TOOLS	= $(WIN_TOP_SRC)/build/unix
+else
+win_srcdir	:= $(srcdir)
 BUILD_TOOLS	= $(topsrcdir)/build/unix
+endif
+
 CONFIG_TOOLS	= $(MOZ_BUILD_ROOT)/config
 AUTOCONF_TOOLS	= $(topsrcdir)/build/autoconf
 
-#
-# Tweak the default OS_ARCH and OS_RELEASE macros as needed.
-#
-ifeq ($(OS_ARCH),AIX)
-OS_RELEASE	:= $(shell uname -v).$(shell uname -r)
-endif
-ifeq ($(OS_ARCH),BSD_386)
-OS_ARCH		:= BSD_OS
-endif
-ifeq ($(OS_ARCH),dgux)
-OS_ARCH		:= DGUX
-endif
-ifeq ($(OS_ARCH),IRIX64)
-OS_ARCH		:= IRIX
-endif
-ifeq ($(OS_ARCH),UNIX_SV)
-ifneq ($(findstring NCR,$(shell grep NCR /etc/bcheckrc | head -1 )),)
-OS_ARCH		:= NCR
-else
-OS_ARCH		:= UNIXWARE
-OS_RELEASE	:= $(shell uname -v)
-endif
-endif
-ifeq ($(OS_ARCH),ncr)
-OS_ARCH		:= NCR
-endif
-# This is the only way to correctly determine the actual OS version on NCR boxes.
-ifeq ($(OS_ARCH),NCR)
-OS_RELEASE	:= $(shell awk '{print $$3}' /etc/.relid | sed 's/^\([0-9]\)\(.\)\(..\)\(.*\)$$/\2.\3/')
-endif
-ifeq ($(OS_ARCH),UNIX_System_V)
-OS_ARCH		:= NEC
-endif
-ifeq ($(OS_ARCH),OSF1)
-OS_SUB		:= $(shell uname -v)
-# Until I know the other possibilities, or an easier way to compute them, this is all there's gonna be.
-#ifeq ($(OS_SUB),240)
-#OS_RELEASE	:= V2.0
-#endif
-ifeq ($(OS_SUB),148)
-OS_RELEASE	:= V3.2C
-endif
-ifeq ($(OS_SUB),564)
-OS_RELEASE	:= V4.0B
-endif
-ifeq ($(OS_SUB),878)
-OS_RELEASE	:= V4.0D
-endif
-endif
-ifneq (,$(findstring OpenVMS,$(OS_ARCH)))
-OS_ARCH		:= OpenVMS
-OS_RELEASE	:= $(shell uname -v)
-CPU_ARCH	:= $(shell uname -p)
-CPU_ARCH_TAG	:= _$(CPU_ARCH)
-endif
 ifeq ($(OS_ARCH),QNX)
 ifeq ($(OS_TARGET),NTO)
 LD		:= qcc -Vgcc_ntox86 -nostdlib
 else
-OS_RELEASE	:= $(shell uname -v | sed 's/^\([0-9]\)\([0-9]*\)$$/\1.\2/')
 LD		:= $(CC)
 endif
-OS_TEST		:= x86
-endif
-ifeq ($(OS_ARCH),SCO_SV)
-OS_ARCH		:= SCOOS
-OS_RELEASE	:= 5.0
-endif
-ifneq (,$(filter SINIX-N SINIX-Y SINIX-Z ReliantUNIX-M,$(OS_ARCH)))
-OS_ARCH		:= SINIX
-OS_TEST		:= $(shell uname -p)
-endif
-ifeq ($(OS_ARCH),UnixWare)
-OS_ARCH		:= UNIXWARE
-OS_RELEASE	:= $(shell uname -v)
-endif
-ifeq ($(OS_ARCH),OS_2)
-OS_ARCH		:= OS2
-OS_RELEASE	:= $(shell uname -v)
 endif
 ifeq ($(OS_ARCH),BeOS)
 BEOS_ADDON_WORKAROUND	= 1
@@ -307,8 +241,8 @@ OS_LDFLAGS += $(_DEBUG_LDFLAGS)
 ifeq ($(OS_ARCH)_$(GNU_CC),WINNT_)
 ifdef MOZ_DEBUG
 ifneq (,$(MOZ_BROWSE_INFO)$(MOZ_BSCFILE))
-OS_CFLAGS += /FR
-OS_CXXFLAGS += /FR
+OS_CFLAGS += -FR
+OS_CXXFLAGS += -FR
 endif
 else
 # if MOZ_DEBUG is not set and MOZ_PROFILE is set, then we generate
@@ -318,30 +252,30 @@ else
 # symbols in separate PDB files, rather than embedded into the binary.
 ifneq (,$(MOZ_PROFILE)$(MOZ_DEBUG_SYMBOLS))
 MOZ_OPTIMIZE_FLAGS=-Zi -O1 -UDEBUG -DNDEBUG
-OS_LDFLAGS = /DEBUG /OPT:REF /OPT:nowin98
+OS_LDFLAGS = -DEBUG -OPT:REF -OPT:nowin98
 ifdef MOZ_PROFILE
-OS_LDFLAGS += /PDB:NONE
+OS_LDFLAGS += -PDB:NONE
 endif
 endif
 
 ifdef MOZ_QUANTIFY
-# /FIXED:NO is needed for Quantify to work, but it increases the size
+# -FIXED:NO is needed for Quantify to work, but it increases the size
 # of executables, so only use it if building for Quantify.
-WIN32_EXE_LDFLAGS=/FIXED:NO
+WIN32_EXE_LDFLAGS += -FIXED:NO
 
-# We need /OPT:NOICF to prevent identical methods from being merged together.
+# We need -OPT:NOICF to prevent identical methods from being merged together.
 # Otherwise, Quantify doesn't know which method was actually called when it's
 # showing you the profile.
-OS_LDFLAGS += /OPT:NOICF
+OS_LDFLAGS += -OPT:NOICF
 endif
 
 # if MOZ_COVERAGE is set, we handle pdb files slightly differently
 ifdef MOZ_COVERAGE
 MOZ_OPTIMIZE_FLAGS=-Zi -O1 -UDEBUG -DNDEBUG
-OS_LDFLAGS = /DEBUG /PDB:NONE /OPT:REF /OPT:nowin98
+OS_LDFLAGS = -DEBUG -PDB:NONE -OPT:REF -OPT:nowin98
 _ORDERFILE := $(wildcard $(srcdir)/win32.order)
 ifneq (,$(_ORDERFILE))
-OS_LDFLAGS += /ORDER:@$(srcdir)/win32.order
+OS_LDFLAGS += -ORDER:@$(srcdir)/win32.order
 endif
 endif
 # MOZ_COVERAGE
@@ -352,7 +286,7 @@ endif
 #
 ifdef NS_TRACE_MALLOC
 MOZ_OPTIMIZE_FLAGS=-Zi -Od -UDEBUG -DNDEBUG
-OS_LDFLAGS = /DEBUG /PDB:NONE /OPT:REF /OPT:nowin98
+OS_LDFLAGS = -DEBUG -PDB:NONE -OPT:REF -OPT:nowin98
 endif
 # NS_TRACE_MALLOC
 
@@ -414,13 +348,26 @@ ifdef IS_COMPONENT
 ifdef MODULE_NAME
 DEFINES += -DXPCOM_TRANSLATE_NSGM_ENTRY_POINT=1
 else
-$(error Component makefile doesn't specify MODULE_NAME.)
+$(error Component makefile does not specify MODULE_NAME.)
 endif
 endif
 EXPORT_LIBRARY=
 FORCE_STATIC_LIB=1
 _ENABLE_PIC=1
 SHORT_LIBNAME=
+endif
+endif
+
+# If we are building this component into an extension/xulapp, it cannot be
+# statically linked. In the future we may want to add a xulapp meta-component
+# build option.
+
+ifdef XPI_NAME
+_ENABLE_PIC=1
+ifdef IS_COMPONENT
+EXPORT_LIBRARY=
+FORCE_STATIC_LIB=
+FORCE_SHARED_LIB=1
 endif
 endif
 
@@ -507,6 +454,43 @@ DEFINES += \
 endif
 endif
 
+# Flags passed to make-jars.pl
+
+MAKE_JARS_FLAGS = \
+	-s $(srcdir) -t $(topsrcdir) -z $(ZIP) -p $(MOZILLA_DIR)/config/preprocessor.pl \
+	-f $(MOZ_CHROME_FILE_FORMAT) \
+	$(NULL)
+
+ifdef NO_JAR_AUTO_REG
+MAKE_JARS_FLAGS += -a
+endif
+
+ifdef USE_EXTENSION_MANIFEST
+MAKE_JARS_FLAGS += -e
+endif
+
+ifeq ($(OS_TARGET),WIN95)
+MAKE_JARS_FLAGS += -l
+endif
+
+ifneq (,$(filter gtk gtk2 xlib,$(MOZ_WIDGET_TOOLKIT)))
+MAKE_JARS_FLAGS += -x
+endif
+
+ifdef CROSS_COMPILE
+MAKE_JARS_FLAGS += -o $(OS_ARCH)
+endif
+
+TAR_CREATE_FLAGS = -cvhf
+
+ifeq ($(OS_ARCH),BSD_OS)
+TAR_CREATE_FLAGS = -cvLf
+endif
+
+ifeq ($(OS_ARCH),OS2)
+TAR_CREATE_FLAGS = -cvf
+endif
+
 #
 # Personal makefile customizations go in these optional make include files.
 #
@@ -526,11 +510,6 @@ XPIDL_LINK	= $(CYGWIN_WRAPPER) $(DIST)/host/bin/host_xpt_link$(HOST_BIN_SUFFIX)
 else
 XPIDL_COMPILE 	= $(CYGWIN_WRAPPER) $(DIST)/bin/xpidl$(BIN_SUFFIX)
 XPIDL_LINK	= $(CYGWIN_WRAPPER) $(DIST)/bin/xpt_link$(BIN_SUFFIX)
-endif
-
-ifeq (,$(filter-out WINCE,$(OS_ARCH)))
-XPIDL_COMPILE 	= $(CYGWIN_WRAPPER) $(topsrcdir)/../tools/xpidl.exe
-XPIDL_LINK	    = $(CYGWIN_WRAPPER) $(topsrcdir)/../tools/xpt_link.exe
 endif
 
 REQ_INCLUDES	= $(foreach d,$(REQUIRES),-I$(DIST)/include/$d)
@@ -582,9 +561,9 @@ endif # CROSS_COMPILE
 
 ifeq ($(MOZ_OS2_TOOLS),VACPP)
 ifdef USE_STATIC_LIBS
-RTL_FLAGS += /Gd-
+RTL_FLAGS += -Gd-
 else # !USE_STATIC_LIBS
-RTL_FLAGS += /Gd+
+RTL_FLAGS += -Gd+
 endif
 endif
 
@@ -682,17 +661,33 @@ ifeq ($(OS_ARCH),Darwin)
 ifdef USE_PREBINDING
 export LD_PREBIND=1
 export LD_SEG_ADDR_TABLE=$(shell cd $(topsrcdir); pwd)/config/prebind-address-table
-endif
+endif # USE_PREBINDING
+PBBUILD = NEXT_ROOT= $(PBBUILD_BIN)
+PBBUILD_SETTINGS = GCC_VERSION="$(GCC_VERSION)" SYMROOT=build
 ifdef MACOS_SDK_DIR
 export NEXT_ROOT=$(MACOS_SDK_DIR)
-endif
-PBBUILD=NEXT_ROOT= $(PBBUILD_BIN)
-endif
-
-
-ifeq (,$(filter-out WINCE,$(OS_ARCH)))
-MKDEPEND	= mkdepend.exe
+PBBUILD_SETTINGS += SDKROOT="$(MACOS_SDK_DIR)"
+endif # MACOS_SDK_DIR
+ifdef MACOSX_DEPLOYMENT_TARGET
+export MACOSX_DEPLOYMENT_TARGET
+PBBUILD_SETTINGS += MACOSX_DEPLOYMENT_TARGET="$(MACOSX_DEPLOYMENT_TARGET)"
+endif # MACOSX_DEPLOYMENT_TARGET
+ifdef MOZ_OPTIMIZE
+ifeq (2,$(MOZ_OPTIMIZE))
+# Only override project defaults if the config specified explicit settings
+PBBUILD_SETTINGS += GCC_MODEL_TUNING= OPTIMIZATION_CFLAGS="$(MOZ_OPTIMIZE_FLAGS)"
+endif # MOZ_OPTIMIZE=2
+endif # MOZ_OPTIMIZE
+ifeq (1,$(HAS_XCODE_2_1))
+# Xcode 2.1 puts its build products in a directory corresponding to the
+# selected build style/configuration.
+XCODE_PRODUCT_DIR = build/$(BUILDSTYLE)
 else
+XCODE_PRODUCT_DIR = build
+endif # HAS_XCODE_2_1=1
+endif # OS_ARCH=Darwin
+
+
 ifdef MOZ_NATIVE_MAKEDEPEND
 MKDEPEND_DIR	=
 MKDEPEND	= $(CYGWIN_WRAPPER) $(MOZ_NATIVE_MAKEDEPEND)
@@ -700,33 +695,32 @@ else
 MKDEPEND_DIR	= $(CONFIG_TOOLS)/mkdepend
 MKDEPEND	= $(CYGWIN_WRAPPER) $(MKDEPEND_DIR)/mkdepend$(BIN_SUFFIX)
 endif
-endif
 
 # Set link flags according to whether we want a console.
 ifdef MOZ_WINCONSOLE
 ifeq ($(MOZ_WINCONSOLE),1)
 ifeq ($(MOZ_OS2_TOOLS),EMX)
-BIN_FLAGS	+= -Zlinker /PM:VIO
+BIN_FLAGS	+= -Zlinker -PM:VIO
 endif
 ifeq ($(OS_ARCH),WINNT)
 ifdef GNU_CC
 WIN32_EXE_LDFLAGS	+= -mconsole
 else
-WIN32_EXE_LDFLAGS	+= /SUBSYSTEM:CONSOLE
+WIN32_EXE_LDFLAGS	+= -SUBSYSTEM:CONSOLE
 endif
 endif
 else # MOZ_WINCONSOLE
 ifeq ($(MOZ_OS2_TOOLS),VACPP)
-LDFLAGS += /PM:PM
+LDFLAGS += -PM:PM
 endif
 ifeq ($(MOZ_OS2_TOOLS),EMX)
-BIN_FLAGS	+= -Zlinker /PM:PM
+BIN_FLAGS	+= -Zlinker -PM:PM
 endif
 ifeq ($(OS_ARCH),WINNT)
 ifdef GNU_CC
 WIN32_EXE_LDFLAGS	+= -mwindows
 else
-WIN32_EXE_LDFLAGS	+= /SUBSYSTEM:WINDOWS
+WIN32_EXE_LDFLAGS	+= -SUBSYSTEM:WINDOWS
 endif
 endif
 endif
@@ -741,6 +735,16 @@ ifeq ($(OS_ARCH),Darwin)
 ifeq (,$(findstring crypto,$(MOZ_META_COMPONENTS)))
 MOZ_COMPONENTLIB_EXTRA_LIBS = $(foreach library, $(patsubst -l%, $(LIB_PREFIX)%$(DLL_SUFFIX), $(filter -l%, $(NSS_LIBS))), -dylib_file @executable_path/$(library):$(DIST)/bin/$(library))
 endif
+endif
+endif
+
+# If we're building a component on MSVC, we don't want to generate an
+# import lib, because that import lib will collide with the name of a
+# static version of the same library.
+ifeq ($(GNU_LD)$(OS_ARCH),WINNT)
+ifdef IS_COMPONENT
+LDFLAGS += -IMPLIB:fake-import
+DELETE_AFTER_LINK = fake-import.exp
 endif
 endif
 
@@ -833,6 +837,10 @@ EXPAND_LOCALE_SRCDIR = $(if $(filter en-US,$(AB_CD)),$(topsrcdir)/$(1)/en-US,$(t
 
 ifdef relativesrcdir
 LOCALE_SRCDIR = $(call EXPAND_LOCALE_SRCDIR,$(relativesrcdir))
+endif
+
+ifdef LOCALE_SRCDIR
+MAKE_JARS_FLAGS += -c $(LOCALE_SRCDIR)
 endif
 
 #

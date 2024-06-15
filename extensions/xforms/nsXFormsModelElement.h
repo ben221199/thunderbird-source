@@ -21,6 +21,7 @@
  *
  * Contributor(s):
  *  Brian Ryner <bryner@brianryner.com>
+ *  Olli Pettay <Olli.Pettay@helsinki.fi>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -52,6 +53,7 @@
 
 #include "nsISchemaLoader.h"
 #include "nsISchema.h"
+#include "nsIXFormsContextControl.h"
 
 class nsIDOMElement;
 class nsIDOMNode;
@@ -70,7 +72,8 @@ class nsXFormsControl;
 class nsXFormsModelElement : public nsXFormsStubElement,
                              public nsIModelElementPrivate,
                              public nsISchemaLoadListener,
-                             public nsIDOMEventListener
+                             public nsIDOMEventListener,
+                             public nsIXFormsContextControl
 {
 public:
   nsXFormsModelElement() NS_HIDDEN;
@@ -81,6 +84,7 @@ public:
   NS_DECL_NSISCHEMALOADLISTENER
   NS_DECL_NSIWEBSERVICEERRORHANDLER
   NS_DECL_NSIDOMEVENTLISTENER
+  NS_DECL_NSIXFORMSCONTEXTCONTROL
 
   // nsIXTFGenericElement overrides
   NS_IMETHOD OnDestroyed();
@@ -90,6 +94,12 @@ public:
   NS_IMETHOD DoneAddingChildren();
   NS_IMETHOD HandleDefault(nsIDOMEvent *aEvent, PRBool *aHandled);
   NS_IMETHOD OnCreated(nsIXTFGenericElementWrapper *aWrapper);
+
+  // nsIXFormsControlBase overrides
+  NS_IMETHOD Bind() {
+    // dummy method, so does nothing
+    return NS_OK;
+  };
 
   // Called after nsXFormsAtoms is registered
   static NS_HIDDEN_(void) Startup();
@@ -103,8 +113,10 @@ public:
    * @param aControl          XForms control waiting to be bound
    */
   static NS_HIDDEN_(nsresult) DeferElementBind(nsIDOMDocument    *aDoc,
-                                               nsIXFormsControl  *aControl);
+                                               nsIXFormsControlBase  *aControl);
 
+  static nsresult NeedsPostRefresh(nsIXFormsControl* aControl);
+  static void CancelPostRefresh(nsIXFormsControl* aControl);
 private:
 
   NS_HIDDEN_(already_AddRefed<nsIDOMDocument>)
@@ -197,6 +209,28 @@ private:
   // This flag indicates whether a xforms-rebuild has been called, but no
   // xforms-revalidate yet
   PRBool mNeedsRefresh;
+
+  /**
+   * List of instance elements contained by this model, including lazy-authored
+   * instance elements.
+   */
+  nsCOMArray<nsIInstanceElementPrivate>    mInstanceList;
+
+  /** Indicates whether the model's instance was built by lazy authoring */
+  PRBool mLazyModel;
+};
+
+/**
+ * nsPostRefresh is needed by the UI Controls, which are implemented in
+ * XBL and used inside \<repeat\>. It is needed to refresh the controls,
+ * because XBL bindings are attached to XForms controls *after* refreshing
+ * the \<repeat\>.
+ */
+
+class nsPostRefresh {
+public:
+  nsPostRefresh();
+  ~nsPostRefresh();
 };
 
 NS_HIDDEN_(nsresult) NS_NewXFormsModelElement(nsIXTFElement **aResult);

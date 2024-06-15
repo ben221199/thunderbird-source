@@ -1,6 +1,6 @@
-/.cvsignore/1.2/Wed May 21 20:13:24 2003//TTHUNDERBIRD_1_1a1_RELEASE
-/Makefile.in/1.56/Mon Mar 14 10:00:58 2005//TTHUNDERBIRD_1_1a1_RELEASE
-/psm.pkg/1.2/Wed Jan  7 01:22:15 2004//TTHUNDERBIRD_1_1a1_RELEASE
+/.cvsignore/1.2/Wed May 21 20:13:24 2003//TTHUNDERBIRD_1_1a2_RELEASE
+/Makefile.in/1.57/Thu Jun  2 02:03:05 2005//TTHUNDERBIRD_1_1a2_RELEASE
+/psm.pkg/1.2/Wed Jan  7 01:22:15 2004//TTHUNDERBIRD_1_1a2_RELEASE
 D/boot////
 D/locales////
 D/pki////

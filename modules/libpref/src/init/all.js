@@ -420,6 +420,12 @@ pref("dom.popup_maximum",                           20);
 pref("dom.popup_allowed_events", "change click dblclick mouseup reset submit");
 pref("dom.disable_open_click_delay", 1000);
 
+// Disable popups from plugins by default
+//   0 = openAllowed
+//   1 = openControlled
+//   2 = openAbused
+pref("privacy.popups.disable_from_plugins", 2);
+
 pref("dom.event.contextmenu.enabled",       true);
 
 pref("javascript.enabled",                  true);
@@ -550,7 +556,31 @@ pref("network.enableIDN", true);
 // This preference, if true, causes all UTF-8 domain names to be normalized to
 // punycode.  The intention is to allow UTF-8 domain names as input, but never
 // generate them from punycode.
-pref("network.IDN_show_punycode", true);
+pref("network.IDN_show_punycode", false);
+
+// TLDs with "network.IDN.whitelist.tld" explicitly set to true are treated as 
+// IDN-safe. Otherwise, they're treated as unsafe and punycode will be used
+// for displaying them in the UI (e.g. URL bar). Note that these preferences
+// are referred to ONLY when "network.IDN_show_punycode" is false. In other
+// words, all IDNs will be shown in punycode if "network.IDN_show_punycode"
+// is true.
+
+// ccTLDs
+pref("network.IDN.whitelist.at", true);
+pref("network.IDN.whitelist.ch", true);
+pref("network.IDN.whitelist.cn", true);
+pref("network.IDN.whitelist.de", true);
+pref("network.IDN.whitelist.dk", true);
+pref("network.IDN.whitelist.hu", true);
+pref("network.IDN.whitelist.jp", true);
+pref("network.IDN.whitelist.kr", true);
+pref("network.IDN.whitelist.li", true);
+pref("network.IDN.whitelist.no", true);
+pref("network.IDN.whitelist.se", true);
+pref("network.IDN.whitelist.tw", true);
+
+// non-ccTLDs
+pref("network.IDN.whitelist.museum", true);
 
 // This preference specifies a list of domains for which DNS lookups will be
 // IPv4 only. Works around broken DNS servers which can't handle IPv6 lookups
@@ -597,12 +627,17 @@ pref("network.negotiate-auth.delegation-uris", "");
 // Allow SPNEGO by default when challenged by a proxy server.
 pref("network.negotiate-auth.allow-proxies", true);
 
+// Path to a specific gssapi library
+pref("network.negotiate-auth.gsslib", "");
+
+// Specify if the gss lib comes standard with the OS
+pref("network.negotiate-auth.using-native-gsslib", true);
+
 // The following prefs are used to enable automatic use of the operating
 // system's NTLM implementation to silently authenticate the user with their
-// Window's domain logon.  By default, this is disabled for proxy servers due
-// to bug 256949.  The trusted-uris pref follows the format of the trusted-uris
-// pref for negotiate authentication.
-pref("network.automatic-ntlm-auth.allow-proxies", false);
+// Window's domain logon.  The trusted-uris pref follows the format of the
+// trusted-uris pref for negotiate authentication.
+pref("network.automatic-ntlm-auth.allow-proxies", true);
 pref("network.automatic-ntlm-auth.trusted-uris", "");
 
 // This preference controls whether or not the LM hash will be included in
@@ -1183,6 +1218,9 @@ pref("print.print_extra_margin", 90); // twips (90 twips is an eigth of an inch)
 // This indicates whether it should use the native dialog or the XP Dialog
 pref("print.use_native_print_dialog", true);
 
+// Whether to extend the native dialog with information on printing frames.
+pref("print.extend_native_print_dialog", true);
+
 // Locate Java by scanning the Sun JRE installation directory with a minimum version
 // Note: Does not scan if security.enable_java is not true
 pref("plugin.scan.SunJRE", "1.3");
@@ -1759,6 +1797,67 @@ pref("font.allow_double_byte_special_chars", true);
 
 // ar
 
+#ifdef MOZ_ENABLE_XFT
+
+pref("font.name.serif.el", "serif");
+pref("font.name.sans-serif.el", "sans-serif");
+pref("font.name.monospace.el", "monospace");
+
+pref("font.name.serif.he", "serif");
+pref("font.name.sans-serif.he", "sans-serif");
+pref("font.name.monospace.he", "monospace");
+
+pref("font.name.serif.ja", "serif");
+pref("font.name.sans-serif.ja", "sans-serif");
+pref("font.name.monospace.ja", "monospace");
+
+pref("font.name.serif.ko", "serif");
+pref("font.name.sans-serif.ko", "sans-serif");
+pref("font.name.monospace.ko", "monospace");
+
+// th
+
+pref("font.name.serif.tr", "Times");
+pref("font.name.sans-serif.tr", "Helvetica");
+pref("font.name.monospace.tr", "Courier");
+
+pref("font.name.serif.x-baltic", "serif");
+pref("font.name.sans-serif.x-baltic", "sans-serif");
+pref("font.name.monospace.x-baltic", "monospace");
+
+pref("font.name.serif.x-central-euro", "Times");
+pref("font.name.sans-serif.x-central-euro", "Helvetica");
+pref("font.name.monospace.x-central-euro", "Courier");
+
+pref("font.name.serif.x-cyrillic", "serif");
+pref("font.name.sans-serif.x-cyrillic", "sans-serif");
+pref("font.name.monospace.x-cyrillic", "monospace");
+
+pref("font.name.serif.x-unicode", "Times");
+pref("font.name.sans-serif.x-unicode", "Helvetica");
+pref("font.name.monospace.x-unicode", "Courier");
+
+pref("font.name.serif.x-user-def", "Times");
+pref("font.name.sans-serif.x-user-def", "Helvetica");
+pref("font.name.monospace.x-user-def", "Courier");
+
+pref("font.name.serif.x-western", "Times");
+pref("font.name.sans-serif.x-western", "Helvetica");
+pref("font.name.monospace.x-western", "Courier");
+
+pref("font.name.serif.zh-CN", "serif");
+pref("font.name.sans-serif.zh-CN", "sans-serif");
+pref("font.name.monospace.zh-CN", "monospace");
+
+// ming_uni.ttf (HKSCS-2001) 
+// http://www.info.gov.hk/digital21/eng/hkscs/download/uime.exe
+pref("font.name.serif.zh-HK", "serif");
+pref("font.name.sans-serif.zh-HK", "sans-serif");
+pref("font.name.monospace.zh-HK", "monospace");
+
+// zh-TW
+# MOZ_ENABLE_XFT
+#else
 pref("font.name.serif.el", "misc-fixed-iso8859-7");
 pref("font.name.sans-serif.el", "misc-fixed-iso8859-7");
 pref("font.name.monospace.el", "misc-fixed-iso8859-7");
@@ -1816,6 +1915,8 @@ pref("font.name.sans-serif.zh-HK", "-arphic-Ming for ISO10646-big5hkscs-0");
 pref("font.name.monospace.zh-HK", "-arphic-Ming for ISO10646-big5hkscs-0");
 
 // zh-TW
+# MOZ_ENABLE_XFT
+#endif
 
 pref("font.default.ar", "sans-serif");
 pref("font.size.variable.ar", 16);

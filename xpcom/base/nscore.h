@@ -176,20 +176,6 @@
 #define NS_EXPORT_STATIC_MEMBER_(type) type
 #define NS_IMPORT_STATIC_MEMBER_(type) type
 
-#elif defined(XP_MAC)
-
-#define NS_IMPORT
-#define NS_IMPORT_(type) type
-#define NS_EXPORT __declspec(export)
-#define NS_EXPORT_(type) __declspec(export) type
-#define NS_IMETHOD_(type) virtual type
-#define NS_IMETHODIMP_(type) type
-#define NS_METHOD_(type) type
-#define NS_CALLBACK_(_type, _name) _type (* _name)
-#define NS_STDCALL
-#define NS_EXPORT_STATIC_MEMBER_(type) type
-#define NS_IMPORT_STATIC_MEMBER_(type) type
-
 #else
 
 #define NS_IMPORT NS_EXTERNAL_VIS
@@ -256,9 +242,18 @@
 #endif
 
 #ifdef MOZILLA_INTERNAL_API
-#define NS_COM_GLUE NS_COM
+#  define NS_COM_GLUE NS_COM
+   /*
+     The frozen string API has different definitions of nsAC?String
+     classes than the internal API. On systems that explicitly declare
+     dllexport symbols this is not a problem, but on ELF systems
+     internal symbols can accidentally "shine through"; we rename the
+     internal classes to avoid symbol conflicts.
+   */
+#  define nsAString nsAString_internal
+#  define nsACString nsACString_internal
 #else
-#define NS_COM_GLUE
+#  define NS_COM_GLUE
 #endif
 
 
@@ -342,7 +337,7 @@ typedef PRUint32 nsresult;
    * commercial build.  When this is fixed there will be no need for the
    * |NS_REINTERPRET_CAST| in nsLiteralString.h either.
    */
-  #if defined(HAVE_CPP_2BYTE_WCHAR_T) && (defined(NS_WIN32) || defined(XP_MAC))
+  #if defined(HAVE_CPP_2BYTE_WCHAR_T) && defined(NS_WIN32)
     typedef wchar_t PRUnichar;
   #else
     typedef PRUint16 PRUnichar;
