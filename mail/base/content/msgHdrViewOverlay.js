@@ -110,7 +110,8 @@ var gExpandedHeaderList = [ {name:"subject"},
                             {name:"cc", useToggle:true, outputFunction:OutputEmailAddresses},
                             {name:"bcc", useToggle:true, outputFunction:OutputEmailAddresses},
                             {name:"newsgroups", outputFunction:OutputNewsgroups},
-                            {name:"followup-to", outputFunction:OutputNewsgroups} ];
+                            {name:"followup-to", outputFunction:OutputNewsgroups},
+                            {name:"content-base"} ];
 
 // Now, for each view the message pane can generate, we need a global table of headerEntries. These
 // header entry objects are generated dynamically based on the static date in the header lists (see above)
@@ -306,6 +307,7 @@ var messageHeaderSink = {
       gBuildAttachmentPopupForCurrentMsg = true;
       ClearAttachmentList();
       ClearEditMessageButton();
+      SetUpRemoteContentBar(null);
 
       for (index in gMessageListeners)
         gMessageListeners[index].onStartHeaders();
@@ -429,7 +431,16 @@ var messageHeaderSink = {
 
     onEndMsgDownload: function(url)
     {
+      OnMsgParsed(url);
+    },
+
+    onEndMsgHeaders: function(url)
+    { 
       OnMsgLoaded(url);
+    },
+    onMsgHasRemoteContent: function(aMsgHdr)
+    {
+      SetUpRemoteContentBar(aMsgHdr);
     },
 
     mSecurityInfo  : null,
@@ -887,7 +898,13 @@ function AddExtraAddressProcessing(emailAddress, addressNode)
   var displayName = addressNode.getTextAttribute("displayName");  
   var emailAddress = addressNode.getTextAttribute("emailAddress");
 
-  if (gShowCondensedEmailAddresses && displayName && useDisplayNameForAddress(emailAddress))
+  // always show the address for the from and reply-to fields
+  var parentElementId = addressNode.parentNode.id;
+  var condenseName = true;
+  if (parentElementId == "expandedfromBox" || parentElementId == "expandedreply-toBox")
+    condenseName = false;
+
+  if (condenseName && gShowCondensedEmailAddresses && displayName && useDisplayNameForAddress(emailAddress))
   {
     addressNode.setAttribute('label', displayName); 
     addressNode.setAttribute("tooltiptext", emailAddress);
@@ -1401,7 +1418,7 @@ nsFlavorDataProvider.prototype =
       // call our code for saving attachments
       if (attachment)
       {
-        var destFilePath = messenger.saveAttachmentToFolder(attachment.contentType, attachment.url, attachment.displayName, attachment.uri, destDirectory);
+        var destFilePath = messenger.saveAttachmentToFolder(attachment.contentType, attachment.url, encodeURIComponent(attachment.displayName), attachment.uri, destDirectory);
         aData.value = destFilePath.QueryInterface(Components.interfaces.nsISupports);
         aDataLen.value = 4;
       }

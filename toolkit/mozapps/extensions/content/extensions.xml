@@ -65,28 +65,9 @@
             <xul:label class="extension-item-version" xbl:inherits="value=version"/>
           </xul:hbox>
           <xul:label class="extension-item-description" xbl:inherits="value=description" crop="right"/>
-          <xul:label class="extension-item-creator" xbl:inherits="value=creator" crop="right"/>
-        </xul:vbox>
-        <xul:vbox pack="start">
-          <xul:image class="extension-button" anonid="options-button" 
-#ifdef XP_WIN
-                     tooltiptext="&options.tooltip;" 
-#else
-                     tooltiptext="&optionsUnix.tooltip;" 
-#endif
-                     onclick="gExtensionsViewController.doCommand('cmd_options');"/>
-          <xul:image class="extension-button" anonid="about-button" 
-                     tooltiptext="&about.tooltip;" 
-                     onclick="gExtensionsViewController.doCommand('cmd_about');"/>
-          <xul:image class="extension-button" anonid="homepage-button" 
-                     tooltiptext="&homepage.tooltip;" 
-                     onclick="gExtensionsViewController.doCommand('cmd_homepage');"/>
         </xul:vbox>
       </xul:hbox>
     </content>  
-    <implementation>
-      <field name="eventPrefix">"extension-"</field>
-    </implementation>
   </binding>
   
   <binding id="extension-tobedisabled" extends="chrome://mozapps/content/shared/richview.xml#richview-item">

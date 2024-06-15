@@ -36,16 +36,21 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-#include "nsIGenericFactory.h"
 #include "nsILocalFile.h"
+#include "nsIDOMWindowInternal.h"
 #include "nsIProfileMigrator.h"
 #include "nsIServiceManager.h"
 #include "nsIToolkitProfile.h"
 #include "nsIToolkitProfileService.h"
+#include "nsIWindowWatcher.h"
+#include "nsISupportsPrimitives.h"
+#include "nsISupportsArray.h"
 
 #include "nsDirectoryServiceDefs.h"
 #include "nsProfileMigrator.h"
+#include "nsMailMigrationCID.h"
 
+#include "nsCRT.h"
 #include "NSReg.h"
 #include "nsReadableUtils.h"
 #include "nsString.h"
@@ -65,12 +70,92 @@
 
 NS_IMPL_ISUPPORTS1(nsProfileMigrator, nsIProfileMigrator)
 
+#define MIGRATION_WIZARD_FE_URL "chrome://messenger/content/migration/migration.xul"
+#define MIGRATION_WIZARD_FE_FEATURES "chrome,dialog,modal,centerscreen"
+
 NS_IMETHODIMP
 nsProfileMigrator::Migrate(nsIProfileStartup* aStartup)
 {
-  // we don't do migration, only import
+  nsCAutoString key;
+  GetDefaultMailMigratorKey(key);
 
-  return NS_OK;
+  nsCOMPtr<nsISupportsCString> cstr (do_CreateInstance("@mozilla.org/supports-cstring;1"));
+  NS_ENSURE_TRUE(cstr, NS_ERROR_OUT_OF_MEMORY);
+  cstr->SetData(key);
+
+  // By opening the Migration FE with a supplied mailMigrator, it will automatically
+  // migrate from it. 
+  nsCOMPtr<nsIWindowWatcher> ww (do_GetService(NS_WINDOWWATCHER_CONTRACTID));
+  nsCOMPtr<nsISupportsArray> params;
+  NS_NewISupportsArray(getter_AddRefs(params));
+  if (!ww || !params) return NS_ERROR_FAILURE;
+
+  params->AppendElement(cstr);
+  params->AppendElement(aStartup);
+
+  nsCOMPtr<nsIDOMWindow> migrateWizard;
+  return ww->OpenWindow(nsnull, 
+                        MIGRATION_WIZARD_FE_URL,
+                        "_blank",
+                        MIGRATION_WIZARD_FE_FEATURES,
+                        params,
+                        getter_AddRefs(migrateWizard));
+}
+
+#ifdef XP_WIN
+typedef struct {
+  WORD wLanguage;
+  WORD wCodePage;
+} LANGANDCODEPAGE;
+
+#define INTERNAL_NAME_THUNDERBIRD     "Thunderbird"
+#define INTERNAL_NAME_SEAMONKEY       "Mozilla"
+#define INTERNAL_NAME_DOGBERT         "Netscape Messenger"
+#endif
+
+void
+nsProfileMigrator::GetDefaultMailMigratorKey(nsACString& aKey)
+{
+#if 0
+  HKEY hkey;
+
+  const char* kCommandKey = "SOFTWARE\\Clients\\Mail";
+  if (::RegOpenKeyEx(HKEY_LOCAL_MACHINE, kCommandKey, 0, KEY_READ, &hkey) == ERROR_SUCCESS) 
+  {
+    DWORD type;
+    DWORD length = MAX_PATH;
+    unsigned char value[MAX_PATH];
+    if (::RegQueryValueEx(hkey, NULL, 0, &type, value, &length) == ERROR_SUCCESS) 
+    {
+      nsCAutoString str; str.Assign((char*)value);
+
+      if (!nsCRT::strcasecmp((char*)value, INTERNAL_NAME_SEAMONKEY)) 
+      {
+        aKey = "seamonkey";
+        return NS_OK;
+      }
+      
+      if (!nsCRT::strcasecmp((char*)value, INTERNAL_NAME_DOGBERT)) 
+      {
+        aKey = "dogbert";
+        return NS_OK;
+      }
+    }
+  }
+#else
+  // XXXben - until we figure out what to do here with default browsers on MacOS and
+  // GNOME, simply copy data from a previous Seamonkey install. 
+  PRBool exists = PR_FALSE;
+  nsCOMPtr<nsIMailProfileMigrator> mailMigrator;
+  mailMigrator = do_CreateInstance(NS_MAILPROFILEMIGRATOR_CONTRACTID_PREFIX "seamonkey");
+  if (mailMigrator)
+    mailMigrator->GetSourceExists(&exists);
+  if (exists) {
+    aKey = "seamonkey";
+  }
+#endif
+  
+  return;
 }
 
 NS_IMETHODIMP
@@ -108,6 +193,12 @@ nsProfileMigrator::ImportRegistryProfiles(const nsACString& aAppName)
   NS_ENSURE_SUCCESS(rv, PR_FALSE);
   regFile->AppendNative(aAppName);
   regFile->AppendNative(NS_LITERAL_CSTRING("Application Registry"));
+#elif defined(XP_OS2)
+  rv = dirService->Get(NS_OS2_HOME_DIR, NS_GET_IID(nsILocalFile),
+                       getter_AddRefs(regFile));
+  NS_ENSURE_SUCCESS(rv, PR_FALSE);
+  regFile->AppendNative(aAppName);
+  regFile->AppendNative(NS_LITERAL_CSTRING("registry.dat"));
 #else
   rv = dirService->Get(NS_UNIX_HOME_DIR, NS_GET_IID(nsILocalFile),
                        getter_AddRefs(regFile));
@@ -180,17 +271,3 @@ cleanup:
   NR_ShutdownRegistry();
   return migrated;
 }
-
-// Make this into a component
-
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsProfileMigrator)
-
-static const nsModuleComponentInfo components[] =
-{
-  { "Profile Importer",
-    NS_THUNDERBIRD_PROFILEIMPORT_CID,
-    NS_PROFILEMIGRATOR_CONTRACTID,
-    nsProfileMigratorConstructor },
-};
-
-NS_IMPL_NSGETMODULE(nsMailProfileMigratorModule, components)

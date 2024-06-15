@@ -479,7 +479,7 @@ struct JSPrinter {
  * opposed to JS_DONT_PRETTY_PRINT back in the dark ages, we can assume that a
  * uintN is at least 32 bits.
  */
-#define JS_GROUP_CONTEXT    0x10000
+#define JS_IN_GROUP_CONTEXT 0x10000
 
 JSPrinter *
 js_NewPrinter(JSContext *cx, const char *name, uintN indent, JSBool pretty)
@@ -493,9 +493,9 @@ js_NewPrinter(JSContext *cx, const char *name, uintN indent, JSBool pretty)
         return NULL;
     INIT_SPRINTER(cx, &jp->sprinter, &jp->pool, 0);
     JS_InitArenaPool(&jp->pool, name, 256, 1);
-    jp->indent = indent & ~JS_GROUP_CONTEXT;
-    jp->grouped = (indent & JS_GROUP_CONTEXT) != 0;
+    jp->indent = indent & ~JS_IN_GROUP_CONTEXT;
     jp->pretty = pretty;
+    jp->grouped = (indent & JS_IN_GROUP_CONTEXT) != 0;
     jp->script = NULL;
     jp->scope = NULL;
     fp = cx->fp;
@@ -860,6 +860,8 @@ Decompile(SprintStack *ss, jsbytecode *pc, intN nb)
     JSString *str;
     JSBool ok;
     jsval val;
+    static const char catch_cookie[] = "/*CATCH*/";
+    static const char with_cookie[] = "/*WITH*/";
 
 /*
  * Local macros
@@ -1082,6 +1084,7 @@ Decompile(SprintStack *ss, jsbytecode *pc, intN nb)
 
                     js_printf(jp, ") {\n");
                     jp->indent += 4;
+                    todo = Sprint(&ss->sprinter, catch_cookie);
                     len = 0;
                     break;
 
@@ -1137,7 +1140,7 @@ Decompile(SprintStack *ss, jsbytecode *pc, intN nb)
                 break;
 
             {
-              static const char finally_cookie[] = "finally-cookie";
+              static const char finally_cookie[] = "/*FINALLY*/";
 
               case JSOP_FINALLY:
                 jp->indent -= 4;
@@ -1184,6 +1187,7 @@ Decompile(SprintStack *ss, jsbytecode *pc, intN nb)
                  * The decompiler must match the code generator's model, which
                  * is why JSOP_FINALLY pushes a cookie that JSOP_RETSUB pops.
                  */
+                LOCAL_ASSERT(ss->top >= (uintN) GET_ATOM_INDEX(pc));
                 ss->top = (uintN) GET_ATOM_INDEX(pc);
                 break;
 
@@ -1252,15 +1256,8 @@ Decompile(SprintStack *ss, jsbytecode *pc, intN nb)
                 todo = -2;
                 break;
 
-            {
-              static const char with_cookie[] = "with-cookie";
-
               case JSOP_ENTERWITH:
-                sn = js_GetSrcNote(jp->script, pc);
-                if (sn && SN_TYPE(sn) == SRC_HIDDEN) {
-                    todo = -2;
-                    break;
-                }
+                JS_ASSERT(!js_GetSrcNote(jp->script, pc));
                 rval = POP_STR();
                 js_printf(jp, "\twith (%s) {\n", rval);
                 jp->indent += 4;
@@ -1273,19 +1270,24 @@ Decompile(SprintStack *ss, jsbytecode *pc, intN nb)
                 if (sn && SN_TYPE(sn) == SRC_HIDDEN)
                     break;
                 rval = POP_STR();
+                if (sn && SN_TYPE(sn) == SRC_CATCH) {
+                    LOCAL_ASSERT(strcmp(rval, catch_cookie) == 0);
+                    LOCAL_ASSERT((uintN) js_GetSrcNoteOffset(sn, 0) == ss->top);
+                    break;
+                }
                 LOCAL_ASSERT(strcmp(rval, with_cookie) == 0);
                 jp->indent -= 4;
                 js_printf(jp, "\t}\n");
                 break;
-            }
 
               case JSOP_SETRVAL:
               case JSOP_RETURN:
+                lval = js_CodeSpec[JSOP_RETURN].name;
                 rval = POP_STR();
                 if (*rval != '\0')
-                    js_printf(jp, "\t%s %s;\n", cs->name, rval);
+                    js_printf(jp, "\t%s %s;\n", lval, rval);
                 else
-                    js_printf(jp, "\t%s;\n", cs->name);
+                    js_printf(jp, "\t%s;\n", lval);
                 todo = -2;
                 break;
 
@@ -1924,11 +1926,11 @@ Decompile(SprintStack *ss, jsbytecode *pc, intN nb)
                     if (!js_fun_toString(cx, ATOM_TO_OBJECT(atom),
                                          (pc + len < endpc &&
                                           pc[len] == JSOP_GROUP)
-                                         ? JS_GROUP_CONTEXT |
+                                         ? JS_IN_GROUP_CONTEXT |
                                            JS_DONT_PRETTY_PRINT
                                          : JS_DONT_PRETTY_PRINT,
                                          0, NULL, &val)) {
-                         return JS_FALSE;
+                        return JS_FALSE;
                     }
                     str = JSVAL_TO_STRING(val);
                 }

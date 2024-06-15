@@ -164,7 +164,7 @@ function Startup()
   toggleDMPrefUI(document.getElementById("showWhenStarting"));
 #endif
   
-  setTimeout("postStart()", 0);
+  setTimeout(postStart, 0);
 }
 
 function postStart()
@@ -299,7 +299,7 @@ function showFolder()
 function getSpecialFolderKey(aFolderType) 
 {
 #ifdef XP_WIN
-  return aFolderType == "Desktop" ? "DeskV" : "Pers";
+  return aFolderType == "Desktop" ? "DeskP" : "Pers";
 #endif
 #ifdef XP_MACOSX
   return aFolderType == "Desktop" ? "UsrDsk" : "UsrDocs";

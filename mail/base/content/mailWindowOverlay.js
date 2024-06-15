@@ -34,6 +34,14 @@ const kClassicMailLayout = 0;
 const kWideMailLayout = 1;
 const kVerticalMailLayout = 2;
 
+// Per message headder flags to keep track of whether the user is allowing remote
+// content for a particular message. 
+// if you change or add more values to these constants, be sure to modify
+// the corresponding definitions in nsMsgContentPolicy.cpp
+const kNoRemoteContentPolicy = 0;
+const kBlockRemoteContent = 1;
+const kAllowRemoteContent = 2;
+
 var gMessengerBundle;
 var gPromptService;
 var gOfflinePromptsBundle;
@@ -85,7 +93,7 @@ function menu_new_init()
   var isServer = msgFolder.isServer;
   var serverType = msgFolder.server.type;
   var canCreateNew = msgFolder.canCreateSubfolders;
-  var isInbox = IsSpecialFolder(msgFolder, MSG_FOLDER_FLAG_INBOX);
+  var isInbox = IsSpecialFolder(msgFolder, MSG_FOLDER_FLAG_INBOX, false);
   var isIMAPFolder = serverType == "imap";
   var ioService = Components.classes["@mozilla.org/network/io-service;1"]
                          .getService(Components.interfaces.nsIIOService);
@@ -701,13 +709,17 @@ function GetInboxFolder(server)
 function GetMessagesForInboxOnServer(server)
 {
   var inboxFolder = GetInboxFolder(server);
-  if (!inboxFolder) return;
+
+  // if the server doesn't support an inbox it could be an RSS server or some other server type..
+  // just use the root folder and the server implementation can figure out what to do.
+  if (!inboxFolder)
+    inboxFolder = server.rootFolder;    
 
   var folders = new Array(1);
   folders[0] = inboxFolder;
 
   var compositeDataSource = GetCompositeDataSource("GetNewMessages");
-  GetNewMessages(folders, compositeDataSource);
+  GetNewMessages(folders, server, compositeDataSource);
 }
 
 function MsgGetMessage()
@@ -725,6 +737,11 @@ function MsgGetMessagesForAllServers(defaultServer)
     try
     {
         var allServers = accountManager.allServers;
+        var firstPop3DownloadServer;
+
+        // these arrays are parallel
+        var pop3DownloadServersArray = new Array; // array of isupportsarrays of servers for a particular folder
+        var localFoldersToDownloadTo; // isupports array of folders to download to...
 
         for (var i=0;i<allServers.Count();i++)
         {
@@ -738,10 +755,37 @@ function MsgGetMessagesForAllServers(defaultServer)
                 }
                 else
                 {
+                    if (currentServer.type == "pop3" && currentServer.downloadOnBiff)
+                    {
+                      var outNumFolders = new Object();
+                      var inboxFolder = currentServer.rootMsgFolder.getFoldersWithFlag(0x1000, 1, outNumFolders); 
+                      pop3Server = currentServer.QueryInterface(Components.interfaces.nsIPop3IncomingServer);
+                      if (!localFoldersToDownloadTo)
+                        localFoldersToDownloadTo = Components.classes["@mozilla.org/supports-array;1"].createInstance(Components.interfaces.nsISupportsArray);
+                      // coalesce the servers that download into the same folder...
+                      var index = localFoldersToDownloadTo.GetIndexOf(inboxFolder);
+                      if (index == -1)
+                      {
+                        localFoldersToDownloadTo.AppendElement(inboxFolder);
+                        index = pop3DownloadServersArray.length
+                        pop3DownloadServersArray[index] = Components.classes["@mozilla.org/supports-array;1"].createInstance(Components.interfaces.nsISupportsArray);
+                        pop3DownloadServersArray[index].AppendElement(currentServer);
+                      }
+                      else
+                      {
+                        pop3DownloadServersArray[index].AppendElement(currentServer);
+                      }
+                    }
+                    else
                     // Check to see if there are new messages on the server
                     currentServer.PerformBiff(msgWindow);
                 }
             }
+        }
+        for (var i = 0; i < pop3DownloadServersArray.length; i++)
+        {
+          // any ol' pop3Server will do - the serversArray specifies which servers to download from
+          pop3Server.downloadMailFromServers(pop3DownloadServersArray[i], msgWindow, localFoldersToDownloadTo.GetElementAt(i), null);
         }
     }
     catch(ex)
@@ -1844,11 +1888,13 @@ function GetFolderMessages()
   else if (serverType == "none") {
     // if "Local Folders" is selected
     // and the user does "Get Msgs"
+    // and LocalFolders is not deferred to,
     // get new mail for the default account
     //
     // XXX TODO
     // should shift click get mail for all (authenticated) accounts?
     // see bug #125885
+    if (!folder.server.isDeferredTo)
     folder = defaultAccountRootFolder;
   }
 
@@ -1856,7 +1902,7 @@ function GetFolderMessages()
   folders[0] = folder;
 
   var compositeDataSource = GetCompositeDataSource("GetNewMessages");
-  GetNewMessages(folders, compositeDataSource);
+  GetNewMessages(folders, folder.server, compositeDataSource);
 }
 
 function SendUnsentMessages()
@@ -2046,6 +2092,41 @@ function SetUpJunkBar(aMsgHdr)
   return (isJunk && isAlreadyCollapsed) || (!isJunk && !isAlreadyCollapsed);
 }
 
+// hides or shows the remote content bar based on the property in the msg hdr
+function SetUpRemoteContentBar(aMsgHdr)
+{
+  var showRemoteContentBar = false;
+  if (aMsgHdr && aMsgHdr.getUint32Property("remoteContentPolicy") == kBlockRemoteContent)
+    showRemoteContentBar = true;
+
+  var remoteContentBar = document.getElementById("remoteContentBar");
+  
+  if (showRemoteContentBar)
+    remoteContentBar.removeAttribute("collapsed");
+  else
+    remoteContentBar.setAttribute("collapsed","true");
+}
+
+function LoadMsgWithRemoteContent()
+{
+  // we want to get the msg hdr for the currently selected message
+  // change the "remoteContentBar" property on it
+  // then reload the message
+
+  var msgURI = GetLoadedMessage();
+  var msgHdr = null;
+    
+  if (msgURI && !(/type=x-message-display/.test(msgURI)))
+  {
+    msgHdr = messenger.messageServiceFromURI(msgURI).messageURIToMsgHdr(msgURI);
+    if (msgHdr)
+    {
+      msgHdr.setUint32Property("remoteContentPolicy", kAllowRemoteContent); 
+      MsgReload();
+    }
+  }
+}
+
 function MarkCurrentMessageAsRead()
 {
   gDBView.doCommand(nsMsgViewCommandType.markMessagesRead);
@@ -2060,6 +2141,14 @@ function ClearPendingReadTimer()
   }
 }
 
+// this is called when layout is actually finished rendering a 
+// mail message. OnMsgLoaded is called when libmime is done parsing the message
+function OnMsgParsed(aUrl)
+{
+  if ("onQuickSearchNewMsgLoaded" in this)
+    onQuickSearchNewMsgLoaded();
+}
+
 function OnMsgLoaded(aUrl)
 {
     if (!aUrl)
@@ -2072,13 +2161,10 @@ function OnMsgLoaded(aUrl)
     if (!folder || !msgURI)
       return;
 
-    if (/type=x-message-display/.test(msgURI))
-      SetUpJunkBar(null);
-    else
-    {
+    if (!(/type=x-message-display/.test(msgURI)))
       msgHdr = messenger.messageServiceFromURI(msgURI).messageURIToMsgHdr(msgURI);
+        
       SetUpJunkBar(msgHdr);
-    }
 
     // we just finished loading a message. set a timer to actually mark the message is read after n seconds
     // where n can be configured by the user.

@@ -535,6 +535,10 @@ nsGenericHTMLElement::GetStyle(nsIDOMCSSStyleDeclaration** aStyle)
 void
 nsGenericHTMLElement::RecreateFrames()
 {
+  if (!mDocument) {
+    return;
+  }
+
   PRInt32 numShells = mDocument->GetNumberOfShells();
   for (PRInt32 i = 0; i < numShells; ++i) {
     nsIPresShell *shell = mDocument->GetShellAt(i);
@@ -1641,7 +1645,7 @@ nsGenericHTMLElement::SetAttrAndNotify(PRInt32 aNamespaceID,
   }
   else {
     nsCOMPtr<nsINodeInfo> ni;
-    rv = mNodeInfo->NodeInfoManager()->GetNodeInfo(aAttribute, nsnull,
+    rv = mNodeInfo->NodeInfoManager()->GetNodeInfo(aAttribute, aPrefix,
                                                    aNamespaceID,
                                                    getter_AddRefs(ni));
     NS_ENSURE_SUCCESS(rv, rv);

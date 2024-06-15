@@ -191,6 +191,10 @@ function FinishAccount()
         accountData.smtpRequiresUsername = true;
     }
     
+    // we may need local folders before account is "Finished"
+    // if it's a pop3 account which defers to Local Folders.
+    verifyLocalFoldersAccount();
+
     PageDataToAccountData(pageData, accountData);
 
     FixupAccountDataForIsp(accountData);
@@ -202,7 +206,7 @@ function FinishAccount()
     // transfer all attributes from the accountdata
     finishAccount(gCurrentAccount, accountData);
     
-    verifyLocalFoldersAccount(gCurrentAccount);
+    setupCopiesAndFoldersServer(gCurrentAccount, getCurrentServerIsDeferred(pageData));
 
     if (!serverIsNntp(pageData))
         EnableCheckMailAtStartUpIfNeeded(gCurrentAccount);
@@ -318,18 +322,34 @@ function PageDataToAccountData(pageData, accountData)
         accountData.incomingServer = new Object;
     if (!accountData.smtp)
         accountData.smtp = new Object;
+    if (!accountData.pop3)
+        accountData.pop3 = new Object;
     
     var identity = accountData.identity;
     var server = accountData.incomingServer;
     var smtp = accountData.smtp;
 
-    dump("Setting identity for " + pageData.identity.email.value + "\n");
+    dump("Setting identity for \n");
+    if (pageData.identity.email)
     identity.email = pageData.identity.email.value;
+    if (pageData.identity.fullName)
     identity.fullName = pageData.identity.fullName.value;
 
     server.type = getCurrentServerType(pageData);
     server.hostName = getCurrentHostname(pageData);
-
+    if (getCurrentServerIsDeferred(pageData))
+    {
+      try
+      {
+        var accountManager = Components.classes["@mozilla.org/messenger/account-manager;1"].getService(Components.interfaces.nsIMsgAccountManager);
+        var localFoldersServer = accountManager.localFoldersServer;
+        var localFoldersAccount = accountManager.FindAccountForServer(localFoldersServer);
+        accountData.pop3.deferredToAccount = localFoldersAccount.key;
+        accountData.pop3.deferGetNewMail = true;
+        server["ServerType-pop3"] = accountData.pop3;
+      }
+      catch (ex) {dump ("exception setting up deferred account" + ex);}
+    }
     if (serverIsNntp(pageData)) {
         // this stuff probably not relevant
         dump("not setting username/password/rememberpassword/etc\n");
@@ -380,6 +400,11 @@ function createAccount(accountData)
                                          server.hostName,
                                          server.type);
     
+    dump("am.createAccount()\n");
+    var account = am.createAccount();
+    
+    if (accountData.identity.email) // only create an identity for this account if we really have one (use the email address as a check)
+    {
     dump("am.createIdentity()\n");
     var identity = am.createIdentity();
     
@@ -389,10 +414,15 @@ function createAccount(accountData)
 			identity.composeHtml = false;
     }
 
-    dump("am.createAccount()\n");
-    var account = am.createAccount();
     account.addIdentity(identity);
+    }
+
+    // we mark the server as invalid so that the account manager won't
+    // tell RDF about the new server - it's not quite finished getting
+    // set up yet, in particular, the deferred storage pref hasn't been set.
+    server.valid = false;
     account.incomingServer = server;
+    server.valid = true;
     return account;
 }
 
@@ -423,13 +453,17 @@ function finishAccount(account, accountData)
             }
         }
         account.incomingServer.valid=true;
+        // hack to cause an account loaded notification now the server is valid
+        account.incomingServer = account.incomingServer;
     }
 
     // copy identity info
-    var destIdentity =
-        account.identities.QueryElementAt(0, nsIMsgIdentity);
+    var destIdentity = account.identities.Count() ? account.identities.QueryElementAt(0, nsIMsgIdentity) : null;
     
-    if (accountData.identity && destIdentity) {
+    if (destIdentity) // does this account have an identity? 
+    {   
+        if (accountData.identity && accountData.identity.email) {
+            dump('trying to write out an identity: ' + destIdentity + '\n');
 
         // fixup the email address if we have a default domain
         var emailArray = accountData.identity.email.split('@');
@@ -499,6 +533,7 @@ function finishAccount(account, accountData)
           }
         }
      }
+     } // if the account has an identity...
 
      if (this.FinishAccountHook != undefined) {
          FinishAccountHook(accountData.domain);
@@ -528,59 +563,73 @@ function copyObjectToInterface(dest, src) {
 
 // check if there already is a "Local Folders"
 // if not, create it.
-function verifyLocalFoldersAccount(account) 
+function verifyLocalFoldersAccount() 
 {
-	var localMailServer = null;
-	try {
-		localMailServer = am.localFoldersServer;
-	}
-	catch (ex) {
-        // dump("exception in findserver: " + ex + "\n");
-		localMailServer = null;
-	}
+  dump ("verifying local folders account\n");
+  var localMailServer = null;
+  try {
+    localMailServer = am.localFoldersServer;
+  }
+  catch (ex) {
+         // dump("exception in findserver: " + ex + "\n");
+    localMailServer = null;
+  }
 
-    try {
+  try {
+
+    if (!localMailServer) 
+    {
+      // dump("Creating local mail account\n");
+      // creates a copy of the identity you pass in
+      messengerMigrator = Components.classes["@mozilla.org/messenger/migrator;1"].getService(Components.interfaces.nsIMessengerMigrator);
+      messengerMigrator.createLocalMailAccount(false /* false, since we are not migrating */);
+      try {
+        localMailServer = am.localFoldersServer;
+      }
+      catch (ex) {
+        dump("error!  we should have found the local mail server after we created it.\n");
+        localMailServer = null;
+      }	
+    }
+  }
+  catch (ex) {dump("Error in verifyLocalFoldersAccount" + ex + "\n");  }
+
+}
+
+function setupCopiesAndFoldersServer(account, accountIsDeferred)
+{
+  try {
     var server = account.incomingServer;
     var identity = account.identities.QueryElementAt(0, Components.interfaces.nsIMsgIdentity);
+    // For this server, do we default the folder prefs to this server, or to the "Local Folders" server
+    // If it's deferred, we use the local folders account.
+    var defaultCopiesAndFoldersPrefsToServer = !accountIsDeferred && server.defaultCopiesAndFoldersPrefsToServer;
+    dump ("verifying local folders account \n");
 
-	// for this server, do we default the folder prefs to this server, or to the "Local Folders" server
-	var defaultCopiesAndFoldersPrefsToServer = server.defaultCopiesAndFoldersPrefsToServer;
-
-	if (!localMailServer) {
-        	// dump("Creating local mail account\n");
-		// creates a copy of the identity you pass in
-        	messengerMigrator = Components.classes["@mozilla.org/messenger/migrator;1"].getService(Components.interfaces.nsIMessengerMigrator);
-		messengerMigrator.createLocalMailAccount(false /* false, since we are not migrating */);
-		try {
-			localMailServer = am.localFoldersServer;
-		}
-		catch (ex) {
-			dump("error!  we should have found the local mail server after we created it.\n");
-			localMailServer = null;
-		}	
-    	}
-
-	var copiesAndFoldersServer = null;
-	if (defaultCopiesAndFoldersPrefsToServer) {
-		copiesAndFoldersServer = server;
-	}
-	else {
-		if (!localMailServer) {
-			dump("error!  we should have a local mail server at this point\n");
-			return;
-		}
-		copiesAndFoldersServer = localMailServer;
-	}
-	
-	setDefaultCopiesAndFoldersPrefs(identity, copiesAndFoldersServer);
-
-    } catch (ex) {
-        // return false (meaning we did not create the account)
-        // on any error
-        dump("Error creating local mail: " + ex + "\n");
-        return false;
+    var copiesAndFoldersServer = null;
+    if (defaultCopiesAndFoldersPrefsToServer) 
+    {
+      copiesAndFoldersServer = server;
     }
-    return true;
+    else 
+    {
+      if (!am.localFoldersServer) 
+      {
+        dump("error!  we should have a local mail server at this point\n");
+        return;
+      }
+      copiesAndFoldersServer = am.localFoldersServer;
+    }
+	  
+    setDefaultCopiesAndFoldersPrefs(identity, copiesAndFoldersServer);
+
+  } catch (ex) {
+    // return false (meaning we did not setupCopiesAndFoldersServer)
+    // on any error
+    dump("Error setupCopiesAndFoldersServer" + ex + "\n");
+    return false;
+  }
+  return true;
 }
 
 function setDefaultCopiesAndFoldersPrefs(identity, server)
@@ -824,6 +873,14 @@ function getCurrentServerType(pageData) {
     else if (pageData.server && pageData.server.servertype)
         servertype = pageData.server.servertype.value;
     return servertype;
+}
+
+function getCurrentServerIsDeferred(pageData) {
+    var serverDeferred = false; 
+    if (getCurrentServerType(pageData) == "pop3" && pageData.server && pageData.server.deferStorage)
+        serverDeferred = pageData.server.deferStorage.value;
+
+    return serverDeferred;
 }
 
 function getCurrentHostname(pageData) {

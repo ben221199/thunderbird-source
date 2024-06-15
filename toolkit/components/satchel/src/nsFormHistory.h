@@ -81,6 +81,7 @@ protected:
   nsresult CloseDatabase();
   nsresult CreateTokens();
   nsresult Flush();
+  nsresult CopyRowsFromTable(nsIMdbTable *sourceTable);
   
   mdb_err UseThumb(nsIMdbThumb *aThumb, PRBool *aDone);
   
@@ -91,6 +92,10 @@ protected:
   PRBool RowMatch(nsIMdbRow *aRow, const nsAString &aInputName, const nsAString &aInputValue, PRUnichar **aValue);
   
   PR_STATIC_CALLBACK(int) SortComparison(const void *v1, const void *v2, void *closureVoid);
+
+  nsresult EntriesExistInternal(const nsAString *aName, const nsAString *aValue, PRBool *_retval);
+
+  nsresult RemoveEntriesInternal(const nsAString *aName);
 
   static PRBool FormHistoryEnabled();
 

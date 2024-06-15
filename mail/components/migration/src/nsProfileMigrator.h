@@ -39,6 +39,7 @@
 #include "nsIGenericFactory.h"
 #include "nsILocalFile.h"
 #include "nsIProfileMigrator.h"
+#include "nsIMailProfileMigrator.h"
 #include "nsIServiceManager.h"
 #include "nsIToolkitProfile.h"
 #include "nsIToolkitProfileService.h"
@@ -62,6 +63,8 @@ public:
 
 protected:
   ~nsProfileMigrator() { };
+
+  void GetDefaultMailMigratorKey(nsACString& key);
 
   /**
    * Import profiles from ~/.firefox/ or ~/.phoenix/

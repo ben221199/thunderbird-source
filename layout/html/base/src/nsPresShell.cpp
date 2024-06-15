@@ -40,6 +40,7 @@
 #define PL_ARENA_CONST_ALIGN_MASK 3
 #include "nsIPresShell.h"
 #include "nsIPresContext.h"
+#include "nsContentUtils.h"
 #include "nsIContent.h"
 #include "nsIDocument.h"
 #include "nsIDOMXULDocument.h"
@@ -64,8 +65,8 @@
 #include "nsIViewObserver.h"
 #include "nsContainerFrame.h"
 #include "nsIDeviceContext.h"
-#include "nsIEventStateManager.h"
-#include "nsIDOMEvent.h"
+#include "nsEventStateManager.h"
+#include "nsDOMEvent.h"
 #include "nsGUIEvent.h"
 #include "nsHTMLParts.h"
 #include "nsISelection.h"
@@ -108,7 +109,8 @@
 #include "nsTimer.h"
 #include "nsWeakPtr.h"
 #include "plarena.h"
-#include "nsIObserverService.h" // for reflow observation
+#include "nsIObserverService.h"
+#include "nsIObserver.h"
 #include "nsIDocShell.h"        // for reflow observation
 #include "nsLayoutErrors.h"
 #include "nsLayoutUtils.h"
@@ -1001,7 +1003,7 @@ IncrementalReflow::Dump(nsIPresContext *aPresContext) const
 
 class PresShell : public nsIPresShell, public nsIViewObserver,
                   public nsStubDocumentObserver, public nsIFocusTracker,
-                  public nsISelectionController,
+                  public nsISelectionController, public nsIObserver,
                   public nsSupportsWeakReference
 {
 public:
@@ -1035,6 +1037,8 @@ public:
   NS_IMETHOD GetActiveAlternateStyleSheet(nsString& aSheetTitle);
   NS_IMETHOD SelectAlternateStyleSheet(const nsString& aSheetTitle);
   NS_IMETHOD ListAlternateStyleSheets(nsStringArray& aTitleList);
+  NS_IMETHOD GetAuthorStyleDisabled(PRBool* aStyleDisabled);
+  NS_IMETHOD SetAuthorStyleDisabled(PRBool aStyleDisabled);
   NS_IMETHOD ReconstructStyleData();
   NS_IMETHOD SetPreferenceStyleRules(PRBool aForceReflow);
   NS_IMETHOD EnablePrefStyleRules(PRBool aEnable, PRUint8 aPrefType=0xFF);
@@ -1247,6 +1251,8 @@ public:
                                 nsIStyleSheet* aStyleSheet,
                                 nsIStyleRule* aStyleRule);
 
+  NS_DECL_NSIOBSERVER
+
 #ifdef MOZ_REFLOW_PERF
   NS_IMETHOD DumpReflows();
   NS_IMETHOD CountReflows(const char * aName, PRUint32 aType, nsIFrame * aFrame);
@@ -1365,7 +1371,6 @@ protected:
   nsCOMPtr<nsIEventQueue>       mReflowEventQueue;
   FrameArena                    mFrameArena;
   StackArena*                   mStackArena;
-  nsCOMPtr<nsIObserverService>  mObserverService; // Observer service for reflow events
   nsCOMPtr<nsIDragService>      mDragService;
   PRInt32                       mRCCreatedDuringLoad; // Counter to keep track of reflow commands created during doc
   nsCOMPtr<nsIRequest>          mDummyLayoutRequest;
@@ -1578,51 +1583,9 @@ PresShell::PresShell():
   new (this) nsFrameManager();
 }
 
-NS_IMPL_ADDREF(PresShell)
-NS_IMPL_RELEASE(PresShell)
-
-nsresult
-PresShell::QueryInterface(const nsIID& aIID, void** aInstancePtr)
-{
-  if (!aInstancePtr) {
-    return NS_ERROR_NULL_POINTER;
-  }
-
-  if (aIID.Equals(NS_GET_IID(nsIPresShell))) {
-    nsIPresShell* tmp = this;
-    *aInstancePtr = (void*) tmp;
-  } else if (aIID.Equals(NS_GET_IID(nsIDocumentObserver))) {
-    nsIDocumentObserver* tmp = this;
-    *aInstancePtr = (void*) tmp;
-  } else if (aIID.Equals(NS_GET_IID(nsIViewObserver))) {
-    nsIViewObserver* tmp = this;
-    *aInstancePtr = (void*) tmp;
-  } else if (aIID.Equals(NS_GET_IID(nsIFocusTracker))) {
-    nsIFocusTracker* tmp = this;
-    *aInstancePtr = (void*) tmp;
-  } else if (aIID.Equals(NS_GET_IID(nsISelectionController))) {
-    nsISelectionController* tmp = this;
-    *aInstancePtr = (void*) tmp;
-  } else if (aIID.Equals(NS_GET_IID(nsISelectionDisplay))) {
-    nsISelectionController* tmp = this;
-    *aInstancePtr = (void*) tmp;
-  } else if (aIID.Equals(NS_GET_IID(nsISupportsWeakReference))) {
-    nsISupportsWeakReference* tmp = this;
-    *aInstancePtr = (void*) tmp;
-  } else if (aIID.Equals(NS_GET_IID(nsISupports))) {
-    nsIPresShell* tmp = this;
-    nsISupports* tmp2 = tmp;
-    *aInstancePtr = (void*) tmp2;
-  } else {
-    *aInstancePtr = nsnull;
-
-    return NS_NOINTERFACE;
-  }
-
-  NS_ADDREF_THIS();
-
-  return NS_OK;
-}
+NS_IMPL_ISUPPORTS8(PresShell, nsIPresShell, nsIDocumentObserver,
+                   nsIViewObserver, nsIFocusTracker, nsISelectionController,
+                   nsISelectionDisplay, nsIObserver, nsISupportsWeakReference)
 
 PresShell::~PresShell()
 {
@@ -1777,13 +1740,14 @@ PresShell::Init(nsIDocument* aDocument,
     }
   }
 
-  // cache the observation service
-  mObserverService = do_GetService("@mozilla.org/observer-service;1",
-                                   &result);
-  if (NS_FAILED(result)) {
-    mStyleSet = nsnull;
-    return result;
+#ifdef MOZ_XUL
+  {
+    nsCOMPtr<nsIObserverService> os =
+      do_GetService("@mozilla.org/observer-service;1", &result);
+    if (os)
+      os->AddObserver(this, "chrome-flush-skin-caches", PR_FALSE);
   }
+#endif
 
   // cache the drag service so we can check it during reflows
   mDragService = do_GetService("@mozilla.org/widget/dragservice;1");
@@ -1830,6 +1794,15 @@ PresShell::Destroy()
 
   if (mHaveShutDown)
     return NS_OK;
+
+#ifdef MOZ_XUL
+  {
+    nsCOMPtr<nsIObserverService> os =
+      do_GetService("@mozilla.org/observer-service;1");
+    if (os)
+      os->RemoveObserver(this, "chrome-flush-skin-caches");
+  }
+#endif
 
   // If our paint suppression timer is still active, kill it.
   if (mPaintSuppressionTimer) {
@@ -1896,6 +1869,9 @@ PresShell::Destroy()
   // pres shell to NULL
   if (mPresContext) {
     mPresContext->SetShell(nsnull);
+
+    // Clear the link handler (weak reference) as well
+    mPresContext->SetLinkHandler(nsnull);
   }
 
   if (mViewEventListener) {
@@ -2101,6 +2077,23 @@ PresShell::ListAlternateStyleSheets(nsStringArray& aTitleList)
   return NS_OK;
 }
 
+NS_IMETHODIMP
+PresShell::SetAuthorStyleDisabled(PRBool aStyleDisabled)
+{
+  if (aStyleDisabled != mStyleSet->GetAuthorStyleDisabled()) {
+    nsresult rv = mStyleSet->SetAuthorStyleDisabled(aStyleDisabled);
+    if (NS_FAILED(rv)) return rv;
+    return ReconstructStyleData();
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+PresShell::GetAuthorStyleDisabled(PRBool* aStyleDisabled)
+{
+  *aStyleDisabled = mStyleSet->GetAuthorStyleDisabled();
+  return NS_OK;
+}
 
 NS_IMETHODIMP 
 PresShell::EnablePrefStyleRules(PRBool aEnable, PRUint8 aPrefType/*=0xFF*/)
@@ -2687,36 +2680,17 @@ static void CheckForFocus(nsPIDOMWindow* aOurWindow,
   aFocusController->SetFocusedWindow(ourWin);
 }
 
-static nsresult
-GetRootScrollFrame(nsIPresContext* aPresContext, nsIFrame* aRootFrame, nsIFrame** aScrollFrame) {
-
-  // Frames: viewport->scroll->scrollport (Gfx) or viewport->scroll (Native)
-  // Types:  viewport->scroll->sroll               viewport->scroll
-
+static nsIFrame*
+GetRootScrollFrame(nsIFrame* aRootFrame) {
   // Ensure root frame is a viewport frame
-  *aScrollFrame = nsnull;
-  if (aRootFrame) {
-    if (nsLayoutAtoms::viewportFrame == aRootFrame->GetType()) {
-
-      // If child is scrollframe keep it (native)
-      nsIFrame* theFrame = aRootFrame->GetFirstChild(nsnull);
-      if (theFrame) {
-        if (nsLayoutAtoms::scrollFrame == theFrame->GetType()) {
-          *aScrollFrame = theFrame;
-
-          // If the first child of that is scrollframe, use it instead (gfx)
-          theFrame = theFrame->GetFirstChild(nsnull);
-          if (theFrame) {
-            if (nsLayoutAtoms::scrollFrame == theFrame->GetType()) {
-              *aScrollFrame = theFrame;
-            }
-          }
-        }
-      }
+  if (aRootFrame && nsLayoutAtoms::viewportFrame == aRootFrame->GetType()) {
+    nsIFrame* theFrame = aRootFrame->GetFirstChild(nsnull);
+    if (theFrame && nsLayoutAtoms::scrollFrame == theFrame->GetType()) {
+      return theFrame;
     }
   }
 
-  return NS_OK;
+  return nsnull;
 }
 
 NS_IMETHODIMP
@@ -3608,10 +3582,22 @@ PresShell::EndLoad(nsIDocument *aDocument)
   docShell->GetLayoutHistoryState(getter_AddRefs(historyState));
 
   if (rootFrame && historyState) {
-    nsIFrame* scrollFrame = nsnull;
-    GetRootScrollFrame(mPresContext, rootFrame, &scrollFrame);
+    nsIFrame* scrollFrame = GetRootScrollFrame(rootFrame);
     if (scrollFrame) {
-      FrameManager()->RestoreFrameStateFor(scrollFrame, historyState, nsIStatefulFrame::eDocumentScrollState);
+      nsIScrollableFrame* scrollableFrame;
+      CallQueryInterface(scrollFrame, &scrollableFrame);
+      NS_ASSERTION(scrollableFrame, "RootScrollFrame is not scrollable?");
+      if (scrollableFrame) {
+        // XXX We shouldn't depend on the scrolling guts here. Make this
+        // go away!
+        nsIFrame* scrollBoxFrame = scrollFrame->GetFirstChild(nsnull);
+
+        if (scrollBoxFrame) {
+          FrameManager()->RestoreFrameStateFor(scrollBoxFrame, historyState,
+                                               nsIStatefulFrame::eDocumentScrollState);
+        }
+        scrollableFrame->ScrollToRestoredPosition();
+      }
     }
   }
 
@@ -4633,11 +4619,15 @@ PresShell::CaptureHistoryState(nsILayoutHistoryState** aState, PRBool aLeavingPa
   // As the scroll position is 0 and this will cause us to loose
   // our previously saved place!
   if (aLeavingPage) {
-    nsIFrame* scrollFrame = nsnull;
-    GetRootScrollFrame(mPresContext, rootFrame, &scrollFrame);
+    nsIFrame* scrollFrame = GetRootScrollFrame(rootFrame);
     if (scrollFrame) {
-      FrameManager()->CaptureFrameStateFor(scrollFrame, historyState,
-                                       nsIStatefulFrame::eDocumentScrollState);
+      // XXX We shouldn't depend on the scrolling guts here. Make this
+      // go away!
+      nsIFrame* scrollBoxFrame = scrollFrame->GetFirstChild(nsnull);
+      if (scrollBoxFrame) {
+        FrameManager()->CaptureFrameStateFor(scrollBoxFrame, historyState,
+                                             nsIStatefulFrame::eDocumentScrollState);
+      }
     }
   }
 
@@ -6020,6 +6010,37 @@ PresShell::HandleEventInternal(nsEvent* aEvent, nsIView *aView,
   nsresult rv = NS_OK;
 
   if (!NS_EVENT_NEEDS_FRAME(aEvent) || GetCurrentEventFrame()) {
+    PRBool isHandlingUserInput = PR_FALSE;
+
+    if (aEvent->internalAppFlags & NS_APP_EVENT_FLAG_TRUSTED) {
+      switch (aEvent->message) {
+      case NS_GOTFOCUS:
+      case NS_LOSTFOCUS:
+      case NS_ACTIVATE:
+      case NS_DEACTIVATE:
+        // Treat focus/blur events as user input if they happen while
+        // executing trusted script, or no script at all. If they
+        // happen during execution of non-trusted script, then they
+        // should not be considerd user input.
+        if (!nsContentUtils::IsCallerChrome()) {
+          break;
+        }
+      case NS_MOUSE_LEFT_BUTTON_DOWN:
+      case NS_MOUSE_MIDDLE_BUTTON_DOWN:
+      case NS_MOUSE_RIGHT_BUTTON_DOWN:
+      case NS_MOUSE_LEFT_BUTTON_UP:
+      case NS_MOUSE_RIGHT_BUTTON_UP:
+      case NS_MOUSE_MIDDLE_BUTTON_UP:
+      case NS_KEY_PRESS:
+      case NS_KEY_DOWN:
+      case NS_KEY_UP:
+        isHandlingUserInput = PR_TRUE;
+      }
+    }
+
+    nsAutoHandlingUserInputStatePusher userInpStatePusher(isHandlingUserInput);
+
+    nsAutoPopupStatePusher popupStatePusher(nsDOMEvent::GetEventPopupControlState(aEvent));
 
     // 1. Give event to event manager for pre event state changes and
     //    generation of synthetic events.
@@ -6553,6 +6574,114 @@ PresShell::RemoveDummyLayoutRequest(void)
     }
   }
   return rv;
+}
+
+#ifdef MOZ_XUL
+/*
+ * It's better to add stuff to the |DidSetStyleContext| method of the
+ * relevant frames than adding it here.  These methods should (ideally,
+ * anyway) go away.
+ */
+
+// Return value says whether to walk children.
+typedef PRBool (* PR_CALLBACK frameWalkerFn)(nsIFrame *aFrame, void *aClosure);
+   
+PR_STATIC_CALLBACK(PRBool)
+ReResolveMenusAndTrees(nsIFrame *aFrame, void *aClosure)
+{
+  // Trees have a special style cache that needs to be flushed when
+  // the theme changes.
+  nsCOMPtr<nsITreeBoxObject> treeBox(do_QueryInterface(aFrame));
+  if (treeBox)
+    treeBox->ClearStyleAndImageCaches();
+
+  // We deliberately don't re-resolve style on a menu's popup
+  // sub-content, since doing so slows menus to a crawl.  That means we
+  // have to special-case them on a skin switch, and ensure that the
+  // popup frames just get destroyed completely.
+  nsCOMPtr<nsIMenuFrame> menuFrame(do_QueryInterface(aFrame));
+  if (menuFrame) {
+    menuFrame->UngenerateMenu();  
+    menuFrame->OpenMenu(PR_FALSE);
+  }
+  return PR_TRUE;
+}
+
+PR_STATIC_CALLBACK(PRBool)
+ReframeImageBoxes(nsIFrame *aFrame, void *aClosure)
+{
+  nsStyleChangeList *list = NS_STATIC_CAST(nsStyleChangeList*, aClosure);
+  if (aFrame->GetType() == nsLayoutAtoms::imageBoxFrame) {
+    list->AppendChange(aFrame, aFrame->GetContent(),
+                       NS_STYLE_HINT_FRAMECHANGE);
+    return PR_FALSE; // don't walk descendants
+  }
+  return PR_TRUE; // walk descendants
+}
+
+static void
+WalkFramesThroughPlaceholders(nsIPresContext *aPresContext, nsIFrame *aFrame,
+                              frameWalkerFn aFunc, void *aClosure)
+{
+  PRBool walkChildren = (*aFunc)(aFrame, aClosure);
+  if (!walkChildren)
+    return;
+
+  PRInt32 listIndex = 0;
+  nsIAtom* childList = nsnull;
+
+  do {
+    nsIFrame *child = aFrame->GetFirstChild(childList);
+    while (child) {
+      if (!(child->GetStateBits() & NS_FRAME_OUT_OF_FLOW)) {
+        // only do frames that are in flow
+        if (nsLayoutAtoms::placeholderFrame == child->GetType()) {
+          // get out of flow frame and recur there
+          nsIFrame* outOfFlowFrame =
+              NS_STATIC_CAST(nsPlaceholderFrame*, child)->GetOutOfFlowFrame();
+          NS_ASSERTION(outOfFlowFrame, "no out-of-flow frame");
+          WalkFramesThroughPlaceholders(aPresContext, outOfFlowFrame,
+                                        aFunc, aClosure);
+        }
+        else
+          WalkFramesThroughPlaceholders(aPresContext, child, aFunc, aClosure);
+      }
+      child = child->GetNextSibling();
+    }
+
+    childList = aFrame->GetAdditionalChildListName(listIndex++);
+  } while (childList);
+}
+#endif
+
+NS_IMETHODIMP
+PresShell::Observe(nsISupports* aSubject, 
+                   const char* aTopic,
+                   const PRUnichar* aData)
+{
+#ifdef MOZ_XUL
+  if (!nsCRT::strcmp(aTopic, "chrome-flush-skin-caches")) {
+    nsIFrame *rootFrame;
+    GetRootFrame(&rootFrame);
+    // Need to null-check because "chrome-flush-skin-caches" can happen
+    // at interesting times during startup.
+    if (rootFrame) {
+      WalkFramesThroughPlaceholders(mPresContext, rootFrame,
+                                    &ReResolveMenusAndTrees, nsnull);
+
+      // Because "chrome:" URL equality is messy, reframe image box
+      // frames (hack!).
+      nsStyleChangeList changeList;
+      WalkFramesThroughPlaceholders(mPresContext, rootFrame,
+                                    ReframeImageBoxes, &changeList);
+      mFrameConstructor->ProcessRestyledFrames(changeList, mPresContext);
+    }
+    return NS_OK;
+  }
+#endif
+
+  NS_WARNING("unrecognized topic in PresShell::Observe");
+  return NS_ERROR_FAILURE;
 }
 
 //------------------------------------------------------

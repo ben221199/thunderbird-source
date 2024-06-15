@@ -335,6 +335,16 @@ nsMenuFrame::DestroyPopupFrames(nsIPresContext* aPresContext)
 NS_IMETHODIMP
 nsMenuFrame::Destroy(nsIPresContext* aPresContext)
 {
+  // are we our menu parent's current menu item?
+  if (mMenuParent) {
+    nsIMenuFrame *curItem = nsnull;
+    mMenuParent->GetCurrentMenuItem(&curItem);
+    if (curItem == this) {
+      // yes; tell it that we're going away
+      mMenuParent->SetCurrentMenuItem(nsnull);
+    }
+  }
+
   DestroyPopupFrames(aPresContext);
   return nsBoxFrame::Destroy(aPresContext);
 }
@@ -371,7 +381,8 @@ nsMenuFrame::HandleEvent(nsIPresContext* aPresContext,
                              nsEventStatus*  aEventStatus)
 {
   NS_ENSURE_ARG_POINTER(aEventStatus);
-  *aEventStatus = nsEventStatus_eConsumeDoDefault;
+  if (*aEventStatus == nsEventStatus_eIgnore)
+    *aEventStatus = nsEventStatus_eConsumeDoDefault;
   
   if (aEvent->message == NS_KEY_PRESS && !IsDisabled()) {
     nsKeyEvent* keyEvent = (nsKeyEvent*)aEvent;
@@ -483,7 +494,16 @@ nsMenuFrame::HandleEvent(nsIPresContext* aPresContext,
 
     // Let the menu parent know we're the new item.
     mMenuParent->SetCurrentMenuItem(this);
-    
+
+    // we need to check if we really became the current menu
+    // item or not
+    nsIMenuFrame *realCurrentItem = nsnull;
+    mMenuParent->GetCurrentMenuItem(&realCurrentItem);
+    if (realCurrentItem != this) {
+      // we didn't (presumably because a context menu was active)
+      return NS_OK;
+    }
+
     // If we're a menu (and not a menu item),
     // kick off the timer.
     if (!IsDisabled() && !isMenuBar && IsMenu() && !mMenuOpen && !mOpenTimer) {
@@ -1292,13 +1312,20 @@ nsMenuFrame::Notify(nsITimer* aTimer)
   // Our timer has fired.
   if (aTimer == mOpenTimer.get()) {
     if (!mMenuOpen && mMenuParent) {
-      nsAutoString active;
-      mContent->GetAttr(kNameSpaceID_None, nsXULAtoms::menuactive, active);
-      if (active.Equals(NS_LITERAL_STRING("true"))) {
-        // We're still the active menu. Make sure all submenus/timers are closed
-        // before opening this one
-        mMenuParent->KillPendingTimers();
-        OpenMenu(PR_TRUE);
+      // make sure we didn't open a context menu in the meantime
+      // (i.e. the user right-clicked while hovering over a submenu)
+      // or that we're a submenu of the context menu itself
+      PRBool weAreContextMenu = PR_FALSE;
+      mMenuParent->GetIsContextMenu(weAreContextMenu);
+      if (weAreContextMenu || !nsMenuFrame::IsContextMenuActive()) {
+        nsAutoString active;
+        mContent->GetAttr(kNameSpaceID_None, nsXULAtoms::menuactive, active);
+        if (active.Equals(NS_LITERAL_STRING("true"))) {
+          // We're still the active menu. Make sure all submenus/timers are closed
+          // before opening this one
+          mMenuParent->KillPendingTimers();
+          OpenMenu(PR_TRUE);
+        }
       }
     }
     mOpenTimer->Cancel();
@@ -2075,3 +2102,31 @@ nsMenuFrame::GetBoxInfo(nsIPresContext* aPresContext, const nsHTMLReflowState& a
 }
 */
 
+void
+nsMenuFrame::GetContextMenu(nsIMenuParent** aContextMenu)
+{
+  *aContextMenu = nsnull;
+  if (!nsMenuFrame::sDismissalListener)
+    return;
+
+  nsIMenuParent *menuParent = nsnull;
+  nsMenuFrame::sDismissalListener->GetCurrentMenuParent(&menuParent);
+  if (!menuParent)
+    return;
+
+  PRBool isContextMenu;
+  menuParent->GetIsContextMenu(isContextMenu);
+  if (isContextMenu) {
+    *aContextMenu = menuParent;
+  }
+}
+
+PRBool
+nsMenuFrame::IsContextMenuActive()
+{
+  nsIMenuParent *mp = nsnull;
+  GetContextMenu(&mp);
+  if (mp)
+    return PR_TRUE;
+  return PR_FALSE;
+}

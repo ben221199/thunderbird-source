@@ -122,6 +122,7 @@ pref("mail.use_fcc",                        true);
 pref("mail.cc_self",                        false);
 pref("mail.strictly_mime",                  false);
 pref("mail.strictly_mime_headers",          true);
+pref("mail.label_ascii_only_mail_as_us_ascii", false); 
 pref("mail.file_attach_binary",             false);
 pref("mail.show_headers",                   1); // some
 pref("mail.pane_config",                    0);
@@ -354,6 +355,7 @@ pref("mail.server.default.abbreviate",true);
 pref("mail.server.default.isSecure", false);
 pref("mail.server.default.useSecAuth", false);
 pref("mail.server.default.override_namespaces", true);
+pref("mail.server.default.deferred_to_account", "");
 
 pref("mail.server.default.delete_model", 1);
 pref("mail.server.default.fetch_by_chunks", true);

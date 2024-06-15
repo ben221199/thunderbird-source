@@ -269,6 +269,11 @@ NS_IMETHODIMP nsMsgImapLineDownloadCache::GetMsgUid(nsMsgKey *aMsgUid)
     *aMsgUid = fLineInfo->uidOfMessage;
     return NS_OK;
 }
+NS_IMETHODIMP nsMsgImapLineDownloadCache::SetMsgUid(nsMsgKey aMsgUid)
+{
+    fLineInfo->uidOfMessage = aMsgUid;
+    return NS_OK;
+}
 
 /* attribute long msgSize; */
 NS_IMETHODIMP nsMsgImapLineDownloadCache::GetMsgSize(PRInt32 *aMsgSize)
@@ -725,6 +730,7 @@ nsresult nsImapProtocol::SetupWithUrl(nsIURI * aURL, nsISupports* aConsumer)
     // as the event sink queue
     if (aRealStreamListener)
     {
+      NS_ASSERTION(!m_channelListener, "shouldn't already have a channel listener");
         rv = NS_NewAsyncStreamListener(getter_AddRefs(m_channelListener), aRealStreamListener, m_sinkEventQueue);
     }
 
@@ -871,6 +877,13 @@ void nsImapProtocol::ReleaseUrlState()
      m_mockChannel = nsnull;
   }
   m_channelContext = nsnull; // this might be the url - null it out before the final release of the url
+  m_imapMessageSink = nsnull;
+  m_imapExtensionSink = nsnull;
+  m_imapMiscellaneousSink = nsnull;
+  m_channelListener = nsnull;
+  
+  m_channelInputStream = nsnull;
+  m_channelOutputStream = nsnull;
   if (m_runningUrl)
   {
     nsCOMPtr<nsIMsgMailNewsUrl>  mailnewsurl = do_QueryInterface(m_runningUrl);
@@ -898,17 +911,12 @@ void nsImapProtocol::ReleaseUrlState()
       // at this point in time, we MUST have released all of our references to 
       // the url from the imap protocol. otherwise this whole exercise is moot.
       m_imapMailFolderSink->ReleaseObject();
+      m_imapMailFolderSink = nsnull;
     }
   }
-
+  else
   m_imapMailFolderSink = nsnull;
-  m_imapMessageSink = nsnull;
-  m_imapExtensionSink = nsnull;
-  m_imapMiscellaneousSink = nsnull;
-  m_channelListener = nsnull;
   
-  m_channelInputStream = nsnull;
-  m_channelOutputStream = nsnull;
 }
 
 
@@ -2486,8 +2494,18 @@ nsresult nsImapProtocol::BeginMessageDownLoad(
   //total_message_size)); 
   if (content_type)
   {
+    m_fromHeaderSeen = PR_FALSE;
     if (GetServerStateParser().GetDownloadingHeaders())
     {
+      // if we get multiple calls to BeginMessageDownload w/o intervening
+      // calls to NormalEndMessageDownload or Abort, then we're just
+      // going to fake a NormalMessageEndDownload. This will most likely 
+      // cause an empty header to get written to the db, and the user
+      // will have to delete the empty header themselves, which
+      // should remove the message from the server as well.
+      if (m_curHdrInfo)
+        NormalMessageEndDownload();
+      if (!m_curHdrInfo)
       m_hdrDownloadCache.StartNewHdr(getter_AddRefs(m_curHdrInfo));
       if (m_curHdrInfo)
         m_curHdrInfo->SetMsgSize(total_message_size);
@@ -3119,12 +3137,6 @@ void nsImapProtocol::PipelinedFetchMessageParts(nsCString &uid, nsIMAPMessagePar
   }
 }
 
-void
-nsImapProtocol::AddXMozillaStatusLine(uint16 /* flags */) // flags not use now
-{
-  static char statusLine[] = "X-Mozilla-Status: 0201\r\n";
-  HandleMessageDownLoadLine(statusLine, PR_FALSE);
-}
 
 void
 nsImapProtocol::PostLineDownLoadEvent(msg_line_info *downloadLineDontDelete)
@@ -3242,15 +3254,21 @@ void nsImapProtocol::HandleMessageDownLoadLine(const char *line, PRBool chunkEnd
     }
   }
   
+  // check if sender obtained via XSENDER server extension matches "From:" field
   const char *xSenderInfo = GetServerStateParser().GetXSenderInfo();
-  
   if (xSenderInfo && *xSenderInfo && !m_fromHeaderSeen)
   {
     if (!PL_strncmp("From: ", localMessageLine, 6))
     {
       m_fromHeaderSeen = PR_TRUE;
       if (PL_strstr(localMessageLine, xSenderInfo) != NULL)
-        AddXMozillaStatusLine(0);
+          // Adding a X-Mozilla-Status line here is not very elegant but it
+          // works.  Another X-Mozilla-Status line is added to the message when
+          // downloading to a local folder; this new line will also contain the
+          // 'authed' flag we are adding here.  (If the message is again
+          // uploaded to the server, this flag is lost.)
+          // 0x0200 == MSG_FLAG_SENDER_AUTHED
+          HandleMessageDownLoadLine("X-Mozilla-Status: 0200\r\n", PR_FALSE);
       GetServerStateParser().FreeXSenderInfo();
     }
   }
@@ -3314,6 +3332,7 @@ void nsImapProtocol::NormalMessageEndDownload()
   if (m_imapMailFolderSink && GetServerStateParser().GetDownloadingHeaders())
   {
     m_curHdrInfo->SetMsgSize(GetServerStateParser().SizeOfMostRecentMessage());
+    m_curHdrInfo->SetMsgUid(GetServerStateParser().CurrentResponseUID());
     m_hdrDownloadCache.FinishCurrentHdr();
     PRInt32 numHdrsCached;
     m_hdrDownloadCache.GetNumHeaders(&numHdrsCached);
@@ -3359,6 +3378,7 @@ void nsImapProtocol::NormalMessageEndDownload()
       }
     }
   }
+  m_curHdrInfo = nsnull;
 }
 
 void nsImapProtocol::AbortMessageDownLoad()
@@ -3382,6 +3402,7 @@ void nsImapProtocol::AbortMessageDownLoad()
   else if (m_imapMessageSink)
         m_imapMessageSink->AbortMsgWriteStream();
 
+  m_curHdrInfo = nsnull;
 }
 
 
@@ -4202,7 +4223,9 @@ char* nsImapProtocol::CreateNewLineFromSocket()
             AlertUserEventUsingId(IMAP_NET_TIMEOUT_ERROR);
             break;
         case NS_ERROR_NET_RESET:
-            AlertUserEventUsingId(IMAP_SERVER_DISCONNECTED);
+        case NS_ERROR_NET_INTERRUPT:
+          AlertUserEventUsingId(TestFlag(IMAP_RECEIVED_GREETING) 
+            ? IMAP_SERVER_DISCONNECTED : IMAP_SERVER_DROPPED_CONNECTION);
             break;
         default:
             break;
@@ -5118,15 +5141,13 @@ void nsImapProtocol::OnAppendMsgFromFile()
     char *mailboxName =  OnCreateServerSourceFolderPathString();
     if (mailboxName)
     {
-      imapMessageFlagsType flagsToSet = kImapMsgSeenFlag;
-      // we assume msg is read, for appending to sent/drafts folder, because
-      // in that case, we don't have a msg hdr (and we want the msg to be read)
-      PRUint32 msgFlags = MSG_FLAG_READ;
+      imapMessageFlagsType flagsToSet = 0;
+      PRUint32 msgFlags = 0;
       if (m_imapMessageSink)
         m_imapMessageSink->GetCurMoveCopyMessageFlags(m_runningUrl, &msgFlags);
       
-      if (!(msgFlags & MSG_FLAG_READ))
-        flagsToSet &= ~kImapMsgSeenFlag;
+      if (msgFlags & MSG_FLAG_READ)
+        flagsToSet |= kImapMsgSeenFlag;
       if (msgFlags & MSG_FLAG_MDN_REPORT_SENT)
         flagsToSet |= kImapMsgMDNSentFlag;
       // convert msg flag label (0xE000000) to imap flag label (0x0E00)
@@ -5167,12 +5188,17 @@ void nsImapProtocol::UploadMessageFromFile (nsIFileSpec* fileSpec,
   {
     command.Append(" append \"");
     command.Append(escapedName);
-    command.Append("\" (");
+    command.Append("\"");
+    if (flags)
+    {
+      command.Append(" (");
     
     SetupMessageFlagsString(flagString, flags,
       GetServerStateParser().SupportsUserFlags());
     command.Append(flagString);
-    command.Append(") {");
+      command.Append(")");
+    }
+    command.Append(" {");
     
     dataBuffer = (char*) PR_CALLOC(COPY_BUFFER_SIZE+1);
     if (!dataBuffer) goto done;
@@ -6860,9 +6886,24 @@ void nsImapProtocol::Search(const char * searchCriteria,
      protocolString.Append(" uid");
   protocolString.Append(" ");
   protocolString.Append(searchCriteria);
+  // the search criteria can contain string literals, which means we
+  // need to break up the protocol string by CRLF's, and after sending CRLF,
+  // wait for the server to respond OK before sending more data
+  nsresult rv;
+  PRInt32 crlfIndex;
+  while (crlfIndex = protocolString.Find(CRLF), crlfIndex != kNotFound && !DeathSignalReceived())
+  {
+    nsCAutoString tempProtocolString;
+    protocolString.Left(tempProtocolString, crlfIndex + 2);
+    rv = SendData(tempProtocolString.get());
+    if (NS_FAILED(rv))
+      return;
+    ParseIMAPandCheckForNewMail();
+    protocolString.Cut(0, crlfIndex + 2);
+  }
   protocolString.Append(CRLF);
 
-  nsresult rv = SendData(protocolString.get());
+  rv = SendData(protocolString.get());
   if (NS_SUCCEEDED(rv))
      ParseIMAPandCheckForNewMail();
 }
@@ -7678,8 +7719,11 @@ NS_IMETHODIMP nsImapMockChannel::Close()
       nsCOMPtr<nsICacheEntryDescriptor>  cacheEntry;
       mailnewsUrl->GetMemCacheEntry(getter_AddRefs(cacheEntry));
       if (cacheEntry)
+      {
+        nsCOMPtr <nsIImapUrl> imapUrl = do_QueryInterface(m_url);
         cacheEntry->MarkValid();
     }
+  }
   }
 
 
@@ -7702,7 +7746,13 @@ NS_IMETHODIMP nsImapMockChannel::Close()
       }
     }
   }
-  m_url = nsnull;
+
+  // don't release m_url here. Web progress listeners to the current load 
+  // may not have had a chance to process the stop notification yet and they can 
+  // ask the channel for the url. The circular reference between the mock channel and the 
+  // imap url is broken by nsImapProtocol's call to RemoveChannelFromUrl which is called
+  // from nsImapProtocol::ReleaseUrlState.
+  // m_url = nsnull;
 
   mChannelClosed = PR_TRUE;
   return NS_OK;
@@ -7810,7 +7860,11 @@ nsImapMockChannel::OnCacheEntryAvailable(nsICacheEntryDescriptor *entry, nsCache
   // make sure we didn't close the channel before the async call back came in...
   // hmmm....if we had write access and we canceled this mock channel then I wonder if we should
   // be invalidating the cache entry before kicking out...
-  if (mChannelClosed) return NS_OK;
+  if (mChannelClosed) 
+  {
+    entry->Doom();
+    return NS_OK;
+  }
 
   NS_ENSURE_ARG(m_url); // kick out if m_url is null for some reason. 
 
@@ -7856,11 +7910,15 @@ nsImapMockChannel::OnCacheEntryAvailable(nsICacheEntryDescriptor *entry, nsCache
     {
       rv = ReadFromMemCache(entry);
       NotifyStartEndReadFromCache(PR_TRUE);
+      if (NS_SUCCEEDED(rv))
+      {
       if (access & nsICache::ACCESS_WRITE)
         entry->MarkValid();
-      if (NS_SUCCEEDED(rv)) return NS_OK; // kick out if reading from the cache succeeded...
-      mailnewsUrl->SetMemCacheEntry(nsnull); // we aren't going to be reading from the cache
+        return NS_OK; // kick out if reading from the cache succeeded...
+      }
 
+      entry->Doom(); // doom entry if we failed to read from mem cache
+      mailnewsUrl->SetMemCacheEntry(nsnull); // we aren't going to be reading from the cache
     }
   } // if we got a valid entry back from the cache...
 
@@ -7966,6 +8024,12 @@ nsresult nsImapMockChannel::ReadFromMemCache(nsICacheEntryDescriptor *entry)
     nsCOMPtr<nsIInputStream> in;
     rv = entry->OpenInputStream(0, getter_AddRefs(in));
     if (NS_FAILED(rv)) return rv;
+     // if mem cache entry is broken or empty, return error.
+    PRUint32 bytesAvailable;
+    rv = in->Available(&bytesAvailable);
+    NS_ENSURE_SUCCESS(rv, rv);
+    if (!bytesAvailable)
+      return NS_ERROR_FAILURE;
 
     nsCOMPtr<nsIInputStreamPump> pump;
     rv = NS_NewInputStreamPump(getter_AddRefs(pump), in);
@@ -8116,6 +8180,7 @@ NS_IMETHODIMP nsImapMockChannel::AsyncOpen(nsIStreamListener *listener, nsISuppo
     
   // set the stream listener and then load the url
   m_channelContext = ctxt;
+  NS_ASSERTION(!m_channelListener, "shouldn't already have a listener");
   m_channelListener = listener;
   nsCOMPtr<nsIImapUrl> imapUrl  (do_QueryInterface(m_url));
 

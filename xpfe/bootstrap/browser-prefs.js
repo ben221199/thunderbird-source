@@ -98,6 +98,11 @@ pref("browser.search.opensidebarsearchpanel", true);
 pref("browser.search.last_search_category", "NC:SearchCategory?category=urn:search:category:1");
 pref("browser.search.mode", 0);
 pref("browser.search.powermode", 0);
+
+pref("browser.search.param.Google.1.name", "chrome://navigator/content/searchconfig.properties");
+pref("browser.search.param.Google.1.custom", "chrome://navigator/content/searchconfig.properties");
+pref("browser.search.param.Google.1.default", "chrome://navigator/content/searchconfig.properties");
+
 // basic search popup constraint: minimum sherlock plugin version displayed
 // (note: must be a string representation of a float or it'll default to 0.0)
 pref("browser.search.basic.min_ver", "0.0");
@@ -158,12 +163,13 @@ pref("news.directory",                  "");
 pref("browser.editor.disabled", false);
 pref("spellchecker.dictionary", "");
 
-pref("autoupdate.enabled",                    true);
 pref("xpinstall.dialog.confirm",              "chrome://communicator/content/xpinstall/institems.xul");
 pref("xpinstall.dialog.progress.skin",        "chrome://communicator/content/xpinstall/xpistatus.xul");
 pref("xpinstall.dialog.progress.chrome",      "chrome://communicator/content/xpinstall/xpistatus.xul");
 pref("xpinstall.dialog.progress.type.skin",   "");
 pref("xpinstall.dialog.progress.type.chrome", "");
+pref("xpinstall.whitelist.add", "mozilla.org, mozdev.org, texturizer.net");
+pref("xpinstall.blacklist.add", "");
 
 // Customizable toolbar stuff
 pref("custtoolbar.personal_toolbar_folder", "");

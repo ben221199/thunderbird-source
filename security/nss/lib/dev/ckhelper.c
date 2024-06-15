@@ -32,7 +32,7 @@
  */
 
 #ifdef DEBUG
-static const char CVS_ID[] = "@(#) $RCSfile: ckhelper.c,v $ $Revision: 1.29 $ $Date: 2003/07/01 00:32:20 $ $Name: THUNDERBIRD_0_7_3_RELEASE $";
+static const char CVS_ID[] = "@(#) $RCSfile: ckhelper.c,v $ $Revision: 1.29 $ $Date: 2003/07/01 00:32:20 $ $Name: THUNDERBIRD_0_8_RELEASE $";
 #endif /* DEBUG */
 
 #ifndef NSSCKEPV_H

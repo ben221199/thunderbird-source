@@ -2998,7 +2998,7 @@ SINGSIGN_UserCount(PRInt32 host) {
 
 PUBLIC nsresult
 SINGSIGN_Enumerate
-    (PRInt32 hostNumber, PRInt32 userNumber, char **host,
+    (PRInt32 hostNumber, PRInt32 userNumber, PRBool decrypt, char **host,
      PRUnichar ** user, PRUnichar ** pswd) {
 
   if (gSelectUserDialogCount>0 && hostNumber==0 && userNumber==0) {
@@ -3035,10 +3035,16 @@ SINGSIGN_Enumerate
     }
   }
 
+  nsresult rv;
   nsAutoString userName;
-  if (NS_FAILED(si_Decrypt(data->value, userName))) {
-    /* don't display saved signons if user couldn't unlock the database */
-    return NS_ERROR_FAILURE;
+  if (decrypt) {
+    rv = si_Decrypt(data->value, userName);
+    if (NS_FAILED(rv)) {
+      /* don't display saved signons if user couldn't unlock the database */
+      return rv;
+    }
+  } else {
+    userName = data->value;
   }
   if (!(*user = ToNewUnicode(userName))) {
     return NS_ERROR_OUT_OF_MEMORY;
@@ -3053,11 +3059,16 @@ SINGSIGN_Enumerate
   }
 
   nsAutoString passWord;
-  if (NS_FAILED(si_Decrypt(data->value, passWord))) {
-    /* don't display saved signons if user couldn't unlock the database */
-    Recycle(*user);
-    return NS_ERROR_FAILURE;
-  }
+  if (decrypt) {
+    rv = si_Decrypt(data->value, passWord);
+    if (NS_FAILED(rv)) {
+      /* don't display saved signons if user couldn't unlock the database */
+      Recycle(*user);
+      return rv;
+    }
+  } else {
+    passWord = data->value;
+  }  
   if (!(*pswd = ToNewUnicode(passWord))) {
     Recycle(*user);
     return NS_ERROR_OUT_OF_MEMORY;

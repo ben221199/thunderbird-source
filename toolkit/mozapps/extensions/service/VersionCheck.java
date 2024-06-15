@@ -12,7 +12,7 @@
  * for the specific language governing rights and limitations under the
  * License.
  *
- * The Original Code is the Extension Manager.
+ * The Original Code is the Extension Update Service.
  *
  * The Initial Developer of the Original Code is Ben Goodger.
  * Portions created by the Initial Developer are Copyright (C) 2004
@@ -38,7 +38,6 @@
 package org.mozilla.update.extensions;
 
 import java.sql.*;
-import java.util.*;
 
 public class VersionCheck
 {
@@ -50,164 +49,150 @@ public class VersionCheck
   public static void main(String[] args)
   {
     VersionCheck impl = new VersionCheck();
-    // int id = impl.getNewestExtension("{bb8ee064-ccb9-47fc-94ae-ec335af3fe2d}", "3.0", "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}", "0.8.0+");
-    int id = impl.getNewestExtension("{93c4cb22-bf10-40a2-adff-c4c64a38df0c}", "1.5", "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}", "0.8.0+");
-    System.out.println("result row = " + id + ", xpiUrl = " + impl.getProperty(id, "xpiurl"));
+
+    UpdateItem item = new UpdateItem();
+    item.setId("{1ffc34af-6d8b-45a8-9765-92887262edfe}");
+    item.setVersion("3.0");
+    item.setMinAppVersion("0.9");
+    item.setMaxAppVersion("0.10");
+    item.setName("NewExtension 5");
+    item.setRow(-1);
+    item.setXpiURL("");
+    item.setIconURL("");
+    item.setUserCookie("Goats");
+    item.setItemCookie("Goats 2");
+    UpdateItem newer = impl.getNewestExtension(item, "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}", "0.9");
+    if (newer != null) {
+      System.out.println("*** result row = " + newer.getRow() + ", xpiUrl = " + newer.getXpiURL());
+    }
+    else {
+      System.out.println("*** NADA NOTHING ZILCH");
+    }
   }
 */
 
-  public UpdateItem[] getExtensionsToUpdate(UpdateItem[] aItems, String aTargetApp, String aTargetAppVersion)
+  public UpdateItem getNewestExtension(UpdateItem aInstalledItem,
+                                       String aTargetApp,
+                                       String aTargetAppVersion,
+                                       String aUserCookie,
+                                       String aSessionCookie)
   {
-    Vector results = new Vector();
-    for (int i = 0; i < aItems.length; ++i) 
+    System.out.println("*** getNewestExtension Called");
+    return getExtensionUpdates(aInstalledItem, aTargetApp, aTargetAppVersion, true);
+  }
+    
+  public UpdateItem getVersionUpdate(UpdateItem aInstalledItem,
+                                     String aTargetApp,
+                                     String aTargetAppVersion,
+                                     String aUserCookie,
+                                     String aSessionCookie)
+  {
+    System.out.println("*** getVersionUpdate Called");
+    return getExtensionUpdates(aInstalledItem, aTargetApp, aTargetAppVersion, false);
+  }
+    
+  protected UpdateItem getExtensionUpdates(UpdateItem aInstalledItem, 
+                                           String aTargetApp, 
+                                           String aTargetAppVersion,
+                                           boolean aNewest)
+  {
+    UpdateItem remoteItem = new UpdateItem();
+
+    Version installedVersion = new Version(aInstalledItem.getVersion());
+    Version targetAppVersion = new Version(aTargetAppVersion);
+
+    Connection c;
+    Statement sMain, sVersion, sApps;
+    ResultSet rsMain, rsVersion, rsApps;
+    try 
     {
-      UpdateItem e = aItems[i];
-      int row = getNewestExtension(e.getId(), e.getVersion(), aTargetApp, aTargetAppVersion);
-      if (row != -1) 
+      c = getConnection();
+      sMain = c.createStatement();
+  
+      // We need to find all rows matching aInstalledItem.id, and filter like so:
+      // 1) version > installedVersion
+      // 2) targetapp == aTargetApp
+      // 3) mintargetappversion <= targetAppVersion <= maxtargetappversion
+      String sqlMain = "SELECT * FROM t_main WHERE GUID = '" + aInstalledItem.getId() + "'";
+      boolean temp = sMain.execute(sqlMain);
+      rsMain = sMain.getResultSet();
+      
+      Version newestRemoteVersion = installedVersion;
+      while (rsMain.next()) 
       {
-        e.setRow(row);
-        e.setId(getProperty(row, "guid"));
-        e.setName(getProperty(row, "name"));
-        e.setVersion(getProperty(row, "version"));
-        e.setUpdateURL(getProperty(row, "updateurl"));
-        e.setIconURL(getProperty(row, "iconurl"));
-        results.add(e);
+        String sqlVersion = "SELECT * FROM t_version WHERE ID = '" + rsMain.getInt("ID") + "'";
+
+        sVersion = c.createStatement();
+        temp = sVersion.execute(sqlVersion);
+        rsVersion = sVersion.getResultSet();
+        
+        while (rsVersion.next()) 
+        {
+          String sqlApps = "SELECT * FROM t_applications WHERE AppID = '" + rsVersion.getInt("AppID") + "' AND GUID = '" + aTargetApp + "'";
+          
+          sApps = c.createStatement();
+          temp = sApps.execute(sqlApps);
+          rsApps = sApps.getResultSet();
+          
+          if (rsApps.next())
+          {
+            Version minTargetAppVersion = new Version(rsVersion.getString("MinAppVer"));
+            Version maxTargetAppVersion = new Version(rsVersion.getString("MaxAppVer"));
+            
+            Version currentRemoteVersion = new Version(rsVersion.getString("Version"));
+
+            boolean suitable = false;
+            if (aNewest) 
+            {
+              // If we're looking for the _newest_ version only, check to see if it's really newer
+              suitable = currentRemoteVersion.compare(installedVersion)     >   0 && 
+                         currentRemoteVersion.compare(newestRemoteVersion)  >   0 &&
+                          minTargetAppVersion.compare(targetAppVersion)     <=  0 && 
+                             targetAppVersion.compare(maxTargetAppVersion)  <=  0;
+              if (suitable)
+                newestRemoteVersion = currentRemoteVersion;
+            }
+            else 
+            {
+              // ... otherwise, if the version exactly matches...
+              suitable = currentRemoteVersion.compare(installedVersion)     ==  0 && 
+                          minTargetAppVersion.compare(targetAppVersion)     <=  0 &&
+                             targetAppVersion.compare(maxTargetAppVersion)  <=  0;
+            }
+
+            if (suitable) 
+            {
+              remoteItem.setRow(rsMain.getInt("ID"));
+              remoteItem.setId(rsMain.getString("GUID"));
+              remoteItem.setName(rsMain.getString("Name"));
+              remoteItem.setVersion(rsVersion.getString("Version"));
+              remoteItem.setMinAppVersion(rsVersion.getString("MinAppVer"));
+              remoteItem.setMaxAppVersion(rsVersion.getString("MaxAppVer"));
+              remoteItem.setXpiURL(rsVersion.getString("URI"));
+              remoteItem.setIconURL("");
+            }
+          }
+          rsApps.close();
+          sApps.close();
+        }
+        rsVersion.close();
+        sVersion.close();
       }
-    }
-
-    return (UpdateItem[])results.toArray();
-  }
-
-  // This method is a temporary workaround until Mozilla's Web Services implementation 
-  // supports passing Arrays of complex types.
-  public UpdateItem getNewestExtension(UpdateItem aItem, 
-                                       String aTargetApp, 
-                                       String aTargetAppVersion)
-  {
-    UpdateItem e = new UpdateItem();
-
-    int row = getNewestExtension(aItem.getId(), aItem.getVersion(), 
-                                 aTargetApp, aTargetAppVersion);
-    if (row != -1) 
-    {
-      e.setRow(row);
-      e.setId(getProperty(row, "guid"));
-      e.setName(getProperty(row, "name"));
-      e.setVersion(getProperty(row, "version"));
-      e.setUpdateURL(getProperty(row, "updateurl"));
-      e.setIconURL(getProperty(row, "iconurl"));
-    }
-    return e;
-  }
-
-  protected String getProperty(int aRowID, String aProperty)
-  {
-    String result = null;
-    try
-    {
-      Connection c = getConnection();
-      Statement s = c.createStatement();
-
-      String sql = "SELECT * FROM extensions WHERE id = '" + aRowID + "'";
-      ResultSet rs = s.executeQuery(sql);
-
-      result = rs.next() ? rs.getString(aProperty) : null;
-      if (result == null)
-        result = "query succeeded, but null!";
+      rsMain.close();
+      sMain.close();
+      c.close();
     }
     catch (Exception e)
     {
     }
-    return result;
-  }
 
-  protected int getNewestExtension(String aExtensionGUID, String aInstalledVersion, String aTargetApp, String aTargetAppVersion)
-  {
-    int id = -1;
-    int extensionVersionParts = getPartCount(aInstalledVersion);
-    int targetAppVersionParts = getPartCount(aTargetAppVersion);
-
-    int extensionVersion = parseVersion(aInstalledVersion, extensionVersionParts);
-    int targetAppVersion = parseVersion(aTargetAppVersion, targetAppVersionParts);
-
-    Connection c;
-    Statement s;
-    ResultSet rs;
-    try 
-    {
-      c = getConnection();
-      s = c.createStatement();
-  
-      // We need to find all rows matching aExtensionGUID, and filter like so:
-      // 1) version > extensionVersion
-      // 2) targetapp == aTargetApp
-      // 3) mintargetappversion <= targetAppVersion <= maxtargetappversion
-      String sql = "SELECT * FROM extensions WHERE guid = '" + aExtensionGUID + "' AND targetapp = '" + aTargetApp + "'";
-
-      boolean goat = s.execute(sql);
-      rs = s.getResultSet();
-
-      int newestExtensionVersion = extensionVersion;
-
-      while (rs.next()) 
-      {
-        int minTargetAppVersion = parseVersion(rs.getString("mintargetappversion"), targetAppVersionParts);
-        int maxTargetAppVersion = parseVersion(rs.getString("maxtargetappversion"), targetAppVersionParts);
-        
-        int version = parseVersion(rs.getString("version"), extensionVersionParts);
-        if (version > extensionVersion && 
-          version > newestExtensionVersion &&
-          minTargetAppVersion <= targetAppVersion && 
-          targetAppVersion < maxTargetAppVersion) 
-        {
-          newestExtensionVersion = version;
-          id = rs.getInt("id");
-        }
-      }
-      rs.close();
-      s.close();
-      c.close();
-    }
-    catch (Exception e) 
-    {
-    }
-
-    return id;
-  }
-
-  protected int parseVersion(String aVersionString, int aPower)
-  {
-    int version = 0;
-    StringTokenizer tokenizer = new StringTokenizer(aVersionString, ".");
-
-    if (aPower == 0)
-      aPower = tokenizer.countTokens();
-    
-    for (int i = 0; tokenizer.hasMoreTokens(); ++i) 
-    {
-      String token = tokenizer.nextToken();
-      if (token.endsWith("+")) 
-      {
-        token = token.substring(0, token.lastIndexOf("+"));
-        version += 1;
-        if (token.length() == 0)
-          continue;
-      }
-
-      version += Integer.parseInt(token) * Math.pow(10, aPower - i);
-    }
-    return version;
-  }
-
-  protected int getPartCount(String aVersionString)
-  {
-    return (new StringTokenizer(aVersionString, ".")).countTokens();
+    return remoteItem;
   }
 
   protected Connection getConnection() throws Exception
   {
     Class.forName("com.mysql.jdbc.Driver");
-    return DriverManager.getConnection("jdbc:mysql://localhost/umo_extensions", "root", "");
+    return DriverManager.getConnection("jdbc:mysql://localhost/update", "root", "");
   }
 }
 

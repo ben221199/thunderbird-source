@@ -82,6 +82,7 @@
 #include "nsIDocShellTreeNode.h"
 #include "nsIDocCharset.h"
 #include "nsIDocument.h"
+#include "nsIHTMLDocument.h"
 #include "nsIDOMCrypto.h"
 #include "nsIDOMDocument.h"
 #include "nsIDOMDocumentView.h"
@@ -160,6 +161,8 @@ static nsIEntropyCollector *gEntropyCollector          = nsnull;
 static nsIPrefBranch       *gPrefBranch                = nsnull;
 static PRInt32              gRefCnt                    = 0;
 static PRInt32              gOpenPopupSpamCount        = 0;
+static PopupControlState    gPopupControlState         = openAbused;
+static PRInt32              gRunningTimeoutDepth       = 0;
 nsIXPConnect *GlobalWindowImpl::sXPConnect             = nsnull;
 nsIScriptSecurityManager *GlobalWindowImpl::sSecMan    = nsnull;
 nsIFactory *GlobalWindowImpl::sComputedDOMStyleFactory = nsnull;
@@ -184,48 +187,19 @@ static NS_DEFINE_CID(kCStringBundleServiceCID, NS_STRINGBUNDLESERVICE_CID);
 static const char sJSStackContractID[] = "@mozilla.org/js/xpc/ContextStack;1";
 
 static const char kDOMBundleURL[] = "chrome://global/locale/commonDialogs.properties";
-static const char kDOMSecurityWarningsBundleURL[] = "chrome://communicator/locale/dom/dom.properties";
+static const char kDOMSecurityWarningsBundleURL[] = "chrome://global/locale/dom/dom.properties";
 
 static const char kCryptoContractID[] = NS_CRYPTO_CONTRACTID;
 static const char kPkcs11ContractID[] = NS_PKCS11_CONTRACTID;
 
-// CheckForAbusePoint return values:
+// CheckOpenAllow return values:
 enum {
-  openAllowed = 0,  // open that window without worries
-  openControlled,   // it's a popup, but allow it
-  openAbused,       // it's a popup. disallow it, but allow domain override.
-  openOverridden    // disallow window open
+  allowNot = 0,     // the window opening was denied
+  allowNoAbuse,     // allowed: not a popup
+  allowSelf,        // allowed: it's the same window (_self, _top, et.al.)
+  allowExtant,      // allowed: an already open window
+  allowWhitelisted  // allowed: it's whitelisted or popup blocking is disabled
 };
-
-// return true if eventName is contained within events, delimited by spaces
-static PRBool
-ContainsEventName(const char *eventName, const nsAFlatCString& events)
-{
-  nsAFlatCString::const_iterator start, end;
-  events.BeginReading(start);
-  events.EndReading(end);
-
-  nsAFlatCString::const_iterator startiter(start);
-
-  while (startiter != end) {
-    nsAFlatCString::const_iterator enditer(end);
-
-    if (!FindInReadable(nsDependentCString(eventName), startiter, enditer))
-      return PR_FALSE;
-
-    // the match is surrounded by spaces, or at a string boundary
-    if ((startiter == start || *--startiter == ' ') &&
-        (enditer == end || *enditer == ' '))
-      return PR_TRUE;
-
-    /* Move on and see if there are other matches. (The delimitation
-       requirement makes it pointless to begin the next search before
-       the end of the invalid match just found.) */
-    startiter = enditer;
-  }
-
-  return PR_FALSE;
-}
 
 //*****************************************************************************
 //***    GlobalWindowImpl: Object Management
@@ -245,7 +219,6 @@ GlobalWindowImpl::GlobalWindowImpl()
     mIsClosed(PR_FALSE),
     mOpenerWasCleared(PR_FALSE),
     mIsPopupSpam(PR_FALSE),
-    mLastMouseButtonAction(LL_ZERO),
     mGlobalObjectOwner(nsnull),
     mDocShell(nsnull),
     mCurrentEvent(0),
@@ -369,6 +342,7 @@ NS_INTERFACE_MAP_BEGIN(GlobalWindowImpl)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIScriptGlobalObject)
   NS_INTERFACE_MAP_ENTRY(nsIDOMWindowInternal)
   NS_INTERFACE_MAP_ENTRY(nsIDOMWindow)
+  NS_INTERFACE_MAP_ENTRY(nsIDOMWindow2)
   NS_INTERFACE_MAP_ENTRY(nsIDOMJSWindow)
   NS_INTERFACE_MAP_ENTRY(nsIScriptGlobalObject)
   NS_INTERFACE_MAP_ENTRY(nsIScriptObjectPrincipal)
@@ -408,7 +382,7 @@ GlobalWindowImpl::SetContext(nsIScriptContext* aContext)
   mContext = aContext;
 
   if (mContext) {
-    if (GetParentInternal()) {
+    if (IsFrame()) {
       // This window is a [i]frame, don't bother GC'ing when the
       // frame's context is destroyed since a GC will happen when the
       // frameset or host document is destroyed anyway.
@@ -429,6 +403,42 @@ GlobalWindowImpl::SetOpenerScriptURL(nsIURI* aURI)
 {
   mOpenerScriptURL = aURI;
   return NS_OK;
+}
+
+PopupControlState
+PushPopupControlState(PopupControlState aState)
+{
+  PopupControlState oldState = gPopupControlState;
+
+  if (aState < gPopupControlState) {
+    gPopupControlState = aState;
+  }
+
+  return oldState;
+}
+
+void
+PopPopupControlState(PopupControlState aState)
+{
+  gPopupControlState = aState;
+}
+
+PopupControlState
+GlobalWindowImpl::PushPopupControlState(PopupControlState aState) const
+{
+  return ::PushPopupControlState(aState);
+}
+
+void
+GlobalWindowImpl::PopPopupControlState(PopupControlState aState) const
+{
+  ::PopPopupControlState(aState);
+}
+
+PopupControlState
+GlobalWindowImpl::GetPopupControlState() const
+{
+  return gPopupControlState;
 }
 
 nsresult
@@ -607,8 +617,18 @@ GlobalWindowImpl::SetNewDocument(nsIDOMDocument* aDocument,
                                    getter_AddRefs(mNavigatorHolder));
           }
 
+          JSObject *gsp =
+            nsWindowSH::GetInvalidatedGlobalScopePolluter(cx, mJSObject);
+
           ::JS_ClearScope(cx, mJSObject);
           ::JS_ClearRegExpStatics(cx);
+
+          if (gsp) {
+            nsCOMPtr<nsIHTMLDocument> html_doc(do_QueryInterface(aDocument));
+
+            nsWindowSH::InstallGlobalScopePolluter(cx, mJSObject, gsp,
+                                                   html_doc);
+          }
 
           mIsScopeClear = PR_TRUE;
         }
@@ -647,17 +667,23 @@ GlobalWindowImpl::SetNewDocument(nsIDOMDocument* aDocument,
   mDocument = aDocument;
 
   if (mDocument && mContext) {
+    JSObject *gsp =
+      nsWindowSH::GetInvalidatedGlobalScopePolluter(cx, mJSObject);
 
     if (mIsScopeClear) {
       mContext->InitContext(this);
-    } else if (mJSObject) {
+    } else {
       // If we didn't clear the scope (i.e. the old document was
       // about:blank) then we need to update the cached document
-      // property on the window to reflect the new document and not
-      // the old one.
+      // property on the window to reflect the new document and not the
+      // old one.
 
-      nsWindowSH::CacheDocumentProperty(cx, mJSObject, this);
+      nsWindowSH::OnDocumentChanged(cx, mJSObject, this);
     }
+
+    nsCOMPtr<nsIHTMLDocument> html_doc(do_QueryInterface(mDocument));
+
+    nsWindowSH::InstallGlobalScopePolluter(cx, mJSObject, gsp, html_doc);
   }
 
   // Clear our mutation bitfield.
@@ -864,11 +890,6 @@ GlobalWindowImpl::HandleDOMEvent(nsIPresContext* aPresContext,
 
   if (aEvent->message == NS_PAGE_UNLOAD) {
     mIsDocumentLoaded = PR_FALSE;
-  } else if ((aEvent->message >= NS_MOUSE_LEFT_BUTTON_UP &&
-              aEvent->message <= NS_MOUSE_RIGHT_BUTTON_DOWN) ||
-             (aEvent->message >= NS_MOUSE_LEFT_DOUBLECLICK &&
-              aEvent->message <= NS_MOUSE_RIGHT_CLICK)) {
-    mLastMouseButtonAction = PR_Now();
   }
 
   // Capturing stage
@@ -1592,20 +1613,13 @@ GlobalWindowImpl::SetInnerWidth(PRInt32 aInnerWidth)
    * prevent setting window.innerWidth by exiting early
    */
 
-  if (!CanSetProperty("dom.disable_window_move_resize") && !IsCallerChrome()) {
+  if ((!CanSetProperty("dom.disable_window_move_resize") &&
+       !IsCallerChrome()) || IsFrame()) {
     return NS_OK;
   }
 
   nsCOMPtr<nsIDocShellTreeItem> docShellAsItem(do_QueryInterface(mDocShell));
   NS_ENSURE_TRUE(docShellAsItem, NS_ERROR_FAILURE);
-
-  nsCOMPtr<nsIDocShellTreeItem> docShellParent;
-  docShellAsItem->GetSameTypeParent(getter_AddRefs(docShellParent));
-
-  // It's only valid to access this from a top window. Doesn't work from
-  // sub-frames.
-  if (docShellParent)
-    return NS_OK; // Silent failure
 
   nsCOMPtr<nsIDocShellTreeOwner> treeOwner;
   docShellAsItem->GetTreeOwner(getter_AddRefs(treeOwner));
@@ -1644,7 +1658,8 @@ GlobalWindowImpl::SetInnerHeight(PRInt32 aInnerHeight)
    * prevent setting window.innerHeight by exiting early
    */
 
-  if (!CanSetProperty("dom.disable_window_move_resize") && !IsCallerChrome()) {
+  if ((!CanSetProperty("dom.disable_window_move_resize") &&
+       !IsCallerChrome()) || IsFrame()) {
     return NS_OK;
   }
 
@@ -2688,7 +2703,8 @@ GlobalWindowImpl::ResizeTo(PRInt32 aWidth, PRInt32 aHeight)
    * prevent window.resizeTo() by exiting early
    */
 
-  if (!CanSetProperty("dom.disable_window_move_resize") && !IsCallerChrome()) {
+  if ((!CanSetProperty("dom.disable_window_move_resize") &&
+       !IsCallerChrome()) || IsFrame()) {
     return NS_OK;
   }
 
@@ -2713,7 +2729,8 @@ GlobalWindowImpl::ResizeBy(PRInt32 aWidthDif, PRInt32 aHeightDif)
    * prevent window.resizeBy() by exiting early
    */
 
-  if (!CanSetProperty("dom.disable_window_move_resize") && !IsCallerChrome()) {
+  if ((!CanSetProperty("dom.disable_window_move_resize") &&
+       !IsCallerChrome()) || IsFrame()) {
     return NS_OK;
   }
 
@@ -2765,6 +2782,27 @@ GlobalWindowImpl::SizeToContent()
   NS_ENSURE_SUCCESS(markupViewer->SizeToContent(), NS_ERROR_FAILURE);
 
   return NS_OK;
+}
+
+NS_IMETHODIMP
+GlobalWindowImpl::GetWindowRoot(nsIDOMEventTarget **aWindowRoot)
+{
+  *aWindowRoot = nsnull;
+
+  nsCOMPtr<nsIDOMWindowInternal> rootWindow;
+  GlobalWindowImpl::GetPrivateRoot(getter_AddRefs(rootWindow));
+  nsCOMPtr<nsPIDOMWindow> piWin(do_QueryInterface(rootWindow));
+  if (!piWin) {
+    return NS_OK;
+  }
+
+  nsCOMPtr<nsIChromeEventHandler> chromeHandler;
+  piWin->GetChromeEventHandler(getter_AddRefs(chromeHandler));
+  if (!chromeHandler) {
+    return NS_OK;
+  }
+
+  return CallQueryInterface(chromeHandler, aWindowRoot);
 }
 
 NS_IMETHODIMP
@@ -2938,10 +2976,18 @@ GlobalWindowImpl::DisableExternalCapture()
 static
 PRBool IsPopupBlocked(nsIDOMDocument* aDoc)
 {
-  PRBool blocked = PR_FALSE;
+  nsCOMPtr<nsIPopupWindowManager> pm =
+    do_GetService(NS_POPUPWINDOWMANAGER_CONTRACTID);
+
+  if (!pm) {
+    return PR_FALSE;
+  }
+
   nsCOMPtr<nsIDocument> doc(do_QueryInterface(aDoc));
-  nsCOMPtr<nsIPopupWindowManager> pm(do_GetService(NS_POPUPWINDOWMANAGER_CONTRACTID));
-  if (pm && doc) {
+
+  PRBool blocked = PR_TRUE;
+
+  if (doc) {
     PRUint32 permission = nsIPopupWindowManager::ALLOW_POPUP;
     pm->TestPermission(doc->GetDocumentURI(), &permission);
     blocked = (permission == nsIPopupWindowManager::DENY_POPUP);
@@ -3005,9 +3051,9 @@ GlobalWindowImpl::CanSetProperty(const char *aPrefName)
  * Examine the current document state to see if we're in a way that is
  * typically abused by web designers. The window.open code uses this
  * routine to determine whether to allow the new window.
- * Returns a value from the CheckAbusePoint enum.
+ * Returns a value from the CheckForAbusePoint enum.
  */
-PRUint32
+PopupControlState
 GlobalWindowImpl::CheckForAbusePoint()
 {
   nsCOMPtr<nsIDocShellTreeItem> item(do_QueryInterface(mDocShell));
@@ -3023,167 +3069,15 @@ GlobalWindowImpl::CheckForAbusePoint()
   if (!gPrefBranch)
     return openAllowed;
 
-  PRUint32 abuse = openAllowed; // level of abuse we've detected
-
-  PRInt32 intPref = 0;
-
-  // disallow windows after a user-defined click delay
-  gPrefBranch->GetIntPref("dom.disable_open_click_delay", &intPref);
-  if (intPref != 0) {
-    PRTime now = PR_Now();
-    PRTime ll_delta;
-    PRUint32 delta;
-    LL_SUB(ll_delta, now, mLastMouseButtonAction);
-    LL_L2UI(delta, ll_delta);
-    if (delta/1000 > (PRUint32) intPref)
-      abuse = openOverridden;
-  }
-
-  // is a timer running?
-  if (abuse == openAllowed && mRunningTimeout)
-    abuse = openAbused;
-
-  // is the document being loaded or unloaded?
-  if (abuse == openAllowed && !mIsDocumentLoaded)
-    abuse = openAbused;
-
-  if (abuse == openAllowed) {
-    // we'll need to know what DOM event is being processed now, if any
-    nsEvent *currentEvent = mCurrentEvent;
-    if (!currentEvent && mDocShell) {
-      /* The DOM window's current event is accurate for events that make it
-        all the way to the window. But it doesn't see events handled directly
-        by a target element. For those, check the EventStateManager. */
-      nsCOMPtr<nsIPresShell> presShell;
-      mDocShell->GetPresShell(getter_AddRefs(presShell));
-      if (presShell) {
-        nsCOMPtr<nsIPresContext> presContext;
-        presShell->GetPresContext(getter_AddRefs(presContext));
-        if (presContext)
-          presContext->EventStateManager()->GetCurrentEvent(&currentEvent);
-      }
-    }
-
-    // fetch pref string detailing which events are allowed
-    nsXPIDLCString eventPref;
-    gPrefBranch->GetCharPref("dom.popup_allowed_events",
-                            getter_Copies(eventPref));
-    nsCAutoString eventPrefStr(eventPref);
-
-    // generally if an event handler is running, new windows are disallowed.
-    // check for exceptions:
-    if (currentEvent) {
-      abuse = openAbused;
-      switch(currentEvent->eventStructType) {
-        case NS_EVENT :
-          switch(currentEvent->message) {
-            case NS_FORM_SELECTED :
-              if (::ContainsEventName("select", eventPref))
-                abuse = openControlled;
-              break;
-            case NS_FORM_CHANGE :
-              if (::ContainsEventName("change", eventPref))
-                abuse = openControlled;
-              break;
-            case NS_RESIZE_EVENT :
-              if (::ContainsEventName("resize", eventPref))
-                abuse = openControlled;
-              break;
-          }
-          break;
-        case NS_GUI_EVENT :
-          switch(currentEvent->message) {
-            case NS_FORM_INPUT :
-              if (::ContainsEventName("input", eventPref))
-                abuse = openControlled;
-              break;
-          }
-          break;
-        case NS_INPUT_EVENT :
-          switch(currentEvent->message) {
-            case NS_FORM_CHANGE :
-              if (::ContainsEventName("change", eventPref))
-                abuse = openControlled;
-              break;
-          }
-          break;
-        case NS_KEY_EVENT : {
-          PRUint32 key = NS_STATIC_CAST(nsKeyEvent *, currentEvent)->keyCode;
-          switch(currentEvent->message) {
-            case NS_KEY_PRESS :
-              // return key on focused button. see note at NS_MOUSE_LEFT_CLICK.
-              if (key == nsIDOMKeyEvent::DOM_VK_RETURN)
-                abuse = openAllowed;
-              else if (::ContainsEventName("keypress", eventPref))
-                abuse = openControlled;
-              break;
-            case NS_KEY_UP :
-              // space key on focused button. see note at NS_MOUSE_LEFT_CLICK.
-              if (key == nsIDOMKeyEvent::DOM_VK_SPACE)
-                abuse = openAllowed;
-              else if (::ContainsEventName("keyup", eventPref))
-                abuse = openControlled;
-              break;
-            case NS_KEY_DOWN :
-              if (::ContainsEventName("keydown", eventPref))
-                abuse = openControlled;
-              break;
-          }
-          break;
-        }
-        case NS_MOUSE_EVENT :
-          switch(currentEvent->message) {
-            case NS_MOUSE_LEFT_BUTTON_UP :
-              if (::ContainsEventName("mouseup", eventPref))
-                abuse = openControlled;
-              break;
-            case NS_MOUSE_LEFT_BUTTON_DOWN :
-              if (::ContainsEventName("mousedown", eventPref))
-                abuse = openControlled;
-              break;
-            case NS_MOUSE_LEFT_CLICK :
-              /* Click events get special treatment because of their
-                 historical status as a more legitimate event handler.
-                 If click popups are enabled in the prefs, clear the
-                 popup status completely. */
-              if (::ContainsEventName("click", eventPref))
-                abuse = openAllowed;
-              break;
-            case NS_MOUSE_LEFT_DOUBLECLICK :
-              if (::ContainsEventName("dblclick", eventPref))
-                abuse = openControlled;
-              break;
-          }
-          break;
-        case NS_SCRIPT_ERROR_EVENT :
-          switch(currentEvent->message) {
-            case NS_SCRIPT_ERROR :
-              if (::ContainsEventName("error", eventPref))
-                abuse = openControlled;
-              break;
-          }
-          break;
-        case NS_FORM_EVENT :
-          switch(currentEvent->message) {
-            case NS_FORM_SUBMIT :
-              if (::ContainsEventName("submit", eventPref))
-                abuse = openControlled;
-              break;
-            case NS_FORM_RESET :
-              if (::ContainsEventName("reset", eventPref))
-                abuse = openControlled;
-              break;
-          }
-          break;
-      } // switch
-    } // currentEvent
-  } // abuse == openAllowed
+  // level of abuse we've detected, initialized to the current popup
+  // state
+  PopupControlState abuse = gPopupControlState;
 
   // limit the number of simultaneously open popups
   if (abuse == openAbused || abuse == openControlled) {
-    intPref = 0;
-    nsresult gotPref = gPrefBranch->GetIntPref("dom.popup_maximum", &intPref);
-    if (NS_SUCCEEDED(gotPref) && intPref >= 0 && gOpenPopupSpamCount >= intPref)
+    PRInt32 popupMax = 0;
+    gPrefBranch->GetIntPref("dom.popup_maximum", &popupMax);
+    if (popupMax >= 0 && gOpenPopupSpamCount >= popupMax)
       abuse = openOverridden;
   }
 
@@ -3193,35 +3087,40 @@ GlobalWindowImpl::CheckForAbusePoint()
 /* Allow or deny a window open based on whether popups are suppressed.
    A popup generally will be allowed if it's from a white-listed domain,
    or if its target is an extant window.
-   Returns PR_TRUE if the window should be opened. */
-PRBool GlobalWindowImpl::CheckOpenAllow(PRUint32 aAbuseLevel,
-                                        const nsAString &aName)
+   Returns a value from the CheckOpenAllow enum. */
+PRUint32
+GlobalWindowImpl::CheckOpenAllow(PopupControlState aAbuseLevel,
+                                 const nsAString &aName)
 {
-  PRBool allowWindow = PR_TRUE;
+  PRUint32 allowWindow = allowNoAbuse; // (also used for openControlled)
   
-  if (aAbuseLevel == openOverridden ||
-      aAbuseLevel == openAbused && IsPopupBlocked(mDocument)) {
-    allowWindow = PR_FALSE;
+  if (aAbuseLevel >= openAbused) {
+    allowWindow = allowNot;
+
     // However it might still not be blocked.
-    // Special case items that don't actually open new windows.
-    nsAutoString name(aName);
-    // _main is an IE target which should be case-insensitive but isn't
-    // see bug 217886 for details
-    if (!name.IsEmpty()) {
-      if (name.EqualsIgnoreCase("_top") ||
-          name.EqualsIgnoreCase("_self") ||
-          name.EqualsIgnoreCase("_content") ||
-          name.Equals(NS_LITERAL_STRING("_main")))
-        allowWindow = PR_TRUE;
-      else {
-        nsCOMPtr<nsIWindowWatcher> wwatch =
-            do_GetService(NS_WINDOWWATCHER_CONTRACTID);
-        if (wwatch) {
-          nsCOMPtr<nsIDOMWindow> namedWindow;
-          wwatch->GetWindowByName(PromiseFlatString(aName).get(), this,
-                                  getter_AddRefs(namedWindow));
-          if (namedWindow)
-            allowWindow = PR_TRUE;
+    if (aAbuseLevel == openAbused && !IsPopupBlocked(mDocument))
+      allowWindow = allowWhitelisted;
+    else {
+      // Special case items that don't actually open new windows.
+      nsAutoString name(aName);
+      if (!name.IsEmpty()) {
+        // _main is an IE target which should be case-insensitive but isn't
+        // see bug 217886 for details
+        if (name.EqualsIgnoreCase("_top") ||
+            name.EqualsIgnoreCase("_self") ||
+            name.EqualsIgnoreCase("_content") ||
+            name.Equals(NS_LITERAL_STRING("_main")))
+          allowWindow = allowSelf;
+        else {
+          nsCOMPtr<nsIWindowWatcher> wwatch =
+              do_GetService(NS_WINDOWWATCHER_CONTRACTID);
+          if (wwatch) {
+            nsCOMPtr<nsIDOMWindow> namedWindow;
+            wwatch->GetWindowByName(PromiseFlatString(aName).get(), this,
+                                    getter_AddRefs(namedWindow));
+            if (namedWindow)
+              allowWindow = allowExtant;
+          }
         }
       }
     }
@@ -3304,8 +3203,9 @@ GlobalWindowImpl::Open(const nsAString& aUrl,
 {
   nsresult rv;
 
-  PRUint32 abuseLevel = CheckForAbusePoint();
-  if (!CheckOpenAllow(abuseLevel, aName)) {
+  PopupControlState abuseLevel = CheckForAbusePoint();
+  PRUint32 allowReason = CheckOpenAllow(abuseLevel, aName);
+  if (allowReason == allowNot) {
     FireAbuseEvents(PR_TRUE, PR_FALSE, aUrl, aOptions);
     return NS_ERROR_FAILURE; // unlike the public Open method, return an error
   }
@@ -3313,9 +3213,10 @@ GlobalWindowImpl::Open(const nsAString& aUrl,
   rv = OpenInternal(aUrl, aName, aOptions, PR_FALSE, nsnull, 0, nsnull,
                       _retval);
   if (NS_SUCCEEDED(rv)) {
-    if (abuseLevel >= openControlled) {
+    if (abuseLevel >= openControlled && allowReason != allowSelf) {
+      PRBool isPopup;
       nsCOMPtr<nsPIDOMWindow> opened(do_QueryInterface(*_retval));
-      if (opened) {
+      if (opened && (opened->IsPopupSpamWindow(&isPopup), !isPopup)) {
         opened->SetPopupSpamWindow(PR_TRUE);
         ++gOpenPopupSpamCount;
       }
@@ -3367,8 +3268,9 @@ GlobalWindowImpl::Open(nsIDOMWindow **_retval)
     }
   }
 
-  PRUint32 abuseLevel = CheckForAbusePoint();
-  if (!CheckOpenAllow(abuseLevel, name)) {
+  PopupControlState abuseLevel = CheckForAbusePoint();
+  PRUint32 allowReason = CheckOpenAllow(abuseLevel, name);
+  if (allowReason == allowNot) {
     FireAbuseEvents(PR_TRUE, PR_FALSE, url, options);
     return NS_OK; // don't open the window, but also don't throw a JS exception
   }
@@ -3400,9 +3302,10 @@ GlobalWindowImpl::Open(nsIDOMWindow **_retval)
       (*_retval)->GetDocument(getter_AddRefs(doc));
     }
     
-    if (abuseLevel >= openControlled) {
+    if (abuseLevel >= openControlled && allowReason != allowSelf) {
+      PRBool isPopup;
       nsCOMPtr<nsPIDOMWindow> opened(do_QueryInterface(*_retval));
-      if (opened) {
+      if (opened && (opened->IsPopupSpamWindow(&isPopup), !isPopup)) {
         opened->SetPopupSpamWindow(PR_TRUE);
         ++gOpenPopupSpamCount;
       }
@@ -3530,12 +3433,9 @@ nsCloseEvent::PostCloseEvent()
 NS_IMETHODIMP
 GlobalWindowImpl::Close()
 {
-  nsCOMPtr<nsIDOMWindow> parent;
-  GetParent(getter_AddRefs(parent));
-
-  if (parent != NS_STATIC_CAST(nsIDOMWindow *, this)) {
-    // window.close() is called on a frame in a frameset, such calls
-    // are ignored.
+  if (IsFrame() || !mDocShell) {
+    // window.close() is called on a frame in a frameset, or on a
+    // window that's already closed. Ignore such calls.
 
     return NS_OK;
   }
@@ -4999,6 +4899,23 @@ GlobalWindowImpl::SetTimeoutOrInterval(PRBool aIsInterval, PRInt32 *aReturn)
   timeout->mWindow = this;
   NS_ADDREF(timeout->mWindow);
 
+  // No popups from timeouts by default
+  timeout->mPopupState = openAbused;
+
+  if (gRunningTimeoutDepth == 0 && gPopupControlState < openAbused) {
+    // This timeout is *not* set from another timeout and it's set
+    // while popups are enabled. Propagate the state to the timeout if
+    // its delay (interval) is equal to or less than what
+    // "dom.disable_open_click_delay" is set to (in ms).
+
+    PRInt32 delay = 0;
+    gPrefBranch->GetIntPref("dom.disable_open_click_delay", &delay);
+
+    if (interval <= delay) {
+      timeout->mPopupState = gPopupControlState;
+    }
+  }
+
   InsertTimeoutIntoList(mTimeoutInsertionPoint, timeout);
   timeout->mPublicId = ++mTimeoutPublicIdCounter;
   *aReturn = timeout->mPublicId;
@@ -5118,10 +5035,21 @@ GlobalWindowImpl::RunTimeout(nsTimeoutImpl *aTimeout)
     mRunningTimeout = timeout;
     timeout->mRunning = PR_TRUE;
 
+    // Push this timeout's popup control state, which should only be
+    // eabled the first time a timeout fires that was created while
+    // popups were enabled and with a delay less than
+    // "dom.disable_open_click_delay".
+    nsAutoPopupStatePusher popupStatePusher(timeout->mPopupState);
+
+    // Clear the timeout's popup state, if any, to prevent interval
+    // timeouts from repeatedly opening poups.
+    timeout->mPopupState = openAbused;
+
     // Hold on to the timeout in case mExpr or mFunObj releases its
     // doc.
     timeout->AddRef();
 
+    ++gRunningTimeoutDepth;
     ++mTimeoutFiringDepth;
 
     if (timeout->mExpr) {
@@ -5153,6 +5081,8 @@ GlobalWindowImpl::RunTimeout(nsTimeoutImpl *aTimeout)
     }
 
     --mTimeoutFiringDepth;
+    --gRunningTimeoutDepth;
+
     mRunningTimeout = last_running_timeout;
     timeout->mRunning = PR_FALSE;
 
@@ -5610,12 +5540,28 @@ GlobalWindowImpl::SecurityCheckURL(const char *aURL)
   if (!mContext || !mDocument || !sSecMan)
     return NS_ERROR_FAILURE;
 
-  // get the JSContext from the call stack
-  nsCOMPtr<nsIThreadJSContextStack> stack(do_GetService(sJSStackContractID));
-  if (stack)
-    stack->Peek(&cx);
-  if (!cx)        // not bloody likely. but if there's no JS on the call stack,
-    return NS_OK; // then we should pass the security check.
+  nsCOMPtr<nsIDOMChromeWindow> chrome_win =
+    do_QueryInterface(NS_STATIC_CAST(nsIDOMWindow *, this));
+
+  if (IsCallerChrome() && !chrome_win) {
+    // If open() is called from chrome on a non-chrome window, we'll
+    // use the context from the window on which open() is being called
+    // to prevent giving chrome priveleges to new windows opened in
+    // such a way. This also makes us get the appropriate base URI for
+    // the below URI resolution code.
+
+    cx = (JSContext *)mContext->GetNativeContext();
+  } else {
+    // get the JSContext from the call stack
+    nsCOMPtr<nsIThreadJSContextStack> stack(do_GetService(sJSStackContractID));
+    if (stack)
+      stack->Peek(&cx);
+    if (!cx) {
+      // if there's no JS on the call stack, then we should pass the
+      // security check.
+      return NS_OK;
+    }
+  }
 
   /* resolve the URI, which could be relative to the calling window
      (note the algorithm to get the base URI should match the one
@@ -5634,7 +5580,7 @@ GlobalWindowImpl::SecurityCheckURL(const char *aURL)
       caller->GetDocument(getter_AddRefs(callerDOMdoc));
       nsCOMPtr<nsIDocument> callerDoc(do_QueryInterface(callerDOMdoc));
       if (callerDoc)
-        baseURI = callerDoc->GetDocumentURI();
+        baseURI = callerDoc->GetBaseURI();
     }
   }
 
@@ -5982,53 +5928,76 @@ NavigatorImpl::GetUserAgent(nsAString& aUserAgent)
 NS_IMETHODIMP
 NavigatorImpl::GetAppCodeName(nsAString& aAppCodeName)
 {
-  nsresult res;
+  nsresult rv;
   nsCOMPtr<nsIHttpProtocolHandler>
-    service(do_GetService(kHTTPHandlerCID, &res));
-  if (NS_SUCCEEDED(res) && service) {
+    service(do_GetService(kHTTPHandlerCID, &rv));
+  if (NS_SUCCEEDED(rv)) {
     nsCAutoString appName;
-    res = service->GetAppName(appName);
-    CopyASCIItoUCS2(appName, aAppCodeName);
+    rv = service->GetAppName(appName);
+    CopyASCIItoUTF16(appName, aAppCodeName);
   }
 
-  return res;
+  return rv;
 }
 
 NS_IMETHODIMP
 NavigatorImpl::GetAppVersion(nsAString& aAppVersion)
 {
-  nsresult res;
+  nsresult rv;
+  if (gPrefBranch) {
+    nsXPIDLCString override;
+    rv = gPrefBranch->GetCharPref("general.appversion.override",
+      getter_Copies(override));
+    if (NS_SUCCEEDED(rv)) {
+      CopyASCIItoUTF16(override, aAppVersion);
+      return NS_OK;
+    }
+  }
+
   nsCOMPtr<nsIHttpProtocolHandler>
-    service(do_GetService(kHTTPHandlerCID, &res));
-  if (NS_SUCCEEDED(res) && service) {
+    service(do_GetService(kHTTPHandlerCID, &rv));
+  if (NS_SUCCEEDED(rv)) {
     nsCAutoString str;
-    res = service->GetAppVersion(str);
-    CopyASCIItoUCS2(str, aAppVersion);
+    rv = service->GetAppVersion(str);
+    CopyASCIItoUTF16(str, aAppVersion);
+    if (NS_FAILED(rv))
+      return rv;
 
     aAppVersion.Append(NS_LITERAL_STRING(" ("));
-    res = service->GetPlatform(str);
-    if (NS_FAILED(res))
-      return res;
 
+    rv = service->GetPlatform(str);
+    if (NS_FAILED(rv))
+      return rv;
     AppendASCIItoUTF16(str, aAppVersion);
 
     aAppVersion.Append(NS_LITERAL_STRING("; "));
-    res = service->GetLanguage(str);
-    if (NS_FAILED(res))
-      return res;
+
+    rv = service->GetLanguage(str);
+    if (NS_FAILED(rv))
+      return rv;
 
     AppendASCIItoUTF16(str, aAppVersion);
 
     aAppVersion.Append(PRUnichar(')'));
   }
 
-  return res;
+  return rv;
 }
 
 NS_IMETHODIMP
 NavigatorImpl::GetAppName(nsAString& aAppName)
 {
-  aAppName.Assign(NS_LITERAL_STRING("Netscape"));
+  if (gPrefBranch) {
+    nsXPIDLCString override;
+    nsresult rv = gPrefBranch->GetCharPref("general.appname.override",
+      getter_Copies(override));
+    if (NS_SUCCEEDED(rv)) {
+      CopyASCIItoUTF16(override, aAppName);
+      return NS_OK;
+    }
+  }
+
+  aAppName = NS_LITERAL_STRING("Netscape");
   return NS_OK;
 }
 
@@ -6050,10 +6019,20 @@ NavigatorImpl::GetLanguage(nsAString& aLanguage)
 NS_IMETHODIMP
 NavigatorImpl::GetPlatform(nsAString& aPlatform)
 {
-  nsresult res;
+  nsresult rv;
+  if (gPrefBranch) {
+    nsXPIDLCString override;
+    rv = gPrefBranch->GetCharPref("general.platform.override",
+      getter_Copies(override));
+    if (NS_SUCCEEDED(rv)) {
+      CopyASCIItoUTF16(override, aPlatform);
+      return NS_OK;
+    }
+  }
+
   nsCOMPtr<nsIHttpProtocolHandler>
-    service(do_GetService(kHTTPHandlerCID, &res));
-  if (NS_SUCCEEDED(res) && service) {
+    service(do_GetService(kHTTPHandlerCID, &rv));
+  if (NS_SUCCEEDED(rv)) {
     // sorry for the #if platform ugliness, but Communicator is
     // likewise hardcoded and we're seeking backward compatibility
     // here (bug 47080)
@@ -6070,12 +6049,12 @@ NavigatorImpl::GetPlatform(nsAString& aPlatform)
     // to indicate the platform it was compiled *for*, not what it is
     // currently running *on* which is what this does.
     nsCAutoString plat;
-    res = service->GetOscpu(plat);
-    CopyASCIItoUCS2(plat, aPlatform);
+    rv = service->GetOscpu(plat);
+    CopyASCIItoUTF16(plat, aPlatform);
 #endif
   }
 
-  return res;
+  return rv;
 }
 
 NS_IMETHODIMP

@@ -82,7 +82,7 @@ static PhRect_t gConsoleRect;
 static PRBool gConsoleRectValid = PR_FALSE;
 #define QueryVisible( )	{\
 													if( gConsoleRectValid == PR_FALSE ) { \
-															PhWindowQueryVisible( Ph_QUERY_GRAPHICS, 0, 1, &gConsoleRect ); \
+															PhWindowQueryVisible( Ph_QUERY_IG_POINTER, 0, 1, &gConsoleRect ); \
 															gConsoleRectValid = PR_TRUE;\
 															} \
 													}
@@ -148,7 +148,7 @@ void nsWindow::DestroyNative(void)
   }
   // destroy all of the children that are nsWindow() classes
   // preempting the gdk destroy system.
-  DestroyNativeChildren();
+  if( mWidget ) DestroyNativeChildren();
 
   // Call the base class to actually PtDestroy mWidget.
   nsWidget::DestroyNative();
@@ -274,7 +274,7 @@ NS_METHOD nsWindow::CreateNative( PtWidget_t *parentWidget ) {
   else
   {
     // No border or decorations is the default
-    render_flags = Ph_WM_RENDER_RESIZE;
+    render_flags = 0; // Ph_WM_RENDER_RESIZE;
 
     if( mWindowType != eWindowType_popup ) {
 
@@ -654,6 +654,8 @@ int nsWindow::WindowWMHandler( PtWidget_t *widget, void *data, PtCallbackInfo_t 
 			if( we->event_state == Ph_WM_EVSTATE_FOCUSLOST ) {
       	/* rollup the menus */
       	if( gRollupWidget && gRollupListener ) gRollupListener->Rollup();
+
+				if( sFocusWidget ) sFocusWidget->DispatchStandardEvent(NS_DEACTIVATE);
 				}
 			break;
 	}
@@ -951,4 +953,24 @@ int nsWindow::MenuRegionDestroyed( PtWidget_t *widget, void *data, PtCallbackInf
 			parent->mLastMenu = nsnull;
 		}
 	return Pt_CONTINUE;
+}
+
+NS_IMETHODIMP nsWindow::SetFocus(PRBool aRaise)
+{
+	sFocusWidget = this;
+
+	if( PtIsFocused( mWidget ) == 2 ) return NS_OK;
+
+	if( mWidget ) {
+		PtWidget_t *disjoint;
+		disjoint = PtFindDisjoint( mWidget );
+		if( PtWidgetIsClass( disjoint, PtWindow ) ) {
+			if( !( PtWindowGetState( disjoint ) & Ph_WM_STATE_ISFOCUS ) ) {
+				nsWindow *pWin = (nsWindow *) GetInstance( disjoint );
+				pWin->GetAttention( -1 );
+				}
+			}
+		PtContainerGiveFocus( mWidget, NULL );
+		}
+	return NS_OK;
 }

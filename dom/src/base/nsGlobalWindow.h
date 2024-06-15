@@ -154,6 +154,9 @@ public:
   // nsIDOMWindow
   NS_DECL_NSIDOMWINDOW
 
+  // nsIDOMWindow2
+  NS_DECL_NSIDOMWINDOW2
+
   // nsIDOMWindowInternal
   NS_DECL_NSIDOMWINDOWINTERNAL
 
@@ -197,6 +200,10 @@ public:
   NS_IMETHOD GetFrameElementInternal(nsIDOMElement** aFrameElement);
   NS_IMETHOD SetFrameElementInternal(nsIDOMElement* aFrameElement);
   NS_IMETHOD SetOpenerScriptURL(nsIURI* aURI);
+
+  virtual NS_HIDDEN_(PopupControlState) PushPopupControlState(PopupControlState state) const;
+  virtual NS_HIDDEN_(void) PopPopupControlState(PopupControlState state) const;
+  virtual NS_HIDDEN_(PopupControlState) GetPopupControlState() const;
 
   // nsIDOMViewCSS
   NS_DECL_NSIDOMVIEWCSS
@@ -246,8 +253,9 @@ protected:
   nsresult GetScrollInfo(nsIScrollableView** aScrollableView, float* aP2T,
                          float* aT2P);
   nsresult SecurityCheckURL(const char *aURL);
-  PRUint32 CheckForAbusePoint();
-  PRBool   CheckOpenAllow(PRUint32 aAbuseLevel, const nsAString &aName);
+  PopupControlState CheckForAbusePoint();
+  PRUint32 CheckOpenAllow(PopupControlState aAbuseLevel,
+                          const nsAString &aName);
   void     FireAbuseEvents(PRBool aBlocked, PRBool aWindow,
                            const nsAString &aPopupURL,
                            const nsAString &aPopupWindowFeatures);
@@ -273,6 +281,11 @@ protected:
 
   nsresult GetScrollXY(PRInt32* aScrollX, PRInt32* aScrollY);
   nsresult GetScrollMaxXY(PRInt32* aScrollMaxX, PRInt32* aScrollMaxY);
+
+  PRBool IsFrame()
+  {
+    return GetParentInternal() != nsnull;
+  }
 
 protected:
   // When adding new member variables, be careful not to create cycles
@@ -310,7 +323,6 @@ protected:
   PRPackedBool                  mIsClosed;
   PRPackedBool                  mOpenerWasCleared;
   PRPackedBool                  mIsPopupSpam;
-  PRTime                        mLastMouseButtonAction;
   nsString                      mStatus;
   nsString                      mDefaultStatus;
 
@@ -371,7 +383,7 @@ struct nsTimeoutImpl
   {
 #ifdef DEBUG_jst
     {
-      extern gTimeoutCnt;
+      extern PRInt32 gTimeoutCnt;
 
       ++gTimeoutCnt;
     }
@@ -386,7 +398,7 @@ struct nsTimeoutImpl
   {
 #ifdef DEBUG_jst
     {
-      extern gTimeoutCnt;
+      extern PRInt32 gTimeoutCnt;
 
       --gTimeoutCnt;
     }
@@ -442,6 +454,10 @@ struct nsTimeoutImpl
   // Pointer to the next timeout in the linked list of scheduled
   // timeouts
   nsTimeoutImpl *mNext;
+
+  // The popup state at timeout creation time if not created from
+  // another timeout
+  PopupControlState mPopupState;
 
 private:
   // reference count for shared usage

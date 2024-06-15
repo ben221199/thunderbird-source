@@ -73,6 +73,7 @@
 #include "nsIMimeHeaders.h"
 #include "nsIMsgMdnGenerator.h"
 #include "nsMsgSearchCore.h"
+#include "nsMailHeaders.h"
 
 static NS_DEFINE_CID(kCMailDB, NS_MAILDB_CID);
 static NS_DEFINE_CID(kIOServiceCID,              NS_IOSERVICE_CID);
@@ -131,12 +132,11 @@ NS_IMETHODIMP nsMsgMailboxParser::OnStartRequest(nsIRequest *request, nsISupport
             m_graph_progress_total = dbName.GetFileSize();
             UpdateStatusText(LOCAL_STATUS_SELECTING_MAILBOX);
 
-            nsCOMPtr<nsIMsgDatabase> mailDB;
-            rv = nsComponentManager::CreateInstance(kCMailDB, nsnull, NS_GET_IID(nsIMsgDatabase), (void **) getter_AddRefs(mailDB));
-            if (NS_SUCCEEDED(rv) && mailDB)
+            nsCOMPtr<nsIMsgDBService> msgDBService = do_GetService(NS_MSGDB_SERVICE_CONTRACTID, &rv);
+            if (msgDBService)
             {
                 //Use OpenFolderDB to always open the db so that db's m_folder is set correctly.
-                rv = mailDB->OpenFolderDB(folder, PR_TRUE, PR_TRUE, (nsIMsgDatabase **) getter_AddRefs(m_mailDB));
+                rv = msgDBService->OpenFolderDB(folder, PR_TRUE, PR_TRUE, (nsIMsgDatabase **) getter_AddRefs(m_mailDB));
                 if (m_mailDB)
                     m_mailDB->AddListener(this);
             }
@@ -508,6 +508,7 @@ NS_IMETHODIMP nsParseMailMessageState::Clear()
   m_priority.length = 0;
   m_mdn_dnt.length = 0;
   m_return_path.length = 0;
+  m_account_key.length = 0;
   m_in_reply_to.length = 0;
   m_content_type.length = 0;
   m_mdn_original_recipient.length = 0;
@@ -911,11 +912,15 @@ int nsParseMailMessageState::ParseHeaders ()
     case 'X':
       if (X_MOZILLA_STATUS2_LEN == end - buf &&
         !nsCRT::strncasecmp(X_MOZILLA_STATUS2, buf, end - buf) &&
-        !m_IgnoreXMozillaStatus)
+        !m_IgnoreXMozillaStatus && !m_mozstatus2.length)
         header = &m_mozstatus2;
       else if ( X_MOZILLA_STATUS_LEN == end - buf &&
-        !nsCRT::strncasecmp(X_MOZILLA_STATUS, buf, end - buf) && !m_IgnoreXMozillaStatus)
+        !nsCRT::strncasecmp(X_MOZILLA_STATUS, buf, end - buf) && !m_IgnoreXMozillaStatus
+        && !m_mozstatus.length)
         header = &m_mozstatus;
+      else if (!nsCRT::strncasecmp(HEADER_X_MOZILLA_ACCOUNT_KEY, buf, end - buf)
+        && !m_account_key.length)
+        header = &m_account_key;
       // we could very well care what the priority header was when we 
       // remember its value. If so, need to remember it here. Also, 
       // different priority headers can appear in the same message, 
@@ -1118,6 +1123,7 @@ int nsParseMailMessageState::FinalizeHeaders()
   struct message_header *mozstatus;
   struct message_header *mozstatus2;
   struct message_header *priority;
+  struct message_header *account_key;
   struct message_header *ccList;
   struct message_header *mdn_dnt;
   struct message_header md5_header;
@@ -1161,6 +1167,7 @@ int nsParseMailMessageState::FinalizeHeaders()
   mdn_dnt	   = (m_mdn_dnt.length	  ? &m_mdn_dnt	  : 0);
   inReplyTo = (m_in_reply_to.length ? &m_in_reply_to : 0);
   content_type = (m_content_type.length ? &m_content_type : 0);
+  account_key = (m_account_key.length ? &m_account_key :0);
   
   if (mozstatus) 
   {
@@ -1346,6 +1353,8 @@ int nsParseMailMessageState::FinalizeHeaders()
           }
         }
         
+        if (account_key != nsnull)
+          m_newMsgHdr->SetAccountKey(account_key->value);
         // use in-reply-to header as references, if there's no references header
         if (references != nsnull)
           m_newMsgHdr->SetReferences(references->value);
@@ -1425,11 +1434,11 @@ nsParseNewMailState::nsParseNewMailState()
 NS_IMPL_ISUPPORTS_INHERITED1(nsParseNewMailState, nsMsgMailboxParser, nsIMsgFilterHitNotify)
 
 nsresult
-nsParseNewMailState::Init(nsIMsgFolder *rootFolder, nsIMsgFolder *downloadFolder, nsFileSpec &folder, nsIOFileStream *inboxFileStream, nsIMsgWindow *aMsgWindow)
+nsParseNewMailState::Init(nsIMsgFolder *serverFolder, nsIMsgFolder *downloadFolder, nsFileSpec &folder, nsIOFileStream *inboxFileStream, nsIMsgWindow *aMsgWindow)
 {
   nsresult rv;
   m_position = folder.GetFileSize();
-  m_rootFolder = rootFolder;
+  m_rootFolder = serverFolder;
   m_inboxFileSpec = folder;
   m_inboxFileStream = inboxFileStream;
   m_msgWindow = aMsgWindow;
@@ -1437,19 +1446,18 @@ nsParseNewMailState::Init(nsIMsgFolder *rootFolder, nsIMsgFolder *downloadFolder
 
   // the new mail parser isn't going to get the stream input, it seems, so we can't use
   // the OnStartRequest mechanism the mailbox parser uses. So, let's open the db right now.
-  nsCOMPtr<nsIMsgDatabase> mailDB;
-  rv = nsComponentManager::CreateInstance(kCMailDB, nsnull, NS_GET_IID(nsIMsgDatabase), (void **) getter_AddRefs(mailDB));
-  if (NS_SUCCEEDED(rv) && mailDB)
+  nsCOMPtr<nsIMsgDBService> msgDBService = do_GetService(NS_MSGDB_SERVICE_CONTRACTID, &rv);
+  if (msgDBService)
   {
     nsCOMPtr <nsIFileSpec> dbFileSpec;
     NS_NewFileSpecWithSpec(folder, getter_AddRefs(dbFileSpec));
-    rv = mailDB->OpenFolderDB(downloadFolder, PR_TRUE, PR_FALSE, (nsIMsgDatabase **) getter_AddRefs(m_mailDB));
+    rv = msgDBService->OpenFolderDB(downloadFolder, PR_TRUE, PR_FALSE, (nsIMsgDatabase **) getter_AddRefs(m_mailDB));
   }
   //	rv = nsMailDatabase::Open(folder, PR_TRUE, &m_mailDB, PR_FALSE);
   if (NS_FAILED(rv)) 
     return rv;
   
-  nsCOMPtr <nsIMsgFolder> rootMsgFolder = do_QueryInterface(rootFolder, &rv);
+  nsCOMPtr <nsIMsgFolder> rootMsgFolder = do_QueryInterface(serverFolder, &rv);
   NS_ENSURE_SUCCESS(rv, rv);
   
   nsCOMPtr<nsIMsgIncomingServer> server;
@@ -1541,9 +1549,12 @@ nsresult nsParseNewMailState::GetTrashFolder(nsIMsgFolder **pTrashFolder)
   if (!pTrashFolder)
     return NS_ERROR_NULL_POINTER;
   
-  if(m_rootFolder)
+  if(m_downloadFolder)
   {
-    nsCOMPtr <nsIMsgFolder> rootMsgFolder = do_QueryInterface(m_rootFolder);
+    nsCOMPtr <nsIMsgIncomingServer> incomingServer;
+    m_downloadFolder->GetServer(getter_AddRefs(incomingServer));
+    nsCOMPtr <nsIMsgFolder> rootMsgFolder;
+    incomingServer->GetRootMsgFolder(getter_AddRefs(rootMsgFolder));
     if (rootMsgFolder)
     {
       PRUint32 numFolders;
@@ -1560,20 +1571,21 @@ void nsParseNewMailState::ApplyFilters(PRBool *pMoved, nsIMsgWindow *msgWindow)
   m_msgMovedByFilter = PR_FALSE;
   
   nsCOMPtr<nsIMsgDBHdr> msgHdr = m_newMsgHdr;
-  nsCOMPtr<nsIMsgFolder> inbox;
+  nsCOMPtr<nsIMsgFolder> downloadFolder = m_downloadFolder;
   nsCOMPtr <nsIMsgFolder> rootMsgFolder = do_QueryInterface(m_rootFolder);
   if (rootMsgFolder)
   {
     PRUint32 numFolders;
-    rootMsgFolder->GetFoldersWithFlag(MSG_FOLDER_FLAG_INBOX, 1, &numFolders, getter_AddRefs(inbox));
-    if (inbox)
-      inbox->GetURI(getter_Copies(m_inboxUri));
+    if (!downloadFolder)
+      rootMsgFolder->GetFoldersWithFlag(MSG_FOLDER_FLAG_INBOX, 1, &numFolders, getter_AddRefs(downloadFolder));
+    if (downloadFolder)
+      downloadFolder->GetURI(getter_Copies(m_inboxUri));
     char * headers = m_headers.GetBuffer();
     PRUint32 headersSize = m_headers.GetBufferPos();
     nsresult matchTermStatus;
     if (m_filterList)
       matchTermStatus = m_filterList->ApplyFiltersToHdr(nsMsgFilterType::InboxRule,
-                  msgHdr, inbox, m_mailDB, headers, headersSize, this, msgWindow);
+                  msgHdr, downloadFolder, m_mailDB, headers, headersSize, this, msgWindow);
   }
   
   if (pMoved)
@@ -1696,9 +1708,11 @@ NS_IMETHODIMP nsParseNewMailState::ApplyFilterHit(nsIMsgFilter *filter, nsIMsgWi
       }
       case nsMsgFilterAction::DeleteFromPop3Server:
         {
+          PRUint32 flags = 0;
           nsCOMPtr <nsIMsgFolder> downloadFolder;
           msgHdr->GetFolder(getter_AddRefs(downloadFolder));
           nsCOMPtr <nsIMsgLocalMailFolder> localFolder = do_QueryInterface(downloadFolder);
+          msgHdr->GetFlags(&flags);
           if (localFolder)
           {
             nsCOMPtr<nsISupportsArray> messages;
@@ -1706,7 +1720,41 @@ NS_IMETHODIMP nsParseNewMailState::ApplyFilterHit(nsIMsgFilter *filter, nsIMsgWi
             NS_ENSURE_SUCCESS(rv, rv);
             nsCOMPtr<nsISupports> iSupports = do_QueryInterface(msgHdr);
             messages->AppendElement(iSupports);
-            localFolder->MarkMsgsOnPop3Server(messages, PR_TRUE);
+            // This action ignores the deleteMailLeftOnServer preference
+            localFolder->MarkMsgsOnPop3Server(messages, POP3_FORCE_DEL);
+
+            // If this is just a header, throw it away. It's useless now
+            // that the server copy is being deleted.
+            if (flags & MSG_FLAG_PARTIAL)
+            {
+              m_msgMovedByFilter = PR_TRUE;
+              msgIsNew = PR_FALSE;
+            }
+          }
+        }
+        break;
+      case nsMsgFilterAction::FetchBodyFromPop3Server:
+        {
+	  PRUint32 flags = 0;
+          nsCOMPtr <nsIMsgFolder> downloadFolder;
+          msgHdr->GetFolder(getter_AddRefs(downloadFolder));
+          nsCOMPtr <nsIMsgLocalMailFolder> localFolder = do_QueryInterface(downloadFolder);
+          msgHdr->GetFlags(&flags);
+          if (localFolder && (flags & MSG_FLAG_PARTIAL))
+          {
+            nsCOMPtr<nsISupportsArray> messages;
+            rv = NS_NewISupportsArray(getter_AddRefs(messages));
+            NS_ENSURE_SUCCESS(rv, rv);
+            nsCOMPtr<nsISupports> iSupports = do_QueryInterface(msgHdr);
+            messages->AppendElement(iSupports);
+            localFolder->MarkMsgsOnPop3Server(messages, POP3_FETCH_BODY);
+	    // Don't add this header to the DB, we're going to replace it
+	    // with the full message.
+            m_msgMovedByFilter = PR_TRUE;
+            msgIsNew = PR_FALSE;
+	    // Don't do anything else in this filter, wait until we
+	    // have the full message.
+	    *applyMore = PR_FALSE;
           }
         }
         break;

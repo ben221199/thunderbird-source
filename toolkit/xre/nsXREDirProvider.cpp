@@ -78,11 +78,18 @@
 #include <os2.h>
 #endif
 
+#if defined(XP_MACOSX)
+#define APP_REGISTRY_NAME "Application Registry"
+#elif defined(XP_WIN) || defined(XP_OS2)
+#define APP_REGISTRY_NAME "registry.dat"
+#else
+#define APP_REGISTRY_NAME "appreg"
+#endif
+
 nsXREDirProvider* gDirServiceProvider = nsnull;
 
 nsXREDirProvider::nsXREDirProvider() :
-  mProfileNotified(PR_FALSE),
-  mRegisterExtraComponents(PR_TRUE)
+  mProfileNotified(PR_FALSE)
 {
   gDirServiceProvider = this;
 }
@@ -238,6 +245,13 @@ nsXREDirProvider::GetFile(const char* aProperty, PRBool* aPersistent,
         rv = file->AppendNative(nsDependentCString("pref"));
     }
   }
+  else if (!strcmp(aProperty, NS_APP_APPLICATION_REGISTRY_DIR)) {
+    rv = GetUserAppDataDirectory((nsILocalFile**)(nsIFile**) getter_AddRefs(file));
+  }
+  else if (!strcmp(aProperty, NS_APP_APPLICATION_REGISTRY_FILE)) {
+    rv = GetUserAppDataDirectory((nsILocalFile**)(nsIFile**) getter_AddRefs(file));
+    rv |= file->AppendNative(NS_LITERAL_CSTRING(APP_REGISTRY_NAME));
+  }
   else if (!strcmp(aProperty, NS_APP_USER_PROFILES_ROOT_DIR)) {
     rv = GetUserAppDataDirectory((nsILocalFile**)(nsIFile**) getter_AddRefs(file));
 
@@ -330,12 +344,6 @@ nsXREDirProvider::GetFile(const char* aProperty, PRBool* aPersistent,
   return NS_OK;
 }
 
-void 
-nsXREDirProvider::RegisterExtraComponents()
-{
-  mRegisterExtraComponents = PR_TRUE;
-}
-
 static void
 LoadDirsIntoArray(nsIFile* aComponentsList, nsCOMArray<nsIFile>& aDirectories)
 {
@@ -372,23 +380,21 @@ nsXREDirProvider::GetFiles(const char* aProperty, nsISimpleEnumerator** aResult)
   *aResult = nsnull;
 
   if (!strcmp(aProperty, NS_XPCOM_COMPONENT_DIR_LIST)) {
-    if (mRegisterExtraComponents) {
-      nsCOMArray<nsIFile> directories;
-  
-      nsCOMPtr<nsIFile> appFile;
-      mAppDir->Clone(getter_AddRefs(appFile));
-      appFile->AppendNative(nsDependentCString("components.ini"));
-      LoadDirsIntoArray(appFile, directories);
+    nsCOMArray<nsIFile> directories;
 
-      nsCOMPtr<nsIFile> profileFile;
-      if (mProfileDir) {
-        mProfileDir->Clone(getter_AddRefs(profileFile));
-        profileFile->AppendNative(nsDependentCString("components.ini"));
-        LoadDirsIntoArray(profileFile, directories);
-      }
+    nsCOMPtr<nsIFile> appFile;
+    mAppDir->Clone(getter_AddRefs(appFile));
+    appFile->AppendNative(nsDependentCString("components.ini"));
+    LoadDirsIntoArray(appFile, directories);
 
-      rv = NS_NewArrayEnumerator(aResult, directories);
+    nsCOMPtr<nsIFile> profileFile;
+    if (mProfileDir) {
+      mProfileDir->Clone(getter_AddRefs(profileFile));
+      profileFile->AppendNative(nsDependentCString("components.ini"));
+      LoadDirsIntoArray(profileFile, directories);
     }
+
+    rv = NS_NewArrayEnumerator(aResult, directories);
   }
   else if (!strcmp(aProperty, NS_APP_PREFS_DEFAULTS_DIR_LIST)) {
     nsCOMArray<nsIFile> directories;

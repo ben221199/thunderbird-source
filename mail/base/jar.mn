@@ -10,6 +10,7 @@ messenger.jar:
 *+  content/messenger/messageWindow.js              (content/messageWindow.js)
 *+   content/messenger/mailContextMenus.js          (content/mailContextMenus.js)
 *+  content/messenger/messenger.xul                 (content/messenger.xul)
+*+  content/messenger/searchBar.js                  (content/searchBar.js)
 *   content/messenger/hiddenWindow.xul              (content/hiddenWindow.xul)
 *   content/messenger/hiddenWindow.js               (content/hiddenWindow.js)
 *+  content/messenger/msgHdrViewOverlay.js          (content/msgHdrViewOverlay.js)
@@ -34,6 +35,8 @@ messenger.jar:
     content/messenger/about-credits.png             (content/about-credits.png)
     content/messenger/about-footer.png              (content/about-footer.png)
     content/messenger/aboutDialog.css               (content/aboutDialog.css)
++   content/messenger/messenger.css                 (content/messenger.css)
+*   content/messenger/search.xml                    (content/search.xml)
 
 comm.jar:
 *   content/help/contents.rdf                       (content/help.rdf)
@@ -57,17 +60,16 @@ en-US.jar:
     locale/en-US/messenger/aboutDialog.dtd          (locale/aboutDialog.dtd)
 +   locale/en-US/messenger/junkMail.dtd             (locale/junkMail.dtd)
 +   locale/en-US/messenger/mailOverlay.dtd          (locale/mailOverlay.dtd)
-    locale/en-US/messenger/messenger.dtd            (locale/messenger.dtd)
++   locale/en-US/messenger/messenger.dtd            (locale/messenger.dtd)
 +   locale/en-US/messenger/mailTasksOverlay.dtd     (locale/mailTasksOverlay.dtd)
 +   locale/en-US/messenger/msgAccountCentral.dtd    (locale/msgAccountCentral.dtd)
 +   locale/en-US/messenger/SearchDialog.dtd         (locale/SearchDialog.dtd)
-+   locale/en-US/global/brand.properties            (locale/brand.properties) 
-*+  locale/en-US/global/brand.dtd                   (locale/brand.dtd) 
++   locale/global/charset.dtd                 (locale/charset.dtd)
++   locale/global/brand.properties            (locale/brand.properties) 
+*+  locale/global/brand.dtd                   (locale/brand.dtd) 
 +   locale/en-US/communicator/utilityOverlay.dtd    (locale/utilityOverlay.dtd)
+*+  locale/global-region/region.dtd               (locale/region.dtd)
++   locale/en-US/messenger-mapi/mapi.properties      (locale/mapi.properties)
 
 US.jar:
 +   locale/US/messenger-region/region.properties     (locale/region.properties)
-*+  locale/US/global-region/region.dtd               (locale/region.dtd)
-
-en-win.jar:
-+   locale/en-US/messenger-mapi/mapi.properties      (locale/mapi.properties)

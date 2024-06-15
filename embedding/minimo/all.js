@@ -59,6 +59,7 @@ pref("slider.snapMultiplier", 6);
 pref("browser.fixup.alternate.enabled", true);
 pref("browser.fixup.alternate.prefix", "www.");
 pref("browser.fixup.alternate.suffix", ".com");
+pref("browser.fixup.hide_user_pass", true);
 
 // Scripts & Windows prefs
 pref("browser.block.target_new_window",     false);
@@ -107,6 +108,10 @@ pref("network.protocol-handler.external.ms-help", false);
 pref("network.protocol-handler.external.vnd.ms.radio", false);
 pref("network.protocol-handler.external.help", false);
 pref("network.protocol-handler.external.disk", false);
+
+// Default action for unlisted external protocol handlers
+// 0 == never load, 1 == always load, 2 == ask the user
+pref("network.protocol-handler.external-default", 2);
 
 // An exposed protocol handler is one that can be used in all contexts.  A
 // non-exposed protocol handler is one that can only be used internally by the

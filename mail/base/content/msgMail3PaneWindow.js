@@ -22,6 +22,7 @@
 #   Håkan Waara (hwaara@chello.se)
 #   Neil Rashbrook (neil@parkwaycc.co.uk)
 #   Seth Spitzer <sspitzer@netscape.com>
+#   David Bienvenu <bienvenu@nventure.com>
 
 /* This is where functions related to the 3 pane window are kept */
 
@@ -166,7 +167,7 @@ var folderListener = {
                  gDBView.suppressCommandUpdating = false;
                }
 
-               gIsEditableMsgFolder = IsSpecialFolder(msgFolder, MSG_FOLDER_FLAG_DRAFTS);
+               gIsEditableMsgFolder = IsSpecialFolder(msgFolder, MSG_FOLDER_FLAG_DRAFTS, true);
 
                gCurrentLoadingFolderSortType = 0;
                gCurrentLoadingFolderSortOrder = 0;
@@ -723,6 +724,7 @@ function OnLoadMessenger()
   // update the pane config before we exit onload otherwise the user may see a flicker if we poke the document
   // in delayedOnLoadMessenger...
   UpdateMailPaneConfig(false);
+  document.loadBindingDocument('chrome://global/content/bindings/textbox.xml');
 
   // Set a sane starting width/height for all resolutions on new profiles. Do this before the window loads
   if (!document.documentElement.hasAttribute("width")) 
@@ -800,6 +802,12 @@ function delayedOnLoadMessenger()
 
   var toolbarset = document.getElementById('customToolbars');
   toolbox.toolbarset = toolbarset;
+
+//  var updatePanel = document.getElementById("statusbar-updates");
+//  try {
+//    updatePanel.init();
+//  }
+//  catch (ex) {}
 }
 
 function OnUnloadMessenger()
@@ -1233,6 +1241,7 @@ function ClearMessagePane()
 
     // hide the junk bar
     SetUpJunkBar(null);
+    SetUpRemoteContentBar(null);
   }
 }
 

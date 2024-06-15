@@ -1,6 +1,6 @@
-/.cvsignore/1.1/Sat Dec  5 09:07:27 1998//TTHUNDERBIRD_0_7_3_RELEASE
-/Makefile.in/1.26.8.1/Sun May 16 18:16:47 2004//TTHUNDERBIRD_0_7_3_RELEASE
-/xpfe.pkg/1.2/Wed Jan  7 01:22:25 2004//TTHUNDERBIRD_0_7_3_RELEASE
+/.cvsignore/1.1/Sat Dec  5 09:07:27 1998//TTHUNDERBIRD_0_8_RELEASE
+/Makefile.in/1.26.8.1/Sun May 16 18:16:47 2004//TTHUNDERBIRD_0_8_RELEASE
+/xpfe.pkg/1.2/Wed Jan  7 01:22:25 2004//TTHUNDERBIRD_0_8_RELEASE
 D/appshell////
 D/bootstrap////
 D/browser////

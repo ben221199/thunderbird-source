@@ -47,8 +47,8 @@ messenger.jar:
     content/messenger/am-copies.js                                             (base/prefs/resources/content/am-copies.js)
     content/messenger/am-offline.xul                                           (base/prefs/resources/content/am-offline.xul)
     content/messenger/am-offline.js                                            (base/prefs/resources/content/am-offline.js)
-    content/messenger/am-addressing.xul                                        (base/prefs/resources/content/am-addressing.xul)  
-    content/messenger/am-addressing.js                                         (base/prefs/resources/content/am-addressing.js)    
+    content/messenger/am-addressing.xul                                        (base/prefs/resources/content/am-addressing.xul)
+    content/messenger/am-addressing.js                                         (base/prefs/resources/content/am-addressing.js)
     content/messenger/am-advanced.xul                                          (base/prefs/resources/content/am-advanced.xul)
     content/messenger/am-server-advanced.xul                                   (base/prefs/resources/content/am-server-advanced.xul)
     content/messenger/am-server-advanced.js                                    (base/prefs/resources/content/am-server-advanced.js)
@@ -198,6 +198,7 @@ en-US.jar:
     locale/en-US/messenger/addressbook/abSelectAddressesDialog.dtd     (addrbook/resources/locale/en-US/abSelectAddressesDialog.dtd)
     locale/en-US/messenger/addressbook/abMailListDialog.dtd            (addrbook/resources/locale/en-US/abMailListDialog.dtd)
     locale/en-US/messenger/addressbook/addressBook.properties          (addrbook/resources/locale/en-US/addressBook.properties)
+    locale/en-US/messenger/addressbook/ldapAutoCompErrs.properties     (addrbook/resources/locale/en-US/ldapAutoCompErrs.properties)
     locale/en-US/messenger/messenger.dtd                                (base/resources/locale/en-US/messenger.dtd)
     locale/en-US/messenger/msgAccountCentral.dtd                        (base/resources/locale/en-US/msgAccountCentral.dtd)
     locale/en-US/messenger/messenger.properties                         (base/resources/locale/en-US/messenger.properties)
@@ -285,12 +286,10 @@ en-US.jar:
     locale/en-US/messenger/vcard.properties                             (mime/cthandlers/resources/vcard.properties)
     locale/en-US/messenger/smime.properties                             (mime/cthandlers/resources/smime.properties)  
     locale/en-US/messenger/markByDate.dtd                               (base/resources/locale/en-US/markByDate.dtd)
+     locale/en-US/messenger-mapi/pref-mailnewsOverlay.dtd               (mapi/resources/locale/en-US/pref-mailnewsOverlay.dtd)
+     locale/en-US/messenger-mapi/mapi.properties                        (mapi/resources/locale/en-US/mapi.properties)
+*    locale/en-US/messenger-mapi/contents.rdf                           (mapi/resources/locale/en-US/contents.rdf)
 
 US.jar:
 *   locale/US/messenger-region/contents.rdf                             (base/resources/locale/en-US/contents-region.rdf)
     locale/US/messenger-region/region.properties                        (base/resources/locale/en-US/region.properties)
-
-en-win.jar:
-     locale/en-US/messenger-mapi/pref-mailnewsOverlay.dtd               (mapi/resources/locale/en-US/pref-mailnewsOverlay.dtd)
-     locale/en-US/messenger-mapi/mapi.properties                        (mapi/resources/locale/en-US/mapi.properties)
-*    locale/en-US/messenger-mapi/contents.rdf                           (mapi/resources/locale/en-US/contents.rdf)

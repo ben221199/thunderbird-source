@@ -1,6 +1,6 @@
 #!/perl
 
-# make-jars [-f] [-v] [-l] [-x] [-d <chromeDir>] [-s <srcdir>] [-z zipprog] [-o operating-system] < <jar.mn>
+# make-jars [-f] [-v] [-l] [-x] [-d <chromeDir>] [-s <srcdir>] [-t <topsrcdir>] [-z zipprog] [-o operating-system] < <jar.mn>
 
 my $cygwin_mountprefix = "";
 if ($^O eq "cygwin") {
@@ -41,11 +41,16 @@ foreach my $arg (@ARGV) {
 }
 my $defines = join(' ', @ARGV[ $ddindex .. $#ARGV ]);
 
-getopts("d:s:f:avlD:o:p:xz:");
+getopts("d:s:t:f:avlD:o:p:xz:");
 
 my $baseFilesDir = ".";
 if (defined($::opt_s)) {
     $baseFilesDir = $::opt_s;
+}
+
+my $topSrcDir;
+if (defined($::opt_t)) {
+    $topSrcDir = $::opt_t;
 }
 
 my $maxCmdline = 4000;
@@ -353,7 +358,10 @@ sub EnsureFileInDir
 
     my $src = $srcFile;
     if (defined($src)) {
-        if (! -e $src ) {
+        if ($src =~ m|^/|) {
+            # "absolute" patch from topSrcDir
+            $src = $topSrcDir.$srcFile;
+        } elsif (! -e $src ) {
             $src = "$srcPath/$srcFile";
         }
     }
@@ -457,7 +465,9 @@ sub EnsureFileInDir
     return 0;
 }
 
-while (<STDIN>) {
+my @gLines = <STDIN>;
+
+while (defined($_ = shift @gLines)) {
     chomp;
 
 start: 
@@ -467,7 +477,7 @@ start:
         my $overrides = "";
         my $cwd = cwd();
         print "+++ making chrome $cwd  => $chromeDir/$jarfile.jar\n";
-        while (<STDIN>) {
+        while (defined($_ = shift @gLines)) {
             if (/^\s+([\w\d.\-\_\\\/\+]+)\s*(\([\w\d.\-\_\\\/]+\))?$\s*/) {
                 my $dest = $1;
                 my $srcPath = defined($2) ? substr($2, 1, -1) : $2;

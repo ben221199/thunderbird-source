@@ -166,7 +166,7 @@ var PrintUtils = {
     observe: function(aSubject, aTopic, aData)
     {
       // delay the print preview to show the content of the progress dialog
-      setTimeout("PrintUtils.enterPrintPreview();", 0);
+      setTimeout(function () { PrintUtils.enterPrintPreview(); }, 0);
     },
 
     QueryInterface : function(iid)
@@ -188,6 +188,7 @@ var PrintUtils = {
       // causing an exception to be thrown which we catch here.
       // Unfortunately this will also consume helpful failures, so add a
       // dump(e); // if you need to debug
+      return;
     }
 
     var printPreviewTB = document.getElementById("print-preview-toolbar");

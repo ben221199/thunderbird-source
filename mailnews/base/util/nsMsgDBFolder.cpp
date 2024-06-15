@@ -107,6 +107,7 @@ nsIAtom* nsMsgDBFolder::kStatusAtom=nsnull;
 nsIAtom* nsMsgDBFolder::kNameAtom=nsnull;
 nsIAtom* nsMsgDBFolder::kSynchronizeAtom=nsnull;
 nsIAtom* nsMsgDBFolder::kOpenAtom=nsnull;
+nsIAtom* nsMsgDBFolder::kIsDeferred=nsnull;
 
 nsICollation * nsMsgDBFolder::gCollationKeyGenerator = nsnull;
 
@@ -144,6 +145,7 @@ const nsStaticAtom nsMsgDBFolder::folder_atoms[] = {
   { "Flagged", &nsMsgDBFolder::kFlaggedAtom },
   { "Synchronize", &nsMsgDBFolder::kSynchronizeAtom },
   { "open", &nsMsgDBFolder::kOpenAtom },
+  { "isDeferred", &nsMsgDBFolder::kIsDeferred }
 };
 
 nsMsgDBFolder::nsMsgDBFolder(void)
@@ -198,38 +200,38 @@ nsMsgDBFolder::~nsMsgDBFolder(void)
 #endif
   }
 	//shutdown but don't shutdown children.
-	Shutdown(PR_FALSE);
+  Shutdown(PR_FALSE);
 }
 
 NS_IMETHODIMP nsMsgDBFolder::Shutdown(PRBool shutdownChildren)
 {
-	if(mDatabase)
-	{
-		mDatabase->RemoveListener(this);
-		mDatabase->Close(PR_TRUE);
-		mDatabase = nsnull;
-
+  if(mDatabase)
+  {
+    mDatabase->RemoveListener(this);
+    mDatabase->Close(PR_TRUE);
+    mDatabase = nsnull;
+    
   }
-
-	if(shutdownChildren)
-	{
-		PRUint32 count;
-	    nsresult rv = mSubFolders->Count(&count);
-	    if(NS_SUCCEEDED(rv))
-		{
-			for (PRUint32 i = 0; i < count; i++)
-			{
-				nsCOMPtr<nsIMsgFolder> childFolder = do_QueryElementAt(mSubFolders, i);
-				if(childFolder)
-					childFolder->Shutdown(PR_TRUE);
-			}
-		}
+  
+  if(shutdownChildren)
+  {
+    PRUint32 count;
+    nsresult rv = mSubFolders->Count(&count);
+    if(NS_SUCCEEDED(rv))
+    {
+      for (PRUint32 i = 0; i < count; i++)
+      {
+        nsCOMPtr<nsIMsgFolder> childFolder = do_QueryElementAt(mSubFolders, i);
+        if(childFolder)
+          childFolder->Shutdown(PR_TRUE);
+      }
+    }
     // Reset incoming server pointer and pathname.
     mServer = nsnull;
     mPath = nsnull;
     mSubFolders->Clear();
-	}
-	return NS_OK;
+  }
+  return NS_OK;
 }
 
 
@@ -1040,10 +1042,10 @@ NS_IMETHODIMP nsMsgDBFolder::GetFlags(PRUint32 *_retval)
 
 NS_IMETHODIMP nsMsgDBFolder::ReadFromFolderCacheElem(nsIMsgFolderCacheElement *element)
 {
-	nsresult rv = NS_OK;
-	nsXPIDLCString charset;
+  nsresult rv = NS_OK;
+  nsXPIDLCString charset;
 
-	element->GetInt32Property("flags", (PRInt32 *) &mFlags);
+  element->GetInt32Property("flags", (PRInt32 *) &mFlags);
 
   PRBool persistElided = PR_TRUE;
   rv = GetPersistElided(&persistElided);
@@ -1098,7 +1100,7 @@ nsresult nsMsgDBFolder::GetFolderCacheKey(nsIFileSpec **aFileSpec)
 		{
 			nsFileSpec		folderName;
 			dbPath->GetFileSpec(&folderName);
-			nsLocalFolderSummarySpec	summarySpec(folderName);
+			nsLocalFolderSummarySpec summarySpec(folderName);
 
 			dbPath->SetFromFileSpec(summarySpec);
 
@@ -1106,7 +1108,7 @@ nsresult nsMsgDBFolder::GetFolderCacheKey(nsIFileSpec **aFileSpec)
 			// see bug #244217 for details
 			PRBool exists;
 			if (NS_SUCCEEDED(dbPath->Exists(&exists)) && !exists)
-			dbPath->Touch();
+				dbPath->Touch();
 		}
 	}
 	return rv;
@@ -1823,11 +1825,25 @@ nsMsgDBFolder::CallFilterPlugins(nsIMsgWindow *aMsgWindow, PRBool *aFiltersRun)
   server->GetSpamFilterPlugin(getter_AddRefs(filterPlugin));
   if (!filterPlugin) // it's not an error not to have the filter plugin.
     return NS_OK;
-
   NS_ENSURE_SUCCESS(rv, rv); 
+
+  nsCOMPtr <nsIJunkMailPlugin> junkMailPlugin = do_QueryInterface(filterPlugin);
+
+  if (junkMailPlugin)
+  {
+    PRBool userHasClassified = PR_FALSE;
+    // if the user has not classified any messages yet, then we shouldn't bother
+    // running the junk mail controls. This creates a better first use experience.
+    // See Bug #250084.
+    junkMailPlugin->GetUserHasClassified(&userHasClassified);
+    if (!userHasClassified)
+      return NS_OK;
+  }
+
   spamSettings->GetLevel(&spamLevel);
   if (!spamLevel)
     return NS_OK;
+
   nsCOMPtr<nsIMsgMailSession> mailSession = 
       do_GetService(NS_MSGMAILSESSION_CONTRACTID, &rv);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -1935,7 +1951,6 @@ nsMsgDBFolder::CallFilterPlugins(nsIMsgWindow *aMsgWindow, PRBool *aFiltersRun)
     // filterMsgs
     //
     *aFiltersRun = PR_TRUE;
-    nsCOMPtr <nsIJunkMailPlugin> junkMailPlugin = do_QueryInterface(filterPlugin);
     rv = SpamFilterClassifyMessages((const char **) messageURIs, numMessagesToClassify, aMsgWindow, junkMailPlugin); 
 
     for ( PRUint32 freeIndex=0 ; freeIndex < numMessagesToClassify ; ++freeIndex ) 
@@ -2571,7 +2586,7 @@ nsMsgDBFolder::GetCanFileMessages(PRBool *aResult)
 
   //varada - checking folder flag to see if it is the "Unsent Messages"
   //and if so return FALSE
-  if (mFlags & MSG_FOLDER_FLAG_QUEUE)
+  if (mFlags & (MSG_FOLDER_FLAG_QUEUE | MSG_FOLDER_FLAG_VIRTUAL))
   {
     *aResult = PR_FALSE;
     return NS_OK;
@@ -2602,8 +2617,8 @@ nsMsgDBFolder::GetCanCreateSubfolders(PRBool *aResult)
   NS_ENSURE_ARG_POINTER(aResult);
 
   //Checking folder flag to see if it is the "Unsent Messages"
-  //and if so return FALSE
-  if (mFlags & MSG_FOLDER_FLAG_QUEUE)
+  //or a virtual folder, and if so return FALSE
+  if (mFlags & (MSG_FOLDER_FLAG_QUEUE | MSG_FOLDER_FLAG_VIRTUAL))
   {
     *aResult = PR_FALSE;
     return NS_OK;
@@ -2975,8 +2990,8 @@ NS_IMETHODIMP nsMsgDBFolder::RecursiveDelete(PRBool deleteStorage, nsIMsgWindow 
   }
 
   // now delete the disk storage for _this_
-    if (deleteStorage && (status == NS_OK))
-        status = Delete();
+  if (deleteStorage && (status == NS_OK))
+      status = Delete();
   return status;
 }
 
@@ -2985,10 +3000,113 @@ NS_IMETHODIMP nsMsgDBFolder::CreateSubfolder(const PRUnichar *folderName, nsIMsg
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-nsresult nsMsgDBFolder::AddSubfolder(nsAutoString *folderName,
-                                   nsIMsgFolder** newFolder)
+NS_IMETHODIMP nsMsgDBFolder::AddSubfolder(const nsAString& name,
+                                   nsIMsgFolder** child)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  NS_ENSURE_ARG_POINTER(child);
+  
+  PRInt32 flags = 0;
+  nsresult rv;
+  nsCOMPtr<nsIRDFService> rdf = do_GetService("@mozilla.org/rdf/rdf-service;1", &rv);
+  NS_ENSURE_SUCCESS(rv,rv);
+  
+  nsCAutoString uri(mURI);
+  uri.Append('/');
+  
+  // URI should use UTF-8
+  // (see RFC2396 Uniform Resource Identifiers (URI): Generic Syntax)
+  nsCAutoString escapedName;
+  rv = NS_MsgEscapeEncodeURLPath(name, escapedName);
+  NS_ENSURE_SUCCESS(rv, rv);
+  
+  // fix for #192780
+  // if this is the root folder
+  // make sure the the special folders
+  // have the right uri.
+  // on disk, host\INBOX should be a folder with the uri mailbox://user@host/Inbox"
+  // as mailbox://user@host/Inbox != mailbox://user@host/INBOX
+  nsCOMPtr<nsIMsgFolder> rootFolder;
+  rv = GetRootFolder(getter_AddRefs(rootFolder));
+  if (NS_SUCCEEDED(rv) && rootFolder && (rootFolder.get() == (nsIMsgFolder *)this))
+  {
+    if (nsCRT::strcasecmp(escapedName.get(), "INBOX") == 0)
+      uri += "Inbox";
+    else if (nsCRT::strcasecmp(escapedName.get(), "UNSENT%20MESSAGES") == 0)
+      uri += "Unsent%20Messages";
+    else if (nsCRT::strcasecmp(escapedName.get(), "DRAFTS") == 0)
+      uri += "Drafts";
+    else if (nsCRT::strcasecmp(escapedName.get(), "TRASH") == 0)
+      uri += "Trash";
+    else if (nsCRT::strcasecmp(escapedName.get(), "SENT") == 0)
+      uri += "Sent";
+    else if (nsCRT::strcasecmp(escapedName.get(), "TEMPLATES") == 0)
+      uri +="Templates";
+    else
+      uri += escapedName.get();
+  }
+  else
+    uri += escapedName.get();
+  
+  nsCOMPtr <nsIMsgFolder> msgFolder;
+  rv = GetChildWithURI(uri.get(), PR_FALSE/*deep*/, PR_TRUE /*case Insensitive*/, getter_AddRefs(msgFolder));  
+  if (NS_SUCCEEDED(rv) && msgFolder)
+    return NS_MSG_FOLDER_EXISTS;
+  
+  nsCOMPtr<nsIRDFResource> res;
+  rv = rdf->GetResource(uri, getter_AddRefs(res));
+  if (NS_FAILED(rv))
+    return rv;
+  
+  nsCOMPtr<nsIMsgFolder> folder(do_QueryInterface(res, &rv));
+  if (NS_FAILED(rv))
+    return rv;
+  
+  folder->GetFlags((PRUint32 *)&flags);
+  
+  flags |= MSG_FOLDER_FLAG_MAIL;
+  
+  folder->SetParent(this);
+  
+  PRBool isServer;
+  rv = GetIsServer(&isServer);
+  
+  //Only set these is these are top level children.
+  if(NS_SUCCEEDED(rv) && isServer)
+  {
+    if(name.Equals(NS_LITERAL_STRING("Inbox"), nsCaseInsensitiveStringComparator()))
+    {
+      flags |= MSG_FOLDER_FLAG_INBOX;
+      SetBiffState(nsIMsgFolder::nsMsgBiffState_Unknown);
+    }
+    else if (name.Equals(NS_LITERAL_STRING("Trash"), nsCaseInsensitiveStringComparator()))
+      flags |= MSG_FOLDER_FLAG_TRASH;
+    else if (name.Equals(NS_LITERAL_STRING("Unsent Messages"), nsCaseInsensitiveStringComparator()) ||
+      name.Equals(NS_LITERAL_STRING("Outbox"), nsCaseInsensitiveStringComparator()))
+      flags |= MSG_FOLDER_FLAG_QUEUE;
+#if 0
+    // the logic for this has been moved into 
+    // SetFlagsOnDefaultMailboxes()
+    else if(name.EqualsIgnoreCase(NS_LITERAL_STRING("Sent"), nsCaseInsensitiveStringComparator()))
+      folder->SetFlag(MSG_FOLDER_FLAG_SENTMAIL);
+    else if(name.EqualsIgnoreCase(NS_LITERAL_STRING("Drafts"), nsCaseInsensitiveStringComparator()))
+      folder->SetFlag(MSG_FOLDER_FLAG_DRAFTS);
+    else if(name.EqualsIgnoreCase(NS_LITERAL_STRING("Templates"), nsCaseInsensitiveStringComparator()))
+      folder->SetFlag(MSG_FOLDER_FLAG_TEMPLATES);
+#endif 
+  }
+  
+  folder->SetFlags(flags);
+  
+  //at this point we must be ok and we don't want to return failure in case GetIsServer failed.
+  rv = NS_OK;
+  
+  nsCOMPtr<nsISupports> supports = do_QueryInterface(folder);
+  if(folder)
+    mSubFolders->AppendElement(supports);
+  *child = folder;
+  NS_ADDREF(*child);
+  
+  return rv;
 }
 
 NS_IMETHODIMP nsMsgDBFolder::Compact(nsIUrlListener *aListener, nsIMsgWindow *aMsgWindow)
@@ -3130,8 +3248,13 @@ NS_IMETHODIMP nsMsgDBFolder::GetNumUnread(PRBool deep, PRInt32 *numUnread)
         if (NS_SUCCEEDED(rv))
         {
           PRInt32 num;
-          folder->GetNumUnread(deep, &num);
-          total += num;
+          PRUint32 folderFlags;
+          folder->GetFlags(&folderFlags);
+          if (!(folderFlags & MSG_FOLDER_FLAG_VIRTUAL))
+          {
+            folder->GetNumUnread(deep, &num);
+            total += num;
+          }
         }
       }
     }
@@ -3162,8 +3285,13 @@ NS_IMETHODIMP nsMsgDBFolder::GetTotalMessages(PRBool deep, PRInt32 *totalMessage
         if (NS_SUCCEEDED(rv))
         {
           PRInt32 num;
-          folder->GetTotalMessages (deep, &num);
-          total += num;
+          PRUint32 folderFlags;
+          folder->GetFlags(&folderFlags);
+          if (!(folderFlags & MSG_FOLDER_FLAG_VIRTUAL))
+          {
+            folder->GetTotalMessages (deep, &num);
+            total += num;
+          }
         }
       }
     }
@@ -3368,6 +3496,50 @@ NS_IMETHODIMP nsMsgDBFolder::SetFlags(PRUint32 aFlags)
   {
     mFlags = aFlags;
     OnFlagChange(mFlags);
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP nsMsgDBFolder::GetAllFoldersWithFlag(PRUint32 flag, nsISupportsArray **aResult)
+{
+  NS_ENSURE_ARG_POINTER(aResult);
+  nsresult rv = nsComponentManager::CreateInstance(NS_SUPPORTSARRAY_CONTRACTID, nsnull, 
+                                           NS_GET_IID(nsISupportsArray), (void **)aResult);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  return ListFoldersWithFlag(flag, *aResult);
+}
+
+nsresult nsMsgDBFolder::ListFoldersWithFlag(PRUint32 flag, nsISupportsArray *array)
+{
+  if ((flag & mFlags) == flag) 
+  {
+    nsCOMPtr <nsISupports> supports;
+    QueryInterface(NS_GET_IID(nsISupports), getter_AddRefs(supports));
+    array->AppendElement(supports);
+  }
+
+  nsresult rv;
+  PRUint32 cnt;
+
+  // call GetSubFolders() to ensure that mSubFolders is initialized
+  nsCOMPtr <nsIEnumerator> enumerator;
+  rv = GetSubFolders(getter_AddRefs(enumerator));
+  NS_ENSURE_SUCCESS(rv,rv);
+
+  rv = mSubFolders->Count(&cnt);
+  if (NS_SUCCEEDED(rv)) 
+  {
+    for (PRUint32 i=0; i < cnt; i++)
+    {
+      nsCOMPtr<nsIMsgFolder> folder(do_QueryElementAt(mSubFolders, i, &rv));
+      if (NS_SUCCEEDED(rv) && folder)
+      {
+        nsIMsgFolder *msgFolder = folder.get();
+        nsMsgDBFolder *dbFolder = NS_STATIC_CAST(nsMsgDBFolder *, msgFolder);
+        dbFolder->ListFoldersWithFlag(flag,array);
+      }
+    }
   }
   return NS_OK;
 }
@@ -4476,8 +4648,10 @@ NS_IMETHODIMP nsMsgDBFolder::GetSortOrder(PRInt32 *order)
     *order = 5;
   else if (flags & MSG_FOLDER_FLAG_TRASH)
     *order = 6;
-  else
+  else if (flags & MSG_FOLDER_FLAG_VIRTUAL)
     *order = 7;
+  else
+    *order = 8;
 
   return NS_OK;
 }
@@ -4512,7 +4686,7 @@ nsMsgDBFolder::CreateCollationKey(const nsString &aSource,  PRUint8 **aKey, PRUi
   if (!gCollationKeyGenerator)
     return NS_ERROR_NULL_POINTER;
 
-  return gCollationKeyGenerator->AllocateRawSortKey(kCollationCaseInSensitive, aSource, aKey, aLength);
+  return gCollationKeyGenerator->AllocateRawSortKey(nsICollation::kCollationCaseInSensitive, aSource, aKey, aLength);
 }
 
 NS_IMETHODIMP nsMsgDBFolder::CompareSortKeys(nsIMsgFolder *aFolder, PRInt32 *sortOrder)

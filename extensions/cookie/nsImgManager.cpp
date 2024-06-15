@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -43,7 +43,6 @@
 #include "nsIURI.h"
 #include "nsIServiceManager.h"
 #include "nsIScriptGlobalObject.h"
-#include "nsIDOMWindow.h"
 #include "nsIDOMDocument.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIPrefService.h"
@@ -51,6 +50,7 @@
 #include "nsIPrefBranchInternal.h"
 #include "nsIDocShell.h"
 #include "nsString.h"
+#include "nsContentPolicyUtils.h"
 
 // Possible behavior pref values
 #define IMAGE_ACCEPT 0
@@ -65,33 +65,12 @@ static const PRUint8      kImageBehaviorPrefDefault = IMAGE_ACCEPT;
 static const PRPackedBool kImageWarningPrefDefault = PR_FALSE;
 static const PRPackedBool kImageBlockImageInMailNewsPrefDefault = PR_FALSE;
 
-static inline already_AddRefed<nsIDocShell>
-GetRootDocShell(nsIDOMWindow *aWindow)
-{
-  nsIDocShell *rootShell = nsnull;
-
-  nsCOMPtr<nsIScriptGlobalObject> globalObj(do_QueryInterface(aWindow));
-  if (globalObj) {
-    nsCOMPtr<nsIDocShellTreeItem> docShellTreeItem =
-      do_QueryInterface(globalObj->GetDocShell());
-
-    if (docShellTreeItem) {
-      nsCOMPtr<nsIDocShellTreeItem> rootItem;
-      docShellTreeItem->GetRootTreeItem(getter_AddRefs(rootItem));
-
-      CallQueryInterface(rootItem, &rootShell);
-    }
-  }
-
-  return rootShell;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // nsImgManager Implementation
 ////////////////////////////////////////////////////////////////////////////////
 
-NS_IMPL_ISUPPORTS4(nsImgManager, 
-                   nsIImgManager, 
+NS_IMPL_ISUPPORTS4(nsImgManager,
+                   nsIImgManager,
                    nsIContentPolicy,
                    nsIObserver,
                    nsSupportsWeakReference)
@@ -150,33 +129,65 @@ nsImgManager::PrefChanged(nsIPrefBranch *aPrefBranch,
     mBlockInMailNewsPref = val;
 }
 
-// nsIContentPolicy Implementation
-NS_IMETHODIMP nsImgManager::ShouldLoad(PRInt32 aContentType, 
-                                       nsIURI *aContentLoc,
-                                       nsISupports *aContext,
-                                       nsIDOMWindow *aWindow,
-                                       PRBool *aShouldLoad)
+/**
+ * Helper function to get the root DocShell given a context
+ *
+ * @param aContext The context (can be null)
+ * @return the root DocShell containing aContext, if found
+ */
+static inline already_AddRefed<nsIDocShell>
+GetRootDocShell(nsISupports *context)
 {
-  *aShouldLoad = PR_TRUE;
-  nsresult rv = NS_OK;
+  nsIDocShell *docshell = NS_CP_GetDocShellFromContext(context);
+  if (!docshell)
+    return nsnull;
+
+  nsresult rv;
+  nsCOMPtr<nsIDocShellTreeItem> docshellTreeItem(do_QueryInterface(docshell, &rv));
+  if (NS_FAILED(rv))
+    return nsnull;
+
+  nsCOMPtr<nsIDocShellTreeItem> rootItem;
+  // we want the app docshell, so don't use GetSameTypeRootTreeItem
+  rv = docshellTreeItem->GetRootTreeItem(getter_AddRefs(rootItem));
+  if (NS_FAILED(rv))
+    return nsnull;
+
+  nsIDocShell *result;
+  CallQueryInterface(rootItem, &result);
+  return result;
+}
+
+// nsIContentPolicy Implementation
+NS_IMETHODIMP nsImgManager::ShouldLoad(PRUint32          aContentType,
+                                       nsIURI           *aContentLocation,
+                                       nsIURI           *aRequestingLocation,
+                                       nsISupports      *aRequestingContext,
+                                       const nsACString &aMimeGuess,
+                                       nsISupports      *aExtra,
+                                       PRInt16          *aDecision)
+{
+  *aDecision = nsIContentPolicy::ACCEPT;
+  nsresult rv;
 
   // we can't do anything w/ out this
-  if (!aContentLoc)
-    return rv;
+  if (!aContentLocation)
+    return NS_OK;
 
-  if (aContentType == nsIContentPolicy::IMAGE) {
+  if (aContentType == nsIContentPolicy::TYPE_IMAGE) {
     // we only want to check http, https, ftp
+    // remember ftp for a later check (disabling ftp images from mailnews)
     PRBool isFtp;
-    rv = aContentLoc->SchemeIs("ftp", &isFtp);
+    rv = aContentLocation->SchemeIs("ftp", &isFtp);
     NS_ENSURE_SUCCESS(rv,rv);
 
     PRBool needToCheck = isFtp;
     if (!needToCheck) {
-      rv = aContentLoc->SchemeIs("http", &needToCheck);
+      rv = aContentLocation->SchemeIs("http", &needToCheck);
       NS_ENSURE_SUCCESS(rv,rv);
 
       if (!needToCheck) {
-        rv = aContentLoc->SchemeIs("https", &needToCheck);
+        rv = aContentLocation->SchemeIs("https", &needToCheck);
         NS_ENSURE_SUCCESS(rv,rv);
       }
     }
@@ -185,63 +196,43 @@ NS_IMETHODIMP nsImgManager::ShouldLoad(PRInt32 aContentType,
     if (!needToCheck)
       return NS_OK;
 
-    nsCOMPtr<nsIDocument> doc;
-    nsCOMPtr<nsIContent> content = do_QueryInterface(aContext);
-    if (content) {
-      // XXXbz GetOwnerDocument
-      doc = content->GetDocument();
-      if (!doc) {
-        nsINodeInfo *nodeinfo = content->GetNodeInfo();
-        if (nodeinfo) {
-          doc = nodeinfo->GetDocument();
-        }
-      }
-    }
-
-    if (!doc && aWindow) {
-      nsCOMPtr<nsIDOMDocument> domDoc;
-      aWindow->GetDocument(getter_AddRefs(domDoc));
-      doc = do_QueryInterface(domDoc);
-    }
-    
-    if (!doc) {
-      // XXX what to do if there is really no document?
-      return NS_OK;
-    }
-    
-    nsIURI *baseURI = doc->GetBaseURI();
-    if (!baseURI)
-      return rv;
-
-    nsCOMPtr<nsIDocShell> docshell = GetRootDocShell(aWindow);
+    nsCOMPtr<nsIDocShell> docshell(GetRootDocShell(aRequestingContext));
     if (docshell) {
       PRUint32 appType;
       rv = docshell->GetAppType(&appType);
       if (NS_SUCCEEDED(rv) && appType == nsIDocShell::APP_TYPE_MAIL) {
-        // never allow ftp for mail messages, 
+        // never allow ftp for mail messages,
         // because we don't want to send the users email address
         // as the anonymous password
         if (mBlockInMailNewsPref || isFtp) {
-          *aShouldLoad = PR_FALSE;
+          *aDecision = nsIContentPolicy::REJECT_REQUEST;
           return NS_OK;
         }
       }
     }
-      
-    rv =  TestPermission(aContentLoc, baseURI, aShouldLoad);
-    if (NS_FAILED(rv))
-      return rv;
+
+    PRBool shouldLoad;
+    rv =  TestPermission(aContentLocation, aRequestingLocation, &shouldLoad);
+    NS_ENSURE_SUCCESS(rv, rv);
+    if (!shouldLoad)
+      *aDecision = nsIContentPolicy::REJECT_REQUEST;
   }
   return NS_OK;
 }
 
-NS_IMETHODIMP nsImgManager::ShouldProcess(PRInt32 aContentType,
-                                          nsIURI *aDocumentLoc,
-                                          nsISupports *aContext,
-                                          nsIDOMWindow *aWindow,
-                                          PRBool *_retval)
+NS_IMETHODIMP nsImgManager::ShouldProcess(PRUint32          aContentType,
+                                          nsIURI           *aContentLocation,
+                                          nsIURI           *aRequestingLocation,
+                                          nsISupports      *aRequestingContext,
+                                          const nsACString &aMimeGuess,
+                                          nsISupports      *aExtra,
+                                          PRInt16          *aDecision)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  //TODO: implement this to check images loaded into a raw document (as in,
+  //outside of a web page)
+
+  *aDecision = nsIContentPolicy::ACCEPT;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -272,10 +263,14 @@ nsImgManager::TestPermission(nsIURI *aCurrentURI,
 
   // Third party checking
   if (mBehaviorPref == IMAGE_NOFOREIGN) {
+    // We need a requesting uri for third party checks to work.
+    if (!aFirstURI)
+      return NS_OK;
+
     // compare tails of names checking to see if they have a common domain
-    // we do this by comparing the tails of both names where each tail 
+    // we do this by comparing the tails of both names where each tail
     // includes at least one dot
-    
+
     // A more generic method somewhere would be nice
 
     nsCAutoString currentHost;
@@ -302,19 +297,19 @@ nsImgManager::TestPermission(nsIURI *aCurrentURI,
       *aPermission = PR_FALSE;
       return NS_OK;
     }
-    
+
     // Get the last part of the firstUri with the same length as |tail|
     const nsACString &firstTail = Substring(firstHost, firstHost.Length() - tail.Length(), tail.Length());
 
     // Check that both tails are the same, and that just before the tail in
     // |firstUri| there is a dot. That means both url are in the same domain
-    if ((firstHost.Length() > tail.Length() && 
-         firstHost.CharAt(firstHost.Length() - tail.Length() - 1) != '.') || 
+    if ((firstHost.Length() > tail.Length() &&
+         firstHost.CharAt(firstHost.Length() - tail.Length() - 1) != '.') ||
         !tail.Equals(firstTail)) {
       *aPermission = PR_FALSE;
     }
   }
-  
+
   return NS_OK;
 }
 

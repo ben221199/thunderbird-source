@@ -65,9 +65,6 @@
 #include "nsNetCID.h"
 #include "nsIObserverService.h"
 #include "nsXPCOM.h"
-#ifdef MOZ_PHOENIX
-#include "nsIShellService.h"
-#endif
 
 // These are needed to load a URL in a browser window.
 #include "nsIDOMLocation.h"
@@ -320,7 +317,6 @@ private:
     static DWORD mInstance;
     static char *mAppName;
     static PRBool mCanHandleRequests;
-    static PRBool mSupportingDDEExec;
     static char mMutexName[];
     friend struct MessageWindow;
 }; // nsNativeAppSupportWin
@@ -421,7 +417,6 @@ HSZ   nsNativeAppSupportWin::mApplication   = 0;
 HSZ   nsNativeAppSupportWin::mTopics[nsNativeAppSupportWin::topicCount] = { 0 };
 DWORD nsNativeAppSupportWin::mInstance      = 0;
 PRBool nsNativeAppSupportWin::mCanHandleRequests   = PR_FALSE;
-PRBool nsNativeAppSupportWin::mSupportingDDEExec   = PR_FALSE;
 
 char nsNativeAppSupportWin::mMutexName[ 128 ] = { 0 };
 
@@ -653,64 +648,6 @@ nsNativeAppSupportWin::FindTopic( HSZ topic ) {
     return -1;
 }
 
-// Utility function that determines if we're handling http Internet shortcuts.
-static PRBool isDefaultBrowser() 
-{
-#ifdef MOZ_PHOENIX
-  nsCOMPtr<nsIShellService> shell(do_GetService("@mozilla.org/browser/shell-service;1"));
-  PRBool isDefault;
-  shell->IsDefaultBrowser(PR_FALSE, &isDefault);
-  return isDefault;
-#else
-  return FALSE;
-#endif
-}
-
-// Utility function to delete a registry subkey.
-static DWORD deleteKey( HKEY baseKey, const char *keyName ) {
-    // Make sure input subkey isn't null.
-    DWORD rc;
-    if ( keyName && ::strlen(keyName) ) {
-        // Open subkey.
-        HKEY key;
-        rc = ::RegOpenKeyEx( baseKey,
-                             keyName,
-                             0,
-                             KEY_ENUMERATE_SUB_KEYS | DELETE,
-                             &key );
-        // Continue till we get an error or are done.
-        while ( rc == ERROR_SUCCESS ) {
-            char subkeyName[_MAX_PATH];
-            DWORD len = sizeof subkeyName;
-            // Get first subkey name.  Note that we always get the
-            // first one, then delete it.  So we need to get
-            // the first one next time, also.
-            rc = ::RegEnumKeyEx( key,
-                                 0,
-                                 subkeyName,
-                                 &len,
-                                 0,
-                                 0,
-                                 0,
-                                 0 );
-            if ( rc == ERROR_NO_MORE_ITEMS ) {
-                // No more subkeys.  Delete the main one.
-                rc = ::RegDeleteKey( baseKey, keyName );
-                break;
-            } else if ( rc == ERROR_SUCCESS ) {
-                // Another subkey, delete it, recursively.
-                rc = deleteKey( key, subkeyName );
-            }
-        }
-        // Close the key we opened.
-        ::RegCloseKey( key );
-    } else {
-        rc = ERROR_BADKEY;
-    }
-    return rc;
-}
-
-
 // Start DDE server.
 //
 // This used to be the Start() method when we were using DDE as the
@@ -793,15 +730,6 @@ nsNativeAppSupportWin::Quit() {
     mw.Destroy();
 
     if ( mInstance ) {
-        // Undo registry setting if we need to.
-        if ( mSupportingDDEExec && isDefaultBrowser() ) {
-            mSupportingDDEExec = PR_FALSE;
-#if MOZ_DEBUG_DDE
-            printf( "Deleting ddexec subkey on exit\n" );
-#endif
-            deleteKey( HKEY_CLASSES_ROOT, "http\\shell\\open\\ddeexec" );
-        }
-
         // Unregister application name.
         DdeNameService( mInstance, mApplication, 0, DNS_UNREGISTER );
         // Clean up strings.
@@ -915,8 +843,7 @@ nsNativeAppSupportWin::HandleDDENotification( UINT uType,       // transaction t
     if (!mCanHandleRequests)
         return 0;
 
-
-#if MOZ_DEBUG_DDE
+#ifdef DEBUG_blake
     printf( "DDE: uType  =%s\n",      uTypeDesc( uType ).get() );
     printf( "     uFmt   =%u\n",      (unsigned)uFmt );
     printf( "     hconv  =%08x\n",    (int)hconv );
@@ -945,7 +872,12 @@ nsNativeAppSupportWin::HandleDDENotification( UINT uType,       // transaction t
     } else if ( uType & XCLASS_DATA ) {
         if ( uType == XTYP_REQUEST ) {
             switch ( FindTopic( hsz1 ) ) {
-                case topicOpenURL: {
+                case topicOpenURL: {                  
+                    nsCAutoString start;
+                    ParseDDEArg(hsz2, 0, start);
+                    if (start.Equals("StartDDE"))
+                      break;
+
                     // Open a given URL...
 
                     // Default is to open in current window.

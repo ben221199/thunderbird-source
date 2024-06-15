@@ -469,7 +469,7 @@ nsresult nsMsgSearchTerm::OutputValue(nsCString &outputStr)
 	return NS_OK;
 }
 
-nsresult nsMsgSearchTerm::EnStreamNew (nsCString &outStream)
+NS_IMETHODIMP nsMsgSearchTerm::GetTermAsString (nsACString &outStream)
 {
 	const char	*attrib, *operatorStr;
 	nsCAutoString	outputStr;
@@ -863,6 +863,10 @@ nsresult nsMsgSearchTerm::MatchInAddressBook(const char * aAddress, PRBool *pRes
 {
   nsresult rv = InitializeAddressBook(); 
   *pResult = PR_FALSE;
+
+  // Some junkmails have empty From: fields.
+  if (aAddress == NULL || strlen(aAddress) == 0)
+    return rv;
 
   if (mDirectory)
   {
@@ -1425,6 +1429,7 @@ nsMsgSearchScopeTerm::~nsMsgSearchScopeTerm ()
 {  
   if (m_inputStream)
     m_inputStream->Close();
+  m_inputStream = nsnull;
 }
 
 NS_IMPL_ISUPPORTS1(nsMsgSearchScopeTerm, nsIMsgSearchScopeTerm)

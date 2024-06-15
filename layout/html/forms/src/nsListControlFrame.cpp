@@ -3236,6 +3236,7 @@ nsListControlFrame::DropDownToggleKey(nsIDOMEvent* aKeyEvent)
     PRBool isDroppedDown;
     mComboboxFrame->IsDroppedDown(&isDroppedDown);
     mComboboxFrame->ShowDropDown(!isDroppedDown);
+    mComboboxFrame->RedisplaySelectedText();
     aKeyEvent->PreventDefault();
   }
 }
@@ -3343,7 +3344,7 @@ nsListControlFrame::KeyPress(nsIDOMEvent* aKeyEvent)
       if (mComboboxFrame != nsnull) {
         PRBool droppedDown = PR_FALSE;
         mComboboxFrame->IsDroppedDown(&droppedDown);
-        if (droppedDown == PR_TRUE) {
+        if (droppedDown) {
           ComboboxFinish(mSelectedIndexWhenPoppedDown);
         }
       }

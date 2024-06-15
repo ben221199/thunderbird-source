@@ -163,7 +163,7 @@ nsAutoCompleteController::StartSearch(const nsAString &aSearchString)
 }
 
 NS_IMETHODIMP
-nsAutoCompleteController::HandleText()
+nsAutoCompleteController::HandleText(PRBool aIgnoreSelection)
 {
   // Stop current search in case it's async.
   StopSearch();
@@ -174,7 +174,7 @@ nsAutoCompleteController::HandleText()
 
   PRBool disabled;
   mInput->GetDisableAutoComplete(&disabled);
-  NS_ENSURE_TRUE(!disabled, NS_OK;);
+  NS_ENSURE_TRUE(!disabled, NS_OK);
 
   nsAutoString newValue;
   mInput->GetTextValue(newValue);
@@ -207,7 +207,10 @@ nsAutoCompleteController::HandleText()
     return NS_OK;
   }
 
-  // Kick off the search, but only if the cursor is at the end of the textbox
+  if (aIgnoreSelection) {
+    StartSearchTimer();
+  } else {
+    // Kick off the search only if the cursor is at the end of the textbox
   PRInt32 selectionStart;
   mInput->GetSelectionStart(&selectionStart);
   PRInt32 selectionEnd;
@@ -215,6 +218,7 @@ nsAutoCompleteController::HandleText()
 
   if (selectionStart == selectionEnd && selectionStart == (PRInt32) mSearchString.Length())
     StartSearchTimer();
+  }
 
   return NS_OK;
 }
@@ -268,6 +272,10 @@ nsAutoCompleteController::HandleKeyNavigation(PRUint16 aKey, PRBool *_retval)
   nsCOMPtr<nsIAutoCompletePopup> popup;
   mInput->GetPopup(getter_AddRefs(popup));
   NS_ENSURE_TRUE(popup != nsnull, NS_ERROR_FAILURE);
+
+  PRBool disabled;
+  mInput->GetDisableAutoComplete(&disabled);
+  NS_ENSURE_TRUE(!disabled, NS_OK);
 
   if (aKey == nsIAutoCompleteController::KEY_UP ||
       aKey == nsIAutoCompleteController::KEY_DOWN || 
@@ -332,7 +340,7 @@ nsAutoCompleteController::HandleDelete(PRBool *_retval)
   mInput->GetPopupOpen(&isOpen);
   if (!isOpen || mRowCount <= 0) {
     // Nothing left to delete, proceed as normal
-    HandleText();
+    HandleText(PR_FALSE);
     return NS_OK;
   }
   
@@ -351,16 +359,9 @@ nsAutoCompleteController::HandleDelete(PRBool *_retval)
   nsAutoString search;
   mInput->GetSearchParam(search);
 
-  nsAutoString value;
-  result->GetValueAt(rowIndex, value);
-
-  nsCOMPtr<nsIAutoCompleteMdbResult> mdbResult(do_QueryInterface(result));
-  if (mdbResult) {
-    // Clear the row in our result and in the DB.
-    mdbResult->RemoveRowAt(rowIndex, PR_TRUE);
-
-    --mRowCount;
-  }
+  // Clear the row in our result and in the DB.
+  result->RemoveValueAt(rowIndex, PR_TRUE);
+  --mRowCount;
 
   // Unselect the current item.
   popup->SetSelectedIndex(-1);
@@ -437,6 +438,14 @@ nsAutoCompleteController::GetStyleAt(PRInt32 aIndex, nsAString & _retval)
 
   result->GetStyleAt(rowIndex, _retval);
 
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsAutoCompleteController::SetSearchString(const nsAString &aSearchString)
+{ 
+  mSearchString = aSearchString;
+  
   return NS_OK;
 }
 
@@ -811,7 +820,7 @@ nsAutoCompleteController::StartSearchTimer()
   mInput->GetTimeout(&timeout);
 
   mTimer = do_CreateInstance("@mozilla.org/timer;1");
-  mTimer->InitWithCallback(this, 0, timeout);
+  mTimer->InitWithCallback(this, timeout, nsITimer::TYPE_ONE_SHOT);
   return NS_OK;
 }
 

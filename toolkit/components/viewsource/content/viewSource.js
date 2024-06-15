@@ -520,7 +520,7 @@ function findLocation(pre, line, node, offset, interlinePosition, result)
     }
   }
 
-  return found;
+  return found || ("range" in result);
 }
 
 //function to toggle long-line wrapping and set the view_source.wrap_long_lines 
@@ -570,6 +570,21 @@ function BrowserSetForcedCharacterSet(aCharset)
   docCharset.charset = aCharset;
   var PageLoader = getBrowser().webNavigation.QueryInterface(pageLoaderIface);
   PageLoader.LoadPage(PageLoader.currentDescriptor, pageLoaderIface.DISPLAY_NORMAL);
+}
+
+// fix for bug #229503
+// we need to define BrowserSetForcedDetector() so that we can
+// change auto-detect options in the "View | Character Encoding" menu.
+// As with BrowserSetForcedCharacterSet(), call PageLoader.LoadPage() 
+// instead of BrowserReloadWithFlags()
+function BrowserSetForcedDetector(doReload)
+{
+  getBrowser().documentCharsetInfo.forcedDetector = true; 
+  if (doReload)
+  {
+    var PageLoader = getBrowser().webNavigation.QueryInterface(pageLoaderIface);
+    PageLoader.LoadPage(PageLoader.currentDescriptor, pageLoaderIface.DISPLAY_NORMAL);
+  }
 }
 
 function getMarkupDocumentViewer()

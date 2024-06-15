@@ -168,6 +168,7 @@ pref("application.use_ns_plugin_finder", false);
 pref("browser.fixup.alternate.enabled", true);
 pref("browser.fixup.alternate.prefix", "www.");
 pref("browser.fixup.alternate.suffix", ".com");
+pref("browser.fixup.hide_user_pass", true);
 
 // Print header customization
 // Use the following codes:
@@ -413,7 +414,8 @@ pref("dom.allow_scripts_to_close_windows",          false);
 
 pref("dom.disable_open_during_load",                false);
 pref("dom.popup_maximum",                           20);
-pref("dom.popup_allowed_events", "change click dblclick reset submit");
+pref("dom.popup_allowed_events", "change click dblclick mouseup reset submit");
+pref("dom.disable_open_click_delay", 1000);
 
 pref("dom.event.contextmenu.enabled",       true);
 
@@ -444,6 +446,12 @@ pref("network.protocol-handler.external.shell", false);
 pref("network.protocol-handler.external.vnd.ms.radio", false);
 pref("network.protocol-handler.external.help", false);
 pref("network.protocol-handler.external.disk", false);
+pref("network.protocol-handler.external.disks", false);
+pref("network.protocol-handler.external.afp", false);
+
+// Default action for unlisted external protocol handlers
+// 0 == never load, 1 == always load, 2 == ask the user
+pref("network.protocol-handler.external-default", 2);
 
 // An exposed protocol handler is one that can be used in all contexts.  A
 // non-exposed protocol handler is one that can only be used internally by the
@@ -567,16 +575,25 @@ pref("network.prefetch-next", true);
 
 
 // The following prefs pertain to the negotiate-auth extension (see bug 17578),
-// which provides transparent Kerberos authentication using the SPNEGO protocol.
-// Each pref is a comma-separated list of keys, where each key has the format:
+// which provides transparent Kerberos or NTLM authentication using the SPNEGO
+// protocol.  Each pref is a comma-separated list of keys, where each key has
+// the format:
 //   [scheme "://"] [host [":" port]]
 // For example, "foo.com" would match "http://www.foo.com/bar", etc.
 
-// This list controls which URIs can support the negotiate auth protocol.  This
+// This list controls which URIs can use the negotiate-auth protocol.  This
 // list should be limited to the servers you know you'll need to login to.
-pref("network.negotiate-auth.trusted-uris", "https://");
+pref("network.negotiate-auth.trusted-uris", "");
 // This list controls which URIs can support delegation.
 pref("network.negotiate-auth.delegation-uris", "");
+
+// The following prefs are used to enable automatic use of the operating
+// system's NTLM implementation to silently authenticate the user with their
+// Window's domain logon.  By default, this is enabled for proxy servers.
+// The trusted-uris pref follows the format of the trusted-uris pref for
+// negotiate authentication.
+pref("network.automatic-ntlm-auth.allow-proxies", true);
+pref("network.automatic-ntlm-auth.trusted-uris", "");
 
 
 // sspitzer:  change this back to "news" when we get to beta.
@@ -649,6 +666,8 @@ pref("security.directory",              "");
 pref("signed.applets.codebase_principal_support", false);
 pref("security.checkloaduri", true);
 pref("security.xpconnect.plugin.unrestricted", true);
+// security-sensitive dialogs should delay button enabling. In milliseconds.
+pref("security.dialog_enable_delay", 2000);
 
 // Modifier key prefs: default to Windows settings,
 // menu access key = alt, accelerator key = control.
@@ -741,13 +760,6 @@ pref("bidi.texttype", 1);
 // 3 = containercontrolstextmodeBidi *
 pref("bidi.controlstextmode", 1);
 // ------------------
-//  Clipboard Text Mode
-// ------------------
-//  1 = logicalclipboardtextmodeBidi
-// 2 = visiualclipboardtextmodeBidi
-// 3 = sourceclipboardtextmodeBidi *
-pref("bidi.clipboardtextmode", 3);
-// ------------------
 //  Numeral Style
 // ------------------
 // 0 = nominalnumeralBidi *
@@ -770,6 +782,7 @@ pref("bidi.support", 1);
 // 2 = defaultcharactersetBidi
 pref("bidi.characterset", 1);
 
+pref("bidi.browser.ui", false);
 
 // used for double-click word selection behavior. Win will override.
 pref("layout.word_select.eat_space_to_next_word", false);
@@ -1052,9 +1065,9 @@ pref("browser.always_reuse_window", false);
 
 // default font name (in UTF8)
 
-pref("font.name.serif.ar", "ثلث‮ ‬أبيض");
-pref("font.name.sans-serif.ar", "البيان");
-pref("font.name.monospace.ar", "جيزة");
+pref("font.name.serif.ar", "Lucida Grande");
+pref("font.name.sans-serif.ar", "Lucida Grande");
+pref("font.name.monospace.ar", "Monaco");
 pref("font.name.cursive.ar", "XXX.cursive");
 pref("font.name.fantasy.ar", "XXX.fantasy");
 
@@ -1064,9 +1077,9 @@ pref("font.name.monospace.el", "Courier GR");
 pref("font.name.cursive.el", "XXX.cursive");
 pref("font.name.fantasy.el", "XXX.fantasy");
 
-pref("font.name.serif.he", "פנינים‮ ‬חדש");
-pref("font.name.sans-serif.he", "אריאל");
-pref("font.name.monospace.he", "אריאל");
+pref("font.name.serif.he", "Lucida Grande");
+pref("font.name.sans-serif.he", "Lucida Grande");
+pref("font.name.monospace.he", "Monaco");
 pref("font.name.cursive.he", "XXX.cursive");
 pref("font.name.fantasy.he", "XXX.fantasy");
 
@@ -1147,13 +1160,13 @@ pref("font.name.fantasy.zh-HK", "XXX.fantasy");
 
 pref("font.default", "serif");
 pref("font.default", "serif");
-pref("font.size.variable.ar", 16);
+pref("font.size.variable.ar", 15);
 pref("font.size.fixed.ar", 13);
 
 pref("font.size.variable.el", 16);
 pref("font.size.fixed.el", 13);
 
-pref("font.size.variable.he", 16);
+pref("font.size.variable.he", 15);
 pref("font.size.fixed.he", 13);
 
 pref("font.size.variable.ja", 14);

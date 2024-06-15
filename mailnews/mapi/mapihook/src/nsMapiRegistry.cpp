@@ -19,12 +19,12 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- * Srilatha Moturi <srilatha@netscape.com>
- * Rajiv Dayal <rdayal@netscape.com>
+ *   Srilatha Moturi <srilatha@netscape.com>
+ *   Rajiv Dayal <rdayal@netscape.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
@@ -153,8 +153,12 @@ NS_IMETHODIMP nsMapiRegistry::RegisterMailAndNewsClient()
  */
 NS_IMETHODIMP
 nsMapiRegistry::ShowMailIntegrationDialog(nsIDOMWindow *aParentWindow) {
+    if (!m_ShowDialog || !m_registryUtils.getShowDialog() ||
+        m_registryUtils.IsDefaultMailClient()) {
+      return NS_OK;
+    }
+
     nsresult rv;
-    if (!m_ShowDialog || !m_registryUtils.getShowDialog()) return NS_OK;
     nsCOMPtr<nsIPromptService> promptService(do_GetService(
                   "@mozilla.org/embedcomp/prompt-service;1", &rv));
     if (NS_SUCCEEDED(rv) && promptService)

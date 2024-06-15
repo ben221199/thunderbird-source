@@ -114,7 +114,7 @@ function init()
   
   var x = document.documentElement.getAttribute("screenX");
   if (x == "")
-    setTimeout("centerOverParent()", 0);
+    setTimeout(centerOverParent, 0);
 }
 
 function setLiteralValue(aResource, aProperty, aValue)
@@ -214,7 +214,10 @@ function changeApp()
 {
   const nsIFilePicker = Components.interfaces.nsIFilePicker;
   var fp = Components.classes["@mozilla.org/filepicker;1"].createInstance(nsIFilePicker);
-  fp.init(window, "Choose Application...", nsIFilePicker.modeOpen);
+
+  // extract the window title
+  var winTitle = document.getElementById('changeApp').getAttribute('filepickertitle');
+  fp.init(window, winTitle, nsIFilePicker.modeOpen);
   
   fp.appendFilters(nsIFilePicker.filterApps);
   if (fp.show() == nsIFilePicker.returnOK && fp.file) {

@@ -75,8 +75,10 @@
     
   <keyset id="downloadKeys">
     <key id="key_cleanUp" keycode="VK_DELETE" command="cmd_cleanUp" modifiers="accel,shift"/>
-    <key id="key_close"   key="&cmd.close.commandKey;" oncommand="closeWindow(true);"     modifiers="accel"/>
-    <key id="key_info"    key="&cmd.info.commandKey;"  oncommand="onDownloadShowInfo();"  modifiers="accel"/>
+    <key id="key_close"   key="&cmd.close.commandKey;"  oncommand="closeWindow(true);"    modifiers="accel"/>
+    <key id="key_close2"  key="&cmd.close2.commandKey;" oncommand="closeWindow(true);"    modifiers="accel"/>
+    <key                  keycode="VK_ESCAPE"           oncommand="closeWindow(true);"/>
+    <key id="key_info"    key="&cmd.info.commandKey;"   oncommand="onDownloadShowInfo();" modifiers="accel"/>
   </keyset>
   
   <vbox id="contextMenuPalette" hidden="true">
@@ -160,19 +162,17 @@
   
   <hbox>
     <hbox id="commandBar" flex="1">
+      <hbox align="center" flex="1" id="autodownloadInfo">
+        <label>&filesSavedTo.label;</label>
+        <toolbarbutton id="saveToFolder" crop="right" flex="1"
+                       oncommand="onDownloadShowFolder();"
+                       tooltiptext="&showFolder.label;"/>
+      </hbox> 
+      <spring id="autodownloadSpring" hidden="true" flex="1"/>
+      <separator id="commandBarSeparator"/> 
       <button id="cleanUpButton" 
               label="&cmd.cleanUp.label;" accesskey="&cmd.cleanUp.accesskey;" tooltiptext="&cmd.cleanUp.tooltip;" 
               command="cmd_cleanUp"/>
-      <separator id="commandBarSeparator"/>              
-#ifdef XP_WIN
-      <button id="optionsButton" 
-              label="&cmd.options.label;" accesskey="&cmd.options.accesskey;" 
-              oncommand="onDownloadShowOptions();"/>
-#else
-      <button id="optionsButton" 
-              label="&cmd.optionsUnix.label;" accesskey="&cmd.optionsUnix.accesskey;" 
-              oncommand="onDownloadShowOptions();"/>
-#endif
     </hbox>
     
     <resizer id="windowResizer" dir="bottomright"/>

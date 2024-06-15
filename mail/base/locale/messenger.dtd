@@ -494,14 +494,17 @@
 <!ENTITY viewPickerAll.label "All">
 <!ENTITY viewPickerUnread.label "Unread">
 <!ENTITY viewPickerCustomView.label "Customize...">
-<!ENTITY SearchSubjectOrSender.label "Subject or Sender contains:">
-<!ENTITY SearchSubjectOrSender.accesskey "S">
 <!ENTITY SearchNameOrEmail.label "Name or Email contains:">
 <!ENTITY SearchNameOrEmail.accesskey "N">
-<!ENTITY advancedButton.label "Advanced...">
-<!ENTITY advancedButton.accesskey "A">
 <!ENTITY clearButton.label "Clear">
 <!ENTITY clearButton.accesskey "C">
+
+<!-- Quick Search Menu Bar -->
+<!ENTITY searchSubjectMenu.label "Subject">
+<!ENTITY searchSenderMenu.label "Sender">
+<!ENTITY searchSubjectOrSenderMenu.label "Subject Or Sender">
+<!ENTITY searchMessageBody.label "Message Body">
+<!ENTITY findInMessageMenu.label "Find In Message">
 
 <!-- Thread Pane -->
 <!ENTITY threadColumn.label "Thread">
@@ -511,6 +514,7 @@
 <!ENTITY dateColumn.label "Date">
 <!ENTITY priorityColumn.label "Priority">
 <!ENTITY labelColumn.label "Label">
+<!ENTITY accountColumn.label "Account">
 <!ENTITY statusColumn.label "Status">
 <!ENTITY sizeColumn.label "Size">
 <!ENTITY junkStatusColumn.label "Junk Status">
@@ -532,6 +536,7 @@
 <!ENTITY dateColumn.tooltip "Click to sort by date">
 <!ENTITY priorityColumn.tooltip "Click to sort by priority">
 <!ENTITY labelColumn.tooltip "Click to sort by label">
+<!ENTITY accountColumn.tooltip "Click to sort by account">
 <!ENTITY statusColumn.tooltip "Click to sort by status">
 <!ENTITY sizeColumn.tooltip "Click to sort by size">
 <!ENTITY junkStatusColumn.tooltip "Click to sort by junk status">
@@ -578,6 +583,10 @@
 <!ENTITY junkBarMessage.label "&brandShortName; thinks this message is junk mail">
 <!ENTITY notJunkButton.label "This is Not Junk">
 <!ENTITY junkInfoButton.label "?">
+
+<!-- Remote Content Bar -->
+<!ENTITY remoteContenMessage.label "To protect your privacy, &brandShortName; has blocked remote images in this message." >
+<!ENTITY loadRemoteContentButton.label "Show Images">
 
 <!-- Search Bar -->
 <!ENTITY quickSearchCmd.key "k">

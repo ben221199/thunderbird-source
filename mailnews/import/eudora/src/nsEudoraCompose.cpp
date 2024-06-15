@@ -572,13 +572,16 @@ nsMsgAttachedFile * nsEudoraCompose::GetLocalAttachments( void)
 
 void nsEudoraCompose::ConvertSysToUnicode( const char *pStr, nsString& uniStr)
 {
+  if (!pStr)
+    return;
+
 	if (!m_pImportService) {
 		m_pImportService = do_GetService(NS_IMPORTSERVICE_CONTRACTID);
 	}
 	if (m_pImportService) {
 		m_pImportService->SystemStringToUnicode( pStr, uniStr);
 	}
-	else
+	else 
 		uniStr.AssignWithConversion( pStr);
 }
 
@@ -641,11 +644,13 @@ nsresult nsEudoraCompose::SendTheMessage( nsIFileSpec *pMsg)
 	if (!headerVal.IsEmpty())
 		m_pMsgFields->SetReplyTo( headerVal.get());
 
-	// what about all of the other headers?!?!?!?!?!?!
-	char *pMimeType = nsnull;
-	if (!bodyType.IsEmpty())
-		pMimeType = ToNewCString(bodyType);
-	
+  // what about all of the other headers?!?!?!?!?!?!
+  char *pMimeType; 
+  if (!bodyType.IsEmpty())
+    pMimeType = ToNewCString(bodyType);
+  else
+    pMimeType = ToNewCString(m_bodyType);
+
 	// IMPORT_LOG0( "Outlook compose calling CreateAndSendMessage\n");
 	nsMsgAttachedFile *pAttach = GetLocalAttachments();
 
@@ -696,7 +701,7 @@ nsresult nsEudoraCompose::SendTheMessage( nsIFileSpec *pMsg)
 		rv = m_pSendProxy->CreateAndSendMessage(
                     nsnull,			                  // no editor shell
 										m_pIdentity,	                // dummy identity
-                                                                                nsnull,                         // account key
+                    nsnull,                         // account key
 										m_pMsgFields,	                // message fields
 										PR_FALSE,		                  // digest = NO
 										PR_TRUE,		                  // dont_deliver = YES, make a file

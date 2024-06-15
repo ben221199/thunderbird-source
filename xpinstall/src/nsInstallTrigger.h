@@ -26,6 +26,11 @@
 #define CHROME_DELAYED      0x10
 #define CHROME_SELECT       0x20
 
+#define XPI_PERMISSION      "install"
+
+#define XPI_WHITELIST       PR_TRUE
+#define XPI_GLOBAL          PR_FALSE
+
 class nsInstallTrigger: public nsIScriptObjectOwner,
                         public nsIDOMInstallTriggerGlobal,
                         public nsIContentHandler
@@ -42,7 +47,7 @@ class nsInstallTrigger: public nsIScriptObjectOwner,
         NS_IMETHOD    GetScriptObject(nsIScriptContext *aContext, void** aScriptObject);
         NS_IMETHOD    SetScriptObject(void* aScriptObject);
 
-        NS_IMETHOD    UpdateEnabled(PRBool* aReturn);
+        NS_IMETHOD    UpdateEnabled(nsIScriptGlobalObject* aGlobalObject, PRBool aUseWhitelist, PRBool* aReturn);
         NS_IMETHOD    Install(nsIScriptGlobalObject* aGlobalObject, nsXPITriggerInfo *aInfo, PRBool* aReturn);
         NS_IMETHOD    InstallChrome(nsIScriptGlobalObject* aGlobalObject, PRUint32 aType, nsXPITriggerItem* aItem, PRBool* aReturn);
         NS_IMETHOD    StartSoftwareUpdate(nsIScriptGlobalObject* aGlobalObject, const nsString& aURL, PRInt32 aFlags, PRInt32* aReturn);
@@ -53,6 +58,7 @@ class nsInstallTrigger: public nsIScriptObjectOwner,
 
 
     private:
+        PRBool  AllowInstall(nsIURI* aLaunchURI);
         void *mScriptObject;
 };
 

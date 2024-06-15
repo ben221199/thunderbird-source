@@ -48,6 +48,7 @@ interface nsIMsgRetentionSettings;
 interface nsIMsgDownloadSettings;
 interface nsISpamSettings;
 interface nsIMsgFilterPlugin;
+interface nsIUrlListener;
 
 /*
  * Interface for incoming mail/news host
@@ -104,6 +105,8 @@ interface nsIMsgIncomingServer : nsISupports {
    */
   attribute string type;
 
+  readonly attribute AString accountManagerChrome;
+
   /**
    * the schema for the local mail store, such
    * as "mailbox", "imap", or "news"
@@ -157,10 +160,11 @@ interface nsIMsgIncomingServer : nsISupports {
   /* the RDF URI for the root mail folder */
   readonly attribute string serverURI;
 
-  /* the root folder for this server */
+  /* the root folder for this server, even if server is deferred */
   attribute nsIMsgFolder rootFolder;
 
-  /* handy accessor when we want a msg folder */
+  /* root folder for this account 
+     - if account is deferred, root folder of deferred-to account */
   readonly attribute nsIMsgFolder rootMsgFolder;
 
   /* are we already getting new Messages on the current server..
@@ -195,6 +199,9 @@ interface nsIMsgIncomingServer : nsISupports {
   /* do a biff */
   void PerformBiff(in nsIMsgWindow aMsgWindow);
   
+  /* get new messages */
+  void getNewMessages(in nsIMsgFolder aFolder, in nsIMsgWindow aMsgWindow, 
+                      in nsIUrlListener aUrlListener);
   /* this checks if a server needs a password to do biff */
   readonly attribute boolean serverRequiresPasswordForBiff;
   
@@ -384,6 +391,8 @@ interface nsIMsgIncomingServer : nsISupports {
   readonly attribute nsIMsgFilterPlugin spamFilterPlugin;
 
   nsIMsgFolder getMsgFolderFromURI(in nsIMsgFolder aFolderResource, in string aURI);
+
+  readonly attribute boolean isDeferredTo;
 };
 
 %{C++

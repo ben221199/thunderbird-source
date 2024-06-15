@@ -836,9 +836,9 @@ ifeq (_WINNT,$(GNU_CC)_$(OS_ARCH))
 	$(LD) /NOLOGO /OUT:$@ /PDB:$(PDBFILE) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(PROGOBJS) $(RESFILE) $(LIBS) $(EXTRA_LIBS) $(OS_LIBS)
 else
 ifeq ($(CPP_PROG_LINK),1)
-	$(CCC) -o $@ $(CXXFLAGS) $(WRAP_MALLOC_CFLAGS) $(PROGOBJS) $(RESFILE) $(LDFLAGS) $(LIBS_DIR) $(LIBS) $(OS_LIBS) $(EXTRA_LIBS) $(BIN_FLAGS) $(WRAP_MALLOC_LIB) $(PROFILER_LIBS) $(EXE_DEF_FILE)
+	$(CCC) -o $@ $(CXXFLAGS) $(WRAP_MALLOC_CFLAGS) $(PROGOBJS) $(RESFILE) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(LIBS_DIR) $(LIBS) $(OS_LIBS) $(EXTRA_LIBS) $(BIN_FLAGS) $(WRAP_MALLOC_LIB) $(PROFILER_LIBS) $(EXE_DEF_FILE)
 else # ! CPP_PROG_LINK
-	$(CC) -o $@ $(CFLAGS) $(PROGOBJS) $(RESFILE) $(LDFLAGS) $(LIBS_DIR) $(LIBS) $(OS_LIBS) $(EXTRA_LIBS) $(BIN_FLAGS) $(EXE_DEF_FILE)
+	$(CC) -o $@ $(CFLAGS) $(PROGOBJS) $(RESFILE) $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(LIBS_DIR) $(LIBS) $(OS_LIBS) $(EXTRA_LIBS) $(BIN_FLAGS) $(EXE_DEF_FILE)
 endif # CPP_PROG_LINK
 endif # WINNT && !GNU_CC
 endif # OS2
@@ -882,9 +882,9 @@ ifeq (_WINNT,$(GNU_CC)_$(OS_ARCH))
 	$(LD) /nologo /out:$@ /pdb:$(PDBFILE) $< $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(LIBS) $(EXTRA_LIBS) $(OS_LIBS)
 else
 ifeq ($(CPP_PROG_LINK),1)
-	$(CCC) $(WRAP_MALLOC_CFLAGS) $(CXXFLAGS) -o $@ $< $(LDFLAGS) $(LIBS_DIR) $(LIBS) $(OS_LIBS) $(EXTRA_LIBS) $(WRAP_MALLOC_LIB) $(PROFILER_LIBS) $(BIN_FLAGS)
+	$(CCC) $(WRAP_MALLOC_CFLAGS) $(CXXFLAGS) -o $@ $< $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(LIBS_DIR) $(LIBS) $(OS_LIBS) $(EXTRA_LIBS) $(WRAP_MALLOC_LIB) $(PROFILER_LIBS) $(BIN_FLAGS)
 else
-	$(CC) $(WRAP_MALLOC_CFLAGS) $(CFLAGS) $(OUTOPTION)$@ $< $(LDFLAGS) $(LIBS_DIR) $(LIBS) $(OS_LIBS) $(EXTRA_LIBS) $(WRAP_MALLOC_LIB) $(PROFILER_LIBS) $(BIN_FLAGS)
+	$(CC) $(WRAP_MALLOC_CFLAGS) $(CFLAGS) $(OUTOPTION)$@ $< $(WIN32_EXE_LDFLAGS) $(LDFLAGS) $(LIBS_DIR) $(LIBS) $(OS_LIBS) $(EXTRA_LIBS) $(WRAP_MALLOC_LIB) $(PROFILER_LIBS) $(BIN_FLAGS)
 endif # CPP_PROG_LINK
 endif # WINNT && !GNU_CC
 endif # OS/2 VACPP
@@ -1151,7 +1151,7 @@ $(OBJ_PREFIX)%.$(OBJ_SUFFIX): %.m Makefile Makefile.in
 %.res: %.rc
 	@echo Creating Resource file: $@
 ifeq ($(OS_ARCH),OS2)
-	$(RC) $(RCFLAGS:-D%=-d %) -i $(subst /,\,$(srcdir)) -r $< $@
+	$(RC) $(subst /,\,$(RCFLAGS:-D%=-d %)) -i $(subst /,\,$(srcdir)) -r $< $@
 else
 ifdef GNU_CC
 	$(RC) $(RCFLAGS) $(filter-out -U%,$(DEFINES)) $(INCLUDES:-I%=--include-dir %) $(OUTOPTION)$@ $(_VPATH_SRCS)
@@ -1515,18 +1515,49 @@ chrome::
 
 libs realchrome:: $(CHROME_DEPS)
 ifndef NO_DIST_INSTALL
-	@if test -f $(JAR_MANIFEST); then $(PERL) -I$(MOZILLA_DIR)/config $(MOZILLA_DIR)/config/make-jars.pl $(if $(filter gtk gtk2 xlib,$(MOZ_WIDGET_TOOLKIT)),-x) $(if $(CROSS_COMPILE),-o $(OS_ARCH)) $(_NO_FLOCK) $(_JAR_AUTO_REG) -f $(MOZ_CHROME_FILE_FORMAT) -d $(DIST)/bin/chrome -s $(srcdir) -z $(ZIP) -p $(MOZILLA_DIR)/config/preprocessor.pl -- "$(DEFINES) $(ACDEFINES)" < $(JAR_MANIFEST); fi
-	@if test -f $(JAR_MANIFEST); then $(PERL) -I$(MOZILLA_DIR)/config $(MOZILLA_DIR)/config/make-chromelist.pl $(DIST)/bin/chrome $(JAR_MANIFEST) $(_NO_FLOCK); fi
+	@$(EXIT_ON_ERROR) \
+	if test -f $(JAR_MANIFEST); then \
+	  if test ! -d $(DIST)/bin/chrome; then mkdir $(DIST)/bin/chrome; fi; \
+	  $(PERL) $(MOZILLA_DIR)/config/preprocessor.pl $(XULPPFLAGS) $(DEFINES) $(ACDEFINES) \
+	    $(JAR_MANIFEST) | \
+	  $(PERL) -I$(MOZILLA_DIR)/config $(MOZILLA_DIR)/config/make-jars.pl \
+	    $(if $(filter gtk gtk2 xlib,$(MOZ_WIDGET_TOOLKIT)),-x) \
+	    $(if $(CROSS_COMPILE),-o $(OS_ARCH)) $(_NO_FLOCK) $(_JAR_AUTO_REG) \
+	    -f $(MOZ_CHROME_FILE_FORMAT) -d $(DIST)/bin/chrome \
+	    -s $(srcdir) -t $(topsrcdir) -z $(ZIP) -p $(MOZILLA_DIR)/config/preprocessor.pl -- \
+	    "$(XULPPFLAGS) $(DEFINES) $(ACDEFINES)"; \
+	  $(PERL) -I$(MOZILLA_DIR)/config $(MOZILLA_DIR)/config/make-chromelist.pl \
+	    $(DIST)/bin/chrome $(JAR_MANIFEST) $(_NO_FLOCK); \
+	fi
 endif
 
 install:: $(CHROME_DEPS)
 ifndef NO_INSTALL
-	@if test -f $(JAR_MANIFEST); then $(PERL) -I$(MOZILLA_DIR)/config $(MOZILLA_DIR)/config/make-jars.pl $(if $(filter gtk gtk2 xlib,$(MOZ_WIDGET_TOOLKIT)),-x) $(if $(CROSS_COMPILE),-o $(OS_ARCH)) $(_NO_FLOCK) $(_JAR_AUTO_REG) -f $(MOZ_CHROME_FILE_FORMAT) -d $(DESTDIR)$(mozappdir)/chrome -s $(srcdir) -z $(ZIP) -p $(MOZILLA_DIR)/config/preprocessor.pl -- "$(DEFINES) $(ACDEFINES)" < $(JAR_MANIFEST); fi
-	@if test -f $(JAR_MANIFEST); then $(PERL) -I$(MOZILLA_DIR)/config $(MOZILLA_DIR)/config/make-chromelist.pl $(DESTDIR)$(mozappdir)/chrome $(JAR_MANIFEST) $(_NO_FLOCK); fi
+	@$(EXIT_ON_ERROR) \
+	if test -f $(JAR_MANIFEST); then \
+	  if test ! -d $(DESTDIR)$(mozappdir)/chrome; then mkdir $(DESTDIR)$(mozappdir)/chrome; fi; \
+	  $(PERL) $(MOZILLA_DIR)/config/preprocessor.pl $(XULPPFLAGS) $(DEFINES) $(ACDEFINES) \
+	    $(JAR_MANIFEST) | \
+	  $(PERL) -I$(MOZILLA_DIR)/config $(MOZILLA_DIR)/config/make-jars.pl \
+	    $(if $(filter gtk gtk2 xlib,$(MOZ_WIDGET_TOOLKIT)),-x) \
+	    $(if $(CROSS_COMPILE),-o $(OS_ARCH)) $(_NO_FLOCK) $(_JAR_AUTO_REG) \
+	    -f $(MOZ_CHROME_FILE_FORMAT) -d $(DESTDIR)$(mozappdir)/chrome \
+	    -s $(srcdir) -t $(topsrcdir) -z $(ZIP) -p $(MOZILLA_DIR)/config/preprocessor.pl -- \
+	    "$(XULPPFLAGS) $(DEFINES) $(ACDEFINES)"; \
+	  $(PERL) -I$(MOZILLA_DIR)/config $(MOZILLA_DIR)/config/make-chromelist.pl \
+	    $(DESTDIR)$(mozappdir)/chrome $(JAR_MANIFEST) $(_NO_FLOCK); \
+	fi
 endif
 
-REGCHROME = $(PERL) -I$(MOZILLA_DIR)/config $(MOZILLA_DIR)/config/add-chrome.pl $(if $(filter gtk gtk2 xlib,$(MOZ_WIDGET_TOOLKIT)),-x) $(if $(CROSS_COMPILE),-o $(OS_ARCH)) $(DIST)/bin/chrome/installed-chrome.txt $(_JAR_REGCHROME_DISABLE_JAR)
-REGCHROME_INSTALL = $(PERL) -I$(MOZILLA_DIR)/config $(MOZILLA_DIR)/config/add-chrome.pl $(if $(filter gtk gtk2 xlib,$(MOZ_WIDGET_TOOLKIT)),-x) $(if $(CROSS_COMPILE),-o $(OS_ARCH)) $(DESTDIR)$(mozappdir)/chrome/installed-chrome.txt $(_JAR_REGCHROME_DISABLE_JAR)
+REGCHROME = $(PERL) -I$(MOZILLA_DIR)/config $(MOZILLA_DIR)/config/add-chrome.pl \
+	$(if $(filter gtk gtk2 xlib,$(MOZ_WIDGET_TOOLKIT)),-x) \
+	$(if $(CROSS_COMPILE),-o $(OS_ARCH)) $(DIST)/bin/chrome/installed-chrome.txt \
+	$(_JAR_REGCHROME_DISABLE_JAR)
+
+REGCHROME_INSTALL = $(PERL) -I$(MOZILLA_DIR)/config $(MOZILLA_DIR)/config/add-chrome.pl \
+	$(if $(filter gtk gtk2 xlib,$(MOZ_WIDGET_TOOLKIT)),-x) \
+	$(if $(CROSS_COMPILE),-o $(OS_ARCH)) $(DESTDIR)$(mozappdir)/chrome/installed-chrome.txt \
+	$(_JAR_REGCHROME_DISABLE_JAR)
 
 #############################################################################
 # Dependency system

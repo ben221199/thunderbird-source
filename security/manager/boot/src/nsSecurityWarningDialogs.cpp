@@ -36,7 +36,7 @@ NS_IMPL_THREADSAFE_ISUPPORTS1(nsSecurityWarningDialogs, nsISecurityWarningDialog
 static NS_DEFINE_CID(kPrefCID, NS_PREF_CID);
 static NS_DEFINE_CID(kCStringBundleServiceCID,  NS_STRINGBUNDLESERVICE_CID);
 
-#define STRING_BUNDLE_URL    "chrome://communicator/locale/security.properties"
+#define STRING_BUNDLE_URL    "chrome://necko/locale/security.properties"
 
 #define ENTER_SITE_PREF      "security.warn_entering_secure"
 #define WEAK_SITE_PREF       "security.warn_entering_weak"
@@ -287,7 +287,7 @@ nsSecurityWarningDialogs::ConfirmDialog(nsIInterfaceRequestor *ctx, const char *
   if (!prefValue && prefName != nsnull) {
     mPref->SetBoolPref(prefName, PR_FALSE);
   } else if (prefValue && showOnce) {
-    mPref->SetBoolPref(showOncePref.get(), PR_TRUE);
+    mPref->SetBoolPref(showOncePref.get(), PR_FALSE);
   }
 
   return rv;

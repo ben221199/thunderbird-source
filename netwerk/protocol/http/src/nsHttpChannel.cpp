@@ -31,6 +31,7 @@
 #include "nsHttp.h"
 #include "nsIHttpAuthenticator.h"
 #include "nsIAuthPrompt.h"
+#include "nsIAuthPromptProvider.h"
 #include "nsIStringBundle.h"
 #include "nsXPCOM.h"
 #include "nsISupportsPrimitives.h"
@@ -1980,8 +1981,19 @@ nsHttpChannel::ProcessAuthentication(PRUint32 httpStatus)
     const char *challenges;
     PRBool proxyAuth = (httpStatus == 407);
 
-    if (proxyAuth)
+    if (proxyAuth) {
+        // only allow a proxy challenge if we have a proxy server configured.
+        // otherwise, we could inadvertantly expose the user's proxy
+        // credentials to an origin server.  We could attempt to proceed as
+        // if we had received a 401 from the server, but why risk flirting
+        // with trouble?  IE similarly rejects 407s when a proxy server is
+        // not configured, so there's no reason not to do the same.
+        if (!mConnectionInfo->UsingHttpProxy()) {
+            LOG(("rejecting 407 when proxy server not configured!\n"));
+            return NS_ERROR_UNEXPECTED;
+        }
         challenges = mResponseHead->PeekHeader(nsHttp::Proxy_Authenticate);
+    }
     else
         challenges = mResponseHead->PeekHeader(nsHttp::WWW_Authenticate);
     NS_ENSURE_TRUE(challenges, NS_ERROR_UNEXPECTED);
@@ -2085,12 +2097,9 @@ nsHttpChannel::GetCredentialsForChallenge(const char *challenge,
     nsCAutoString path, scheme;
     PRBool identFromURI = PR_FALSE;
 
-    // it is possible for the origin server to fake a proxy challenge.  if
-    // that happens we need to be sure to use the origin server as the auth
-    // domain.  otherwise, we could inadvertantly expose the user's proxy
-    // credentials to an origin server.
+    if (proxyAuth) {
+        NS_ASSERTION (mConnectionInfo->UsingHttpProxy(), "proxyAuth is true, but no HTTP proxy is configured!");
 
-    if (proxyAuth && mConnectionInfo->UsingHttpProxy()) {
         host = mConnectionInfo->ProxyHost();
         port = mConnectionInfo->ProxyPort();
         ident = &mProxyIdent;
@@ -2313,8 +2322,19 @@ nsHttpChannel::PromptForIdentity(const char *scheme,
 
     // XXX i18n: IDN not supported.
 
+    nsCOMPtr<nsIAuthPromptProvider> authPromptProvider;
     nsCOMPtr<nsIAuthPrompt> authPrompt;
-    GetCallback(NS_GET_IID(nsIAuthPrompt), getter_AddRefs(authPrompt));
+
+    GetCallback(NS_GET_IID(nsIAuthPromptProvider), getter_AddRefs(authPromptProvider));
+    if (authPromptProvider) {
+        PRUint32 promptReason = (proxyAuth ?
+                                 nsIAuthPromptProvider::PROMPT_PROXY :
+                                 nsIAuthPromptProvider::PROMPT_NORMAL);
+        (void) authPromptProvider->GetAuthPrompt(promptReason, getter_AddRefs(authPrompt));
+    }
+    else
+        GetCallback(NS_GET_IID(nsIAuthPrompt), getter_AddRefs(authPrompt));
+
     if (!authPrompt)
         return NS_ERROR_NO_INTERFACE;
 
@@ -3453,6 +3473,8 @@ nsHttpChannel::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
         // is guaranteed to own a reference to the connection.
         mSecurityInfo = mTransaction->SecurityInfo();
 
+        NS_ASSERTION(mResponseHead == nsnull, "leaking mResponseHead");
+
         // all of the response headers have been acquired, so we can take ownership
         // of them from the transaction.
         mResponseHead = mTransaction->TakeResponseHead();
@@ -3866,6 +3888,10 @@ nsHttpChannel::DoAuthRetry(nsAHttpConnection *conn)
     gHttpHandler->OnModifyRequest(this);
 
     mIsPending = PR_TRUE;
+
+    // get rid of the old response headers
+    delete mResponseHead;
+    mResponseHead = nsnull;
 
     // set sticky connection flag and disable pipelining.
     mCaps |=  NS_HTTP_STICKY_CONNECTION;

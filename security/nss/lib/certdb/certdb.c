@@ -34,7 +34,7 @@
 /*
  * Certificate handling code
  *
- * $Id: certdb.c,v 1.61.8.1.4.1 2004/08/02 04:38:58 leaf%mozilla.org Exp $
+ * $Id: certdb.c,v 1.61.8.2 2004/07/28 23:44:02 kaie%kuix.de Exp $
  */
 
 #include "nssilock.h"

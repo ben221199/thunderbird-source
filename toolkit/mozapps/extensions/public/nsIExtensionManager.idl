@@ -63,6 +63,8 @@ interface nsIExtensionManager : nsISupports
 
   void handleCommandLineArgs();
 
+  void register();
+
   // Installing Extensions
   const unsigned long FLAG_INSTALL_PROFILE = 0x01;
   const unsigned long FLAG_INSTALL_GLOBAL  = 0x02;
@@ -75,6 +77,8 @@ interface nsIExtensionManager : nsISupports
   // Installing Themes
   void installTheme(in nsIFile aJARFile, in unsigned long aFlags);
   void uninstallTheme(in string aThemeID);
+  void enableTheme(in string aThemeID);
+  void disableTheme(in string aThemeID);
 
   // Downloads
   void addDownloads([array, size_is(aItemCount)] in nsIUpdateItem aItems,
@@ -87,7 +91,8 @@ interface nsIExtensionManager : nsISupports
 
   // Updates
   void update([array, size_is(aItemCount)] in nsIUpdateItem aItems,
-               in unsigned long aItemCount);
+               in unsigned long aItemCount, 
+               in unsigned long aVersionUpdateOnly);
 
   // Management
   void getItemList(in string aItemID, 
@@ -105,7 +110,9 @@ interface nsIExtensionManager : nsISupports
 [scriptable, uuid(c0b7517f-0b3a-41a2-bde8-ba3ac8a5af47)]
 interface nsIExtensionItemUpdater : nsISupports
 {
-  void checkForUpdates();
+  void checkForUpdates([array, size_is(aItemCount)] in nsIUpdateItem aItems,
+                       in unsigned long aItemCount, 
+                       in boolean aVersionUpdateOnly);
 
   readonly attribute unsigned short sourceEvent;
   readonly attribute unsigned short updateTypes;

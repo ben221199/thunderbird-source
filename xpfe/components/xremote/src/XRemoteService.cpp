@@ -55,6 +55,7 @@
 #include <nsCExternalHandlerService.h>
 #include <nsIExternalProtocolService.h>
 #include <nsIProfile.h>
+#include <nsICmdLineHandler.h>
 
 NS_DEFINE_CID(kWindowCID, NS_WINDOW_CID);
 
@@ -720,10 +721,6 @@ XRemoteService::OpenURL(nsCString &aArgument,
 			nsIDOMWindowInternal *aParent,
 			PRBool aOpenBrowser)
 {
-  // check if we can handle this type of URL
-  if (!MayOpenURL(aArgument))
-    return NS_ERROR_ABORT;
-
   // the eventual toplevel target of the load
   nsCOMPtr<nsIDOMWindowInternal> finalWindow = aParent;
 
@@ -763,6 +760,10 @@ XRemoteService::OpenURL(nsCString &aArgument,
     else
       newWindow = PR_TRUE;
   }
+
+  // check if we can handle this type of URL
+  if (!MayOpenURL(aArgument))
+    return NS_ERROR_ABORT;
 
   // try to fixup the argument passed in
   nsString url;
@@ -988,11 +989,23 @@ XRemoteService::XfeDoCommand(nsCString &aArgument,
 
   // open a new browser window
   else if (aArgument.EqualsIgnoreCase("openbrowser")) {
+    // Get the browser URL and the default start page URL.
+    nsCOMPtr<nsICmdLineHandler> browserHandler =
+        do_GetService("@mozilla.org/commandlinehandler/general-startup;1?type=browser");
+
+    if (!browserHandler)
+        return NS_ERROR_FAILURE;
+
     nsXPIDLCString browserLocation;
-    GetBrowserLocation(getter_Copies(browserLocation));
+    browserHandler->GetChromeUrlForTask(getter_Copies(browserLocation));
     if (!browserLocation)
       return NS_ERROR_FAILURE;
-    
+
+    nsXPIDLString startPage;
+    browserHandler->GetDefaultArgs(getter_Copies(startPage));
+
+    arg->SetData(startPage);
+
     nsCOMPtr<nsIDOMWindow> newWindow;
     rv = OpenChromeWindow(0, browserLocation, "chrome,all,dialog=no",
                           arg, getter_AddRefs(newWindow));

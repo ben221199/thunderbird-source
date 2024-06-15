@@ -64,11 +64,13 @@
   <stringbundleset id="extensionsSet">
     <stringbundle id="brandStrings" src="chrome://global/locale/brand.properties"/>
     <stringbundle id="extensionsStrings" src="chrome://mozapps/locale/extensions/extensions.properties"/>
-    <stringbundle id="xpinstallStrings" src="chrome://communicator/locale/xpinstall/xpinstall.properties"/>
+    <stringbundle id="xpinstallStrings" src="chrome://global/locale/xpinstall/xpinstall.properties"/>
   </stringbundleset>
     
   <keyset id="extensionsKeys">
     <key id="key_close"   key="&cmd.close.commandKey;"    modifiers="accel" command="cmd_close" 
+         oncommand="gExtensionsViewController.doCommand('cmd_close');"/>
+    <key id="key_close2"  keycode="VK_ESCAPE"                               command="cmd_close"
          oncommand="gExtensionsViewController.doCommand('cmd_close');"/>
     <key id="key_about"   key="&cmd.info.commandKey;"     modifiers="accel" command="cmd_about" 
          oncommand="gExtensionsViewController.doCommand('cmd_about');"/>
@@ -136,7 +138,7 @@
           datasources="rdf:null" persist="last-selected"
           ondragover="nsDragAndDrop.dragOver(event, gExtensionsDNDObserver);"
           ondragdrop="nsDragAndDrop.drop(event, gExtensionsDNDObserver);"
-          ondblclick="onViewDoubleClick();">
+          ondblclick="onViewDoubleClick(event);">
       <template>
         <rule>
           <conditions>
@@ -172,11 +174,17 @@
                     predicate="http://www.mozilla.org/2004/em-rdf#disabled"
                     object="?disabled"/>
             <binding subject="?extension"
+                    predicate="http://www.mozilla.org/2004/em-rdf#compatible"
+                    object="?compatible"/>
+            <binding subject="?extension"
                     predicate="http://www.mozilla.org/2004/em-rdf#homepageURL"
                     object="?homepage-url"/>
             <binding subject="?extension"
                     predicate="http://www.mozilla.org/2004/em-rdf#description"
                     object="?description"/>
+            <binding subject="?extension"
+                    predicate="http://www.mozilla.org/2004/em-rdf#displayDescription"
+                    object="?displayDescription"/>
             <binding subject="?extension"
                     predicate="http://www.mozilla.org/2004/em-rdf#locked"
                     object="?locked"/>
@@ -216,8 +224,9 @@
                           here to make each element not be so heavy. -->
             <extension uri="?extension" context="extensionContextMenu"
                        image="?icon" name="?name" version="?version" 
-                       description="?description" creator="?creator"
+                       description="?displayDescription" creator="?creator"
                        disabled="?disabled" locked="?locked" 
+                       compatible="?compatible"
                        optionsURL="?options-url" homepageURL="?homepage-url"
                        aboutURL="?about-url" updateURL="?update-url"
                        previewImage="?previewImage" internalName="?internalName"
@@ -262,11 +271,15 @@
                 label="&cmd.update.label;" accesskey="&cmd.update.accesskey;" tooltiptext="&cmd.update.tooltip;"
                 command="cmd_update"/>
         <separator class="commandBarSeparator"/>              
+        <button id="optionsButton"
+                label="&cmd.options.label;" accesskey="&cmd.options.accesskey;" tooltiptext="&cmd.options.tooltip;"
+                command="cmd_options"/>
         <button id="useThemeButton" hidden="true"
                 label="&cmd.useTheme.label;" accesskey="&cmd.useTheme.accesskey;" tooltiptext="&cmd.useTheme.tooltip;"
                 command="cmd_useTheme"/>
       </hbox>
       <spacer flex="1"/>
+      <!-- XXXben - this is not accessible -->
       <label id="getMore" onclick="openURL(gGetMoreURL);"
              valuethemes="&getMoreThemes.label;"
              valueextensions="&getMoreExtensions.label;"

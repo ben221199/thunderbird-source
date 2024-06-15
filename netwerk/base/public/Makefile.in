@@ -46,6 +46,7 @@ SDK_XPIDLSRCS   = \
 XPIDLSRCS	= \
 		nsIAuthPrompt.idl \
 		nsIAsyncStreamCopier.idl \
+		nsISafeOutputStream.idl \
 		nsIBufferedStreams.idl \
 		nsIDirectoryListing.idl \
 		nsIDownloader.idl \
@@ -56,6 +57,7 @@ XPIDLSRCS	= \
 		nsIMIMEInputStream.idl \
 		nsIPasswordManager.idl \
 		nsIPasswordManagerInternal.idl \
+		nsIPermissionManager.idl \
 		nsIProgressEventSink.idl \
 		nsIPrompt.idl \
 		nsIProtocolProxyService.idl \
@@ -89,6 +91,8 @@ XPIDLSRCS	= \
 		nsIMultiPartChannel.idl \
 		nsIExternalProtocolHandler.idl \
 		nsIAuthModule.idl \
+		nsIContentSniffer.idl \
+		nsIAuthPromptProvider.idl \
 		$(NULL)
 
 EXPORTS		= \

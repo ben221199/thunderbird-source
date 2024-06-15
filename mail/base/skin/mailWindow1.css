@@ -949,7 +949,7 @@ treechildren::-moz-tree-cell-text(lc-black, selected) {
 }
 
 #folderPaneHeader {
-  height: 27px;
+  height: 29px;
   border-bottom: none;
   border-top: none;
 }
@@ -973,12 +973,39 @@ treechildren::-moz-tree-cell-text(lc-black, selected) {
 
 /* ..... tree adjustments ..... */
 
+.quick-search-textbox
+{
+  padding-top: 1px;
+}
+
 #accountCentralBox { 
   border: 1px solid ThreeDShadow; 
 }
 
 #searchBox {
   border-top: 1px solid ThreeDHighlight;
+  height: 30px;
+}
+
+#searchInput[searchCriteria="true"]  {
+  color: grey;
+}
+
+#quick-search-button  {
+  margin-top: 1px;
+  margin-bottom: 1px;
+  margin-right: 2px;
+}
+
+.quick-search-button-image {
+  margin: 0px;
+  list-style-image: url("chrome://messenger/skin/icons/Search-bar.png");
+}
+
+.quick-search-button-dropmarker {
+  margin-left: 12px;
+  margin-top: 8px;
+  list-style-image: url("chrome://messenger/skin/icons/search-arrow.gif");
 }
 
 /* ..... message pane adjustments ..... */
@@ -987,16 +1014,11 @@ treechildren::-moz-tree-cell-text(lc-black, selected) {
   border-top: 1px solid ThreeDShadow;
   border-left: 1px solid ThreeDShadow;
   border-right: 0px;
-  border-bottom: 1px solid ThreeDShadow;
+  border-bottom: 0px;
 }
 
-#messagepane {
-  border-top: 1px solid -moz-Field;
-  border-left: 0px;
-  border-right: 0px;
-  border-bottom: 1px solid -moz-Field;
-}
+/* ..... smart update statusbar panel ..... */
 
-#messagepanebox[focusring="true"] > #messagepane {
-  border-color: #000000;
+#statusbar-updates[updateCount="0"]{
+  visibility: collapse; 
 }

@@ -668,23 +668,10 @@ function EditorSharedStartup()
 function EditorResetFontAndColorAttributes()
 {
   try {  
-    document.getElementById("cmd_fontFace").setAttribute("state", "");
-    EditorRemoveTextProperty("font", "color");
-    EditorRemoveTextProperty("font", "bgcolor");
-    EditorRemoveTextProperty("font", "size");
-    EditorRemoveTextProperty("small", "");
-    EditorRemoveTextProperty("big", "");
-    var bodyelement = GetBodyElement();
-    if (bodyelement)
-    {
-      var editor = GetCurrentEditor();
-      editor.removeAttributeOrEquivalent(bodyelement, "text", true);
-      editor.removeAttributeOrEquivalent(bodyelement, "bgcolor", true);
-      bodyelement.removeAttribute("link");
-      bodyelement.removeAttribute("alink");
-      bodyelement.removeAttribute("vlink");
-      editor.removeAttributeOrEquivalent(bodyelement, "background", true);
-    }
+    var editor = GetCurrentEditor();
+    editor.rebuildDocumentFromSource("");
+    editor.removeAllInlineProperties();
+
     gColorObj.LastTextColor = "";
     gColorObj.LastBackgroundColor = "";
     gColorObj.LastHighlightColor = "";

@@ -725,7 +725,15 @@ SheetLoadData::OnStreamComplete(nsIUnicharStreamLoader* aLoader,
   
   nsCOMPtr<nsIURI> channelURI;
   if (channel) {
-    channel->GetURI(getter_AddRefs(channelURI));
+    // If the channel's original URI is "chrome:", we want that, since
+    // the observer code in nsXULPrototypeCache depends on chrome stylesheets
+    // having a chrome URI.  (Whether or not chrome stylesheets come through
+    // this codepath seems nondeterministic.)
+    // Otherwise we want the potentially-HTTP-redirected URI.
+    channel->GetOriginalURI(getter_AddRefs(channelURI));
+    PRBool isChrome;
+    if (NS_FAILED(channelURI->SchemeIs("chrome", &isChrome)) || !isChrome)
+      channel->GetURI(getter_AddRefs(channelURI));
   }
   
 #ifdef MOZ_TIMELINE
@@ -909,8 +917,8 @@ CSSLoaderImpl::IsAlternate(const nsAString& aTitle)
  *
  * @param aSourceURI the uri of the document or parent sheet loading the sheet
  * @param aTargetURI the uri of the sheet to be loaded
- * @param aContext the context.  This is the element or the @import
- *        rule doing the loading
+ * @param aContext the node owning the sheet.  This is the element or document
+ *                 owning the stylesheet (possibly indirectly, for child sheets)
  */
 nsresult
 CSSLoaderImpl::CheckLoadAllowed(nsIURI* aSourceURI,
@@ -931,25 +939,18 @@ CSSLoaderImpl::CheckLoadAllowed(nsIURI* aSourceURI,
 
   // Check with content policy
 
-  if (!mDocument) {
-    return NS_OK;
-  }
-  
-  nsIScriptGlobalObject *globalObject = mDocument->GetScriptGlobalObject();
-  if (!globalObject) {
-    LOG(("  No script global object"));
-    return NS_OK;
-  }
-  
-  nsCOMPtr<nsIDOMWindow> domWin(do_QueryInterface(globalObject));
-  NS_ASSERTION(domWin, "Global object not DOM window?");
+  PRInt16 shouldLoad = nsIContentPolicy::ACCEPT;
+  rv = NS_CheckContentLoadPolicy(nsIContentPolicy::TYPE_STYLESHEET,
+                                 aTargetURI,
+                                 aSourceURI,
+                                 aContext,
+                                 NS_LITERAL_CSTRING("text/css"),
+                                 nsnull,                        //extra param
+                                 &shouldLoad);
 
-  PRBool shouldLoad = PR_TRUE;
-  rv = NS_CheckContentLoadPolicy(nsIContentPolicy::STYLESHEET, aTargetURI,
-                                 aContext, domWin, &shouldLoad);
-  if (NS_SUCCEEDED(rv) && !shouldLoad) {
-    LOG(("  Blocked by content policy"));
-    return NS_ERROR_FAILURE;
+  if (NS_FAILED(rv) || NS_CP_REJECTED(shouldLoad)) {
+    LOG(("  Load blocked by content policy"));
+    return NS_ERROR_CONTENT_BLOCKED;
   }
 
   return rv;
@@ -1663,7 +1664,12 @@ CSSLoaderImpl::LoadStyleLink(nsIContent* aElement,
   // Check whether we should even load
   nsIURI *docURI = mDocument->GetDocumentURI();
   if (!docURI) return NS_ERROR_FAILURE;
-  nsresult rv = CheckLoadAllowed(docURI, aURL, aElement);
+
+  nsISupports* context = aElement;
+  if (!context) {
+    context = mDocument;
+  }
+  nsresult rv = CheckLoadAllowed(docURI, aURL, context);
   if (NS_FAILED(rv)) return rv;
 
   LOG(("  Passed load check"));
@@ -1739,7 +1745,33 @@ CSSLoaderImpl::LoadChildSheet(nsICSSStyleSheet* aParentSheet,
   nsCOMPtr<nsIURI> sheetURI;
   nsresult rv = aParentSheet->GetURL(*getter_AddRefs(sheetURI));
   if (NS_FAILED(rv) || !sheetURI) return NS_ERROR_FAILURE;
-  rv = CheckLoadAllowed(sheetURI, aURL, aParentRule);
+
+  nsCOMPtr<nsIDOMNode> owningNode;
+
+  // check for an owning document: if none, don't bother walking up the parent
+  // sheets
+  nsCOMPtr<nsIDocument> owningDoc;
+  rv = aParentSheet->GetOwningDocument(*getter_AddRefs(owningDoc));
+  if (NS_SUCCEEDED(rv) && owningDoc) {
+    nsCOMPtr<nsIDOMStyleSheet> nextParentSheet(do_QueryInterface(aParentSheet));
+    NS_ENSURE_TRUE(nextParentSheet, NS_ERROR_FAILURE); //Not a stylesheet!?
+
+    nsCOMPtr<nsIDOMStyleSheet> topSheet;
+    //traverse our way to the top-most sheet
+    do {
+      topSheet.swap(nextParentSheet);
+      topSheet->GetParentStyleSheet(getter_AddRefs(nextParentSheet));
+    } while (nextParentSheet);
+
+    topSheet->GetOwnerNode(getter_AddRefs(owningNode));
+  }
+
+  nsISupports* context = owningNode;
+  if (!context) {
+    context = mDocument;
+  }
+  
+  rv = CheckLoadAllowed(sheetURI, aURL, context);
   if (NS_FAILED(rv)) return rv;
 
   LOG(("  Passed load check"));

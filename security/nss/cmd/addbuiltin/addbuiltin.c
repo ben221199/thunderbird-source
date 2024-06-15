@@ -194,7 +194,7 @@ printheader() {
      "# may use your version of this file under either the MPL or the\n"
      "# GPL.\n"
      "#\n"
-     "CVS_ID \"@(#) $RCSfile: addbuiltin.c,v $ $Revision: 1.6 $ $Date: 2003/01/07 22:22:10 $ $Name: THUNDERBIRD_0_7_3_RELEASE $\"\n"
+     "CVS_ID \"@(#) $RCSfile: addbuiltin.c,v $ $Revision: 1.6 $ $Date: 2003/01/07 22:22:10 $ $Name: THUNDERBIRD_0_8_RELEASE $\"\n"
      "\n"
      "#\n"
      "# certdata.txt\n"

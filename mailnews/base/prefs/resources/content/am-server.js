@@ -26,6 +26,7 @@
  */
 
 var gRedirectorType = "";
+var gServer;
 
 function onInit() 
 {
@@ -47,6 +48,7 @@ function onPreInit(account, accountValues)
     gRedirectorType = parent.getAccountValue(account, accountValues, "server", "redirectorType", null, false);
     hideShowControls(type);
 
+    gServer = account.incomingServer;
     if(!(account.incomingServer.isSecureServer))
       document.getElementById("server.isSecure").setAttribute("hidden", "true");
     else
@@ -104,14 +106,14 @@ function onAdvanced()
   var serverSettings = {};
   serverSettings.smtpServerList = oldSmtpServerKey;
 
-  // Store the server type and, if an IMAP server,
-  // the settings needed for the IMAP tab into the array
+  // Store the server type and, if an IMAP or POP3 server,
+  // the settings needed for the IMAP/POP3 tab into the array
   var serverType = document.getElementById("server.type").getAttribute("value");
   serverSettings.serverType = serverType;
 
   if (serverType == "imap")
   {
-    serverSettings.dualUseFolders = document.getElementById("imap.dualUseFolders").checked
+    serverSettings.dualUseFolders = document.getElementById("imap.dualUseFolders").checked;
     serverSettings.usingSubscription = document.getElementById("imap.usingSubscription").checked;
     serverSettings.useIdle = document.getElementById("imap.useIdle").checked;
     serverSettings.maximumConnectionsNumber = document.getElementById("imap.maximumConnectionsNumber").getAttribute("value");
@@ -122,8 +124,12 @@ function onAdvanced()
     serverSettings.otherUsersNamespace = document.getElementById("imap.otherUsersNamespace").getAttribute("value");
     serverSettings.overrideNamespaces = document.getElementById("imap.overrideNamespaces").checked;
   }
+  else if (serverType == "pop3")
+  {
+    serverSettings.deferGetNewMail = document.getElementById("pop3.deferGetNewMail").checked;
+    serverSettings.deferredToAccount = document.getElementById("pop3.deferredToAccount").getAttribute("value");
+  }
 
-  dump("Opening dialog..\n");
   window.openDialog("chrome://messenger/content/am-server-advanced.xul",
                     "_blank", "chrome,modal,titlebar", serverSettings);
 
@@ -148,6 +154,29 @@ function onAdvanced()
     document.getElementById("imap.serverDirectory").setAttribute("value", serverSettings.serverDirectory);
     document.getElementById("imap.otherUsersNamespace").setAttribute("value", serverSettings.otherUsersNamespace);
     document.getElementById("imap.overrideNamespaces").checked = serverSettings.overrideNamespaces;
+  }
+  else if (serverType == "pop3")
+  {
+    document.getElementById("pop3.deferGetNewMail").checked = serverSettings.deferGetNewMail;
+    document.getElementById("pop3.deferredToAccount").setAttribute("value", serverSettings.deferredToAccount);
+    var pop3Server = gServer.QueryInterface(Components.interfaces.nsIPop3IncomingServer);
+    // if we were using default special folders for this server, and we're deferring it,
+    // switch the special folders to the deferred to account.
+    if (serverSettings.deferredToAccount.length > 0)
+    {
+      var account = parent.getAccountFromServerId(gServer.serverURI);
+      var identity = account.defaultIdentity;
+      var accountManager = Components.classes["@mozilla.org/messenger/account-manager;1"].getService(Components.interfaces.nsIMsgAccountManager);
+      var account = accountManager.getAccount(serverSettings.deferredToAccount);
+      if (identity.fccFolder == (pop3Server.serverURI + "/Sent"))
+        identity.fccFolder = account.incomingServer.serverURI + "/Sent";
+
+      if (identity.draftFolder == (pop3Server.serverURI + "/Drafts"))
+        identity.draftFolder = account.incomingServer.serverURI + "/Drafts";
+
+      if (identity.stationeryFolder == (pop3Server.serverURI + "/Templates"))
+        identity.stationeryFolder = account.incomingServer.serverURI + "/Templates";
+    }
   }
 }
 

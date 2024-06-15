@@ -260,6 +260,7 @@ nsMsgFilter::GetSortedActionList(nsISupportsArray *actionList)
   PRUint32 numActions;
   nsresult err = m_actionList->Count(&numActions);
   NS_ENSURE_SUCCESS(err, err);
+  PRUint32 front = 0;
 
   for (PRUint32 index =0; index < numActions; index++)
   {
@@ -273,7 +274,12 @@ nsMsgFilter::GetSortedActionList(nsISupportsArray *actionList)
     if (actionType == nsMsgFilterAction::MoveToFolder)  //we always want MoveToFolder action to be last
       actionList->AppendElement(action);
     else
-      actionList->InsertElementAt(action,0);
+    {
+      actionList->InsertElementAt(action,front);
+      // we always want FetchBodyFromPop3Server to be first
+      if (actionType == nsMsgFilterAction::FetchBodyFromPop3Server)
+        front = 1;
+    }
   }
   return err;
 }
@@ -576,9 +582,9 @@ nsresult nsMsgFilter::ConvertMoveToFolderValue(nsIMsgRuleAction *filterAction, n
         {
           nsAutoString unicodeStr;
           impSvc->SystemStringToUnicode(moveValue.get(), unicodeStr);
-          nsXPIDLCString escapedName;
-          rv = NS_MsgEscapeEncodeURLPath(unicodeStr.get(), getter_Copies(escapedName));
-          if (NS_SUCCEEDED(rv) && escapedName)
+          nsCAutoString escapedName;
+          rv = NS_MsgEscapeEncodeURLPath(unicodeStr, escapedName);
+          if (NS_SUCCEEDED(rv) && !escapedName.IsEmpty())
             moveValue.Assign(escapedName.get());
         }
         destFolderUri.Append(moveValue);
@@ -709,7 +715,7 @@ nsresult nsMsgFilter::SaveRule(nsIOFileStream *aStream)
     else
       condition += "OR (";
     
-    nsresult searchError = term->EnStreamNew(stream);
+    nsresult searchError = term->GetTermAsString(stream);
     if (NS_FAILED(searchError))
     {
       err = searchError;
@@ -746,9 +752,10 @@ static struct RuleActionsTableEntry ruleActionsTable[] =
   { nsMsgFilterAction::Reply,           nsMsgFilterType::All,   0,  "Reply"},
   { nsMsgFilterAction::Forward,         nsMsgFilterType::All,   0,  "Forward"},
   { nsMsgFilterAction::StopExecution,   nsMsgFilterType::All,   0,  "Stop execution"},
-  { nsMsgFilterAction::DeleteFromPop3Server, nsMsgFilterType::All,   0, "Delete from Pop3 server"},
-  { nsMsgFilterAction::LeaveOnPop3Server, nsMsgFilterType::All,   0, "Leave on Pop3 server"},
+  { nsMsgFilterAction::DeleteFromPop3Server, nsMsgFilterType::Inbox,   0, "Delete from Pop3 server"},
+  { nsMsgFilterAction::LeaveOnPop3Server, nsMsgFilterType::Inbox,   0, "Leave on Pop3 server"},
   { nsMsgFilterAction::JunkScore, nsMsgFilterType::All,   0, "JunkScore"},
+  { nsMsgFilterAction::FetchBodyFromPop3Server, nsMsgFilterType::Inbox,   0, "Fetch body from Pop3Server"},
 };
 
 const char *nsMsgFilter::GetActionStr(nsMsgRuleActionType action)

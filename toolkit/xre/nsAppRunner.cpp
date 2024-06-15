@@ -143,9 +143,6 @@
 #define DEBUG_CMD_LINE
 #endif
 
-#define UILOCALE_CMD_LINE_ARG "-UILocale"
-#define CONTENTLOCALE_CMD_LINE_ARG "-contentLocale"
-
 extern "C" void ShowOSAlert(const char* aMessage);
 
 #define HELP_SPACER_1   "\t"
@@ -678,100 +675,6 @@ DoCommandLines(nsICmdLineService* cmdLineArgs, PRBool heedGeneralStartupPrefs, P
   return NS_OK;
 }
 
-// match OS locale
-static char kMatchOSLocalePref[] = "intl.locale.matchOS";
-
-nsresult
-getCountry(const nsAString& lc_name, nsAString& aCountry)
-{
-
-  nsresult        result = NS_OK;
-
-  PRInt32 dash = lc_name.FindChar('-');
-  if (dash > 0)
-    aCountry = Substring(lc_name, dash+1, lc_name.Length()-dash);
-  else
-    result = NS_ERROR_FAILURE;
-
-  return result;
-}
-
-static nsresult
-getUILangCountry(nsAString& aUILang, nsAString& aCountry)
-{
-  nsresult	 result;
-  // get a locale service 
-  nsCOMPtr<nsILocaleService> localeService = do_GetService(NS_LOCALESERVICE_CONTRACTID, &result);
-  NS_ASSERTION(NS_SUCCEEDED(result),"getUILangCountry: get locale service failed");
-
-  result = localeService->GetLocaleComponentForUserAgent(aUILang);
-  NS_ASSERTION(NS_SUCCEEDED(result),
-          "getUILangCountry: get locale componet for user agent failed");
-  result = getCountry(aUILang, aCountry);
-  return result;
-}
-
-// update global locale if possible (in case when user-*.rdf can be updated)
-// so that any apps after this can be invoked in the UILocale and contentLocale
-static nsresult InstallGlobalLocale(nsICmdLineService *cmdLineArgs)
-{
-    nsresult rv = NS_OK;
-
-    // check the pref first
-    nsCOMPtr<nsIPref> prefService(do_GetService(NS_PREF_CONTRACTID));
-    PRBool matchOS = PR_FALSE;
-    if (prefService)
-      prefService->GetBoolPref(kMatchOSLocalePref, &matchOS);
-
-    // match os locale
-    nsAutoString uiLang;
-    nsAutoString country;
-    if (matchOS) {
-      // compute lang and region code only when needed!
-      rv = getUILangCountry(uiLang, country);
-    }
-
-    nsXPIDLCString cmdUI;
-    rv = cmdLineArgs->GetCmdLineValue(UILOCALE_CMD_LINE_ARG, getter_Copies(cmdUI));
-    if (NS_SUCCEEDED(rv)){
-        if (cmdUI) {
-            nsCAutoString UILocaleName(cmdUI);
-            nsCOMPtr<nsIXULChromeRegistry> chromeRegistry = do_GetService(NS_CHROMEREGISTRY_CONTRACTID, &rv);
-            if (chromeRegistry)
-                rv = chromeRegistry->SelectLocale(UILocaleName, PR_FALSE);
-        }
-    }
-    // match OS when no cmdline override
-    if (!cmdUI && matchOS) {
-      nsCOMPtr<nsIXULChromeRegistry> chromeRegistry = do_GetService(NS_CHROMEREGISTRY_CONTRACTID, &rv);
-      if (chromeRegistry) {
-        chromeRegistry->SetRuntimeProvider(PR_TRUE);
-        rv = chromeRegistry->SelectLocale(NS_ConvertUCS2toUTF8(uiLang), PR_FALSE);
-      }
-    }
-
-    nsXPIDLCString cmdContent;
-    rv = cmdLineArgs->GetCmdLineValue(CONTENTLOCALE_CMD_LINE_ARG, getter_Copies(cmdContent));
-    if (NS_SUCCEEDED(rv)){
-        if (cmdContent) {
-            nsCAutoString contentLocaleName(cmdContent);
-            nsCOMPtr<nsIXULChromeRegistry> chromeRegistry = do_GetService(NS_CHROMEREGISTRY_CONTRACTID, &rv);
-            if(chromeRegistry)
-                rv = chromeRegistry->SelectLocale(contentLocaleName, PR_FALSE);
-        }
-    }
-    // match OS when no cmdline override
-    if (!cmdContent && matchOS) {
-      nsCOMPtr<nsIXULChromeRegistry> chromeRegistry = do_GetService(NS_CHROMEREGISTRY_CONTRACTID, &rv);
-      if (chromeRegistry) {
-        chromeRegistry->SetRuntimeProvider(PR_TRUE);        
-        rv = chromeRegistry->SelectLocale(NS_ConvertUCS2toUTF8(country), PR_FALSE);
-      }
-    }
-
-    return NS_OK;
-}
-
 // English text needs to go into a dtd file.
 // But when this is called we have no components etc. These strings must either be
 // here, or in a native resource file.
@@ -1083,7 +986,8 @@ HandleRemoteArgument(const char* remote)
   ArgResult ar;
 
   const char *profile = 0;
-  const char *program = gAppData->appName;
+  nsCAutoString program(gAppData->appName);
+  ToLowerCase(program);
   const char *username = getenv("LOGNAME");
 
   ar = CheckArg("p", &profile);
@@ -1092,13 +996,16 @@ HandleRemoteArgument(const char* remote)
     return 1;
   }
 
-  ar = CheckArg("a", &program);
+  const char *temp = nsnull;
+  ar = CheckArg("a", &temp);
   if (ar == ARG_BAD) {
     PR_fprintf(PR_STDERR, "Error: argument -a requires an application name\n");
     return 1;
+  } else if (ar == ARG_FOUND) {
+    program.Assign(temp);
   }
 
-  ar = CheckArg("u", &program);
+  ar = CheckArg("u", &username);
   if (ar == ARG_BAD) {
     PR_fprintf(PR_STDERR, "Error: argument -u requires a username\n");
     return 1;
@@ -1123,7 +1030,7 @@ HandleRemoteArgument(const char* remote)
 
     nsXPIDLCString response;
     PRBool success = PR_FALSE;
-    rv = client->SendCommand(program, username, profile, remote,
+    rv = client->SendCommand(program.get(), username, profile, remote,
                              getter_Copies(response), &success);
     // did the command fail?
     if (NS_FAILED(rv)) {
@@ -1457,8 +1364,23 @@ SelectProfile(nsIProfileLock* *aResult, nsINativeAppSupport* aNative,
   }
   if (ar) {
     nsCOMPtr<nsIToolkitProfile> profile;
-    rv = profileSvc->CreateProfile(nsnull, nsDependentCString(arg),
-                                   getter_AddRefs(profile));
+
+    const char* delim = strchr(arg, ' ');
+    if (delim) {
+      nsCOMPtr<nsILocalFile> lf;
+      rv = NS_NewNativeLocalFile(nsDependentCString(delim + 1),
+                                   PR_TRUE, getter_AddRefs(lf));
+      if (NS_FAILED(rv)) {
+        PR_fprintf(PR_STDERR, "Error: profile path not valid.");
+        return rv;
+      }
+      
+      rv = profileSvc->CreateProfile(lf, nsDependentCSubstring(arg, delim),
+                                     getter_AddRefs(profile));
+    } else {
+      rv = profileSvc->CreateProfile(nsnull, nsDependentCString(arg),
+                                     getter_AddRefs(profile));
+    }
     if (NS_SUCCEEDED(rv)) {
       rv = NS_ERROR_ABORT;
       PR_fprintf(PR_STDERR, "Success: created profile '%s'\n", arg);
@@ -1617,6 +1539,9 @@ int xre_main(int argc, char* argv[], const nsXREAppData* aAppData)
   InstallUnixSignalHandlers(argv[0]);
 #endif
 
+  // Unbuffer stdout, needed for tinderbox tests.
+  setbuf(stdout, 0);
+
 #if defined(FREEBSD)
   // Disable all SIGFPE's on FreeBSD, as it has non-IEEE-conformant fp
   // trap behavior that trips up on floating-point tests performed by
@@ -1681,7 +1606,7 @@ int xre_main(int argc, char* argv[], const nsXREAppData* aAppData)
   }
     
 #ifdef NS_TRACE_MALLOC
-  argc = NS_TraceMallocStartupArgs(argc, argv);
+  gArgc = argc = NS_TraceMallocStartupArgs(argc, argv);
 #endif
 
   nsXREDirProvider dirProvider;
@@ -1701,6 +1626,12 @@ int xre_main(int argc, char* argv[], const nsXREAppData* aAppData)
       NS_ENSURE_TRUE(chromeReg, 1);
 
       chromeReg->CheckForNewChrome();
+
+      nsCOMPtr<nsIExtensionManager> em
+        (do_GetService("@mozilla.org/extensions/manager;1"));
+      NS_ENSURE_TRUE(em, 1);
+
+      em->Register();
     }
     return 0;
   }
@@ -1822,11 +1753,6 @@ int xre_main(int argc, char* argv[], const nsXREAppData* aAppData)
       // in "components.ini" which we have just discovered changed since the
       // last time the application was run. 
       RemoveComponentRegistries(lf);
-      
-      // Tell the dir provider to supply the list of components locations 
-      // specified in "components.ini" when it is asked for the "ComsDL"
-      // enumeration.
-      dirProvider.RegisterExtraComponents();
     }
     // Nothing need be done for the normal startup case.
   }
@@ -1885,11 +1811,6 @@ int xre_main(int argc, char* argv[], const nsXREAppData* aAppData)
       // So we can open and close windows during startup
       appShellService->EnterLastWindowClosingSurvivalArea();
 
-      NS_TIMELINE_ENTER("appShellService->CreateHiddenWindow");
-      rv = appShellService->CreateHiddenWindow();
-      NS_TIMELINE_LEAVE("appShellService->CreateHiddenWindow");
-      NS_ENSURE_SUCCESS(rv, 1);
-
       if (gDoMigration) {
         gDoMigration = PR_FALSE;
         nsCOMPtr<nsIProfileMigrator> pm
@@ -1898,6 +1819,11 @@ int xre_main(int argc, char* argv[], const nsXREAppData* aAppData)
           pm->Migrate(&dirProvider);
       }
       dirProvider.DoStartup();
+
+      NS_TIMELINE_ENTER("appShellService->CreateHiddenWindow");
+      rv = appShellService->CreateHiddenWindow();
+      NS_TIMELINE_LEAVE("appShellService->CreateHiddenWindow");
+      NS_ENSURE_SUCCESS(rv, 1);
 
       // Extension Compatibility Checking and Startup
       nsCOMPtr<nsIExtensionManager> em(do_GetService("@mozilla.org/extensions/manager;1"));
@@ -1926,6 +1852,14 @@ int xre_main(int argc, char* argv[], const nsXREAppData* aAppData)
         em->Start(componentsListChanged, &needsRestart);
 
       if (noRestart || (!upgraded && !needsRestart)) {
+
+        // clear out any environment variables which may have been set 
+        // during the relaunch process now that we know we won't be relaunching.
+        PR_SetEnv("XRE_PROFILE_PATH=");
+        PR_SetEnv("XRE_START_OFFLINE=");
+        PR_SetEnv("XRE_IMPORT_PROFILES=");
+        
+
         // Kick off the prebinding update now that we know we won't be
         // relaunching.
 
@@ -1936,10 +1870,6 @@ int xre_main(int argc, char* argv[], const nsXREAppData* aAppData)
         nsCOMPtr<nsICmdLineService> cmdLineArgs
           (do_GetService("@mozilla.org/appshell/commandLineService;1"));
         NS_ENSURE_TRUE(cmdLineArgs, 1);
-
-        NS_TIMELINE_ENTER("InstallGlobalLocale");
-        InstallGlobalLocale(cmdLineArgs);
-        NS_TIMELINE_LEAVE("InstallGlobalLocale");
 
         // This will go away once Components are handling there own commandlines
         // if we have no command line arguments, we need to heed the

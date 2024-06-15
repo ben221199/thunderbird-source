@@ -53,7 +53,6 @@
 #include "nsIBaseWindow.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeItem.h"
-#include "nsIJARURI.h"
 
 #include "nsGUIEvent.h"
 
@@ -619,6 +618,7 @@ NS_INTERFACE_MAP_BEGIN(nsDocument)
   NS_INTERFACE_MAP_ENTRY(nsIDOMDocumentEvent)
   NS_INTERFACE_MAP_ENTRY(nsIDOM3DocumentEvent)
   NS_INTERFACE_MAP_ENTRY(nsIDOMDocumentStyle)
+  NS_INTERFACE_MAP_ENTRY(nsIDOMNSDocumentStyle)
   NS_INTERFACE_MAP_ENTRY(nsIDOMDocumentView)
   NS_INTERFACE_MAP_ENTRY(nsIDOMDocumentRange)
   NS_INTERFACE_MAP_ENTRY(nsIDOMDocumentTraversal)
@@ -694,24 +694,11 @@ nsDocument::Reset(nsIChannel* aChannel, nsILoadGroup* aLoadGroup)
 
   ResetToURI(uri, aLoadGroup);
 
-  if (uri) {
-    // Use the channel owner as our principal if we're loading a
-    // javascript:, data:, or chrome: URI.
-    PRBool useOwner = PR_FALSE;
-    nsCOMPtr<nsIJARURI> jarURI;
-    while ((jarURI = do_QueryInterface(uri)))
-      jarURI->GetJARFile(getter_AddRefs(uri));
- 
-    if (NS_FAILED(uri->SchemeIs("javascript", &useOwner)) || useOwner ||
-        NS_FAILED(uri->SchemeIs("data", &useOwner)) || useOwner ||
-        NS_FAILED(uri->SchemeIs("about", &useOwner)) || useOwner ||
-        NS_FAILED(uri->SchemeIs("resource", &useOwner)) || useOwner ||
-        NS_FAILED(uri->SchemeIs("chrome", &useOwner)) || useOwner) {
-      nsCOMPtr<nsISupports> owner;
-      aChannel->GetOwner(getter_AddRefs(owner));
+  if (aChannel) {
+    nsCOMPtr<nsISupports> owner;
+    aChannel->GetOwner(getter_AddRefs(owner));
 
-      mPrincipal = do_QueryInterface(owner);
-    }
+    mPrincipal = do_QueryInterface(owner);
   }
 }
 
@@ -2458,6 +2445,13 @@ nsDocument::GetStyleSheets(nsIDOMStyleSheetList** aStyleSheets)
 }
 
 NS_IMETHODIMP
+nsDocument::GetPreferredStylesheetSet(nsAString& aStyleTitle)
+{
+  GetHeaderData(nsHTMLAtoms::headerDefaultStyle, aStyleTitle);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsDocument::GetCharacterSet(nsAString& aCharacterSet)
 {
   CopyASCIItoUCS2(GetDocumentCharacterSet(), aCharacterSet);
@@ -2638,7 +2632,14 @@ nsDocument::GetAnonymousNodes(nsIDOMElement* aElement,
 NS_IMETHODIMP
 nsDocument::CreateRange(nsIDOMRange** aReturn)
 {
-  return NS_NewRange(aReturn);
+  nsresult rv = NS_NewRange(aReturn);
+
+  if (NS_SUCCEEDED(rv)) {
+    (*aReturn)->SetStart(this, 0);
+    (*aReturn)->SetEnd(this, 0);
+  }
+
+  return rv;
 }
 
 NS_IMETHODIMP

@@ -55,7 +55,7 @@
 #include "nsIStringBundle.h"
 #include "nsEudoraSettings.h"
 #include "nsReadableUtils.h"
-
+#include "nsUnicharUtils.h"
 
 #if defined(XP_WIN) || defined(XP_OS2)
 #include "nsEudoraWin32.h"
@@ -94,6 +94,8 @@ public:
 	
 	/* unsigned long GetImportProgress (); */
 	NS_IMETHOD GetImportProgress(PRUint32 *_retval);
+
+    NS_IMETHOD TranslateFolderName(const nsAString & aFolderName, nsAString & _retval);
 	
 public:
 	static void	AddLinebreak( nsString *pStream);
@@ -559,6 +561,16 @@ NS_IMETHODIMP ImportEudoraMailImpl::GetImportProgress( PRUint32 *pDoneSoFar)
 }
 
 
+NS_IMETHODIMP ImportEudoraMailImpl::TranslateFolderName(const nsAString & aFolderName, nsAString & _retval)
+{
+    if (aFolderName.Equals(NS_LITERAL_STRING("Out"), nsCaseInsensitiveStringComparator()))
+        _retval = NS_LITERAL_STRING(kDestUnsentMessagesFolderName);
+    else if (aFolderName.Equals(NS_LITERAL_STRING("In"), nsCaseInsensitiveStringComparator()))
+        _retval = NS_LITERAL_STRING(kDestInboxFolderName);
+    else
+        _retval = aFolderName;
+    return NS_OK;
+}
 
 nsresult ImportEudoraAddressImpl::Create(nsIImportAddressBooks** aImport)
 {
@@ -763,4 +775,6 @@ NS_IMETHODIMP ImportEudoraAddressImpl::GetImportProgress(PRUint32 *_retval)
 
 	return( NS_OK);
 }
+
+
 

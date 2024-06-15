@@ -238,6 +238,10 @@ ifndef MOZ_XUL
 tier_9_dirs    += embedding/minimo/chromelite
 endif
 
+ifdef MOZ_ENABLE_GTK2
+tier_9_dirs    += toolkit/components/gnome
+endif
+
 #
 # tier 40 - security
 #
@@ -330,6 +334,9 @@ endif
 
 ifdef MOZ_THUNDERBIRD
 tier_99_dirs	+= mail xpfe/bootstrap/init.d
+ifdef MOZ_USE_OFFICIAL_BRANDING
+tier_99_dirs += other-licenses/branding/thunderbird/content
+endif
 endif
 
 ifdef MOZ_STANDALONE_COMPOSER

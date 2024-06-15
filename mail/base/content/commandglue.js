@@ -20,7 +20,7 @@
 # Contributors(s):
 #   Jan Varga <varga@nixcorp.com>
 #   Håkan Waara (hwaara@chello.se)
-#   David Bienvenu (bienvenu@netscape.com)
+#   David Bienvenu (bienvenu@nventure.com)
 /*
  * Command-specific code. This stuff should be called by the widgets
  */
@@ -107,7 +107,7 @@ function setTitleFromFolder(msgfolder, subject)
     // and the product but not the account name: "Re: New window Title - Mozilla Thunderbird"
 
     if (wintype == "mail:messageWindow")  
-      title = subject;
+      title = subject ? subject : "";
     else if (msgfolder)
     {
       title = msgfolder.prettyName;
@@ -314,7 +314,7 @@ function RerootFolder(uri, newFolder, viewType, viewFlags, sortType, sortOrder)
 
   // if this is the drafts, sent, or send later folder,
   // we show "Recipient" instead of "Author"
-  SetSentFolderColumns(IsSpecialFolder(newFolder, MSG_FOLDER_FLAG_SENTMAIL | MSG_FOLDER_FLAG_DRAFTS | MSG_FOLDER_FLAG_QUEUE));
+  SetSentFolderColumns(IsSpecialFolder(newFolder, MSG_FOLDER_FLAG_SENTMAIL | MSG_FOLDER_FLAG_DRAFTS | MSG_FOLDER_FLAG_QUEUE, true));
 
   // now create the db view, which will sort it.
   CreateDBView(newFolder, viewType, viewFlags, sortType, sortOrder);
@@ -325,9 +325,11 @@ function RerootFolder(uri, newFolder, viewType, viewFlags, sortType, sortOrder)
 
      /*we don't null out the db reference for inbox because inbox is like the "main" folder
        and performance outweighs footprint */
-    if (!IsSpecialFolder(oldFolder, MSG_FOLDER_FLAG_INBOX))
+    if (!IsSpecialFolder(oldFolder, MSG_FOLDER_FLAG_INBOX, false))
+    {
       if (oldFolder.URI != newFolder.URI)
         oldFolder.setMsgDatabase(null);
+    }
   }
   // that should have initialized gDBView, now re-root the thread pane
   RerootThreadPane();
@@ -400,7 +402,6 @@ function SwitchView(command)
 function SetSentFolderColumns(isSentFolder)
 {
   var tree = GetThreadTree();
-  var searchCriteria = document.getElementById("searchCriteria");
 
   var lastFolderSent = tree.getAttribute("lastfoldersent") == "true";
   if (isSentFolder != lastFolderSent)
@@ -418,15 +419,9 @@ function SetSentFolderColumns(isSentFolder)
   }
 
   if(isSentFolder)
-  {
     tree.setAttribute("lastfoldersent", "true");
-    searchCriteria.setAttribute("value", gMessengerBundle.getString("recipientSearchCriteria"));
-  }
   else
-  {
     tree.setAttribute("lastfoldersent", "false");
-    searchCriteria.setAttribute("value", gMessengerBundle.getString("senderSearchCriteria"));
-  }
 }
 
 function SetNewsFolderColumns()
@@ -480,6 +475,9 @@ function ConvertColumnIDToSortType(columnID)
       break;
     case "locationCol":
       sortKey = nsMsgViewSortType.byLocation;
+      break;
+    case "accountCol":
+      sortKey = nsMsgViewSortType.byAccount;
       break;
     case "unreadButtonColHeader":
       sortKey = nsMsgViewSortType.byUnread;
@@ -542,6 +540,9 @@ function ConvertSortTypeToColumnID(sortKey)
       break;
     case nsMsgViewSortType.byLocation:
       columnID = "locationCol";
+      break;
+    case nsMsgViewSortType.byAccount:
+      columnID = "accountCol";
       break;
     case nsMsgViewSortType.byUnread:
       columnID = "unreadButtonColHeader";
@@ -796,8 +797,6 @@ function FolderPaneSelectionChange()
       UpdateMailToolbar("gAccountCentralLoaded");
     else if (gFakeAccountPageLoaded)
       UpdateMailToolbar("gFakeAccountPageLoaded");
-    else
-      document.getElementById('advancedButton').setAttribute("disabled" , !(IsCanSearchMessagesEnabled()));
 
     if (gDisplayStartupPage)
     {
@@ -815,30 +814,21 @@ function ClearThreadPane()
   }
 }
 
-function IsSpecialFolder(msgFolder, flags)
+function IsSpecialFolder(msgFolder, flags, checkAncestors)
 {
-    if (!msgFolder) {
+    if (!msgFolder) 
         return false;
-    }
-    else if ((msgFolder.flags & flags) == 0) {
-	  var parentMsgFolder = msgFolder.parentMsgFolder;
+    else if ((msgFolder.flags & flags) == 0)
+    {
+      var parentMsgFolder = msgFolder.parentMsgFolder;
 
-      if(!parentMsgFolder) {
-         return false;
-      }
-
-      return IsSpecialFolder(parentMsgFolder, flags);
+      return (parentMsgFolder && checkAncestors) ? IsSpecialFolder(parentMsgFolder, flags, true) : false;
     }
     else {
         // the user can set their INBOX to be their SENT folder.
         // in that case, we want this folder to act like an INBOX, 
         // and not a SENT folder
-        if ((flags & MSG_FOLDER_FLAG_SENTMAIL) && (msgFolder.flags & MSG_FOLDER_FLAG_INBOX)) {
-          return false;
-        }
-        else {
-          return true;
-        }
+        return !((flags & MSG_FOLDER_FLAG_SENTMAIL) && (msgFolder.flags & MSG_FOLDER_FLAG_INBOX));
     }
 }
 

@@ -84,7 +84,6 @@ nsIAtom * nsMsgDBView::kRepliedMsgAtom = nsnull;
 nsIAtom * nsMsgDBView::kForwardedMsgAtom = nsnull;
 nsIAtom * nsMsgDBView::kOfflineMsgAtom	= nsnull;
 nsIAtom * nsMsgDBView::kFlaggedMsgAtom = nsnull;
-nsIAtom * nsMsgDBView::kNewsMsgAtom = nsnull;
 nsIAtom * nsMsgDBView::kImapDeletedMsgAtom = nsnull;
 nsIAtom * nsMsgDBView::kAttachMsgAtom = nsnull;
 nsIAtom * nsMsgDBView::kHasUnreadAtom = nsnull;
@@ -170,7 +169,6 @@ void nsMsgDBView::InitializeAtomsAndLiterals()
   kForwardedMsgAtom = NS_NewAtom("forwarded");
   kOfflineMsgAtom = NS_NewAtom("offline");
   kFlaggedMsgAtom = NS_NewAtom("flagged");
-  kNewsMsgAtom = NS_NewAtom("news");
   kImapDeletedMsgAtom = NS_NewAtom("imapdeleted");
   kAttachMsgAtom = NS_NewAtom("attach");
   kHasUnreadAtom = NS_NewAtom("hasUnread");
@@ -218,7 +216,6 @@ nsMsgDBView::~nsMsgDBView()
     NS_IF_RELEASE(kForwardedMsgAtom);
     NS_IF_RELEASE(kOfflineMsgAtom);
     NS_IF_RELEASE(kFlaggedMsgAtom);
-    NS_IF_RELEASE(kNewsMsgAtom);
     NS_IF_RELEASE(kImapDeletedMsgAtom);
     NS_IF_RELEASE(kAttachMsgAtom);
     NS_IF_RELEASE(kHasUnreadAtom);
@@ -524,6 +521,34 @@ nsresult nsMsgDBView::FetchAuthor(nsIMsgHdr * aHdr, PRUnichar ** aSenderString)
   return NS_OK;
 }
 
+nsresult nsMsgDBView::FetchAccount(nsIMsgHdr * aHdr, PRUnichar ** aAccount)
+{
+  nsXPIDLCString accountKey;
+
+  nsresult rv = aHdr->GetAccountKey(getter_Copies(accountKey));
+
+  // Cache the account manager?
+  nsCOMPtr <nsIMsgAccountManager> accountManager = do_GetService(NS_MSGACCOUNTMANAGER_CONTRACTID, &rv);
+  NS_ENSURE_SUCCESS(rv,rv);
+  nsCOMPtr <nsIMsgAccount> account;
+  if (accountKey.IsEmpty())
+  {
+  }
+  else
+  {
+    rv = accountManager->GetAccount(accountKey, getter_AddRefs(account));
+  }
+  if (account)
+  {
+    nsCOMPtr <nsIMsgIncomingServer> server;
+    account->GetIncomingServer(getter_AddRefs(server));
+    if (server)
+      server->GetPrettyName(aAccount);
+  }
+  return NS_OK;
+}
+
+
 nsresult nsMsgDBView::FetchRecipients(nsIMsgHdr * aHdr, PRUnichar ** aRecipientsString)
 {
   nsXPIDLString unparsedRecipients;
@@ -687,7 +712,14 @@ nsresult nsMsgDBView::FetchSize(nsIMsgHdr * aHdr, PRUnichar ** aSizeString)
   }
   else 
   {
-    aHdr->GetMessageSize(&msgSize);
+    PRUint32 flags = 0;
+
+    aHdr->GetFlags(&flags);
+    if (flags & MSG_FLAG_PARTIAL)
+      aHdr->GetUint32Property("onlineSize", &msgSize);
+
+    if (msgSize == 0)
+      aHdr->GetMessageSize(&msgSize);
     
     if(msgSize < 1024)
       msgSize = 1024;
@@ -1194,7 +1226,9 @@ NS_IMETHODIMP nsMsgDBView::GetCellProperties(PRInt32 aRow, const PRUnichar *colI
   if (flags & MSG_FLAG_NEW)
     properties->AppendElement(kNewMsgAtom);
 
-  if (flags & MSG_FLAG_OFFLINE)
+  nsCOMPtr <nsIMsgLocalMailFolder> localFolder = do_QueryInterface(m_folder);
+
+  if ((flags & MSG_FLAG_OFFLINE) || (localFolder && !(flags & MSG_FLAG_PARTIAL)))
     properties->AppendElement(kOfflineMsgAtom);  
   
   if (flags & MSG_FLAG_ATTACHMENT) 
@@ -1212,8 +1246,8 @@ NS_IMETHODIMP nsMsgDBView::GetCellProperties(PRInt32 aRow, const PRUnichar *colI
   if (mRedirectorTypeAtom)
     properties->AppendElement(mRedirectorTypeAtom);
 
-  if (mIsNews)
-    properties->AppendElement(kNewsMsgAtom);
+  if (mMessageTypeAtom)
+    properties->AppendElement(mMessageTypeAtom);
 
   nsXPIDLCString imageSize;
   msgHdr->GetStringProperty("imageSize", getter_Copies(imageSize));
@@ -1543,6 +1577,13 @@ NS_IMETHODIMP nsMsgDBView::GetCellText(PRInt32 aRow, const PRUnichar * aColID, n
     rv = FetchLabel(msgHdr, getter_Copies(valueText));
     aValue.Assign(valueText);
     break;
+  case 'a': // account
+    if (aColID[1] == 'c') // account
+    {
+      rv = FetchAccount(msgHdr, getter_Copies(valueText));
+      aValue.Assign(valueText);
+    }
+    break;
   case 't':   
     // total msgs in thread column
     if (aColID[1] == 'o' && (m_viewFlags & nsMsgViewFlagsType::kThreadedDisplay))
@@ -1762,6 +1803,12 @@ NS_IMETHODIMP nsMsgDBView::Open(nsIMsgFolder *folder, nsMsgViewSortTypeValue sor
       mRedirectorTypeAtom = do_GetAtom(redirectorType.get());
 
     mIsNews = !strcmp("nntp",type.get());
+
+    if (type.IsEmpty())
+      mMessageTypeAtom = nsnull;
+    else  // special case nntp --> news since we'll break themes if we try to be consistent
+      mMessageTypeAtom = do_GetAtom(mIsNews ? "news" : type.get());
+
     GetImapDeleteModel(nsnull);
 
     if (mIsNews)
@@ -3115,7 +3162,7 @@ FnSortIdDWord(const void *pItem1, const void *pItem2, void *privateData)
 //systems such as HP-UX these values must be 4 bytes
 //aligned.  Don't break this when modify the constants
 const int kMaxSubjectKey = 160;
-const int kMaxLocationKey = 160;
+const int kMaxLocationKey = 160;  // also used for account
 const int kMaxAuthorKey = 160;
 const int kMaxRecipientKey = 80;
 
@@ -3129,6 +3176,7 @@ nsresult nsMsgDBView::GetFieldTypeAndLenForSort(nsMsgViewSortTypeValue sortType,
             *pFieldType = kCollationKey;
             *pMaxLen = kMaxSubjectKey;
             break;
+        case nsMsgViewSortType::byAccount:
         case nsMsgViewSortType::byLocation:
             *pFieldType = kCollationKey;
             *pMaxLen = kMaxLocationKey;
@@ -3307,6 +3355,19 @@ nsMsgDBView::GetCollationKey(nsIMsgHdr *msgHdr, nsMsgViewSortTypeValue sortType,
     case nsMsgViewSortType::byAuthor:
         rv = msgHdr->GetAuthorCollationKey(result, len);
         break;
+    case nsMsgViewSortType::byAccount:
+      {
+        nsXPIDLString accountName;
+        nsCOMPtr <nsIMsgDatabase> dbToUse = m_db;
+    
+        if (!dbToUse) // probably search view
+          GetDBForViewIndex(0, getter_AddRefs(dbToUse));
+
+        rv = FetchAccount(msgHdr, getter_Copies(accountName));
+        if (NS_SUCCEEDED(rv) && dbToUse)
+          rv = dbToUse->CreateCollationKey(accountName, result, len);
+      }
+      break;
     default:
         rv = NS_ERROR_UNEXPECTED;
         break;
@@ -4782,7 +4843,7 @@ nsresult nsMsgDBView::NavigateFromPos(nsMsgNavigationTypeValue motion, nsMsgView
             *pResultKey = m_keys.GetAt(*pResultIndex);
             break;
         case nsMsgNavigationType::previousMessage:
-            *pResultIndex = (startIndex != nsMsgViewIndex_None) ? startIndex - 1 : 0;
+            *pResultIndex = (startIndex != nsMsgViewIndex_None && startIndex > 0) ? startIndex - 1 : 0;
             *pResultKey = m_keys.GetAt(*pResultIndex);
             break;
         case nsMsgNavigationType::lastMessage:

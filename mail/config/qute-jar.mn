@@ -16,6 +16,7 @@ skin/classic/messenger/addressbook/icons,            classic/skin/classic/messen
 skin/classic/messenger/messengercompose,             classic/skin/classic/messenger/messengercompose
 skin/classic/messenger/smime,                        classic/skin/classic/messenger/smime
 skin/classic/messenger/smime/icons,                  classic/skin/classic/messenger/smime/icons
+skin/classic/messenger-newsblog,                     classic/skin/classic/messenger-newsblog
 icon.png,                                            classic/icon.png
 
 #################################################################################################
@@ -49,7 +50,6 @@ skin/classic/communicator/icons/smileys/smiley-smile.png,         classic/skin/c
 skin/classic/communicator/icons/smileys/smiley-sealed.png,        classic/skin/classic/communicator/icons/smileys/smiley-sealed.png
 
 skin/classic/communicator/pref/pref.css,             classic/skin/classic/communicator/pref/pref.css
-skin/classic/communicator/xpinstall/xpinstall.css,   classic/skin/classic/communicator/xpinstall/xpinstall.css 
 
 #################################################################################################
 # mozapps
@@ -60,6 +60,7 @@ skin/classic/mozapps/downloads,                       classic/skin/classic/mozap
 skin/classic/mozapps/profile,                         classic/skin/classic/mozapps/profile
 skin/classic/mozapps/extensions,                      classic/skin/classic/mozapps/extensions
 skin/classic/mozapps/update,                          classic/skin/classic/mozapps/update
+skin/classic/mozapps/xpinstall,                          classic/skin/classic/mozapps/xpinstall
 skin/classic/mozapps/shared,                          classic/skin/classic/mozapps/shared
 
 #################################################################################################
@@ -91,3 +92,4 @@ skin/classic/editor/icons/img-align-left.gif,         classic/skin/classic/edito
 skin/classic/editor/icons/img-align-middle.gif,       classic/skin/classic/editor/icons/img-align-middle.gif
 skin/classic/editor/icons/img-align-right.gif,        classic/skin/classic/editor/icons/img-align-right.gif
 skin/classic/editor/icons/img-align-top.gif,          classic/skin/classic/editor/icons/img-align-top.gif
+

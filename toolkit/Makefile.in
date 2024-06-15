@@ -45,31 +45,14 @@ include $(DEPTH)/config/autoconf.mk
 
 DIRS	= \
 		content \
-		locale \
+		locales \
 		obsolete \
 		profile \
 		xre \
 		components \
 		mozapps \
+		themes \
 		$(NULL)
-
-ifneq (,$(filter mac cocoa,$(MOZ_WIDGET_TOOLKIT)))
-# Use Pinstripe on MacOS X
-DIRS	+= skin/mac
-else
-ifdef MOZ_PHOENIX
-DIRS    += themes
-else
-# everything else sticks with Qute for now. 
-DIRS    += skin/win
-
-# skin/gtk2 contains css rules that more closely match gtk widgets
-ifneq (,$(filter gtk2,$(MOZ_WIDGET_TOOLKIT)))
-DIRS  += skin/gtk2
-endif
-
-endif
-endif
 
 include $(topsrcdir)/config/rules.mk
 

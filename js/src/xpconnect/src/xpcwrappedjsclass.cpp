@@ -848,18 +848,18 @@ nsXPCWrappedJSClass::CheckForException(XPCCallContext & ccx,
                 static const char cant_get_text[] =
                     "FAILED TO GET TEXT FROM EXCEPTION\n";
 
-                printf(line);
-                printf(preamble);
+                fputs(line, stdout);
+                fputs(preamble, stdout);
                 char* text;
                 if(NS_SUCCEEDED(xpc_exception->ToString(&text)) && text)
                 {
-                    printf(text);
-                    printf("\n");
+                    fputs(text, stdout);
+                    fputs("\n", stdout);
                     nsMemory::Free(text);
                 }
                 else
-                    printf(cant_get_text);
-                printf(line);
+                    fputs(cant_get_text, stdout);
+                fputs(line, stdout);
 #endif
 
                 // Log the exception to the JS Console, so that users can do
@@ -1497,7 +1497,8 @@ pre_call_clean_up:
 
             if(isArray)
             {
-                if(!XPCConvert::JSArray2Native(ccx, (void**)&pv->val, val,
+                if(array_count &&
+                   !XPCConvert::JSArray2Native(ccx, (void**)&pv->val, val,
                                                array_count, array_count,
                                                datum_type,
                                                useAllocator, &param_iid,

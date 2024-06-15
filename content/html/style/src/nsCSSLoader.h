@@ -255,6 +255,7 @@ private:
                             nsIURI* aTargetURI,
                             nsISupports* aContext);
 
+
   // For inline style, the aURI param is null, but the aLinkingContent
   // must be non-null then.
   nsresult CreateSheet(nsIURI* aURI,

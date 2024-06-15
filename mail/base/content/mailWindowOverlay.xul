@@ -1074,6 +1074,28 @@
             </menupopup>
           </menu>
           <menuseparator/>
+          
+          <menu label="&getNewMsgForCmd.label;" accesskey="&getNewMsgForCmd.accesskey;"
+                sortResource="http://home.netscape.com/NC-rdf#FolderTreeName" sortDirection="ascending"
+                datasources="rdf:msgaccountmanager rdf:mailnewsfolders"
+                containment="http://home.netscape.com/NC-rdf#child"
+                ref="msgaccounts:/"
+                observes="cmd_getNewMessages">
+            <menupopup>
+              <menuitem label="&getAllNewMsgCmd.label;" key="key_getAllNewMessages" observes="cmd_getMsgsForAuthAccounts"/>
+              <menuseparator/>
+            </menupopup>
+            <template>
+              <rule nc:IsServer="true" nc:CanGetMessages="true">
+                <menupopup>
+                   <menuitem uri="..." value="..." label="rdf:http://home.netscape.com/NC-rdf#Name" 
+                             oncommand="MsgGetMessagesForAccount(event)"/>
+                </menupopup>
+              </rule>
+            </template>
+            <menupopup/>
+          </menu>
+
           <menuitem id="menu_getnextnmsg" label="&getNextNMsgCmd.label;" accesskey="&getNextNMsgCmd.accesskey;"
            observes="cmd_getNextNMessages"/>
           <menuitem id="menu_sendunsentmsgs" label="&sendUnsentCmd.label;"
@@ -1650,11 +1672,30 @@
   </toolbar>
 
   <toolbarpalette id="MailToolbarPalette">
-      <toolbarbutton id="button-getmsg" 
+      <toolbarbutton id="button-getmsg" type="menu-button"
                      class="toolbarbutton-1"
                      label="&getMsgButton.label;"
                      tooltiptext="&getMsgButton.tooltip;" 
-                     oncommand="goDoCommand('cmd_getNewMessages')"/>
+                     oncommand="goDoCommand('cmd_getNewMessages')"
+                     sortResource="http://home.netscape.com/NC-rdf#FolderTreeName"
+                     sortDirection="ascending"
+                     observes="button_getNewMessages" datasources="rdf:msgaccountmanager rdf:mailnewsfolders" 
+                     containment="http://home.netscape.com/NC-rdf#child" 
+                     ref="msgaccounts:/">
+        <menupopup onpopupshowing="getMsgToolbarMenu_init()">
+          <menuitem label="&getAllNewMsgCmd.label;" observes="cmd_getMsgsForAuthAccounts"/>
+          <menuseparator/>
+        </menupopup>
+        <template>
+          <rule nc:IsServer="true" nc:CanGetMessages="true">
+            <menupopup>
+              <menuitem uri="..." value="..." label="rdf:http://home.netscape.com/NC-rdf#Name" oncommand="MsgGetMessagesForAccount(event);"/>
+            </menupopup>
+          </rule>
+        </template>       
+        <menupopup/>
+      </toolbarbutton>
+
       <toolbarbutton id="button-newmsg" class="toolbarbutton-1" label="&newMsgButton.label;" tooltiptext="&newMsgButton.tooltip;" oncommand="MsgNewMessage(event)"/>
 
       <toolbarbutton id="button-reply" class="toolbarbutton-1" label="&replyButton.label;" tooltiptext="&replyButton.tooltip;" observes="button_reply" oncommand="MsgReplyMessage(event)"/>
@@ -1805,24 +1846,47 @@
       <menuitem id="createCustomView" value="7" label="&viewPickerCustomView.label;"/>
     </menupopup>
   </menulist>
-  <label id="searchCriteria" value="&SearchSubjectOrSender.label;" control="searchInput" 
-         accesskey="&SearchSubjectOrSender.accesskey;"/>
-  <textbox id="searchInput" flex="5" onfocus="this.select();" onclick="this.select();" oninput="onSearchInput(false);" onkeypress="onSearchKeyPress(event);"/>
+  
+  <spring flex="4"/>
+
+  <textbox id="searchInput" flex="1" onfocus="onSearchInputFocus(event);" onblur="onSearchInputBlur(event);" onclick="this.select();" oninput="onSearchInput(false);" onkeypress="onSearchKeyPress(event);">
+    <button id="quick-search-button" type="menu">
+      <menupopup id="quick-search-menupopup" value="2" persist="value" popupalign="topleft" popupanchor="bottomleft">
+        <menuitem value="0" label="&searchSubjectMenu.label;" type="radio"  
+                  oncommand="changeQuickSearchMode(this)"/>
+        <menuitem value="1" label="&searchSenderMenu.label;" type="radio" 
+                  oncommand="changeQuickSearchMode(this)" />
+        <menuitem value="2" label="&searchSubjectOrSenderMenu.label;" type="radio" 
+                  checked="true" oncommand="changeQuickSearchMode(this)"/>
+        <menuitem value="3" label="&searchMessageBody.label;" type="radio" 
+                  oncommand="changeQuickSearchMode(this)"/>
+        <menuseparator/>
+        <menuitem value="4" label="&findInMessageMenu.label;" type="radio" 
+                  oncommand="changeQuickSearchMode(this)"/>
+      </menupopup>
+    </button>
+  </textbox>
+
   <button id="clearButton" label="&clearButton.label;" disabled="true" tooltiptext="&clearButton.tooltip;" oncommand="onClearSearch();" 
-          accesskey="&clearButton.accesskey;"/>
-  <button id="advancedButton" label="&advancedButton.label;" tooltiptext="&advancedButton.tooltip;" oncommand="onAdvancedSearch();"
-          accesskey="&advancedButton.accesskey;" hidden="true"/>
+          accesskey="&clearButton.accesskey;" hidden="true"/>
 </hbox>
 
 <hbox id="junkBar" collapsed="true" align="center">
   <image id="junkBarImage"/>
-  <label id="junkBarMessage" value="&junkBarMessage.label;"/>
+  <description flex="1" id="junkBarMessage">&junkBarMessage.label;</description>
   <spacer flex="1"/>
   <button label="&notJunkButton.label;" oncommand="JunkSelectedMessages(false)"/>
 </hbox>
 
+<hbox id="remoteContentBar" collapsed="true" align="center">
+  <image id="remoteContentImage"/>
+  <description flex="1" id="remoteContentMessage">&remoteContenMessage.label;</description>
+  <spacer flex="1"/>
+  <button label="&loadRemoteContentButton.label;" oncommand="LoadMsgWithRemoteContent()"/>
+</hbox>
+
 <statusbar class="chromeclass-status" id="status-bar">
-  <hbox insertbefore="unreadMessageCount" flex="1">
+  <hbox insertbefore="unreadMessageCount"  id="statusTextBox" flex="1">
     <statusbarpanel id="statusText" label="&statusText.label;" flex="1"/>
     <statusbarpanel class="statusbarpanel-progress" collapsed="true" id="statusbar-progresspanel">
       <progressmeter class="progressmeter-statusbar" id="statusbar-icon" mode="normal" value="0"/>

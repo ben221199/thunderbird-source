@@ -171,6 +171,7 @@
             <conditions>
               <content uri="?container"/> 
               <member container="?container" child="?member" />
+              <triple subject="?member" predicate="http://home.netscape.com/NC-rdf#IsDeferred" object="false"/>
             </conditions>
 
             <bindings>
@@ -332,6 +333,9 @@
                <treecol id="labelCol" persist="hidden ordinal width" flex="1" hidden="true"
                         label="&labelColumn.label;" tooltiptext="&labelColumn.tooltip;"/>
                <splitter class="tree-splitter"/>
+               <treecol id="accountCol" persist="hidden ordinal width" flex="1" hidden="true"
+                        label="&accountColumn.label;" tooltiptext="&accountColumn.tooltip;"/>
+               <splitter class="tree-splitter"/>
                <treecol id="priorityCol" persist="hidden ordinal width" flex="1" hidden="true"
                         label="&priorityColumn.label;" tooltiptext="&priorityColumn.tooltip;"/>
                <splitter class="tree-splitter"/>
@@ -361,6 +365,7 @@
 
         <vbox id="messagepanebox" flex="1" minheight="100" height="200" minwidth="100" width="200" persist="collapsed height width">
           <hbox id="junkBar"/>
+          <hbox id="remoteContentBar"/>
           <hbox id="msgHeaderView"/>
           <browser id="messagepane" context="messagePaneContext" autofind="false"
                    minheight="1" flex="1" name="messagepane"
@@ -377,5 +382,6 @@
   <statusbar id="status-bar" class="chromeclass-status">
     <statusbarpanel id="unreadMessageCount"/>
     <statusbarpanel id="totalMessageCount"/>
-  </statusbar>
+    <statusbarpanel id="statusbar-updates"/>
+  </statusbar>  
 </window>

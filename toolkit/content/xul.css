@@ -38,11 +38,11 @@ window[chromehidden~="directories"] .chromeclass-directories,
 window[chromehidden~="status"] .chromeclass-status,
 window[chromehidden~="extrachrome"] .chromeclass-extrachrome,
 window[chromehidden~="location"] .chromeclass-location,
-window[chromehidden~="location"][chromehidden~="toolbar"] .chromeclass-toolbar
+window[chromehidden~="location"][chromehidden~="toolbar"] .chromeclass-toolbar,
+window[chromehidden~="toolbar"] .chromeclass-toolbar-additional
 {
   display: none;
 }
-
 
 /****** elements that have no visual representation ******/
 
@@ -145,6 +145,10 @@ iframe {
 
 browser {
   -moz-binding: url("chrome://global/content/bindings/browser.xml#browser");
+}
+
+browsermessage {
+  -moz-binding: url("chrome://global/content/bindings/browser.xml#browsermessage"); 
 }
 
 tabbrowser {
@@ -852,6 +856,10 @@ statusbarpanel {
 
 .statusbarpanel-iconic {
   -moz-binding: url("chrome://global/content/bindings/general.xml#statusbarpanel-iconic");
+}
+
+.statusbarpanel-iconic-text {
+  -moz-binding: url("chrome://global/content/bindings/general.xml#statusbarpanel-iconic-text");
 }
 
 .statusbarpanel-menu-iconic {

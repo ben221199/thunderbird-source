@@ -22,6 +22,7 @@
  * Contributor(s):
  *  Seth Spitzer <sspitzer@netscape.com>
  *  Dan Mosedale <dmose@netscape.com>
+ *  David Bienvenu <bienvenu@mozilla.org>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or 
@@ -114,7 +115,6 @@ protected:
   static nsIAtom* kForwardedMsgAtom;
   static nsIAtom* kOfflineMsgAtom;
   static nsIAtom* kFlaggedMsgAtom;
-  static nsIAtom* kNewsMsgAtom;
   static nsIAtom* kImapDeletedMsgAtom;
   static nsIAtom* kAttachMsgAtom;
   static nsIAtom* kHasUnreadAtom;
@@ -164,6 +164,7 @@ protected:
   nsresult FetchSize(nsIMsgHdr * aHdr, PRUnichar ** aSizeString);
   nsresult FetchPriority(nsIMsgHdr *aHdr, PRUnichar ** aPriorityString);
   nsresult FetchLabel(nsIMsgHdr *aHdr, PRUnichar ** aLabelString);
+  nsresult FetchAccount(nsIMsgHdr * aHdr, PRUnichar ** aAccount);
   nsresult CycleThreadedColumn(nsIDOMElement * aElement);
 
   // Save and Restore Selection are a pair of routines you should
@@ -340,6 +341,7 @@ protected:
   nsCOMPtr <nsIMsgDatabase> m_db;
   nsCOMPtr <nsIMsgFolder> m_folder;
   nsCOMPtr <nsIAtom> mRedirectorTypeAtom;
+  nsCOMPtr <nsIAtom> mMessageTypeAtom; // news, rss, mail, etc. 
   nsMsgViewSortTypeValue  m_sortType;
   nsMsgViewSortOrderValue m_sortOrder;
   nsMsgViewFlagsTypeValue m_viewFlags;

@@ -1351,6 +1351,8 @@ nsCSSFrameConstructor::CreateGeneratedFrameFor(nsIPresContext*       aPresContex
 
   nsIPresShell *shell = aPresContext->PresShell();
 
+  nsCOMPtr<nsIContent> content;
+
   if (eStyleContentType_URL == type) {
     // Create an HTML image content object, and set the SRC.
     // XXX Check if it's an image type we can handle...
@@ -1366,7 +1368,6 @@ nsCSSFrameConstructor::CreateGeneratedFrameFor(nsIPresContext*       aPresContex
     nsCOMPtr<nsIElementFactory> ef(do_GetService(kHTMLElementFactoryCID,&rv));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsCOMPtr<nsIContent> content;
     rv = ef->CreateInstanceByTag(nodeInfo,getter_AddRefs(content));
     NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1436,9 +1437,9 @@ nsCSSFrameConstructor::CreateGeneratedFrameFor(nsIPresContext*       aPresContex
         nsresult rv = NS_ERROR_FAILURE;
         if (attrName) {
           nsIFrame*   textFrame = nsnull;
-          nsCOMPtr<nsIContent> content;
           rv = NS_NewAttributeContent(aContent, attrNameSpace, attrName,
                                       getter_AddRefs(content));
+          NS_ENSURE_SUCCESS(rv, rv);
 
           // Set aContent as the parent content and set the document
           // object. This way event handling works
@@ -1456,7 +1457,6 @@ nsCSSFrameConstructor::CreateGeneratedFrameFor(nsIPresContext*       aPresContex
           *aFrame = textFrame;
           rv = NS_OK;
         }
-        return rv;
       }
       break;
   
@@ -1500,29 +1500,43 @@ nsCSSFrameConstructor::CreateGeneratedFrameFor(nsIPresContext*       aPresContex
     } // switch
   
 
-    // Create a text content node
-    nsIFrame* textFrame = nsnull;
-    nsCOMPtr<nsIContent> textContent = do_CreateInstance(kTextNodeCID);
-    if (textContent) {
-      // Set the text
-      nsCOMPtr<nsIDOMCharacterData> domData = do_QueryInterface(textContent);
-      if (domData)
-        domData->SetData(contentString);
+    if (!content) {
+      // Create a text content node
+      nsIFrame* textFrame = nsnull;
+      nsCOMPtr<nsIContent> textContent = do_CreateInstance(kTextNodeCID);
+      if (textContent) {
+        // Set the text
+        nsCOMPtr<nsIDOMCharacterData> domData = do_QueryInterface(textContent);
+        if (domData)
+          domData->SetData(contentString);
   
-      // Set aContent as the parent content and set the document object. This
-      // way event handling works
-      textContent->SetParent(aContent);
-      textContent->SetDocument(aDocument, PR_TRUE, PR_TRUE);
-      textContent->SetNativeAnonymous(PR_TRUE);
-      textContent->SetBindingParent(textContent);
-      
-      // Create a text frame and initialize it
-      NS_NewTextFrame(shell, &textFrame);
-      textFrame->Init(aPresContext, textContent, aParentFrame, aStyleContext, nsnull);
+        // Set aContent as the parent content and set the document
+        // object. This way event handling works
+        textContent->SetParent(aContent);
+        textContent->SetDocument(aDocument, PR_TRUE, PR_TRUE);
+        textContent->SetNativeAnonymous(PR_TRUE);
+        textContent->SetBindingParent(textContent);
+
+        // Create a text frame and initialize it
+        NS_NewTextFrame(shell, &textFrame);
+        textFrame->Init(aPresContext, textContent, aParentFrame, aStyleContext, nsnull);
+
+        content = textContent;
+      }
+
+      // Return the text frame
+      *aFrame = textFrame;
     }
-  
-    // Return the text frame
-    *aFrame = textFrame;
+  }
+
+  if (content) {
+    nsCOMPtr<nsISupportsArray> anonymousItems;
+    nsresult rv = NS_NewISupportsArray(getter_AddRefs(anonymousItems));
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    anonymousItems->AppendElement(content);
+
+    shell->SetAnonymousContentFor(aContent, anonymousItems);
   }
 
   return NS_OK;
@@ -1817,6 +1831,16 @@ ProcessPseudoFrames(nsIPresContext* aPresContext,
   aHighestFrame = nsnull;
 
   if (nsLayoutAtoms::tableFrame == aPseudoFrames.mLowestType) {
+    // if the processing should be limited to the colgroup frame and the
+    // table frame is the lowest type of created pseudo frames that
+    // can have pseudo frame children, process only the colgroup pseudo frames
+    // and leave the table frame untouched.
+    if (nsLayoutAtoms::tableColGroupFrame == aHighestType) {
+      if (aPseudoFrames.mColGroup.mFrame) {
+        rv = ProcessPseudoFrame(aPresContext, aPseudoFrames.mColGroup, aHighestFrame);
+      }
+      return rv;
+    }
     rv = ProcessPseudoTableFrame(aPresContext, aPseudoFrames, aHighestFrame);
     if (nsLayoutAtoms::tableOuterFrame == aHighestType) return rv;
     
@@ -3449,24 +3473,9 @@ nsCSSFrameConstructor::ConstructDocElementFrame(nsIPresShell*        aPresShell,
   PRBool isBlockFrame = PR_FALSE;
   nsresult rv;
 
-  // CSS2.1 section 9.2.4 specifies fixups for the 'display' property
-  // of the root element.  We can't implement them in nsRuleNode because
-  // it doesn't (and shouldn't, for nodes that can have siblings) know
-  // the content node.  So do them here if needed, by changing the style
-  // data, so that other code doesn't get confused by looking at the style
-  // data.
-  if (display->mDisplay != NS_STYLE_DISPLAY_NONE &&
-      display->mDisplay != NS_STYLE_DISPLAY_BLOCK &&
-      display->mDisplay != NS_STYLE_DISPLAY_TABLE) {
-    nsStyleDisplay *mutable_display = NS_STATIC_CAST(nsStyleDisplay*,
-      styleContext->GetUniqueStyleData(eStyleStruct_Display));
-    display = mutable_display;
-
-    if (mutable_display->mDisplay == NS_STYLE_DISPLAY_INLINE_TABLE)
-      mutable_display->mDisplay = NS_STYLE_DISPLAY_TABLE;
-    else
-      mutable_display->mDisplay = NS_STYLE_DISPLAY_BLOCK;
-  }
+  // The rules from CSS 2.1, section 9.2.4, have already been applied
+  // by the style system, so we can assume that display->mDisplay is
+  // either NONE, BLOCK, or TABLE.
 
   PRBool docElemIsTable = display->mDisplay == NS_STYLE_DISPLAY_TABLE;
 
@@ -4079,12 +4088,11 @@ nsCSSFrameConstructor::ConstructSelectFrame(nsIPresShell*        aPresShell,
      // Construct a combobox if size=1 or no size is specified and its multiple select
     if (((1 == size || 0 == size) || (kNoSizeSpecified  == size)) && (PR_FALSE == multipleSelect)) {
         // Construct a frame-based combo box.
-        // The frame-based combo box is built out of tree parts. A display area, a button and
+        // The frame-based combo box is built out of three parts. A display area, a button and
         // a dropdown list. The display area and button are created through anonymous content.
         // The drop-down list's frame is created explicitly. The combobox frame shares it's content
         // with the drop-down list.
-      PRUint32 flags = NS_BLOCK_SHRINK_WRAP | 
-          ((aIsAbsolutelyPositioned | aIsFixedPositioned)?NS_BLOCK_SPACE_MGR:0);
+      PRUint32 flags = NS_BLOCK_SHRINK_WRAP | NS_BLOCK_SPACE_MGR;
       nsIFrame * comboboxFrame;
       rv = NS_NewComboboxControlFrame(aPresShell, &comboboxFrame, flags);
 

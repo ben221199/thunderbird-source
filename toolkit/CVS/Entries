@@ -1,11 +1,10 @@
-/.cvsignore/1.1/Sun Aug  4 05:44:24 2002//TTHUNDERBIRD_0_7_3_RELEASE
-/Makefile.in/1.22.6.2/Mon Jun  7 05:17:48 2004//TTHUNDERBIRD_0_7_3_RELEASE
+/.cvsignore/1.1/Sun Aug  4 05:44:24 2002//TTHUNDERBIRD_0_8_RELEASE
+/Makefile.in/1.22.6.6/Mon Jul 19 13:03:40 2004//TTHUNDERBIRD_0_8_RELEASE
 D/components////
 D/content////
-D/locale////
+D/locales////
 D/mozapps////
 D/obsolete////
 D/profile////
-D/skin////
 D/themes////
 D/xre////

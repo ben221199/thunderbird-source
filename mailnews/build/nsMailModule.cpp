@@ -100,6 +100,8 @@
 #include "nsSpamSettings.h"
 #include "nsMsgContentPolicy.h"
 #include "nsCidProtocolHandler.h"
+#include "nsRssIncomingServer.h"
+#include "nsRssService.h"
 
 #ifdef XP_WIN
 #include "nsMessengerWinIntegration.h"
@@ -446,10 +448,13 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsMovemailService)
 #endif /* HAVE_MOVEMAIL */
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsNoIncomingServer)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsLocalStringService)
+NS_GENERIC_FACTORY_CONSTRUCTOR(nsRssIncomingServer)
+NS_GENERIC_FACTORY_CONSTRUCTOR(nsRssService)
 
 ////////////////////////////////////////////////////////////////////////////////
 // msgdb factories
 ////////////////////////////////////////////////////////////////////////////////
+NS_GENERIC_FACTORY_CONSTRUCTOR(nsMsgDBService)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsMailDatabase)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsNewsDatabase)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsImapMailDatabase)
@@ -1039,12 +1044,21 @@ static const nsModuleComponentInfo gComponents[] = {
     { "Pop String Bundle Service", NS_MSG_LOCALSTRINGSERVICE_CID,
       NS_MSG_POPSTRINGSERVICE_CONTRACTID, nsLocalStringServiceConstructor },
     
+    { "RSS Service", NS_RSSSERVICE_CID,
+      NS_RSSSERVICE_CONTRACTID, nsRssServiceConstructor },
+    
+    { "RSS Protocol Information", NS_RSSSERVICE_CID,
+      NS_RSSPROTOCOLINFO_CONTRACTID, nsRssServiceConstructor },
+        
+    { "RSS Incoming Server", NS_RSSINCOMINGSERVER_CID,
+      NS_RSSINCOMINGSERVER_CONTRACTID, nsRssIncomingServerConstructor },
     ////////////////////////////////////////////////////////////////////////////////
     // msgdb components
     ////////////////////////////////////////////////////////////////////////////////
-    { "Mail DB", NS_MAILDB_CID, nsnull, nsMailDatabaseConstructor },
-    { "News DB", NS_NEWSDB_CID, nsnull, nsNewsDatabaseConstructor },
-    { "Imap DB", NS_IMAPDB_CID, nsnull, nsImapMailDatabaseConstructor },
+    { "Msg DB Service", NS_MSGDB_SERVICE_CID, NS_MSGDB_SERVICE_CONTRACTID, nsMsgDBServiceConstructor },
+    { "Mail DB", NS_MAILDB_CID, NS_MAILBOXDB_CONTRACTID, nsMailDatabaseConstructor },
+    { "News DB", NS_NEWSDB_CID, NS_NEWSDB_CONTRACTID, nsNewsDatabaseConstructor },
+    { "Imap DB", NS_IMAPDB_CID, NS_IMAPDB_CONTRACTID, nsImapMailDatabaseConstructor },
     { "Msg Retention Settings", NS_MSG_RETENTIONSETTINGS_CID,
       NS_MSG_RETENTIONSETTINGS_CONTRACTID, nsMsgRetentionSettingsConstructor },
     { "Msg Download Settings", NS_MSG_DOWNLOADSETTINGS_CID,

@@ -123,6 +123,8 @@ protected:
   nsresult SetWarnFilterChanged(PRBool aVal);
   nsresult CreateCollationKey(const nsString &aSource,  PRUint8 **aKey, PRUint32 *aLength);
 
+  nsresult ListFoldersWithFlag(PRUint32 flag, nsISupportsArray *array);
+
 protected:
   virtual nsresult ReadDBFolderInfo(PRBool force);
   virtual nsresult FlushToFolderCache();
@@ -239,6 +241,7 @@ protected:
   static nsIAtom* kNameAtom;
   static nsIAtom* kSynchronizeAtom;
   static nsIAtom* kOpenAtom;
+  static nsIAtom* kIsDeferred;
   static nsICollation* gCollationKeyGenerator;
 
 #ifdef MSG_FASTER_URI_PARSING

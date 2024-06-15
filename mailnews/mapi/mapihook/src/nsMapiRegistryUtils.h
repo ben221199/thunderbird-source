@@ -19,11 +19,11 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- * Srilatha Moturi <srilatha@netscape.com>
+ *   Srilatha Moturi <srilatha@netscape.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
@@ -88,10 +88,10 @@ public :
     // This returns the brand name for this application
     const PRUnichar * brandName() ;
     // This returns the vendor name of this application
-    const PRUnichar * vendorName();
+    const nsString& vendorName();
 
     // set the Windows registry key
-nsresult SetRegistryKey(HKEY baseKey, const char * keyName, 
+    nsresult SetRegistryKey(HKEY baseKey, const char * keyName, 
                         const char * valueName, char * value);
     // delete a registry key
     nsresult DeleteRegistryValue(HKEY baseKey, const char * keyName, const char * valueName);
@@ -100,7 +100,7 @@ nsresult SetRegistryKey(HKEY baseKey, const char * keyName,
     void GetRegistryKey(HKEY baseKey, const char * keyName, const char * valueName, nsCAutoString & value);
 
     // Returns TRUE if the current application is default mail client.
-PRBool IsDefaultMailClient();
+    PRBool IsDefaultMailClient();
     nsresult setDefaultMailClient(); // Sets Mozilla as default Mail Client
     nsresult unsetDefaultMailClient(); // Removes Mozilla as the default Mail client and restores the previous setting
     nsresult saveDefaultMailClient(); // Save default mail client settings in HKEY_LOCAL_MACHINE\\Software\\Mozilla\\Desktop   
@@ -118,8 +118,8 @@ PRBool IsDefaultMailClient();
     nsresult registerNewsApp(PRBool aForceRegistration); // aForceRegistration set to TRUE if we want to force the keys to be set again
     nsresult registerMailApp(PRBool aForceRegistration);
 
-nsresult CopyMozMapiToWinSysDir();
-nsresult RestoreBackedUpMapiDll();
+    nsresult CopyMozMapiToWinSysDir();
+    nsresult RestoreBackedUpMapiDll();
 
     // Returns FALSE if showMapiDialog is set to 0.
     PRBool getShowDialog() ;

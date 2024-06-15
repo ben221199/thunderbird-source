@@ -282,8 +282,6 @@ content/xbl/Makefile
 content/xbl/public/Makefile
 content/xbl/src/Makefile
 content/xbl/builtin/Makefile
-content/xbl/builtin/unix/Makefile
-content/xbl/builtin/win/Makefile
 content/xsl/Makefile
 content/xsl/public/Makefile
 content/shared/Makefile
@@ -855,16 +853,19 @@ if [ "$MOZ_USE_OFFICIAL_BRANDING" ]; then
         "
     fi
     if [ "$MOZ_THUNDERBIRD" ]; then
-        MAKEFILES_thunderbird_branding="other-licenses/branding/thunderbird/Makefile"
+        MAKEFILES_thunderbird_branding="
+          other-licenses/branding/thunderbird/Makefile
+          other-licenses/branding/thunderbird/content/Makefile
+        "
     fi
 fi
 
 MAKEFILES_phoenix="
 browser/Makefile
 browser/app/Makefile
-browser/app/profile/Makefile
-browser/app/profile/chrome/Makefile
+browser/app/profile/extensions/Makefile
 browser/base/Makefile
+browser/locales/Makefile
 browser/components/Makefile
 browser/components/bookmarks/Makefile
 browser/components/bookmarks/public/Makefile
@@ -873,9 +874,6 @@ browser/components/build/Makefile
 browser/components/cookieviewer/Makefile
 browser/components/history/Makefile
 browser/components/prefwindow/Makefile
-browser/components/prefwindow/content/Makefile
-browser/components/prefwindow/locale/Makefile
-browser/components/security/Makefile
 browser/components/sidebar/Makefile
 browser/components/sidebar/public/Makefile
 browser/components/sidebar/src/Makefile
@@ -894,7 +892,7 @@ chrome/tools/chromereg/Makefile
 toolkit/Makefile
 toolkit/content/Makefile
 toolkit/content/buildconfig.html
-toolkit/locale/Makefile
+toolkit/locales/Makefile
 toolkit/obsolete/Makefile
 toolkit/components/autocomplete/Makefile
 toolkit/components/autocomplete/public/Makefile
@@ -910,7 +908,6 @@ toolkit/components/passwordmgr/Makefile
 toolkit/components/passwordmgr/base/Makefile
 toolkit/components/passwordmgr/resources/Makefile
 toolkit/components/printing/Makefile
-toolkit/components/profile/Makefile
 toolkit/components/profile/public/Makefile
 toolkit/components/satchel/Makefile
 toolkit/components/satchel/public/Makefile
@@ -925,20 +922,9 @@ toolkit/mozapps/installer/windows/wizard/Makefile
 toolkit/mozapps/installer/windows/wizard/setup/Makefile
 toolkit/mozapps/installer/windows/wizard/setuprsc/Makefile
 toolkit/mozapps/installer/windows/wizard/uninstall/Makefile
-toolkit/skin/mac/Makefile
-toolkit/skin/gtk2/Makefile
-toolkit/skin/win/Makefile
 toolkit/xre/Makefile
-toolkit/content/contents-platform.rdf
-toolkit/content/contents-region.rdf
-toolkit/content/contents.rdf
-toolkit/locale/contents-platform.rdf
-toolkit/locale/contents-region.rdf
-toolkit/locale/contents.rdf
 toolkit/components/passwordmgr/resources/content/contents.rdf
-toolkit/components/passwordmgr/resources/locale/contents.rdf
 toolkit/mozapps/contents-content.rdf
-toolkit/mozapps/contents-locale.rdf
 "
 
 
@@ -949,6 +935,7 @@ mail/app/profile/Makefile
 mail/base/Makefile
 mail/base/skin/mac/Makefile
 mail/base/skin/Makefile
+mail/locales/Makefile
 mail/components/Makefile
 mail/components/compose/Makefile
 mail/components/compose/skin/mac/Makefile
@@ -959,6 +946,8 @@ mail/components/addrbook/skin/Makefile
 mail/components/prefwindow/Makefile
 mail/components/prefwindow/skin/mac/Makefile
 mail/components/prefwindow/skin/Makefile
+mail/components/build/Makefile
+mail/components/gnome/Makefile
 mail/extensions/Makefile
 mail/extensions/smime/Makefile
 mail/extensions/smime/skin/mac/Makefile
@@ -1082,6 +1071,12 @@ MAKEFILES_zlib="
 if [ ! "$SYSTEM_PNG" ]; then
     MAKEFILES_libimg="$MAKEFILES_libimg modules/libimg/png/Makefile"
 fi
+
+MAKEFILES_gnome="
+    toolkit/Makefile
+    toolkit/components/Makefile
+    toolkit/components/gnome/Makefile
+"
 
 #
 # l10n/
@@ -1479,6 +1474,10 @@ fi
 
 if test -z "$MOZ_XUL"; then
     add_makefiles "$MAKEFILES_minimo"
+fi
+
+if test -n "$MOZ_ENABLE_GTK2"; then
+    add_makefiles "$MAKEFILES_gnome"
 fi
 
 else

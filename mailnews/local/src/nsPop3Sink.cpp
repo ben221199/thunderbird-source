@@ -52,6 +52,11 @@
 #include "nsMsgLocalFolderHdrs.h"
 #include "nsIMsgFolder.h" // TO include biffState enum. Change to bool later...
 #include "nsReadableUtils.h"
+#include "nsMailHeaders.h"
+#include "nsIMsgAccountManager.h"
+#include "nsILineInputStream.h"
+#include "nsIPop3Protocol.h"
+#include "nsLocalMailFolder.h"
 
 NS_IMPL_THREADSAFE_ISUPPORTS1(nsPop3Sink, nsIPop3Sink)
 
@@ -135,6 +140,112 @@ nsPop3Sink::GetMailAccountURL(char* *urlString)
   return NS_OK;
 }
 
+struct partialRecord
+{
+  partialRecord();
+  ~partialRecord();
+
+  nsCOMPtr<nsIMsgDBHdr> m_msgDBHdr;
+  nsCString m_uidl;
+};
+
+partialRecord::partialRecord() :
+  m_msgDBHdr(nsnull)
+{
+}
+
+partialRecord::~partialRecord()
+{
+}
+  
+// Walk through all the messages in this folder and look for any
+// PARTIAL messages. For each of those, dig thru the mailbox and
+// find the Account that the message belongs to. If that Account
+// matches the current Account, then look for the Uidl and save
+// this message for later processing.
+nsresult
+nsPop3Sink::FindPartialMessages(nsFileSpec *fileSpec)
+{
+  nsresult rv;
+
+  nsCOMPtr<nsISimpleEnumerator> messages;
+  PRBool hasMore = PR_FALSE;
+  PRBool isOpen = PR_FALSE;
+  nsLocalFolderScanState folderScanState;
+  nsCOMPtr<nsIMsgLocalMailFolder> localFolder = do_QueryInterface(m_folder);
+
+  if (!localFolder)
+    return NS_ERROR_FAILURE;  // we need it to grub thru the folder
+
+  rv = m_newMailParser->m_mailDB->EnumerateMessages(getter_AddRefs(messages));
+  if (messages)
+    messages->HasMoreElements(&hasMore);
+  while(hasMore && NS_SUCCEEDED(rv))
+  {
+    nsCOMPtr<nsISupports> aSupport;
+    PRUint32 flags = 0;
+    rv = messages->GetNext(getter_AddRefs(aSupport));
+    nsCOMPtr<nsIMsgDBHdr> msgDBHdr(do_QueryInterface(aSupport, &rv));
+    msgDBHdr->GetFlags(&flags);
+    if (flags & MSG_FLAG_PARTIAL)
+    {
+      // Open the various streams we need to seek and read from the mailbox
+      if (!isOpen)
+      {
+        folderScanState.m_fileSpec = fileSpec;
+        rv = localFolder->GetFolderScanState(&folderScanState);
+        if (NS_SUCCEEDED(rv))
+          isOpen = PR_TRUE;
+        else
+          break;
+      }
+      rv = localFolder->GetUidlFromFolder(&folderScanState, msgDBHdr);
+      if (!NS_SUCCEEDED(rv))
+        break;
+
+      // If we got the uidl, see if this partial message belongs to this
+      // account. Add it to the array if so...
+      if (folderScanState.m_uidl && 
+        !nsCRT::strcasecmp(folderScanState.m_accountKey.get(), m_accountKey))
+      {
+        partialRecord *partialMsg = new partialRecord();
+        if (partialMsg)
+        {
+          partialMsg->m_uidl = folderScanState.m_uidl;
+          partialMsg->m_msgDBHdr = msgDBHdr;
+          m_partialMsgsArray.AppendElement(partialMsg);
+        }
+      }
+    }
+    messages->HasMoreElements(&hasMore);
+  }
+  if (isOpen)
+    folderScanState.m_fileStream->Close();
+  return rv;
+}
+
+// For all the partial messages saved by FindPartialMessages,
+// ask the protocol handler if they still exist on the server.
+// Any messages that don't exist any more are deleted from the
+// msgDB.
+void
+nsPop3Sink::CheckPartialMessages(nsIPop3Protocol *protocol)
+{
+  PRUint32 count = m_partialMsgsArray.Count();
+
+  for (PRUint32 i = 0; i < count; i++)
+  {
+    partialRecord *partialMsg;
+    PRBool found = PR_TRUE;
+    partialMsg = NS_STATIC_CAST(partialRecord *,m_partialMsgsArray.ElementAt(i));
+    protocol->CheckMessage(partialMsg->m_uidl.get(), &found);
+    if (!found)
+      m_newMailParser->m_mailDB->DeleteHeader(partialMsg->m_msgDBHdr, nsnull, PR_FALSE, PR_TRUE);
+    delete partialMsg;
+  }
+  m_partialMsgsArray.Clear();
+}
+
 nsresult 
 nsPop3Sink::BeginMailDelivery(PRBool uidlDownload, nsIMsgWindow *aMsgWindow, PRBool* aBool)
 {
@@ -148,6 +259,12 @@ nsPop3Sink::BeginMailDelivery(PRBool uidlDownload, nsIMsgWindow *aMsgWindow, PRB
     if (!server) 
       return NS_ERROR_UNEXPECTED;
 
+    nsCOMPtr <nsIMsgAccountManager> acctMgr = do_GetService(NS_MSGACCOUNTMANAGER_CONTRACTID, &rv);
+    nsCOMPtr <nsIMsgAccount> account;
+    NS_ENSURE_SUCCESS(rv, rv);
+    acctMgr->FindAccountForServer(server, getter_AddRefs(account));
+    if (account)
+      account->GetKey(getter_Copies(m_accountKey));
     nsFileSpec fileSpec;
     // ### if we're doing a UIDL, then the fileSpec needs to be for the current folder
 
@@ -159,21 +276,9 @@ nsPop3Sink::BeginMailDelivery(PRBool uidlDownload, nsIMsgWindow *aMsgWindow, PRB
     else
       return NS_MSG_FOLDER_BUSY;
 
-    if (uidlDownload)
-    {
       nsCOMPtr<nsIFileSpec> path;
       m_folder->GetPath(getter_AddRefs(path));
       path->GetFileSpec(&fileSpec);
-    }
-    else
-    {
-      nsCOMPtr<nsIFileSpec> mailDirectory;
-      rv = server->GetLocalPath(getter_AddRefs(mailDirectory));
-      if (NS_FAILED(rv)) return rv;
-    
-      mailDirectory->GetFileSpec(&fileSpec);
-      fileSpec += "Inbox";
-    }
     m_outFileStream = new nsIOFileStream(fileSpec /*, PR_CREATE_FILE */);
     
     // The following (!m_outFileStream etc) was added to make sure that we don't write somewhere 
@@ -213,8 +318,13 @@ nsPop3Sink::BeginMailDelivery(PRBool uidlDownload, nsIMsgWindow *aMsgWindow, PRB
       m_newMailParser->SetDBFolderStream(m_outFileStream); 
     }
 
-    if (uidlDownload && m_newMailParser)
+    if (m_newMailParser)
+    {
+      if (uidlDownload)
         m_newMailParser->DisableFilters();
+    FindPartialMessages(&fileSpec);
+    }
+
 
 #ifdef DEBUG
     printf("Begin mail message delivery.\n");
@@ -225,8 +335,10 @@ nsPop3Sink::BeginMailDelivery(PRBool uidlDownload, nsIMsgWindow *aMsgWindow, PRB
 }
 
 nsresult
-nsPop3Sink::EndMailDelivery()
+nsPop3Sink::EndMailDelivery(nsIPop3Protocol *protocol)
 {
+  CheckPartialMessages(protocol);
+
   if (m_newMailParser)
   {
     if (m_outFileStream)
@@ -337,8 +449,10 @@ nsPop3Sink::ReleaseFolderLock()
 }
 
 nsresult 
-nsPop3Sink::AbortMailDelivery()
+nsPop3Sink::AbortMailDelivery(nsIPop3Protocol *protocol)
 {
+  CheckPartialMessages(protocol);
+
   if (m_newMailParser)
     m_newMailParser->SetDBFolderStream(nsnull); //stream is going away
 
@@ -382,6 +496,15 @@ nsPop3Sink::IncorporateBegin(const char* uidlString,
     
     nsresult rv = WriteLineToMailbox(dummyEnvelope);
     if (NS_FAILED(rv)) return rv;
+    // write out account-key before UIDL so the code that looks for 
+    // UIDL will find the account first and know it can stop looking
+    // once it finds the UIDL line.
+    if (!m_accountKey.IsEmpty())
+    {
+      nsCAutoString outputString(NS_LITERAL_CSTRING(HEADER_X_MOZILLA_ACCOUNT_KEY ": ") + m_accountKey
+        + NS_LITERAL_CSTRING(MSG_LINEBREAK));
+      WriteLineToMailbox(outputString.get());
+    }
     if (uidlString)
     {
         nsCAutoString uidlCString("X-UIDL: ");
@@ -442,6 +565,7 @@ nsPop3Sink::GetServerFolder(nsIMsgFolder **aFolder)
     return NS_ERROR_NULL_POINTER;
   if (m_popServer)
   {
+    // not sure what this is used for - might be wrong if we have a deferred account.
     nsCOMPtr <nsIMsgIncomingServer> incomingServer = do_QueryInterface(m_popServer);
     if (incomingServer)
       return incomingServer->GetRootFolder(aFolder);
@@ -502,14 +626,14 @@ nsPop3Sink::IncorporateWrite(const char* block,
   return NS_OK;
 }
 
-nsresult nsPop3Sink::WriteLineToMailbox(char *buffer)
+nsresult nsPop3Sink::WriteLineToMailbox(const char *buffer)
 {
   
   if (buffer)
   {
     PRInt32 bufferLen = PL_strlen(buffer);
-    if (m_newMailParser)
-      m_newMailParser->HandleLine(buffer, bufferLen);
+    if (m_newMailParser) // HandleLine should really take a const char *...
+      m_newMailParser->HandleLine((char *) buffer, bufferLen);
     // The following (!m_outFileStream etc) was added to make sure that we don't write somewhere 
     // where for some reason or another we can't write to and lose the messages
     // See bug 62480
@@ -527,7 +651,7 @@ nsresult nsPop3Sink::WriteLineToMailbox(char *buffer)
 }
 
 NS_IMETHODIMP
-nsPop3Sink::IncorporateComplete(nsIMsgWindow *aMsgWindow)
+nsPop3Sink::IncorporateComplete(nsIMsgWindow *aMsgWindow, PRInt32 aSize)
 {
   if (m_buildMessageUri && m_baseMessageUri)
   {
@@ -543,7 +667,26 @@ nsPop3Sink::IncorporateComplete(nsIMsgWindow *aMsgWindow)
   if (NS_FAILED(rv)) return rv;
   NS_ASSERTION(m_newMailParser, "could not get m_newMailParser");
   if (m_newMailParser)
+  {
+    // PublishMsgHdr clears m_newMsgHdr, so we need a comptr to 
+    // hold onto it.
+    nsCOMPtr <nsIMsgDBHdr> hdr = m_newMailParser->m_newMsgHdr;
+    nsCOMPtr<nsIMsgLocalMailFolder> localFolder = do_QueryInterface(m_folder);
+    PRBool doSelect = PR_FALSE;
+
+    // aSize is only set for partial messages. For full messages,
+    // check to see if we're replacing an old partial message.
+    if (!aSize && localFolder)
+      (void) localFolder->DeleteDownloadMsg(hdr, &doSelect);
+
     m_newMailParser->PublishMsgHeader(aMsgWindow); 
+    if (aSize)
+      hdr->SetUint32Property("onlineSize", aSize);
+
+    // if DeleteDownloadMsg requested it, select the new message
+    else if (doSelect)
+      (void) localFolder->SelectDownloadMsg();
+  }
 
 #ifdef DEBUG
   printf("Incorporate message complete.\n");

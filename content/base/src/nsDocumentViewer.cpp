@@ -202,7 +202,7 @@ static const char sPrintOptionsContractID[]         = "@mozilla.org/gfx/printset
 static NS_DEFINE_CID(kGalleyContextCID,  NS_GALLEYCONTEXT_CID);
 
 static const char kDOMStringBundleURL[] =
-  "chrome://communicator/locale/dom/dom.properties";
+  "chrome://global/locale/dom/dom.properties";
 
 
 #ifdef NS_DEBUG
@@ -1304,7 +1304,14 @@ DocumentViewerImpl::SetDOMDocument(nsIDOMDocument *aDocument)
 
   // 2) Replace the current pres shell with a new shell for the new document
 
+  nsCOMPtr<nsILinkHandler> linkHandler;
   if (mPresShell) {
+    if (mPresContext) {
+      // Save the linkhandler (nsPresShell::Destroy removes it from
+      // mPresContext).
+      linkHandler = mPresContext->GetLinkHandler();
+    }
+
     mPresShell->EndObservingDocument();
     mPresShell->Destroy();
 
@@ -1313,6 +1320,11 @@ DocumentViewerImpl::SetDOMDocument(nsIDOMDocument *aDocument)
 
   // And if we're already given a prescontext...
   if (mPresContext) {
+    // If we had a linkHandler and it got removed, put it back.
+    if (linkHandler) {
+      mPresContext->SetLinkHandler(linkHandler);
+    }
+
     // 3) Create a new style set for the document
 
     nsStyleSet *styleSet;
@@ -2383,6 +2395,33 @@ NS_IMETHODIMP DocumentViewerImpl::GetTextZoom(float* aTextZoom)
   return NS_OK;
 }
 
+static void
+SetChildAuthorStyleDisabled(nsIMarkupDocumentViewer* aChild, void* aClosure)
+{
+  PRBool styleDisabled = *NS_STATIC_CAST(PRBool*, aClosure);
+  aChild->SetAuthorStyleDisabled(styleDisabled);
+}
+
+NS_IMETHODIMP
+DocumentViewerImpl::SetAuthorStyleDisabled(PRBool aStyleDisabled)
+{
+  if (mPresShell) {
+    nsresult rv = mPresShell->SetAuthorStyleDisabled(aStyleDisabled);
+    if (NS_FAILED(rv)) return rv;
+  }
+  return CallChildren(SetChildAuthorStyleDisabled, &aStyleDisabled);
+}
+
+NS_IMETHODIMP
+DocumentViewerImpl::GetAuthorStyleDisabled(PRBool* aStyleDisabled)
+{
+  *aStyleDisabled = PR_FALSE;
+  if (mPresShell) {
+    return mPresShell->GetAuthorStyleDisabled(aStyleDisabled);
+  }
+  return NS_OK;
+}
+
 // XXX: SEMANTIC CHANGE!
 //      returns a copy of the string.  Caller is responsible for freeing result
 //      using Recycle(aDefaultCharacterSet)
@@ -2603,27 +2642,6 @@ NS_IMETHODIMP DocumentViewerImpl::GetBidiControlsTextMode(PRUint8* aControlsText
   if (aControlsTextMode) {
     GetBidiOptions(&bidiOptions);
     *aControlsTextMode = GET_BIDI_OPTION_CONTROLSTEXTMODE(bidiOptions);
-  }
-  return NS_OK;
-}
-
-NS_IMETHODIMP DocumentViewerImpl::SetBidiClipboardTextMode(PRUint8 aClipboardTextMode)
-{
-  PRUint32 bidiOptions;
-
-  GetBidiOptions(&bidiOptions);
-  SET_BIDI_OPTION_CLIPBOARDTEXTMODE(bidiOptions, aClipboardTextMode);
-  SetBidiOptions(bidiOptions);
-  return NS_OK;
-}
-
-NS_IMETHODIMP DocumentViewerImpl::GetBidiClipboardTextMode(PRUint8* aClipboardTextMode)
-{
-  PRUint32 bidiOptions;
-
-  if (aClipboardTextMode) {
-    GetBidiOptions(&bidiOptions);
-    *aClipboardTextMode = GET_BIDI_OPTION_CLIPBOARDTEXTMODE(bidiOptions);
   }
   return NS_OK;
 }

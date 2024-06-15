@@ -35,7 +35,7 @@
 interface nsIDOMNode;
 
 
-[scriptable, uuid(69E5DE03-7B8B-11d3-AF61-00A024FFC08C)]
+[scriptable, uuid(c33a616e-8020-4f01-a1eb-19a32370d566)]
 interface nsIMarkupDocumentViewer : nsISupports
 {
 
@@ -49,6 +49,9 @@ interface nsIMarkupDocumentViewer : nsISupports
 
 	/** The amount by which to scale all text. Default is 1.0. */
 	attribute float textZoom;
+
+	/** Disable entire author style level (including HTML presentation hints) */
+	attribute boolean authorStyleDisabled;
 
 	/*
 	XXX Comment here!
@@ -112,14 +115,6 @@ interface nsIMarkupDocumentViewer : nsISupports
    *                       3 - like the containing document
    */
   attribute octet bidiControlsTextMode;
-
-  /**
-   * bidiClipboardTextMode: the order in which text is transferred to the clipboard.
-   *                        1 - logical
-   *                        2 - visual
-   *                        3 - as source (unchanged)
-   */
-  attribute octet bidiClipboardTextMode;
 
   /**
    * bidiNumeral: the type of numerals to display. 

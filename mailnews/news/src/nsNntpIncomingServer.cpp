@@ -59,6 +59,7 @@
 #include "nsIStringBundle.h"
 #include "nntpCore.h"
 #include "nsIWindowWatcher.h"
+#include "nsMsgFolderFlags.h"
 
 #define INVALID_VERSION         0
 #define VALID_VERSION           1
@@ -658,17 +659,29 @@ nsNntpIncomingServer::GetFirstGroupNeedingCounts(nsISupports **aFirstGroupNeedin
 	rv = mGroupsEnumerator->HasMoreElements(&moreFolders);
 	if (NS_FAILED(rv)) return rv;
 
-	if (!moreFolders) {
+  if (!moreFolders) 
+  {
 		*aFirstGroupNeedingCounts = nsnull;
     	delete mGroupsEnumerator;
 		mGroupsEnumerator = nsnull;
 		return NS_OK; // this is not an error - it just means we reached the end of the groups.
 	}
 
+  do 
+  {
     rv = mGroupsEnumerator->GetNext(aFirstGroupNeedingCounts);
 	if (NS_FAILED(rv)) return rv;
 	if (!*aFirstGroupNeedingCounts) return NS_ERROR_FAILURE;
-
+    nsCOMPtr <nsIMsgFolder> folder;
+    (*aFirstGroupNeedingCounts)->QueryInterface(NS_GET_IID(nsIMsgFolder), getter_AddRefs(folder));
+    PRUint32 folderFlags;
+    folder->GetFlags(&folderFlags);
+    if (folderFlags & MSG_FOLDER_FLAG_VIRTUAL)
+      continue;
+    else
+      break;
+  }
+  while (PR_TRUE);
 	return NS_OK;
 }
 
@@ -758,8 +771,8 @@ nsNntpIncomingServer::SubscribeToNewsgroup(const char *name)
 	if (NS_FAILED(rv)) return rv;
 	if (!msgfolder) return NS_ERROR_FAILURE;
 
-	nsXPIDLString newsgroupName;
-	rv = NS_MsgDecodeUnescapeURLPath(name, getter_Copies(newsgroupName));
+	nsAutoString newsgroupName;
+	rv = NS_MsgDecodeUnescapeURLPath(nsDependentCString(name), newsgroupName);
 	NS_ENSURE_SUCCESS(rv,rv);
 
 	rv = msgfolder->CreateSubfolder(newsgroupName.get(), nsnull);
@@ -779,8 +792,8 @@ writeGroupToHostInfoFile(nsCString &aElement, void *aData)
         return PR_FALSE;
     }
 
-    nsXPIDLString name;
-    nsresult rv = NS_MsgDecodeUnescapeURLPath(aElement.get(), getter_Copies(name)); 
+    nsAutoString name;
+    nsresult rv = NS_MsgDecodeUnescapeURLPath(aElement, name); 
     if (NS_FAILED(rv)) {
         // stop, something is bad.
         return PR_FALSE;
@@ -1188,8 +1201,8 @@ nsNntpIncomingServer::Unsubscribe(const PRUnichar *aUnicharName)
   
   // to handle non-ASCII newsgroup names, we store them internally as escaped.
   // so we need to escape and encode the name, in order to find it.
-  nsXPIDLCString escapedName;
-  rv = NS_MsgEscapeEncodeURLPath(aUnicharName, getter_Copies(escapedName));
+  nsCAutoString escapedName;
+  rv = NS_MsgEscapeEncodeURLPath(nsDependentString(aUnicharName), escapedName);
   NS_ENSURE_SUCCESS(rv,rv);
 
   nsCOMPtr <nsIMsgFolder> newsgroupFolder;
@@ -1886,9 +1899,8 @@ nsNntpIncomingServer::GetCellText(PRInt32 row, const PRUnichar *colID, nsAString
       mSubscribeSearchResult.CStringAt(row, str);
       // some servers have newsgroup names that are non ASCII.  we store those as escaped
       // unescape here so the UI is consistent
-      // XXX fix me by converting NS_MsgDecodeUnescapeURLPath to take an nsAString&
-      nsXPIDLString cellText;
-      nsresult rv = NS_MsgDecodeUnescapeURLPath(str.get(), getter_Copies(cellText));
+      nsAutoString cellText;
+      nsresult rv = NS_MsgDecodeUnescapeURLPath(str, cellText);
       _retval.Assign(cellText);
       NS_ENSURE_SUCCESS(rv,rv);
     }

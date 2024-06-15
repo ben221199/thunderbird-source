@@ -189,6 +189,7 @@ nsresult nsMimeHtmlDisplayEmitter::BroadcastHeaders(nsIMsgHeaderSink * aHeaderSi
           nsCRT::strcasecmp("bcc", headerInfo->name) && nsCRT::strcasecmp("followup-to", headerInfo->name) &&
           nsCRT::strcasecmp("reply-to", headerInfo->name) && nsCRT::strcasecmp("subject", headerInfo->name) &&
           nsCRT::strcasecmp("organization", headerInfo->name) && nsCRT::strcasecmp("user-agent", headerInfo->name) &&
+          nsCRT::strcasecmp("content-base", headerInfo->name) && 
           nsCRT::strcasecmp("date", headerInfo->name) && nsCRT::strcasecmp("x-mailer", headerInfo->name))
             continue;
     }
@@ -559,7 +560,7 @@ nsMimeHtmlDisplayEmitter::EndBody()
   nsresult rv = GetHeaderSink(getter_AddRefs(headerSink));
   nsCOMPtr<nsIMsgMailNewsUrl> mailnewsUrl (do_QueryInterface(mURL, &rv));
   if (headerSink)
-    headerSink->OnEndMsgDownload(mailnewsUrl);
+    headerSink->OnEndMsgHeaders(mailnewsUrl);
 
   return NS_OK;
 }

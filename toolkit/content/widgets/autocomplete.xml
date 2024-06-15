@@ -21,6 +21,7 @@
 # 
 # Contributor(s):
 #     Pierre Chanial (p_ch@verizon.net)
+#     Dean Tessman   (dean_tessman@hotmail.com)
 #
 # Alternatively, the contents of this file may be used under the
 # terms of the GNU General Public License Version 2 or later (the
@@ -54,14 +55,15 @@
           <xul:image class="autocomplete-icon" allowevents="true"/>
         </children>
 
-        <xul:hbox class="textbox-input-box" flex="1" xbl:inherits="tooltiptext=inputtooltiptext">
+        <xul:hbox anonid="textbox-input-box" class="textbox-input-box" flex="1" xbl:inherits="tooltiptext=inputtooltiptext">
           <children/>
           <html:input anonid="input" class="autocomplete-textbox textbox-input"
                       flex="1" allowevents="true"
                       xbl:inherits="tooltiptext=inputtooltiptext,onfocus,onblur,value,type,maxlength,disabled,size,readonly,userAction"/>
         </xul:hbox>
+        <xul:image class="info-icon" xbl:inherits="src=infoicon,tooltiptext=infotext"/>
       </xul:hbox>
-                          
+      
       <xul:dropmarker anonid="historydropmarker" class="autocomplete-history-dropmarker"
                       allowevents="true"
                       xbl:inherits="open,enablehistory"/>
@@ -414,7 +416,7 @@
 
     <handlers>
       <handler event="input"
-               action="if (!this.mIgnoreInput) this.mController.handleText();"/>
+               action="if (!this.mIgnoreInput) this.mController.handleText(false);"/>
 
       <handler event="keypress" phase="capturing"
                action="return this.onKeyPress(event);"/>
@@ -424,6 +426,14 @@
 
       <handler event="blur" phase="capturing"
                action="this.detachController();"/>
+               
+      <handler event="dblclick">
+      <![CDATA[
+        if (event.originalTarget.className == "info-icon" && event.button == 0)
+          return this.fireEvent("infoclick");
+        return true;
+      ]]>
+      </handler>
     </handlers>
   </binding> 
 
@@ -645,6 +655,13 @@
         ]]></body>
       </method>
       
+      <method name="clearOpenProperty">
+        <parameter name="aPopupNode"/>
+        <body><![CDATA[
+          aPopupNode.mPopupOpen = false;
+        ]]></body>
+      </method>
+
     </implementation>
 
     <handlers>
@@ -653,7 +670,7 @@
       </handler>
 
       <handler event="popuphiding">
-        this.mPopupOpen = false;
+        setTimeout(this.clearOpenProperty, 0, this);
         this.mInput.maxRows = 6;
       </handler>
     </handlers>
@@ -729,7 +746,9 @@
       <method name="showPopup">
         <body><![CDATA[
           var textbox = document.getBindingParent(this);
-          textbox.showHistoryPopup();
+          if (!textbox.popup.mPopupOpen) { 
+            textbox.showHistoryPopup();
+          }
         ]]></body>
       </method>
     </implementation>

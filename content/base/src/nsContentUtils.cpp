@@ -1681,7 +1681,7 @@ nsContentUtils::GetNodeInfoFromQName(const nsAString& aNamespaceURI,
 }
 
 // static
-nsresult
+PRBool
 nsContentUtils::CanLoadImage(nsIURI* aURI, nsISupports* aContext,
                              nsIDocument* aLoadingDocument)
 {
@@ -1690,28 +1690,22 @@ nsContentUtils::CanLoadImage(nsIURI* aURI, nsISupports* aContext,
 
   // XXXbz Do security manager check here!
 
-  // Check with content policy
-  nsIScriptGlobalObject* globalScript = aLoadingDocument->GetScriptGlobalObject();
+  nsIURI *docURI = aLoadingDocument->GetDocumentURI();
 
-  if (!globalScript) {
-    // just let it load.  Documents loaded as data should take care to
-    // prevent image loading themselves.
-    return NS_OK;
-  }
-  
-  nsCOMPtr<nsIDOMWindow> domWin(do_QueryInterface(globalScript));
+  PRInt16 decision = nsIContentPolicy::ACCEPT;
 
-  PRBool shouldLoad = PR_TRUE;
-  nsresult rv = NS_CheckContentLoadPolicy(nsIContentPolicy::IMAGE, aURI,
+  nsresult rv = NS_CheckContentLoadPolicy(nsIContentPolicy::TYPE_IMAGE,
+                                          aURI,
+                                          docURI,
                                           aContext,
-                                          domWin, &shouldLoad);
-  if (NS_SUCCEEDED(rv) && !shouldLoad) {
-    return NS_ERROR_IMAGE_BLOCKED;
-  }
+                                          EmptyCString(), //mime guess
+                                          nsnull,         //extra
+                                          &decision);
 
-  return NS_OK;
+  return NS_FAILED(rv) ? PR_FALSE : NS_CP_ACCEPTED(decision);
 }
 
+// static
 nsresult
 nsContentUtils::LoadImage(nsIURI* aURI, nsIDocument* aLoadingDocument,
                           imgIDecoderObserver* aObserver,
