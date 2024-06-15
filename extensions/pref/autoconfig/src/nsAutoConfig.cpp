@@ -221,7 +221,7 @@ NS_IMETHODIMP nsAutoConfig::Observe(nsISupports *aSubject,
             rv = profile->GetCurrentProfile(getter_Copies(profileName));
             if (NS_SUCCEEDED(rv)) {
                 // setting the member variable to the current profile name
-                CopyUTF16toUTF8(profileName, mCurrProfile); 
+                CopyUTF16toUTF8(profileName, mCurrProfile);
             }
             else {
                 NS_WARNING("nsAutoConfig::GetCurrentProfile() failed");
@@ -545,13 +545,13 @@ nsresult nsAutoConfig::getEmailAddr(nsACString & emailAddr)
         rv = mPrefBranch->GetCharPref(PromiseFlatCString(emailAddr).get(),
                                       getter_Copies(prefValue));
         if (NS_FAILED(rv) || (len = strlen(prefValue)) == 0) 
-            return rv;
+            return PromptForEMailAddress(emailAddr);
         emailAddr = NS_LITERAL_CSTRING("mail.identity.") + 
             nsDependentCString(prefValue, len) + NS_LITERAL_CSTRING(".useremail");
         rv = mPrefBranch->GetCharPref(PromiseFlatCString(emailAddr).get(),
                                       getter_Copies(prefValue));
         if (NS_FAILED(rv)  || (len = strlen(prefValue)) == 0) 
-            return rv;
+            return PromptForEMailAddress(emailAddr);
         emailAddr = nsDependentCString(prefValue, len);
     }
     else {

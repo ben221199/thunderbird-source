@@ -59,7 +59,6 @@ NO_PKG_FILES = \
 	msmap* \
 	nm2tsv* \
 	nsinstall* \
-	rebasedlls* \
 	regchrome* \
 	regxpcom* \
 	res/samples \
@@ -82,6 +81,7 @@ NO_PKG_FILES = \
 	res/rdf \
 	res/viewer.properties \
 	res/viewsource.css \
+	chrome/app-chrome.manifest \
 	chrome/chromelist.txt \
 	chrome/embed-sample.jar \
 	PalmSyncInstall.exe \
@@ -90,44 +90,11 @@ NO_PKG_FILES = \
 	components/gkplugin.dll \
 	$(NULL)
 
-ifeq ($(OS_ARCH), WINNT)
-NO_PKG_FILES += \
-	chrome/en-unix.jar \
-	chrome/en-mac.jar \
-	$(NULL)
+ifeq ($(OS_ARCH), Darwin)
+MOZ_PKG_APPNAME = Thunderbird
 endif
 
-
-ifeq (,$(filter mac cocoa,$(MOZ_WIDGET_TOOLKIT)))
-NO_PKG_FILES += \
-	chrome/en-US.jar \
-	chrome/messenger.jar \
-	chrome/pipnss.jar \
-	chrome/pippki.jar \
-	chrome/toolkit.jar \
-	chrome/classic.jar \
-	chrome/comm.jar \
-	chrome/US.jar \
-	$(NULL)
-endif
-
-# Windows and Linux both support chrome repackaging to remove
-# unneeded chrome files
-ifeq (,$(filter mac cocoa,$(MOZ_WIDGET_TOOLKIT)))
-# Before building the installer, re-make in mail/config to pick up
-# new files in dist/bin.  This is needed for Talkback.
-libs:: 
-	$(MAKE) -C ../config
-
-# Before building the installer, re-make in mail/config to pick up
-# new files in dist/bin.  This is needed for Talkback.
-installer:: 
-	$(MAKE) -C ../config
-else
-libs::
-
-installer::
-endif
+include $(DEPTH)/config/autoconf.mk
 
 include $(DEPTH)/xpinstall/packager/Makefile
 

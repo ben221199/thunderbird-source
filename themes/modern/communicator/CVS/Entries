@@ -1,18 +1,19 @@
-/brand.css/1.28/Wed Mar 26 03:48:49 2003//TTHUNDERBIRD_1_0_8_RELEASE
-/button.css/1.52/Wed Mar 26 03:48:49 2003//TTHUNDERBIRD_1_0_8_RELEASE
-/communicator.css/1.22/Mon Jul  7 21:22:14 2003//TTHUNDERBIRD_1_0_8_RELEASE
-/contents.rdf/1.7/Fri Feb 27 11:54:25 2004//TTHUNDERBIRD_1_0_8_RELEASE
-/dialogs.css/1.1/Wed Dec 19 11:50:53 2001//TTHUNDERBIRD_1_0_8_RELEASE
-/formatting.css/1.8/Sat Apr 13 05:10:28 2002//TTHUNDERBIRD_1_0_8_RELEASE
-/prefpanels.css/1.19/Wed Feb  4 00:39:04 2004//TTHUNDERBIRD_1_0_8_RELEASE
-/smileys.css/1.1/Wed Mar 10 19:10:25 2004//TTHUNDERBIRD_1_0_8_RELEASE
-/tasksOverlay.css/1.21/Thu Apr  4 09:48:17 2002//TTHUNDERBIRD_1_0_8_RELEASE
-/toolbar.css/1.31/Wed Mar 26 03:48:49 2003//TTHUNDERBIRD_1_0_8_RELEASE
+/brand.css/1.30/Tue Nov 16 22:40:46 2004//TTHUNDERBIRD_1_1a1_RELEASE
+/button.css/1.53/Sat Apr 17 16:52:37 2004//TTHUNDERBIRD_1_1a1_RELEASE
+/communicator.css/1.23/Sat Apr 17 16:52:37 2004//TTHUNDERBIRD_1_1a1_RELEASE
+/contents.rdf/1.7/Fri Feb 27 11:54:25 2004//TTHUNDERBIRD_1_1a1_RELEASE
+/dialogs.css/1.2/Sat Apr 17 16:52:37 2004//TTHUNDERBIRD_1_1a1_RELEASE
+/formatting.css/1.10/Sun Mar 27 11:36:02 2005//TTHUNDERBIRD_1_1a1_RELEASE
+/prefpanels.css/1.20/Sat Apr 17 16:52:37 2004//TTHUNDERBIRD_1_1a1_RELEASE
+/smileys.css/1.2/Sat Apr 17 16:52:37 2004//TTHUNDERBIRD_1_1a1_RELEASE
+/tasksOverlay.css/1.22/Sat Apr 17 16:52:37 2004//TTHUNDERBIRD_1_1a1_RELEASE
+/toolbar.css/1.32/Sat Apr 17 16:52:37 2004//TTHUNDERBIRD_1_1a1_RELEASE
 D/alerts////
 D/bookmarks////
 D/brand////
 D/directory////
 D/icons////
+D/permissions////
 D/profile////
 D/related////
 D/search////

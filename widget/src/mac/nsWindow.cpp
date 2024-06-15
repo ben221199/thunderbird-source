@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -22,16 +22,16 @@
  * Contributor(s):
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
  * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -74,6 +74,20 @@
 #include "profilerutils.h"
 #endif
 
+#ifdef MAC_OS_X_VERSION_10_3
+const short PANTHER_RESIZE_UP_CURSOR     = 19;
+const short PANTHER_RESIZE_DOWN_CURSOR   = 20;
+const short PANTHER_RESIZE_UPDOWN_CURSOR = 21;
+#else
+//19, 20, 21 from Appearance.h in 10.3
+const short PANTHER_RESIZE_UP_CURSOR     = 19; // kThemeResizeUpCursor
+const short PANTHER_RESIZE_DOWN_CURSOR   = 20; // kThemeResizeDownCursor
+const short PANTHER_RESIZE_UPDOWN_CURSOR = 21; // kThemeResizeUpDownCursor
+#endif
+
+const short JAGUAR_RESIZE_UP_CURSOR      = 135;
+const short JAGUAR_RESIZE_DOWN_CURSOR    = 136;
+const short JAGUAR_RESIZE_UPDOWN_CURSOR  = 141;
 
 ////////////////////////////////////////////////////
 nsIRollupListener * gRollupListener = nsnull;
@@ -90,13 +104,9 @@ static const int kSpinCursorFirstFrame = 200;
 
 // Routines for iterating over the rects of a region. Carbon and pre-Carbon
 // do this differently so provide a way to do both.
-#if TARGET_CARBON
 static RegionToRectsUPP sUpdateRectProc = nsnull;
 static RegionToRectsUPP sAddRectToArrayProc = nsnull;
 static RegionToRectsUPP sCountRectProc = nsnull;
-#else
-void EachRegionRect (RgnHandle r, void (* proc)(Rect *, void *), void* data) ;
-#endif
 
 #pragma mark -
 
@@ -128,11 +138,9 @@ static Boolean caps_lock()
 
 static void FlushCurPortBuffer()
 {
-#if TARGET_CARBON
     CGrafPtr    curPort;
     ::GetPort((GrafPtr*)&curPort);
     ::QDFlushPortBuffer(curPort, nil);      // OK to call on 9/carbon (does nothing)
-#endif
 }
 
 static void blinkRect(const Rect* r, PRBool isPaint)
@@ -148,11 +156,8 @@ static void blinkRect(const Rect* r, PRBool isPaint)
     if (isPaint)
     {
         Pattern grayPattern;
-#if TARGET_CARBON
+
         ::GetQDGlobalsGray(&grayPattern);
-#else
-        grayPattern = qd.gray;
-#endif
 
         ::ForeColor(blackColor);
         ::BackColor(whiteColor);
@@ -192,11 +197,8 @@ static void blinkRgn(RgnHandle rgn, PRBool isPaint)
     if (isPaint)
     {
         Pattern grayPattern;
-#if TARGET_CARBON
+
         ::GetQDGlobalsGray(&grayPattern);
-#else
-        grayPattern = qd.gray;
-#endif
 
         ::ForeColor(blackColor);
         ::BackColor(whiteColor);
@@ -226,7 +228,7 @@ static void blinkRgn(RgnHandle rgn, PRBool isPaint)
 
 #endif
 
-
+#ifdef DEBUG
 static Boolean control_key_down()
 {
 	EventRecord event;
@@ -240,6 +242,7 @@ static long long microseconds()
 	Microseconds((UnsignedWide*)&micros);
 	return micros;
 }
+#endif
 
 #pragma mark -
 
@@ -279,13 +282,11 @@ nsWindow::nsWindow() : nsBaseWidget() , nsDeleteObserved(this), nsIKBStateContro
 
   AcceptFocusOnClick(PR_TRUE);
   
-#if TARGET_CARBON
   if ( !sUpdateRectProc ) {
     sUpdateRectProc = NewRegionToRectsUPP ( PaintUpdateRectProc );
     sAddRectToArrayProc = NewRegionToRectsUPP ( AddRectToArrayProc );
     sCountRectProc = NewRegionToRectsUPP ( CountRectProc );
   }
-#endif
 
 }
 
@@ -298,21 +299,9 @@ nsWindow::nsWindow() : nsBaseWidget() , nsDeleteObserved(this), nsIKBStateContro
 nsWindow::~nsWindow()
 {
 	// notify the children that we're gone
-	nsCOMPtr<nsIEnumerator> children ( getter_AddRefs(GetChildren()) );
-	if (children)
-	{
-		children->First();
-		do
-		{
-			nsISupports* child;
-			if (NS_SUCCEEDED(children->CurrentItem(&child)))
-			{
-				nsWindow* childWindow = static_cast<nsWindow*>(static_cast<nsIWidget*>(child));
-				NS_RELEASE(child);
-
-				childWindow->mParent = nsnull;
-    	}
-		} while (NS_SUCCEEDED(children->Next()));			
+	for (nsIWidget* kid = mFirstChild; kid; kid = kid->GetNextSibling()) {
+		nsWindow* childWindow = NS_STATIC_CAST(nsWindow*, kid);
+		childWindow->mParent = nsnull;
 	}
 
 	mDestructorCalled = PR_TRUE;
@@ -706,6 +695,19 @@ PRBool OnJaguarOrLater() // Return true if we are on Mac OS X 10.2 or later
     return gOnJaguarOrLater;
 }
 
+PRBool OnPantherOrLater() // Return true if we are on Mac OS X 10.3 or later
+{
+    static PRBool gInitVer1030 = PR_FALSE;
+    static PRBool gOnPantherOrLater = PR_FALSE;
+    if(!gInitVer1030)
+    {
+        gOnPantherOrLater =
+            (nsToolkit::OSXVersion() >= MAC_OS_X_VERSION_10_3_HEX);
+        gInitVer1030 = PR_TRUE;
+    }
+    return gOnPantherOrLater;
+}
+
 //
 // SetCursor
 //
@@ -735,36 +737,39 @@ NS_METHOD nsWindow::SetCursor(nsCursor aCursor)
     case eCursor_wait:                cursor = kThemeWatchCursor; break;
     case eCursor_select:              cursor = kThemeIBeamCursor; break;
     case eCursor_hyperlink:           cursor = kThemePointingHandCursor; break;
-    case eCursor_sizeWE:              cursor = kThemeResizeLeftRightCursor; break;
-    case eCursor_sizeNS:              cursor = 129; break;
-    case eCursor_sizeNW:              cursor = 130; break;
-    case eCursor_sizeSE:              cursor = 131; break;
-    case eCursor_sizeNE:              cursor = 132; break;
-    case eCursor_sizeSW:              cursor = 133; break;
-    case eCursor_arrow_north:         cursor = 134; break;
-    case eCursor_arrow_north_plus:    cursor = 135; break;
-    case eCursor_arrow_south:         cursor = 136; break;
-    case eCursor_arrow_south_plus:    cursor = 137; break;
-    case eCursor_arrow_west:          cursor = 138; break;
-    case eCursor_arrow_west_plus:     cursor = 139; break;
-    case eCursor_arrow_east:          cursor = 140; break;
-    case eCursor_arrow_east_plus:     cursor = 141; break;
     case eCursor_crosshair:           cursor = kThemeCrossCursor; break;
     case eCursor_move:                cursor = kThemeOpenHandCursor; break;
-    case eCursor_help:                cursor = 143; break;
-    case eCursor_copy:                cursor = 144; break; // CSS3
-    case eCursor_alias:               cursor = 145; break;
-    case eCursor_context_menu:        cursor = 146; break;
+    case eCursor_help:                cursor = 128; break;
+    case eCursor_copy:                cursor = kThemeCopyArrowCursor; break;
+    case eCursor_alias:               cursor = kThemeAliasArrowCursor; break;
+    case eCursor_context_menu:        cursor = kThemeContextualMenuArrowCursor; break;
     case eCursor_cell:                cursor = kThemePlusCursor; break;
     case eCursor_grab:                cursor = kThemeOpenHandCursor; break;
     case eCursor_grabbing:            cursor = kThemeClosedHandCursor; break;
     case eCursor_spinning:            cursor = kSpinCursorFirstFrame; break; // better than kThemeSpinningCursor
-    case eCursor_count_up:            cursor = kThemeCountingUpHandCursor; break;
-    case eCursor_count_down:          cursor = kThemeCountingDownHandCursor; break;
-    case eCursor_count_up_down:       cursor = kThemeCountingUpAndDownHandCursor; break;
-    case eCursor_zoom_in:             cursor = 149; break;
-    case eCursor_zoom_out:            cursor = 150; break;
-    default:                          cursor = kThemeArrowCursor; break;
+    case eCursor_zoom_in:             cursor = 129; break;
+    case eCursor_zoom_out:            cursor = 130; break;
+    case eCursor_not_allowed:
+    case eCursor_no_drop:             cursor = OnJaguarOrLater() ? kThemeNotAllowedCursor : 131; break;  
+    case eCursor_col_resize:          cursor = 132; break; 
+    case eCursor_row_resize:          cursor = 133; break;
+    case eCursor_vertical_text:       cursor = 134; break;   
+    case eCursor_all_scroll:          cursor = kThemeOpenHandCursor; break;
+    case eCursor_n_resize:            cursor = OnPantherOrLater() ? PANTHER_RESIZE_UP_CURSOR : JAGUAR_RESIZE_UP_CURSOR; break;
+    case eCursor_s_resize:            cursor = OnPantherOrLater() ? PANTHER_RESIZE_DOWN_CURSOR : JAGUAR_RESIZE_DOWN_CURSOR; break;
+    case eCursor_w_resize:            cursor = kThemeResizeLeftCursor; break; 
+    case eCursor_e_resize:            cursor = kThemeResizeRightCursor; break;
+    case eCursor_nw_resize:           cursor = 137; break;
+    case eCursor_se_resize:           cursor = 138; break;
+    case eCursor_ne_resize:           cursor = 139; break;
+    case eCursor_sw_resize:           cursor = 140; break;
+    case eCursor_ew_resize:           cursor = kThemeResizeLeftRightCursor; break;
+    case eCursor_ns_resize:           cursor = OnPantherOrLater() ? PANTHER_RESIZE_UPDOWN_CURSOR : JAGUAR_RESIZE_UPDOWN_CURSOR; break;
+    case eCursor_nesw_resize:         cursor = 142; break;
+    case eCursor_nwse_resize:         cursor = 143; break;        
+    default:                          
+      cursor = kThemeArrowCursor; 
+      break;
   }
 
   //animated cursors cause crash on Mac OS X 10.1 when Japanese Kotorei input method is enabled
@@ -1183,8 +1188,7 @@ void nsWindow::EndDraw()
 		return;
 	mDrawing = PR_FALSE;
 
-	PRBool clipEmpty;
-	mTempRenderingContext->PopState(clipEmpty);
+	mTempRenderingContext->PopState();
 
 	NS_RELEASE(mTempRenderingContext);
 	
@@ -1293,7 +1297,6 @@ NS_IMETHODIMP	nsWindow::Update()
 #pragma mark -
 
 
-#if TARGET_CARBON
 
 
 //
@@ -1369,7 +1372,6 @@ nsWindow::CountRectProc (UInt16 message, RgnHandle rgn, const Rect *inDirtyRect,
 }
 
 
-#endif
 
 //
 // UpdateRect
@@ -1493,12 +1495,10 @@ else
 	if (!::EmptyRgn(updateRgn))
 	{
 
-#if TARGET_CARBON
     // Ref: http://developer.apple.com/technotes/tn/tn2051.html
     //      short-circuit QD's implicit LockPortBits()
     //      Note: MUST unlock before exiting this scope (see below)
     ::LockPortBits(::GetWindowPort(mWindowPtr));
-#endif
 
 #if DEBUG
 		// measure the time it takes to refresh the window, if the control key is down.
@@ -1516,7 +1516,6 @@ else
 
     int numRects = 0;
 
-#if TARGET_CARBON
     QDRegionToRects ( updateRgn, kQDParseRegionFromTopLeft, sCountRectProc, &numRects );
     if ( numRects <= kMaxUpdateRects ) {
       Rect rectList[kMaxUpdateRects];
@@ -1548,39 +1547,6 @@ else
       ::GetRegionBounds(updateRgn, &boundingBox);
       PaintUpdateRect ( &boundingBox, this );
     }
-#else
-    EachRegionRect ( updateRgn, CountRect, &numRects );
-    if ( numRects <= kMaxUpdateRects ) {
-      Rect rectList[kMaxUpdateRects];
-      TRectArray rectWrapper ( rectList );
-       
-      // compile a list of rectangles 
-      EachRegionRect ( updateRgn, AddRectToArray, &rectWrapper );
-    
-      // amalgamate adjoining rects into a single rect. This 
-      // may over-draw a little, but will prevent us from going down into
-      // the layout engine for lots of little 1-pixel wide rects.
-      if ( numRects > 1 )
-        CombineRects ( rectWrapper );
-    
-      // now paint 'em! (|numRects| may be invalid now, so check count again). If
-      // we're above a certain threshold, just bail and do bounding box
-      if ( rectWrapper.Count() < kRectsBeforeBoundingBox ) {
-        for ( int i = 0; i < rectWrapper.Count(); ++i )
-          PaintUpdateRect ( &rectList[i], this );
-      }
-      else {
-        Rect boundingBox;
-        ::GetRegionBounds(updateRgn, &boundingBox);
-        PaintUpdateRect ( &boundingBox, this );
-      }
-    }
-    else {
-      Rect boundingBox;
-      ::GetRegionBounds(updateRgn, &boundingBox);
-      PaintUpdateRect ( &boundingBox, this );
-    }
-#endif
 
 #if DEBUG
     if (measure_duration) {
@@ -1593,12 +1559,10 @@ else
     if (regionToValidate)
       ::CopyRgn(updateRgn, regionToValidate);
 
-#if TARGET_CARBON
     // Ref: http://developer.apple.com/technotes/tn/tn2051.html
     //      short-circuit QD's implicit LockPortBits()
     //      Note: unlock before exiting (locked above)
     ::UnlockPortBits(::GetWindowPort(mWindowPtr));
-#endif
 
 	}
 
@@ -1737,36 +1701,27 @@ void nsWindow::UpdateWidget(nsRect& aRect, nsIRenderingContext* aContext)
 	// and it does for the most part. However; certain cases, such as overlapping
 	// areas that are handled by different view managers, don't properly clip siblings.
 #ifdef FRONT_TO_BACK
-#	define FIRST_CHILD(children) (children->Last())
-#	define NEXT_CHILD(children) (children->Prev())
+#	define FIRST_CHILD() (mLastChild)
+#	define NEXT_CHILD(child) ((child)->GetPrevSibling())
 #else
-#	define FIRST_CHILD(children) (children->First())
-#	define NEXT_CHILD(children) (children->Next())
+#	define FIRST_CHILD() (mFirstChild)
+#	define NEXT_CHILD(child) ((child)->GetNextSibling())
 #endif
 
 	// recursively draw the children
-	nsCOMPtr<nsIBidirectionalEnumerator> children(getter_AddRefs((nsIBidirectionalEnumerator*)GetChildren()));
-	if (children) {
-		FIRST_CHILD(children);
-		do {
-			nsISupports* child;
-			if (NS_SUCCEEDED(children->CurrentItem(&child))) {
-				nsWindow* childWindow = static_cast<nsWindow*>(static_cast<nsIWidget*>(child));
+	for (nsIWidget* kid = FIRST_CHILD(); kid; kid = NEXT_CHILD(kid)) {
+		nsWindow* childWindow = NS_STATIC_CAST(nsWindow*, kid);
 
-				nsRect childBounds;
-				childWindow->GetBounds(childBounds);
+		nsRect childBounds;
+		childWindow->GetBounds(childBounds);
 
-				// redraw only the intersection of the child rect and the update rect
-				nsRect intersection;
-				if (intersection.IntersectRect(aRect, childBounds))
-				{
-					intersection.MoveBy(-childBounds.x, -childBounds.y);
-					childWindow->UpdateWidget(intersection, aContext);
-				}
-				
-				NS_RELEASE(child);
-    		}
-		} while (NS_SUCCEEDED(NEXT_CHILD(children)));
+		// redraw only the intersection of the child rect and the update rect
+		nsRect intersection;
+		if (intersection.IntersectRect(aRect, childBounds))
+		{
+			intersection.MoveBy(-childBounds.x, -childBounds.y);
+			childWindow->UpdateWidget(intersection, aContext);
+		}
 	}
 
 #undef FIRST_CHILD
@@ -1795,115 +1750,8 @@ void nsWindow::UpdateWidget(nsRect& aRect, nsIRenderingContext* aContext)
 void
 nsWindow::ScrollBits ( Rect & inRectToScroll, PRInt32 inLeftDelta, PRInt32 inTopDelta )
 {                        
-#if TARGET_CARBON
   ::ScrollWindowRect ( mWindowPtr, &inRectToScroll, inLeftDelta, inTopDelta, 
                         kScrollWindowInvalidate, NULL );
-#else
-  // Get Frame in local coords from clip rect (there might be a border around view)
-  StRegionFromPool clipRgn;
-  if ( !clipRgn ) return;
-  ::GetClip(clipRgn);
-  ::SectRgn(clipRgn, mVisRegion, clipRgn);
-
-  StRegionFromPool localVisRgn;
-  if ( !localVisRgn ) return;
-
-  Rect frame;
-  ::GetRegionBounds(clipRgn, &frame);
-
-  StRegionFromPool totalVisRgn;
-  if ( !totalVisRgn ) return;
-  ::RectRgn(totalVisRgn, &frame);
-  
-    // compute the source and destination of copybits
-  Rect source = inRectToScroll;
-  SectRect(&source, &frame, &source);
-
-  Rect dest = source;
-  ::OffsetRect(&dest, inLeftDelta, inTopDelta);
-
-  // compute the area that is to be updated by subtracting the dest from the visible area
-  StRegionFromPool destRgn;
-  if ( !destRgn ) return;
-  ::RectRgn(destRgn, &dest);    
-
-  StRegionFromPool updateRgn;
-  if ( !updateRgn ) return;
-  ::RectRgn(updateRgn, &frame);
-  ::DiffRgn (updateRgn, destRgn, updateRgn);
-
-  if(::EmptyRgn(mWindowPtr->visRgn))    
-  {
-    ::CopyBits ( 
-      &mWindowPtr->portBits, 
-      &mWindowPtr->portBits, 
-      &source, 
-      &dest, 
-      srcCopy, 
-      nil);
-  }
-  else
-  {
-    // compute the non-visible region by subtracting what's currently
-    // visible (the window's visRgn) from the whole area we're updating
-    StRegionFromPool nonVisibleRgn;
-    if ( !nonVisibleRgn ) return;
-    ::DiffRgn ( totalVisRgn, mWindowPtr->visRgn, nonVisibleRgn );
-    
-    // compute the extra area that may need to be updated
-    // scoll the non-visible region to determine what needs updating
-    ::OffsetRgn ( nonVisibleRgn, inLeftDelta, inTopDelta );
-    
-    // calculate a mask region to not copy the non-visble portions of the window from the port
-    StRegionFromPool copyMaskRgn;
-    if ( !copyMaskRgn ) return;
-    ::DiffRgn(totalVisRgn, nonVisibleRgn, copyMaskRgn);
-    
-    // use copybits to simulate a ScrollRect()
-    RGBColor black = { 0, 0, 0 };
-    RGBColor white = { 0xFFFF, 0xFFFF, 0xFFFF } ;
-    ::RGBForeColor(&black);
-    ::RGBBackColor(&white);
-    ::PenNormal();  
-    ::CopyBits ( 
-      &mWindowPtr->portBits, 
-      &mWindowPtr->portBits, 
-      &source, 
-      &dest, 
-      srcCopy, 
-      copyMaskRgn);
-
-    // union the update regions together and invalidate them
-    ::UnionRgn(nonVisibleRgn, updateRgn, updateRgn);
-  }
-  
-  // If the region to be scrolled contains regions which are currently dirty,
-  // we must scroll those too, and union them with the updateRgn.
-  // get a copy of the dirty region.
-  ::BeginUpdate(mWindowPtr);
-  ::CopyRgn(mWindowPtr->visRgn, localVisRgn);   // re-use localVisRgn
-  ::EndUpdate(mWindowPtr);
-
-  StRegionFromPool  dirtyRgn;
-  if (!dirtyRgn) return;
-  // get only the part of the dirtyRgn that intersects the frame
-  ::SectRgn(localVisRgn, totalVisRgn, dirtyRgn);
-  // offset by the amount scrolled
-  ::OffsetRgn(dirtyRgn, inLeftDelta, inTopDelta);
-  // now intersect with the frame again
-  ::SectRgn(dirtyRgn, totalVisRgn, dirtyRgn);
-  // and add it to the dirty region
-  ::UnionRgn(updateRgn, dirtyRgn, updateRgn);
-  
-  // we also need to re-dirty the dirty rgn outside out frame,
-  // since BeginUpdate/EndUpdate cleared it.
-  ::DiffRgn(localVisRgn, totalVisRgn, localVisRgn);
-  // and add it to the dirty region
-  ::UnionRgn(updateRgn, localVisRgn, updateRgn);
-  
-  ::InvalWindowRgn(mWindowPtr, updateRgn);
-  
-#endif // !TARGET_CARBON
 }
 
 
@@ -1956,25 +1804,14 @@ NS_IMETHODIMP nsWindow::Scroll(PRInt32 aDx, PRInt32 aDy, nsRect *aClipRect)
 scrollChildren:
 	//--------
 	// Scroll the children
-	nsCOMPtr<nsIEnumerator> children ( getter_AddRefs(GetChildren()) );
-	if (children)
-	{
-		children->First();
-		do
-		{
-			nsISupports* child;
-			if (NS_SUCCEEDED(children->CurrentItem(&child)))
-			{
-				nsWindow* childWindow = static_cast<nsWindow*>(static_cast<nsIWidget*>(child));
-				NS_RELEASE(child);
+	for (nsIWidget* kid = mFirstChild; kid; kid = kid->GetNextSibling()) {
+		nsWindow* childWindow = NS_STATIC_CAST(nsWindow*, kid);
 
-				nsRect bounds;
-				childWindow->GetBounds(bounds);
-				bounds.x += aDx;
-				bounds.y += aDy;
-				childWindow->SetBounds(bounds);
-  		}
-		} while (NS_SUCCEEDED(children->Next()));			
+		nsRect bounds;
+		childWindow->GetBounds(bounds);
+		bounds.x += aDx;
+		bounds.y += aDy;
+		childWindow->SetBounds(bounds);
 	}
 
 	// recalculate the window regions
@@ -1996,7 +1833,7 @@ PRBool nsWindow::ConvertStatus(nsEventStatus aStatus)
     case nsEventStatus_eConsumeNoDefault:		return(PR_TRUE);	// don't do default processing
     case nsEventStatus_eConsumeDoDefault:		return(PR_FALSE);
     default:
-      NS_ASSERTION(0, "Illegal nsEventStatus enumeration value");
+      NS_ERROR("Illegal nsEventStatus enumeration value");
       break;
   }
   return(PR_FALSE);
@@ -2214,33 +2051,29 @@ void nsWindow::CalcWindowRegions()
 	::CopyRgn(mWindowRegion, mVisRegion);
 
 	// clip the children out of the visRegion
-	nsCOMPtr<nsIEnumerator> children ( getter_AddRefs(GetChildren()) );
-	if (children)
+	if (mFirstChild)
 	{
 		StRegionFromPool childRgn;
 		if (childRgn != nsnull) {
-			children->First();
+			nsIWidget* child = mFirstChild;
 			do
 			{
-				nsISupports* child;
-				if (NS_SUCCEEDED(children->CurrentItem(&child)))
-				{
-					nsWindow* childWindow = static_cast<nsWindow*>(static_cast<nsIWidget*>(child));
-					NS_RELEASE(child);
+				nsWindow* childWindow = NS_STATIC_CAST(nsWindow*, child);
 					
-					PRBool visible;
-					childWindow->IsVisible(visible);
-					if (visible) {
-						nsRect childRect;
-						childWindow->GetBounds(childRect);
+				PRBool visible;
+				childWindow->IsVisible(visible);
+				if (visible) {
+					nsRect childRect;
+					childWindow->GetBounds(childRect);
 
-						Rect macRect;
-						::SetRect(&macRect, childRect.x, childRect.y, childRect.XMost(), childRect.YMost());
-						::RectRgn(childRgn, &macRect);
-						::DiffRgn(mVisRegion, childRgn, mVisRegion);
-					}
+					Rect macRect;
+					::SetRect(&macRect, childRect.x, childRect.y, childRect.XMost(), childRect.YMost());
+					::RectRgn(childRgn, &macRect);
+					::DiffRgn(mVisRegion, childRgn, mVisRegion);
 				}
-			} while (NS_SUCCEEDED(children->Next()));
+				
+				child = child->GetNextSibling();
+			} while (child);
 		}
 	}
 }
@@ -2342,29 +2175,16 @@ nsWindow*  nsWindow::FindWidgetHit(Point aThePoint)
 
 	nsWindow* widgetHit = this;
 
-	nsCOMPtr<nsIEnumerator> normalEnum ( getter_AddRefs(GetChildren()) );
-	nsCOMPtr<nsIBidirectionalEnumerator> children ( do_QueryInterface(normalEnum) );
-	if (children)
-	{
-		// traverse through all the nsWindows to find out who got hit, lowest level of course
-		children->Last();
-		do
+	// traverse through all the nsWindows to find out who got hit, lowest level of course
+	for (nsIWidget* kid = mLastChild; kid; kid = kid->GetPrevSibling()) {
+		nsWindow* childWindow = NS_STATIC_CAST(nsWindow*, kid);
+		
+		nsWindow* deeperHit = childWindow->FindWidgetHit(aThePoint);
+		if (deeperHit)
 		{
-			nsISupports* child;
-			if (NS_SUCCEEDED(children->CurrentItem(&child)))
-      {
-      	nsWindow* childWindow = static_cast<nsWindow*>(static_cast<nsIWidget*>(child));
-				NS_RELEASE(child);
-
-			  nsWindow* deeperHit = childWindow->FindWidgetHit(aThePoint);
-			  if (deeperHit)
-			  {
-				  widgetHit = deeperHit;
-				  break;
-			  }
-      }
+			widgetHit = deeperHit;
+			break;
 		}
-    while (NS_SUCCEEDED(children->Prev()));
 	}
 
 	return widgetHit;
@@ -2509,9 +2329,9 @@ NS_IMETHODIMP nsWindow::CaptureRollupEvents(nsIRollupListener * aListener,
   return NS_OK;
 }
 
-NS_IMETHODIMP nsWindow::SetTitle(const nsString& title)
+NS_IMETHODIMP nsWindow::SetTitle(const nsAString& title)
 {
-  NS_ASSERTION(0, "Would some Mac person please implement me? Thanks.");
+  NS_ERROR("Would some Mac person please implement me? Thanks.");
   return NS_OK;
 }
 
@@ -2665,101 +2485,15 @@ NS_IMETHODIMP nsWindow::ResetInputState()
 	return NS_ERROR_ABORT;
 }
 
-
-#if !TARGET_CARBON
-
-void EachRegionRect (RgnHandle r, void (* proc)(Rect *, void *), void* data) ;
-
-//
-// Written by Hugh Fisher, March 1993.
-// Used w/out asking his permission.
-//
-// This can go away when we get an api on nsIRegion to create one from
-// a RgnHandle. Then we can use nsIRegion::GetRects to do the work for us.
-//
-void 
-EachRegionRect (RgnHandle r, void (* proc)(Rect *, void *), void* inData)
-{
-#define EndMark 	32767
-#define MaxY		32767
-#define StackMax	1024
-
-	typedef struct {
-		short	size;
-		Rect	bbox;
-		short	data[];
-		} ** Internal;
-	
-	Internal region;
-	short	 width, xAdjust, y, index, x1, x2, x;
-	Rect	 box;
-	short	 stackStorage[1024];
-	short *	 buffer;
-	
-	region = (Internal)r;
-	
-	/* Check for plain rectangle */
-	if ((**region).size == 10) {
-		proc(&(**region).bbox, inData);
-		return;
-	}
-	/* Got to scale x coordinates into range 0..something */
-	xAdjust = (**region).bbox.left;
-	width = (**region).bbox.right - xAdjust;
-	/* Most regions will be less than 1024 pixels wide */
-	if (width < StackMax)
-		buffer = stackStorage;
-	else {
-		buffer = (short *)PR_Malloc(width * 2);
-		if (buffer == NULL)
-			/* Truly humungous region or very low on memory.
-			   Quietly doing nothing seems to be the
-			   traditional Quickdraw response. */
-			return;
-	}
-	/* Initialise scan line list to bottom edges */
-	for (x = (**region).bbox.left; x < (**region).bbox.right; x++)
-		buffer[x - xAdjust] = MaxY;
-	index = 0;
-	/* Loop until we hit an empty scan line */
-	while ((**region).data[index] != EndMark) {
-		y = (**region).data[index];
-		index ++;
-		/* Loop through horizontal runs on this line */
-		while ((**region).data[index] != EndMark) {
-			x1 = (**region).data[index];
-			index ++;
-			x2 = (**region).data[index];
-			index ++;
-			x = x1;
-			while (x < x2) {
-				if (buffer[x - xAdjust] < y) {
-					/* We have a bottom edge - how long for? */
-					box.left = x;
-					box.top  = buffer[x - xAdjust];
-					while (x < x2 && buffer[x - xAdjust] == box.top) {
-						buffer[x - xAdjust] = MaxY;
-						x ++;
-					}
-					/* Pass to client proc */
-					box.right  = x;
-					box.bottom = y;
-					proc(&box, inData);
-				} else {
-					/* This becomes a top edge */
-					buffer[x - xAdjust] = y;
-					x ++;
-				}
-			}
-		}
-		index ++;
-	}
-	/* Clean up after ourselves */
-	if (width >= StackMax)
-		PR_Free((void *)buffer);
-#undef EndMark
-#undef MaxY
-#undef StackMax
+NS_IMETHODIMP nsWindow::SetIMEOpenState(PRBool aState) {
+  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-#endif
+NS_IMETHODIMP nsWindow::GetIMEOpenState(PRBool* aState) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP nsWindow::CancelIMEComposition() {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+

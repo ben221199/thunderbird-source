@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -25,16 +25,16 @@
  *   Pierre Phaneuf <pp@ludusdesign.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -73,7 +73,6 @@
 
 #include "nsIMsgWindow.h"
 #include "nsIDocShell.h"
-#include "nsIWebShell.h"
 #include "nsIPrompt.h"
 #include "nsIWindowWatcher.h"
 
@@ -378,9 +377,8 @@ nsresult nsMsgNewsFolder::GetDatabase(nsIMsgWindow *aMsgWindow)
     nsresult folderOpen = msgDBService->OpenFolderDB(this, PR_TRUE, PR_FALSE, getter_AddRefs(mDatabase));
     
     if (NS_FAILED(folderOpen) && folderOpen != NS_MSG_ERROR_FOLDER_SUMMARY_MISSING)
-    {
       folderOpen = msgDBService->OpenFolderDB(this, PR_TRUE, PR_TRUE, getter_AddRefs(mDatabase));
-    }
+
     if (NS_FAILED(folderOpen) && folderOpen != NS_MSG_ERROR_FOLDER_SUMMARY_MISSING)
       return folderOpen;
 
@@ -402,34 +400,43 @@ nsresult nsMsgNewsFolder::GetDatabase(nsIMsgWindow *aMsgWindow)
   return NS_OK;
 }
 
-
 NS_IMETHODIMP
 nsMsgNewsFolder::UpdateFolder(nsIMsgWindow *aWindow)
 {
-  nsresult rv = GetDatabase(aWindow);	// want this cached...
-  if (NS_SUCCEEDED(rv))
-  {
-    if (mDatabase)
-    {
-      nsCOMPtr<nsIMsgRetentionSettings> retentionSettings;
-      nsresult rv = GetRetentionSettings(getter_AddRefs(retentionSettings));
-      if (NS_SUCCEEDED(rv))
-        rv = mDatabase->ApplyRetentionSettings(retentionSettings);
-    }
-    rv = AutoCompact(aWindow);
-    NS_ENSURE_SUCCESS(rv,rv);
-    // GetNewMessages has to be the last rv set before we get to the next check, so
-    // that we'll have rv set to NS_MSG_ERROR_OFFLINE when offline and send
-    // a folder loaded notification to the front end.
-    rv = GetNewMessages(aWindow, nsnull);
-  }
-  if (rv == NS_MSG_ERROR_OFFLINE)
-  {
-    rv = NS_OK;
-    NotifyFolderEvent(mFolderLoadedAtom);
-  }
-
-  return rv;
+  // Get news.get_messages_on_select pref
+  nsresult rv;
+  PRBool getMessagesOnSelect = PR_TRUE;
+  nsCOMPtr<nsIPrefBranch> prefBranch = do_GetService(NS_PREFSERVICE_CONTRACTID, &rv);
+  if NS_SUCCEEDED(rv)
+    prefBranch->GetBoolPref("news.get_messages_on_select", &getMessagesOnSelect);
+  
+  // Only if news.get_messages_on_select is true do we get new messages automatically
+  if (getMessagesOnSelect) 
+  { 
+    rv = GetDatabase(aWindow);	// want this cached...
+    if (NS_SUCCEEDED(rv))
+    { 
+      if (mDatabase)
+      {
+        nsCOMPtr<nsIMsgRetentionSettings> retentionSettings;
+        nsresult rv = GetRetentionSettings(getter_AddRefs(retentionSettings));
+        if (NS_SUCCEEDED(rv))
+          rv = mDatabase->ApplyRetentionSettings(retentionSettings);
+      }
+      rv = AutoCompact(aWindow);
+      NS_ENSURE_SUCCESS(rv,rv);
+      // GetNewMessages has to be the last rv set before we get to the next check, so
+      // that we'll have rv set to NS_MSG_ERROR_OFFLINE when offline and send
+      // a folder loaded notification to the front end.
+      rv = GetNewMessages(aWindow, nsnull);
+    } 
+    if (rv != NS_MSG_ERROR_OFFLINE)
+      return rv;
+  } 
+  // We're not getting messages because either get_messages_on_select is
+  // false or we're offline. Send an immediate folder loaded notification.
+  NotifyFolderEvent(mFolderLoadedAtom);
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -578,13 +585,8 @@ NS_IMETHODIMP nsMsgNewsFolder::CreateSubfolder(const PRUnichar *uninewsgroupname
     SetNewsrcHasChanged(PR_TRUE); // subscribe UI does this - but maybe we got here through auto-subscribe
 
   if(NS_SUCCEEDED(rv) && child)
-  {
-    nsCOMPtr<nsISupports> childSupports(do_QueryInterface(child));
-    nsCOMPtr<nsISupports> folderSupports;
-    rv = QueryInterface(NS_GET_IID(nsISupports), getter_AddRefs(folderSupports));
-    if(childSupports && NS_SUCCEEDED(rv))
-      NotifyItemAdded(folderSupports, childSupports, "folderView");
-  }
+    NotifyItemAdded(child);
+
   return rv;
 }
 
@@ -767,9 +769,13 @@ nsMsgNewsFolder::GetDBFolderInfoAndDB(nsIDBFolderInfo **folderInfo, nsIMsgDataba
     return NS_ERROR_NULL_POINTER; 
 
   openErr = GetDatabase(nsnull);
-  NS_IF_ADDREF(*db = mDatabase);
-  if (NS_SUCCEEDED(openErr)&& *db)
-    openErr = (*db)->GetDBFolderInfo(folderInfo);
+  *db = mDatabase;
+  if (mDatabase) {
+    NS_ADDREF(*db);
+    if (NS_SUCCEEDED(openErr))
+      openErr = (*db)->GetDBFolderInfo(folderInfo);
+  }
+
   return openErr;
 }
 
@@ -782,15 +788,15 @@ nsMsgNewsFolder::UpdateSummaryFromNNTPInfo(PRInt32 oldest, PRInt32 youngest, PRI
   PRInt32 oldUnreadMessages = mNumUnreadMessages;
   PRInt32 oldTotalMessages = mNumTotalMessages;
   
-  char *setStr = nsnull;
   /* First, mark all of the articles now known to be expired as read. */
   if (oldest > 1) 
   { 
     nsXPIDLCString oldSet;
+    nsXPIDLCString newSet;
     mReadSet->Output(getter_Copies(oldSet));
     mReadSet->AddRange(1, oldest - 1);
-    rv = mReadSet->Output(&setStr);
-    if (setStr && nsCRT::strcmp(setStr, oldSet))
+    rv = mReadSet->Output(getter_Copies(newSet));
+    if (!oldSet.Equals(newSet))
       newsrcHasChanged = PR_TRUE;
   }
   
@@ -832,8 +838,6 @@ nsMsgNewsFolder::UpdateSummaryFromNNTPInfo(PRInt32 oldest, PRInt32 youngest, PRI
   if(oldUnreadMessages != mNumUnreadMessages) 
     NotifyIntPropertyChanged(kTotalUnreadMessagesAtom, oldUnreadMessages, mNumUnreadMessages);
   
-  nsCRT::free(setStr);
-  setStr = nsnull;
   return rv;
 }
 
@@ -1376,10 +1380,7 @@ nsMsgNewsFolder::GetGroupPasswordWithUI(const PRUnichar * aPromptMessage, const
       rv = aMsgWindow->GetRootDocShell(getter_AddRefs(docShell));
       if (NS_FAILED(rv)) return rv;
 
-      nsCOMPtr<nsIWebShell> webShell(do_QueryInterface(docShell, &rv));
-      if (NS_FAILED(rv)) return rv;
-
-      dialog = do_GetInterface(webShell, &rv);
+      dialog = do_GetInterface(docShell, &rv);
 			if (NS_FAILED(rv)) return rv;
     }
     else 
@@ -1447,9 +1448,7 @@ nsMsgNewsFolder::GetGroupUsernameWithUI(const PRUnichar * aPromptMessage, const
       nsCOMPtr<nsIDocShell> docShell;
       rv = aMsgWindow->GetRootDocShell(getter_AddRefs(docShell));
       if (NS_FAILED(rv)) return rv;
-      nsCOMPtr<nsIWebShell> webShell(do_QueryInterface(docShell, &rv));
-      if (NS_FAILED(rv)) return rv;
-      dialog = do_GetInterface(webShell, &rv);
+      dialog = do_GetInterface(docShell, &rv);
       if (NS_FAILED(rv)) return rv;
     }
     else 
@@ -1514,17 +1513,17 @@ nsMsgNewsFolder::GetNewsrcLine(char **newsrcLine)
   if (NS_FAILED(rv)) return rv;
   
   nsCAutoString newsrcLineStr;
-  newsrcLineStr = (const char *)newsgroupname;
-  newsrcLineStr += ":";
+  newsrcLineStr = newsgroupname;
+  newsrcLineStr += ':';
   
-  nsXPIDLCString setStr;
   if (mReadSet) {
+    nsXPIDLCString setStr;
     mReadSet->Output(getter_Copies(setStr));
     if (NS_SUCCEEDED(rv)) 
     {
-      newsrcLineStr += " ";
+      newsrcLineStr += ' ';
       newsrcLineStr += setStr;
-      newsrcLineStr += MSG_LINEBREAK;
+      newsrcLineStr.AppendLiteral(MSG_LINEBREAK);
     }
   }
   
@@ -1537,21 +1536,20 @@ nsMsgNewsFolder::GetNewsrcLine(char **newsrcLine)
 
 NS_IMETHODIMP nsMsgNewsFolder::SetReadSetFromStr(const char *newsrcLine)
 {
-    if (!newsrcLine) return NS_ERROR_NULL_POINTER;
+  if (!newsrcLine) return NS_ERROR_NULL_POINTER;
 
-    delete mReadSet;
+  delete mReadSet;
 
-    mReadSet = nsMsgKeySet::Create(newsrcLine);
+  mReadSet = nsMsgKeySet::Create(newsrcLine);
 
-    if (!mReadSet) return NS_ERROR_OUT_OF_MEMORY;
+  if (!mReadSet) return NS_ERROR_OUT_OF_MEMORY;
 
-    // Now that mReadSet is recreated, make sure it's stored in the db as well.
-    nsresult rv;
-    nsCOMPtr<nsINewsDatabase> db = do_QueryInterface(mDatabase, &rv);
-    if (NS_SUCCEEDED(rv) && db) // it's ok not to have a db here.
-      db->SetReadSet(mReadSet);
+  // Now that mReadSet is recreated, make sure it's stored in the db as well.
+  nsCOMPtr<nsINewsDatabase> db = do_QueryInterface(mDatabase);
+  if (db) // it's ok not to have a db here.
+    db->SetReadSet(mReadSet);
 
-    return NS_OK;
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -1700,13 +1698,12 @@ NS_IMETHODIMP nsMsgNewsFolder::DownloadAllForOffline(nsIUrlListener *listener, n
     }
   }
   DownloadNewsArticlesToOfflineStore *downloadState = new DownloadNewsArticlesToOfflineStore(msgWindow, mDatabase, this);
-  if (downloadState)
-  {
-    m_downloadingMultipleMessages = PR_TRUE;
-    return downloadState->DownloadArticles(msgWindow, this, &srcKeyArray);
-  }
-  else
+  if (!downloadState)
     return NS_ERROR_OUT_OF_MEMORY;
+
+  m_downloadingMultipleMessages = PR_TRUE;
+
+  return downloadState->DownloadArticles(msgWindow, this, &srcKeyArray);
 }
 
 NS_IMETHODIMP nsMsgNewsFolder::DownloadMessagesForOffline(nsISupportsArray *messages, nsIMsgWindow *window)
@@ -1730,15 +1727,13 @@ NS_IMETHODIMP nsMsgNewsFolder::DownloadMessagesForOffline(nsISupportsArray *mess
       srcKeyArray.Add(key);
   }
   DownloadNewsArticlesToOfflineStore *downloadState = new DownloadNewsArticlesToOfflineStore(window, mDatabase, this);
-  if (downloadState)
-  {
-    m_downloadingMultipleMessages = PR_TRUE;
-    return downloadState->DownloadArticles(window, this, &srcKeyArray);
-  }
-  else
+  if (!downloadState)
     return NS_ERROR_OUT_OF_MEMORY;
-}
 
+  m_downloadingMultipleMessages = PR_TRUE;
+
+  return downloadState->DownloadArticles(window, this, &srcKeyArray);
+}
 
 // line does not have a line terminator (e.g., CR or CRLF)
 NS_IMETHODIMP nsMsgNewsFolder::NotifyDownloadedLine(const char *line, nsMsgKey keyOfArticle)
@@ -1754,7 +1749,8 @@ NS_IMETHODIMP nsMsgNewsFolder::NotifyDownloadedLine(const char *line, nsMsgKey k
 
   if (m_tempMessageStream)
   {
-    if (line[0] == '.' && line[1] == 0)
+    // line now contains the linebreak.
+    if (line[0] == '.' && line[MSG_LINEBREAK_LEN + 1] == 0)
     {
       // end of article.
       if (m_offlineHeader)
@@ -1771,15 +1767,13 @@ NS_IMETHODIMP nsMsgNewsFolder::NotifyDownloadedLine(const char *line, nsMsgKey k
       PRUint32 count = 0;
       rv = m_tempMessageStream->Write(line, 
            strlen(line), &count);
-      if (NS_SUCCEEDED(rv))
-        rv = m_tempMessageStream->Write(MSG_LINEBREAK, MSG_LINEBREAK_LEN, &count);
       NS_ASSERTION(NS_SUCCEEDED(rv), "failed to write to stream");
     }
   }
                                                                                 
   return rv;
-
 }
+
 NS_IMETHODIMP nsMsgNewsFolder::Compact(nsIUrlListener *aListener, nsIMsgWindow *aMsgWindow)
 {
   nsresult rv;
@@ -1857,7 +1851,16 @@ NS_IMETHODIMP nsMsgNewsFolder::Shutdown(PRBool shutdownChildren)
   }
 
   mInitialized = PR_FALSE;
-  mReadSet = nsnull;
+  if (mReadSet) {
+    // the nsINewsDatabase holds a weak ref to the readset,
+    // and we outlive the db, so it's safe to delete it here.
+    nsCOMPtr<nsINewsDatabase> db = do_QueryInterface(mDatabase);
+    if (db)
+      db->SetReadSet(nsnull);
+    delete mReadSet;
+    mReadSet = nsnull;
+  }
+
   return nsMsgDBFolder::Shutdown(shutdownChildren);
 }
 

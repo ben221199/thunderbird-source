@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -22,16 +22,16 @@
  * Contributor(s):
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
  * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -44,6 +44,7 @@
 #include "nsIServiceManager.h"
 #include "nsIEventQueueService.h"
 #include "nsIEventQueue.h"
+#include "nsComponentManagerUtils.h"
 // objbase.h must be declared before initguid.h to use the |DEFINE_GUID|'s in aimm.h
 #include <objbase.h>
 #include <initguid.h>
@@ -91,13 +92,11 @@ DEFINE_GUID(IID_IActiveIMMMessagePumpOwner,
 IActiveIMMApp* nsToolkit::gAIMMApp   = NULL;
 PRInt32        nsToolkit::gAIMMCount = 0;
 
-nsWindow     *MouseTrailer::mCaptureWindow  = NULL;
-nsWindow     *MouseTrailer::mHoldMouse      = NULL;
-MouseTrailer *MouseTrailer::theMouseTrailer = NULL;
-PRBool        MouseTrailer::gIgnoreNextCycle(PR_FALSE);
-PRBool        MouseTrailer::mIsInCaptureMode(PR_FALSE);
+#ifndef WINCE
+MouseTrailer MouseTrailer::mSingleton;
+#endif
 
-#ifndef MOZ_STATIC_COMPONENT_LIBS
+#if !defined(MOZ_STATIC_COMPONENT_LIBS) && !defined(MOZ_ENABLE_LIBXUL)
 //
 // Dll entry point. Keep the dll instance
 //
@@ -107,6 +106,7 @@ PRBool        MouseTrailer::mIsInCaptureMode(PR_FALSE);
 extern "C" {
 #endif
 
+#ifndef WINCE
 BOOL APIENTRY DllMain(  HINSTANCE hModule, 
                         DWORD reason, 
                         LPVOID lpReserved )
@@ -130,6 +130,7 @@ BOOL APIENTRY DllMain(  HINSTANCE hModule,
 
     return TRUE;
 }
+#endif //wince
 
 #if defined(__GNUC__)
 } // extern "C"
@@ -149,6 +150,7 @@ struct ThreadInitInfo {
 
 /* Detect when the user is moving a top-level window */
 
+#ifndef WINCE
 LRESULT CALLBACK DetectWindowMove(int code, WPARAM wParam, LPARAM lParam)
 {
     /* This msg filter is required to determine when the user has
@@ -171,9 +173,9 @@ LRESULT CALLBACK DetectWindowMove(int code, WPARAM wParam, LPARAM lParam)
         PL_FavorPerformanceHint(PR_TRUE, 0);
       }
     }
-
     return CallNextHookEx(nsMsgFilterHook, code, wParam, lParam);
 }
+#endif // WINCE
 
 
 
@@ -441,6 +443,7 @@ BOOL WINAPI nsUnregisterClass(LPCWSTR aClassW, HINSTANCE aInst)
   return FALSE;
 }
 
+#ifndef WINCE
 BOOL WINAPI nsSHGetPathFromIDList(LPCITEMIDLIST aIdList, LPWSTR aPathW)
 {
   char pathA[MAX_PATH+1];
@@ -485,6 +488,7 @@ LPITEMIDLIST WINAPI nsSHBrowseForFolder(LPBROWSEINFOW aBiW)
   }
   return itemIdList;
 }
+#endif
 
 HMODULE             nsToolkit::mShell32Module = NULL;
 NS_DefWindowProc    nsToolkit::mDefWindowProc = DefWindowProcA;
@@ -501,8 +505,11 @@ NS_GetClassName     nsToolkit::mGetClassName = nsGetClassName;
 NS_CreateWindowEx   nsToolkit::mCreateWindowEx = nsCreateWindowEx;
 NS_RegisterClass    nsToolkit::mRegisterClass = nsRegisterClass; 
 NS_UnregisterClass  nsToolkit::mUnregisterClass = nsUnregisterClass; 
+
+#ifndef WINCE
 NS_SHGetPathFromIDList  nsToolkit::mSHGetPathFromIDList = nsSHGetPathFromIDList; 
 NS_SHBrowseForFolder    nsToolkit::mSHBrowseForFolder = nsSHBrowseForFolder; 
+#endif
 
 void RunPump(void* arg)
 {
@@ -510,8 +517,10 @@ void RunPump(void* arg)
     ::PR_EnterMonitor(info->monitor);
 
     // Start Active Input Method Manager on this thread
+#ifndef WINCE
     if(nsToolkit::gAIMMApp)
         nsToolkit::gAIMMApp->Activate(TRUE);
+#endif
 
     // do registration and creation in this thread
     info->toolkit->CreateInternalWindow(PR_GetCurrentThread());
@@ -541,6 +550,7 @@ nsToolkit::nsToolkit()
     mGuiThread  = NULL;
     mDispatchWnd = 0;
 
+#ifndef WINCE
     //
     // Initialize COM since create Active Input Method Manager object
     //
@@ -551,8 +561,9 @@ nsToolkit::nsToolkit()
       ::CoCreateInstance(CLSID_CActiveIMM, NULL, CLSCTX_INPROC_SERVER, IID_IActiveIMMApp, (void**) &nsToolkit::gAIMMApp);
 
     nsToolkit::gAIMMCount++;
+#endif
 
-#ifdef MOZ_STATIC_COMPONENT_LIBS
+#if defined(MOZ_STATIC_COMPONENT_LIBS) || defined (WINCE)
     nsToolkit::Startup(GetModuleHandle(NULL));
 #endif
 }
@@ -567,6 +578,7 @@ nsToolkit::~nsToolkit()
 {
     NS_PRECONDITION(::IsWindow(mDispatchWnd), "Invalid window handle");
 
+#ifndef WINCE
     nsToolkit::gAIMMCount--;
 
     if (!nsToolkit::gAIMMCount) {
@@ -577,6 +589,7 @@ nsToolkit::~nsToolkit()
         }
         ::CoUninitialize();
     }
+#endif
 
     // Destroy the Dispatch Window
     ::DestroyWindow(mDispatchWnd);
@@ -590,12 +603,14 @@ nsToolkit::~nsToolkit()
 
     // Unhook the filter used to determine when
     // the user is moving a top-level window.
+#ifndef WINCE
     if (nsMsgFilterHook != NULL) {
       UnhookWindowsHookEx(nsMsgFilterHook);
       nsMsgFilterHook = NULL;
     }
+#endif
 
-#ifdef MOZ_STATIC_COMPONENT_LIBS
+#if defined (MOZ_STATIC_COMPONENT_LIBS) || defined(WINCE)
     nsToolkit::Shutdown();
 #endif
 }
@@ -604,6 +619,7 @@ nsToolkit::~nsToolkit()
 void
 nsToolkit::Startup(HMODULE hModule)
 {
+#ifndef WINCE
     //
     // Set flag of nsToolkit::mUseImeApiW due to using Unicode API.
     //
@@ -625,7 +641,9 @@ nsToolkit::Startup(HMODULE hModule)
     }
 
     nsToolkit::mIsNT = (osversion.dwPlatformId == VER_PLATFORM_WIN32_NT);
-    if (nsToolkit::mIsNT)  {
+    if (nsToolkit::mIsNT)  
+#endif    
+    {
       // For Windows 9x base OS nsFoo is already pointing to A functions
       // However on NT base OS we should point them to respective W functions
       nsToolkit::mDefWindowProc = DefWindowProcW;
@@ -644,6 +662,7 @@ nsToolkit::Startup(HMODULE hModule)
       nsToolkit::mUnregisterClass = UnregisterClassW; 
       // Explicit call of SHxxxW in Win95 makes moz fails to run (170969)
       // we use GetProcAddress() to hide
+#ifndef WINCE
       nsToolkit::mShell32Module = ::LoadLibrary("Shell32.dll");
       if (nsToolkit::mShell32Module) {
         nsToolkit::mSHGetPathFromIDList = (NS_SHGetPathFromIDList)GetProcAddress(nsToolkit::mShell32Module, "SHGetPathFromIDListW"); 
@@ -663,6 +682,7 @@ nsToolkit::Startup(HMODULE hModule)
           nsToolkit::mW2KXP_CP936 = PR_TRUE;
         }
       }
+#endif
     }
     nsToolkit::mDllInstance = hModule;
 
@@ -726,15 +746,16 @@ void nsToolkit::CreateInternalWindow(PRThread *aThread)
     //
     // create the internal window
     //
+
     mDispatchWnd = ::CreateWindow("nsToolkitClass",
-                                       "NetscapeDispatchWnd",
-                                       WS_DISABLED,
-                                       -50, -50,
-                                       10, 10,
-                                       NULL,
-                                       NULL,
-                                       nsToolkit::mDllInstance,
-                                       NULL);
+                                  "NetscapeDispatchWnd",
+                                  WS_DISABLED,
+                                  -50, -50,
+                                  10, 10,
+                                  NULL,
+                                  NULL,
+                                  nsToolkit::mDllInstance,
+                                  NULL);
 
     VERIFY(mDispatchWnd);
 }
@@ -785,20 +806,24 @@ NS_METHOD nsToolkit::Init(PRThread *aThread)
     // If no thread is provided create one
     if (NULL != aThread) {
         // Start Active Input Method Manager on this thread
+#ifndef WINCE
         if(nsToolkit::gAIMMApp)
             nsToolkit::gAIMMApp->Activate(TRUE);
+#endif
         CreateInternalWindow(aThread);
     } else {
         // create a thread where the message pump will run
         CreateUIThread();
     }
 
+#ifndef WINCE
     // Hook window move messages so the toolkit can report when
     // the user is moving a top-level window.
     if (nsMsgFilterHook == NULL) {
       nsMsgFilterHook = SetWindowsHookEx(WH_CALLWNDPROC, DetectWindowMove, 
                                                 NULL, GetCurrentThreadId());
     }
+#endif
 
     return NS_OK;
 }
@@ -839,12 +864,13 @@ LRESULT CALLBACK nsToolkit::WindowProc(HWND hWnd, UINT msg, WPARAM wParam,
 
     }
 
+#ifndef WINCE
     if(nsToolkit::gAIMMApp) {
         LRESULT lResult;
         if (nsToolkit::gAIMMApp->OnDefWindowProc(hWnd, msg, wParam, lParam, &lResult) == S_OK)
             return lResult;
     }
-
+#endif
     return nsToolkit::mDefWindowProc(hWnd, msg, wParam, lParam);
 }
 
@@ -899,69 +925,52 @@ NS_METHOD NS_GetCurrentToolkit(nsIToolkit* *aResult)
   return rv;
 }
 
-
+#ifndef WINCE
 //-------------------------------------------------------------------------
 //
 //
 //-------------------------------------------------------------------------
-MouseTrailer * MouseTrailer::GetMouseTrailer(DWORD aThreadID) {
-  if (nsnull == MouseTrailer::theMouseTrailer) {
-    MouseTrailer::theMouseTrailer = new MouseTrailer();
-  }
-  return MouseTrailer::theMouseTrailer;
-
-}
-
-//-------------------------------------------------------------------------
-//
-//
-//-------------------------------------------------------------------------
-nsWindow * MouseTrailer::GetMouseTrailerWindow() {
-  return MouseTrailer::mHoldMouse;
-}
-//-------------------------------------------------------------------------
-//
-//
-//-------------------------------------------------------------------------
-void MouseTrailer::SetMouseTrailerWindow(nsWindow * aNSWin) {
-  MouseTrailer::mHoldMouse = aNSWin;
-}
-
-//-------------------------------------------------------------------------
-//
-//
-//-------------------------------------------------------------------------
-MouseTrailer::MouseTrailer()
+MouseTrailer::MouseTrailer() : mHoldMouseWindow(nsnull), mCaptureWindow(nsnull),
+  mIsInCaptureMode(PR_FALSE), mIgnoreNextCycle(PR_FALSE)
 {
-  mTimerId         = 0;
-  mHoldMouse       = NULL;
 }
-
-
 //-------------------------------------------------------------------------
 //
 //
 //-------------------------------------------------------------------------
 MouseTrailer::~MouseTrailer()
 {
-    DestroyTimer();
-    if (mHoldMouse) {
-        NS_RELEASE(mHoldMouse);
-    }
+  DestroyTimer();
 }
-
-
 //-------------------------------------------------------------------------
 //
 //
 //-------------------------------------------------------------------------
-UINT MouseTrailer::CreateTimer()
+void MouseTrailer::SetMouseTrailerWindow(nsWindow * aNSWin) 
 {
-  if (!mTimerId) {
-    mTimerId = ::SetTimer(NULL, 0, 200, (TIMERPROC)MouseTrailer::TimerProc);
+  if (mHoldMouseWindow != aNSWin && mTimer) {
+    // Make sure TimerProc is fired at least once for the old window
+    TimerProc(nsnull, nsnull);
+  }
+  mHoldMouseWindow = aNSWin;
+  CreateTimer();
+}
+//-------------------------------------------------------------------------
+//
+//
+//-------------------------------------------------------------------------
+nsresult MouseTrailer::CreateTimer()
+{
+  if (mTimer) {
+    return NS_OK;
   } 
 
-  return mTimerId;
+  nsresult rv;
+  mTimer = do_CreateInstance("@mozilla.org/timer;1", &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  return mTimer->InitWithFuncCallback(TimerProc, nsnull, 200,
+                                      nsITimer::TYPE_REPEATING_SLACK);
 }
 
 
@@ -971,11 +980,10 @@ UINT MouseTrailer::CreateTimer()
 //-------------------------------------------------------------------------
 void MouseTrailer::DestroyTimer()
 {
-  if (mTimerId) {
-    ::KillTimer(NULL, mTimerId);
-    mTimerId = 0;
+  if (mTimer) {
+    mTimer->Cancel();
+    mTimer = nsnull;
   }
-
 }
 //-------------------------------------------------------------------------
 //
@@ -988,62 +996,60 @@ void MouseTrailer::SetCaptureWindow(nsWindow * aNSWin)
     mIsInCaptureMode = PR_TRUE;
   }
 }
-
-#define TIMER_DEBUG 1
 //-------------------------------------------------------------------------
 //
 //
 //-------------------------------------------------------------------------
-void CALLBACK MouseTrailer::TimerProc(HWND hWnd, UINT msg, UINT event, DWORD time)
+void MouseTrailer::TimerProc(nsITimer* aTimer, void* aClosure)
 {
   // Check to see if we are in mouse capture mode,
   // Once capture ends we could still get back one more timer event 
   // Capture could end outside our window
   // Also, for some reason when the mouse is on the frame it thinks that
   // it is inside the window that is being captured.
-  if (nsnull != MouseTrailer::mCaptureWindow) {
-    if (MouseTrailer::mCaptureWindow != MouseTrailer::mHoldMouse) {
+  if (nsnull != mSingleton.mCaptureWindow) {
+    if (mSingleton.mCaptureWindow != mSingleton.mHoldMouseWindow) {
       return;
     }
   } else {
-    if (mIsInCaptureMode) {
-      // the mHoldMouse could be bad from rolling over the frame, so clear 
+    if (mSingleton.mIsInCaptureMode) {
+      // The mHoldMouse could be bad from rolling over the frame, so clear 
       // it if we were capturing and now this is the first timer call back 
       // since we canceled the capture
-      MouseTrailer::mHoldMouse = nsnull;
-      mIsInCaptureMode = PR_FALSE;
+      mSingleton.mHoldMouseWindow = nsnull;
+      mSingleton.mIsInCaptureMode = PR_FALSE;
       return;
     }
   }
 
-    if (MouseTrailer::mHoldMouse && ::IsWindow(MouseTrailer::mHoldMouse->GetWindowHandle())) {
-      if (gIgnoreNextCycle) {
-        gIgnoreNextCycle = PR_FALSE;
-      }
-      else {
-        POINT mp;
-        DWORD pos = ::GetMessagePos();
-        mp.x = GET_X_LPARAM(pos);
-        mp.y = GET_Y_LPARAM(pos);
-
-        if (::WindowFromPoint(mp) != mHoldMouse->GetWindowHandle()) {
-            ::ScreenToClient(mHoldMouse->GetWindowHandle(), &mp);
-
-            //notify someone that a mouse exit happened
-            if (nsnull != MouseTrailer::mHoldMouse) {
-              MouseTrailer::mHoldMouse->DispatchMouseEvent(NS_MOUSE_EXIT);
-            }
-  
-            // we are out of this window and of any window, destroy timer
-            MouseTrailer::theMouseTrailer->DestroyTimer();
-            MouseTrailer::mHoldMouse = NULL;
-        }
-      }
-    } else {
-      MouseTrailer::theMouseTrailer->DestroyTimer();
-      MouseTrailer::mHoldMouse = NULL;
+  if (mSingleton.mHoldMouseWindow && ::IsWindow(mSingleton.mHoldMouseWindow->GetWindowHandle())) {
+    if (mSingleton.mIgnoreNextCycle) {
+      mSingleton.mIgnoreNextCycle = PR_FALSE;
     }
+    else {
+      POINT mp;
+      DWORD pos = ::GetMessagePos();
+      mp.x = GET_X_LPARAM(pos);
+      mp.y = GET_Y_LPARAM(pos);
+
+      if (::WindowFromPoint(mp) != mSingleton.mHoldMouseWindow->GetWindowHandle()) {
+          ::ScreenToClient(mSingleton.mHoldMouseWindow->GetWindowHandle(), &mp);
+
+          //notify someone that a mouse exit happened
+          if (nsnull != mSingleton.mHoldMouseWindow) {
+            mSingleton.mHoldMouseWindow->DispatchMouseEvent(NS_MOUSE_EXIT);
+          }
+
+          // we are out of this window and of any window, destroy timer
+          mSingleton.DestroyTimer();
+          mSingleton.mHoldMouseWindow = nsnull;
+      }
+    }
+  } else {
+    mSingleton.DestroyTimer();
+    mSingleton.mHoldMouseWindow = nsnull;
+  }
 }
 
-
+#endif
 

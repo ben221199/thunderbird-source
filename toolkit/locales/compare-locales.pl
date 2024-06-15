@@ -14,9 +14,8 @@
 #
 # The Original Code is libxul build automation.
 #
-# Initial Developer of the Original Code is
+# The Initial Developer of the Original Code is
 # Benjamin Smedberg <bsmedberg@covad.net>
-#
 # Portions created by the Initial Developer are Copyright (C) 2004
 # the Initial Developer. All Rights Reserved.
 #
@@ -106,7 +105,7 @@ sub readProperties
 
     $contents =~ s/\\$$//gm;
 
-    return $contents =~ /^\s*([\w\.]+)\s*[=:]/gm;
+    return $contents =~ /^\s*([^#!\s\r\n][^=:\r\n]*?)\s*[=:]/gm;
 }
 
 sub compareProperties
@@ -122,21 +121,10 @@ sub compareProperties
         if (exists $entities2{$entity}) {
             delete $entities2{$entity};
         } else {
-# hack around xslt.properties, one additional property for 1.0.1
-	  if ($path !~ /global\/layout\/xslt\.properties$/ or
-	      $entity != "27") {
             push @extra1, $entity;
-	  }
         }
     }
 
-# hack around xslt.properties, one additional property for 1.0.1
-    if ($path =~ /global\/layout\/xslt\.properties$/ &&
-	exists $entities2{"27"}) {
-	delete $entities2{"27"};
-    }
-# end hack 1.0.1
-	
     if (@extra1 or keys %entities2) {
         $failure = 1;
         print "Properties in $path don't match:\n";

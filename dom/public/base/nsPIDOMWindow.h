@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,25 +14,24 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
  *
- *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -41,18 +40,20 @@
 #define nsPIDOMWindow_h__
 
 #include "nsISupports.h"
-#include "nsString.h"
 #include "nsIDOMLocation.h"
 #include "nsIDOMXULCommandDispatcher.h"
-#include "nsIDocument.h"
 #include "nsIDOMElement.h"
+#include "nsIDOMWindowInternal.h"
+#include "nsIChromeEventHandler.h"
+#include "nsIDOMDocument.h"
+#include "nsIURI.h"
 #include "nsCOMPtr.h"
 
 // Popup control state enum. The values in this enum must go from most
 // permissive to least permissive so that it's safe to push state in
 // all situations. Pushing popup state onto the stack never makes the
 // current popup state less permissive (see
-// GlobalWindowImpl::PushPopupControlState()).
+// nsGlobalWindow::PushPopupControlState()).
 enum PopupControlState {
   openAllowed = 0,  // open that window without worries
   openControlled,   // it's a popup, but allow it
@@ -70,61 +71,101 @@ enum OpenAllowValue {
 };
 
 class nsIDocShell;
-class nsIDOMWindowInternal;
-class nsIChromeEventHandler;
 class nsIFocusController;
+struct nsTimeout;
 
 #define NS_PIDOMWINDOW_IID \
-{ 0x3aa80781, 0x7e6a, 0x11d3, \
- { 0xbf, 0x87, 0x0, 0x10, 0x5a, 0x1b, 0x6, 0x27 } }
+{ 0x26c9769c, 0xecfc, 0x46b9, \
+ { 0x9f, 0x62, 0x8e, 0x9b, 0x1a, 0x6c, 0x0d, 0x28 } }
 
-class nsPIDOMWindow : public nsISupports
+class nsPIDOMWindow : public nsIDOMWindowInternal
 {
 public:
   NS_DEFINE_STATIC_IID_ACCESSOR(NS_PIDOMWINDOW_IID)
 
-  NS_IMETHOD GetPrivateParent(nsPIDOMWindow** aResult) = 0;
-  NS_IMETHOD GetPrivateRoot(nsIDOMWindowInternal** aResult) = 0;
+  virtual nsPIDOMWindow* GetPrivateRoot() = 0;
 
-  NS_IMETHOD GetObjectProperty(const PRUnichar* aProperty,
-                               nsISupports** aObject) = 0;
+  virtual nsresult GetObjectProperty(const PRUnichar* aProperty,
+                                     nsISupports** aObject) = 0;
 
   // This is private because activate/deactivate events are not part
   // of the DOM spec.
-  NS_IMETHOD Activate() = 0;
-  NS_IMETHOD Deactivate() = 0;
+  virtual nsresult Activate() = 0;
+  virtual nsresult Deactivate() = 0;
 
-  NS_IMETHOD GetChromeEventHandler(nsIChromeEventHandler** aHandler) = 0;
+  nsIChromeEventHandler* GetChromeEventHandler()
+  {  
+    return mChromeEventHandler;
+  }
 
-  NS_IMETHOD HasMutationListeners(PRUint32 aMutationEventType,
-                                  PRBool* aResult) = 0;
-  NS_IMETHOD SetMutationListeners(PRUint32 aType) = 0;
+  PRBool HasMutationListeners(PRUint32 aMutationEventType)
+  {
+    return (mMutationBits & aMutationEventType) != 0;
+  }
 
-  NS_IMETHOD GetRootFocusController(nsIFocusController** aResult) = 0;
+  void SetMutationListeners(PRUint32 aType) { mMutationBits |= aType; }
+
+  virtual nsIFocusController* GetRootFocusController() = 0;
 
   // GetExtantDocument provides a backdoor to the DOM GetDocument accessor
-  NS_IMETHOD GetExtantDocument(nsIDOMDocument** aDocument) = 0;
-
-  NS_IMETHOD ReallyCloseWindow() = 0;
+  nsIDOMDocument* GetExtantDocument() { return mDocument; }
 
   // Internal getter/setter for the frame element, this version of the
   // getter crosses chrome boundaries whereas the public scriptable
   // one doesn't for security reasons.
-  NS_IMETHOD GetFrameElementInternal(nsIDOMElement** aFrameElement) = 0;
-  NS_IMETHOD SetFrameElementInternal(nsIDOMElement* aFrameElement) = 0;
+  nsIDOMElement* GetFrameElementInternal() { return mFrameElement; }
+  void SetFrameElementInternal(nsIDOMElement *aFrameElement)
+  {
+    mFrameElement = aFrameElement;
+  }
 
-  NS_IMETHOD IsLoadingOrRunningTimeout(PRBool* aResult) = 0;
-  NS_IMETHOD IsPopupSpamWindow(PRBool *aResult) = 0;
-  NS_IMETHOD SetPopupSpamWindow(PRBool aPopup) = 0;
+  PRBool IsLoadingOrRunningTimeout() const
+  {
+    return !mIsDocumentLoaded || mRunningTimeout;
+  }
 
-  NS_IMETHOD SetOpenerScriptURL(nsIURI* aURI) = 0;
+  // Check whether a document is currently loading
+  PRBool IsLoading() const
+  {
+    return !mIsDocumentLoaded;
+  }
+
+  PRBool IsHandlingResizeEvent() const
+  {
+    return mIsHandlingResizeEvent;
+  }
+
+  virtual void SetOpenerScriptURL(nsIURI* aURI) = 0;
 
   virtual PopupControlState PushPopupControlState(PopupControlState aState) const = 0;
   virtual void PopPopupControlState(PopupControlState state) const = 0;
   virtual PopupControlState GetPopupControlState() const = 0;
   virtual OpenAllowValue GetOpenAllow(const nsAString &aName) = 0;
 
-  virtual PRBool IsHandlingResizeEvent() const = 0;
+    // Returns an object containing the window's state.  This also suspends
+  // all running timeouts in the window.
+  virtual nsresult SaveWindowState(nsISupports **aState) = 0;
+
+  // Restore the window state from aState.
+  virtual nsresult RestoreWindowState(nsISupports *aState) = 0;
+
+protected:
+  nsPIDOMWindow()
+    : mRunningTimeout(nsnull), mMutationBits(0), mIsDocumentLoaded(PR_FALSE),
+      mIsHandlingResizeEvent(PR_FALSE)
+  {
+  }
+
+  nsCOMPtr<nsIChromeEventHandler> mChromeEventHandler; // strong
+  nsCOMPtr<nsIDOMDocument> mDocument; // strong
+  nsIDOMElement *mFrameElement; // weak
+  nsCOMPtr<nsIURI> mOpenerScriptURL; // strong; used to determine whether to clear scope
+  nsTimeout             *mRunningTimeout;
+
+  PRUint32               mMutationBits;
+
+  PRPackedBool           mIsDocumentLoaded;
+  PRPackedBool           mIsHandlingResizeEvent;
 };
 
 
@@ -134,27 +175,33 @@ PushPopupControlState(PopupControlState aState, PRBool aForce);
 
 void
 PopPopupControlState(PopupControlState aState);
+
+#define NS_AUTO_POPUP_STATE_PUSHER nsAutoPopupStatePusherInternal
+#else
+#define NS_AUTO_POPUP_STATE_PUSHER nsAutoPopupStatePusherExternal
 #endif
 
-// Helper chass that helps with pushing and poping popup control
+// Helper class that helps with pushing and popping popup control
 // state. Note that this class looks different from within code that's
 // part of the layout library than it does in code outside the layout
-// library.
-class nsAutoPopupStatePusher
+// library.  We give the two object layouts different names so the symbols
+// don't conflict, but code should always use the name
+// |nsAutoPopupStatePusher|.
+class NS_AUTO_POPUP_STATE_PUSHER
 {
 public:
 #ifdef _IMPL_NS_LAYOUT
-  nsAutoPopupStatePusher(PopupControlState aState, PRBool aForce = PR_FALSE)
+  NS_AUTO_POPUP_STATE_PUSHER(PopupControlState aState, PRBool aForce = PR_FALSE)
     : mOldState(::PushPopupControlState(aState, aForce))
   {
   }
 
-  ~nsAutoPopupStatePusher()
+  ~NS_AUTO_POPUP_STATE_PUSHER()
   {
     PopPopupControlState(mOldState);
   }
 #else
-  nsAutoPopupStatePusher(nsPIDOMWindow *aWindow, PopupControlState aState)
+  NS_AUTO_POPUP_STATE_PUSHER(nsPIDOMWindow *aWindow, PopupControlState aState)
     : mWindow(aWindow), mOldState(openAbused)
   {
     if (aWindow) {
@@ -162,7 +209,7 @@ public:
     }
   }
 
-  ~nsAutoPopupStatePusher()
+  ~NS_AUTO_POPUP_STATE_PUSHER()
   {
     if (mWindow) {
       mWindow->PopPopupControlState(mOldState);
@@ -181,5 +228,7 @@ private:
   static void* operator new(size_t /*size*/) CPP_THROW_NEW { return nsnull; }
   static void operator delete(void* /*memory*/) {}
 };
+
+#define nsAutoPopupStatePusher NS_AUTO_POPUP_STATE_PUSHER
 
 #endif // nsPIDOMWindow_h__

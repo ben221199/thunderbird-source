@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -27,16 +27,16 @@
  *   Roland Mainz <roland.mainz@informatik.med.uni-giessen.de>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
  * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -204,7 +204,7 @@ NS_IMPL_ISUPPORTS_INHERITED0(nsWindow, nsWidget)
 
 nsWindow::nsWindow() : nsWidget()
 {
-  mName.Assign(NS_LITERAL_STRING("nsWindow"));
+  mName.AssignLiteral("nsWindow");
   mBackground = NS_RGB(255, 255, 255);
   mBackgroundPixel = xxlib_rgb_xpixel_from_rgb(mXlibRgbHandle, mBackground);
   mBorderRGB = NS_RGB(255,255,255);
@@ -602,31 +602,6 @@ NS_IMETHODIMP nsWindow::Update(void)
     }
   } 
 
-  // The view manager also expects us to force our
-  // children to update too!
-
-  nsCOMPtr<nsIEnumerator> children;
-
-  children = dont_AddRef(GetChildren());
-
-  if (children) {
-    nsCOMPtr<nsISupports> isupp;
-
-    nsCOMPtr<nsIWidget> child;
-    while (NS_SUCCEEDED(children->CurrentItem(getter_AddRefs(isupp))) && isupp) {
-
-      child = do_QueryInterface(isupp);
-
-      if (child) {
-        child->Update();
-      }
-
-      if (NS_FAILED(children->Next())) {
-        break;
-      }
-    }
-  }
-
   // While I'd think you should NS_RELEASE(aPaintEvent.widget) here,
   // if you do, it is a NULL pointer.  Not sure where it is getting
   // released.
@@ -695,25 +670,13 @@ NS_IMETHODIMP nsWindow::Scroll(PRInt32 aDx, PRInt32 aDy, nsRect *aClipRect)
 
   //--------
   // Scroll the children
-  nsCOMPtr<nsIEnumerator> children ( getter_AddRefs(GetChildren()) );
-  if (children)
-    {
-      children->First();
-      do
-        {
-          nsISupports* child;
-          if (NS_SUCCEEDED(children->CurrentItem(&child)))
-            {
-              nsWindow *childWindow = NS_STATIC_CAST(nsWindow*, NS_STATIC_CAST(nsIWidget*, child));
-              NS_RELEASE(child);
-
-              nsRect bounds;
-              childWindow->GetRequestedBounds(bounds);
-              childWindow->Move(bounds.x + aDx, bounds.y + aDy);
-              Invalidate(bounds, PR_TRUE);
-            }
-        } while (NS_SUCCEEDED(children->Next()));
-    }
+  for (nsIWidget* kid = mFirstChild; kid; kid = kid->GetNextSibling()) {
+    nsWindow* childWindow = NS_STATIC_CAST(nsWindow*, kid);
+    nsRect bounds;
+    childWindow->GetRequestedBounds(bounds);
+    childWindow->Move(bounds.x + aDx, bounds.y + aDy);
+    Invalidate(bounds, PR_TRUE);
+  }
 
   // If we are obscurred by another window we have to update those areas
   // which were not copied with the XCopyArea function.
@@ -754,7 +717,7 @@ NS_IMETHODIMP nsWindow::ScrollRect(nsRect &aSrcRect, PRInt32 aDx, PRInt32 aDy)
   return Scroll(aDx, aDy, nsnull);
 }
 
-NS_IMETHODIMP nsWindow::SetTitle(const nsString& aTitle)
+NS_IMETHODIMP nsWindow::SetTitle(const nsAString& aTitle)
 {
   if(!mBaseWindow)
     return NS_ERROR_FAILURE;
@@ -771,7 +734,7 @@ NS_IMETHODIMP nsWindow::SetTitle(const nsString& aTitle)
     rv = platformCharsetService->GetCharset(kPlatformCharsetSel_Menu, platformCharset);
   
   if (NS_FAILED(rv))
-    platformCharset.Assign(NS_LITERAL_CSTRING("ISO-8859-1"));
+    platformCharset.AssignLiteral("ISO-8859-1");
 
   /* get the encoder */
   nsCOMPtr<nsICharsetConverterManager> ccm = 
@@ -783,12 +746,14 @@ NS_IMETHODIMP nsWindow::SetTitle(const nsString& aTitle)
 
   /* Estimate out length and allocate the buffer based on a worst-case estimate, then do
      the conversion. */
+  nsAString::const_iterator begin;
+  const PRUnichar *title = aTitle.BeginReading(begin).get();
   PRInt32 len = (PRInt32)aTitle.Length();
-  encoder->GetMaxLength(aTitle.get(), len, &platformLen);
+  encoder->GetMaxLength(title, len, &platformLen);
   if (platformLen) {
     platformText = NS_REINTERPRET_CAST(char*, nsMemory::Alloc(platformLen + sizeof(char)));
     if (platformText) {
-      rv = encoder->Convert(aTitle.get(), &len, platformText, &platformLen);
+      rv = encoder->Convert(title, &len, platformText, &platformLen);
       (platformText)[platformLen] = '\0';  // null terminate. Convert() doesn't do it for us
     }
   } // if valid length
@@ -825,7 +790,7 @@ NS_IMETHODIMP nsWindow::SetTitle(const nsString& aTitle)
 
 ChildWindow::ChildWindow(): nsWindow()
 {
-  mName.Assign(NS_LITERAL_STRING("nsChildWindow"));
+  mName.AssignLiteral("nsChildWindow");
 }
 
 

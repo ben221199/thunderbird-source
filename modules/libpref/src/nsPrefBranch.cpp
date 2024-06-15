@@ -46,11 +46,11 @@
 #include "nsString.h"
 #include "nsReadableUtils.h"
 #include "nsXPIDLString.h"
-#include "nsIScriptSecurityManager.h"
 #include "nsIStringBundle.h"
 #include "prefapi.h"
 #include "prmem.h"
 #include "pldhash.h"
+#include "nsPrefsCID.h"
 
 #include "nsIFileSpec.h"  // this should be removed eventually
 #include "prefapi_private_data.h"
@@ -112,7 +112,8 @@ NS_IMPL_THREADSAFE_RELEASE(nsPrefBranch)
 NS_INTERFACE_MAP_BEGIN(nsPrefBranch)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIPrefBranch)
   NS_INTERFACE_MAP_ENTRY(nsIPrefBranch)
-  NS_INTERFACE_MAP_ENTRY(nsIPrefBranchInternal)
+  NS_INTERFACE_MAP_ENTRY_CONDITIONAL(nsIPrefBranch2, !mIsDefault)
+  NS_INTERFACE_MAP_ENTRY_CONDITIONAL(nsIPrefBranchInternal, !mIsDefault)
   NS_INTERFACE_MAP_ENTRY(nsISecurityPref)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
@@ -313,7 +314,7 @@ NS_IMETHODIMP nsPrefBranch::GetComplexValue(const char *aPrefName, const nsIID &
       return rv;
     
     nsCOMPtr<nsILocalFile> theFile;
-    rv = NS_NewNativeLocalFile(nsCString(), PR_TRUE, getter_AddRefs(theFile));
+    rv = NS_NewNativeLocalFile(EmptyCString(), PR_TRUE, getter_AddRefs(theFile));
     if (NS_FAILED(rv))
       return rv;
     rv = theFile->SetRelativeDescriptor(fromFile, Substring(++keyEnd, strEnd));
@@ -602,7 +603,7 @@ NS_IMETHODIMP nsPrefBranch::GetChildList(const char *aStartingAt, PRUint32 *aCou
 
 
 /*
- *  nsIPrefBranchInternal methods
+ *  nsIPrefBranch2 methods
  */
 
 NS_IMETHODIMP nsPrefBranch::AddObserver(const char *aDomain, nsIObserver *aObserver, PRBool aHoldWeak)
@@ -635,7 +636,8 @@ NS_IMETHODIMP nsPrefBranch::AddObserver(const char *aDomain, nsIObserver *aObser
       nsMemory::Free(pCallback);
       return NS_ERROR_INVALID_ARG;
     }
-    observerRef = do_GetWeakReference(weakRefFactory);
+    nsCOMPtr<nsIWeakReference> tmp = do_GetWeakReference(weakRefFactory);
+    observerRef = tmp;
   } else {
     observerRef = aObserver;
   }
@@ -677,8 +679,10 @@ NS_IMETHODIMP nsPrefBranch::RemoveObserver(const char *aDomain, nsIObserver *aOb
      nsCOMPtr<nsISupports> observerRef;
      if (pCallback->bIsWeakRef) {
        nsCOMPtr<nsISupportsWeakReference> weakRefFactory = do_QueryInterface(aObserver);
-       if (weakRefFactory)
-         observerRef = do_GetWeakReference(aObserver);
+       if (weakRefFactory) {
+         nsCOMPtr<nsIWeakReference> tmp = do_GetWeakReference(aObserver);
+         observerRef = tmp;
+       }
      }
      if (!observerRef)
        observerRef = aObserver;
@@ -731,7 +735,7 @@ PR_STATIC_CALLBACK(nsresult) NotifyObserver(const char *newpref, void *data)
     observer = do_QueryReferent(weakRef);
     if (!observer) {
       // this weak referenced observer went away, remove them from the list
-      nsCOMPtr<nsIPrefBranchInternal> pbi = do_QueryInterface(pData->pBranch);
+      nsCOMPtr<nsIPrefBranch2> pbi = do_QueryInterface(pData->pBranch);
       if (pbi) {
         observer = NS_STATIC_CAST(nsIObserver *, pData->pObserver);
         pbi->RemoveObserver(newpref, observer);
@@ -807,7 +811,7 @@ nsresult nsPrefBranch::GetDefaultFromPropertiesFile(const char *aPrefName, PRUni
 
   // string names are in unicode
   nsAutoString stringId;
-  stringId.AssignWithConversion(aPrefName);
+  stringId.AssignASCII(aPrefName);
 
   return bundle->GetStringFromName(stringId.get(), return_buf);
 }
@@ -840,14 +844,14 @@ nsresult nsPrefBranch::getValidatedPrefName(const char *aPrefName, const char **
     PL_strncmp(fullPref, capabilityPrefix, sizeof(capabilityPrefix)-1) == 0)
   {
     nsresult rv;
-    nsCOMPtr<nsIScriptSecurityManager> secMan = 
-             do_GetService(NS_SCRIPTSECURITYMANAGER_CONTRACTID, &rv);
+    nsCOMPtr<nsIPrefSecurityCheck> secCheck = 
+             do_GetService(NS_GLOBAL_PREF_SECURITY_CHECK, &rv);
 
     if (NS_FAILED(rv))
       return NS_ERROR_FAILURE;
 
     PRBool enabled;
-    rv = secMan->IsCapabilityEnabled("CapabilityPreferencesAccess", &enabled);
+    rv = secCheck->CanAccessSecurityPreferences(&enabled);
     if (NS_FAILED(rv) || !enabled)
       return NS_ERROR_FAILURE;
   }
@@ -994,7 +998,7 @@ NS_IMETHODIMP nsRelativeFilePref::GetFile(nsILocalFile * *aFile)
     NS_ENSURE_ARG_POINTER(aFile);
     *aFile = mFile;
     NS_IF_ADDREF(*aFile);
-    return *aFile ? NS_OK : NS_ERROR_NULL_POINTER;
+    return NS_OK;
 }
 
 NS_IMETHODIMP nsRelativeFilePref::SetFile(nsILocalFile * aFile)

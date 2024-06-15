@@ -1,11 +1,11 @@
 /* -*- Mode: Java; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,24 +14,25 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
+ *   Dan Mosedale <dan.mosedale@oracle.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -71,6 +72,9 @@ pref("mailnews.headers.showUserAgent",       false);
 // is displayed in the message pane or not...
 pref("mailnews.headers.showOrganization",    false);
 
+// mailnews tcp read+write timeout in seconds.
+pref("mailnews.tcptimeout", 60);
+
 // Mail server preferences, pop by default
 pref("mail.server_type",	0); 	// 0 pop, 1 imap,
 					// (Unix only:)
@@ -79,6 +83,9 @@ pref("mail.auth_login", true);
 
 pref("mail.default_drafts", "");    // empty string use default Drafts name;
 pref("mail.default_templates", ""); // empty string use default Templates name
+
+// check all folders for new mail
+pref("mail.check_all_imap_folders_for_new", false);
 
 pref("mail.imap.server_sub_directory",      "");
 pref("mail.imap.max_cached_connections",    10);
@@ -98,7 +105,9 @@ pref("mail.imap.mime_parts_on_demand",      true);
 pref("mail.imap.mime_parts_on_demand_max_depth", 15);
 pref("mail.imap.mime_parts_on_demand_threshold", 30000);
 pref("mail.imap.use_literal_plus",          true);
-pref("mail.thread_without_re",	            true);
+pref("mail.imap.check_deleted_before_expunge", false);
+pref("mail.thread_without_re",	            true);  // if false, only thread by subject if Re:
+pref("mail.strict_threading",               false); // if true, don't thread by suject at all
 pref("mail.leave_on_server",                false);
 pref("mail.default_cc",                     "");
 pref("mail.default_fcc",                    ""); // maibox:URL or Imap://Host/OnLineFolderName
@@ -123,6 +132,7 @@ pref("mail.use_fcc",                        true);
 pref("mail.cc_self",                        false);
 pref("mail.strictly_mime",                  false);
 pref("mail.strictly_mime_headers",          true);
+pref("mail.strictly_mime.parm_folding",     2);  // 0/1 (RFC 2047), 2(RFC 2231)
 pref("mail.label_ascii_only_mail_as_us_ascii", false); 
 pref("mail.file_attach_binary",             false);
 pref("mail.show_headers",                   1); // some
@@ -148,6 +158,8 @@ pref("mail.html_compose",                   true);
 // this will show up in the address picker in the compose window
 // examples: "X-Face" or "Approved,X-No-Archive"
 pref("mail.compose.other.header",	    "");
+pref("mail.compose.autosave", false);
+pref("mail.compose.autosaveinterval", 5); // in minutes
 pref("mail.fcc_folder",                     "");
 pref("mail.encrypt_outgoing_mail",          false);
 pref("mail.crypto_sign_outgoing_mail",      false);
@@ -173,6 +185,8 @@ pref("news.notify.on",                      true);
 pref("news.max_articles",                   500);
 pref("news.mark_old_read",                  false);
 pref("news.show_size_in_lines",             true);
+pref("news.update_unread_on_expand",        true);
+pref("news.get_messages_on_select",         true);
 
 pref("mailnews.wraplength",                 72);
 pref("mail.compose.wrap_to_window_width",   false);
@@ -197,7 +211,6 @@ pref("mailnews.offline_sync_news",         false);
 pref("mailnews.offline_sync_send_unsent",  true);
 pref("mailnews.offline_sync_work_offline", false);   
 pref("mailnews.force_ascii_search",         false);
-pref("mailnews.autolookup_unknown_mime_types",  true);
 
 pref("mailnews.send_default_charset",       "chrome://messenger/locale/messenger.properties");
 pref("mailnews.view_default_charset",       "chrome://messenger/locale/messenger.properties");
@@ -211,7 +224,8 @@ pref("mailnews.language_sensitive_font",    true);
 
 pref("mailnews.quotingPrefs.version",       0);  // used to decide whether to migrate global quoting prefs
 
-pref("mapi.blind-send.enabled",             true);
+// the first time, we'll warn the user about the blind send, and they can disable the warning if they want.
+pref("mapi.blind-send.enabled",             true);  
 
 pref("offline.news.download.unread_only",   true);
 pref("offline.news.download.by_date",       true);
@@ -261,6 +275,37 @@ pref("ldap_2.servers.history.description",						"chrome://messenger/locale/addre
 pref("ldap_2.servers.history.dirType",							2);
 pref("ldap_2.servers.history.isOffline",						false);
 
+// default mapping of addressbook properties to ldap attributes
+pref("ldap_2.servers.default.attrmap.FirstName", "givenname");
+pref("ldap_2.servers.default.attrmap.LastName", "sn,surname");
+pref("ldap_2.servers.default.attrmap.DisplayName", "displayname,cn,commonname");
+pref("ldap_2.servers.default.attrmap.NickName", "xmozillanickname");
+pref("ldap_2.servers.default.attrmap.PrimaryEmail", "mail");
+pref("ldap_2.servers.default.attrmap.SecondEmail", "xmozillasecondemail");
+pref("ldap_2.servers.default.attrmap.WorkPhone", "telephonenumber");
+pref("ldap_2.servers.default.attrmap.HomePhone", "homephone");
+pref("ldap_2.servers.default.attrmap.FaxNumber", "fax,facsimiletelephonenumber");
+pref("ldap_2.servers.default.attrmap.PagerNumber", "pager,pagerphone");
+pref("ldap_2.servers.default.attrmap.CellularNumber", "mobile,cellphone,carphone");
+pref("ldap_2.servers.default.attrmap.WorkAddress", "streetaddress,postofficebox");
+pref("ldap_2.servers.default.attrmap.WorkCity", "l,locality");
+pref("ldap_2.servers.default.attrmap.WorkState", "st,region");
+pref("ldap_2.servers.default.attrmap.WorkZipCode", "zip,postalcode");
+pref("ldap_2.servers.default.attrmap.WorkCountry", "countryname");
+pref("ldap_2.servers.default.attrmap.JobTitle", "title");
+pref("ldap_2.servers.default.attrmap.Department", "department,departmentnumber,ou,orgunit");
+pref("ldap_2.servers.default.attrmap.Company", "company,o");
+pref("ldap_2.servers.default.attrmap._AimScreenName", "nscpaimscreenname");
+pref("ldap_2.servers.default.attrmap.WebPage1", "workurl");
+pref("ldap_2.servers.default.attrmap.WebPage2", "homeurl");
+pref("ldap_2.servers.default.attrmap.BirthYear", "birthyear");
+pref("ldap_2.servers.default.attrmap.Custom1", "custom1");
+pref("ldap_2.servers.default.attrmap.Custom2", "custom2");
+pref("ldap_2.servers.default.attrmap.Custom3", "custom3");
+pref("ldap_2.servers.default.attrmap.Custom4", "custom4");
+pref("ldap_2.servers.default.attrmap.Notes", "notes,description");
+pref("ldap_2.servers.default.attrmap.PreferMailFormat", "xmozillausehtmlmail");
+pref("ldap_2.servers.default.attrmap.LastModifiedDate", "modifytimestamp");
 
 // A position of zero is a special value that indicates the directory is deleted.
 // These entries are provided to keep the (obsolete) Four11 directory and the
@@ -294,6 +339,7 @@ pref("mailnews.start_page.url", "chrome://messenger-region/locale/region.propert
 pref("mailnews.start_page.enabled", true);
 
 pref("mailnews.remember_selected_message", true);
+pref("mailnews.scroll_to_new_message", true);
 
 /* file, print, and stop hidden by default.  
    see http://bugzilla.mozilla.org/show_bug.cgi?id=197729#c3 */
@@ -312,9 +358,15 @@ pref("mail.identity.default.compose_html", true);
 pref("mail.identity.default.valid", true);
 pref("mail.identity.default.fcc",true);
 pref("mail.identity.default.fcc_folder","mailbox://nobody@Local%20Folders/Sent");
+pref("mail.identity.default.autocompleteToMyDomain", false);
+
+// keep these defaults for backwards compatibility and migration
+
+// but .doBcc and .doBccList are the right ones from now on.
 pref("mail.identity.default.bcc_self",false);
 pref("mail.identity.default.bcc_others",false);
 pref("mail.identity.default.bcc_list","");
+
 pref("mail.identity.default.draft_folder","mailbox://nobody@Local%20Folders/Drafts");
 pref("mail.identity.default.stationery_folder","mailbox://nobody@Local%20Folders/Templates");
 pref("mail.identity.default.directoryServer","");
@@ -356,6 +408,7 @@ pref("mail.server.default.valid", true);
 pref("mail.server.default.abbreviate",true);
 pref("mail.server.default.isSecure", false);
 pref("mail.server.default.useSecAuth", false);
+pref("mail.server.default.socketType", 0);
 pref("mail.server.default.override_namespaces", true);
 pref("mail.server.default.deferred_to_account", "");
 
@@ -386,11 +439,14 @@ pref("mail.server.default.use_idle", true);
 // for spam
 pref("mail.server.default.spamLevel",100);  // 0 off, 100 on.  not doing bool since we might have real levels one day.
 pref("mail.server.default.moveOnSpam",false);
+pref("mail.server.default.markAsReadOnSpam",false);
 pref("mail.server.default.moveTargetMode",0); // 0 == "Junk" on server, 1 == specific folder
 pref("mail.server.default.spamActionTargetAccount","");
 pref("mail.server.default.spamActionTargetFolder","");
 pref("mail.server.default.useWhiteList",true);
 pref("mail.server.default.whiteListAbURI","moz-abmdbdirectory://abook.mab");  // the Personal addressbook.
+pref("mail.server.default.useServerFilter", false);
+pref("mail.server.default.serverFilterTrustFlags", 1); // 1 == trust positives, 2 == trust negatives, 3 == trust both
 pref("mail.server.default.purgeSpam",false);
 pref("mail.server.default.purgeSpamInterval",14); // 14 days
 pref("mail.server.default.spamLoggingEnabled",false);
@@ -401,6 +457,8 @@ pref("mail.server.default.manualMarkMode",0); // 0 == "move to junk folder", 1 =
 // this number is divided by 100 before it is used. The classifier can be fine tuned
 // by changing this pref. Typical values are .99, .95, .90, .5, etc. 
 pref("mail.adaptivefilters.junk_threshold", 90); 
+
+pref("mail.autoComplete.highlightNonMatches", true);
 
 // if true, we'll use the password from an incoming server with
 // matching username and domain
@@ -452,6 +510,7 @@ pref("mailnews.nav_crosses_folders", 1); // prompt user when crossing folders
 pref("news.cancel.confirm",true);
 pref("news.cancel.alert_on_success",true);
 pref("mail.SpellCheckBeforeSend",false);
+pref("mail.spellcheck.inline",true);
 pref("mail.warn_on_send_accel_key", true);
 pref("mail.enable_autocomplete",true);
 pref("mailnews.html_domains","");

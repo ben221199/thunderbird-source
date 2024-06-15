@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1999
  * the Initial Developer. All Rights Reserved.
@@ -23,16 +23,16 @@
  *   Pierre Phaneuf <pp@ludusdesign.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -52,7 +52,8 @@
 #include "prmem.h"
 #include "nsNetCID.h"
 #include "nsIIOService.h"
-#include "nsIPref.h"
+#include "nsIPrefService.h"
+#include "nsIPrefBranch.h"
 
 NS_IMPL_ISUPPORTS2(nsAbAutoCompleteSession, nsIAbAutoCompleteSession, nsIAutoCompleteSession)
 
@@ -179,9 +180,9 @@ nsAbAutoCompleteSession::AddToResult(const PRUnichar* pNickNameStr,
       // check this so we do not get a bogus entry "someName <>"
       if (pStr && pStr[0] != 0) {
         nsAutoString aStr(pDisplayNameStr);
-        aStr.Append(NS_LITERAL_STRING(" <"));
+        aStr.AppendLiteral(" <");
         aStr += pStr;
-        aStr.Append(NS_LITERAL_STRING(">"));
+        aStr.AppendLiteral(">");
         fullAddrStr = ToNewUnicode(aStr);
       }
       else
@@ -521,19 +522,8 @@ nsresult nsAbAutoCompleteSession::SearchCards(nsIAbDirectory* directory, nsAbAut
   return NS_OK;
 }
 
-nsresult
-nsAbAutoCompleteSession::NeedToSearchLocalDirectories(nsIPref *aPrefs, PRBool *aNeedToSearch)
-{
-  NS_ENSURE_ARG_POINTER(aPrefs);
-  NS_ENSURE_ARG_POINTER(aNeedToSearch);
-
-  nsresult rv = aPrefs->GetBoolPref("mail.enable_autocomplete", aNeedToSearch);
-  NS_ENSURE_SUCCESS(rv,rv);
-  return NS_OK;
-}
-  
-nsresult
-nsAbAutoCompleteSession::NeedToSearchReplicatedLDAPDirectories(nsIPref *aPrefs, PRBool *aNeedToSearch)
+static nsresult
+NeedToSearchReplicatedLDAPDirectories(nsIPrefBranch *aPrefs, PRBool *aNeedToSearch)
 {
   NS_ENSURE_ARG_POINTER(aPrefs);
   NS_ENSURE_ARG_POINTER(aNeedToSearch);
@@ -556,12 +546,12 @@ nsAbAutoCompleteSession::NeedToSearchReplicatedLDAPDirectories(nsIPref *aPrefs, 
 }
 
 nsresult 
-nsAbAutoCompleteSession::SearchReplicatedLDAPDirectories(nsIPref *aPref, nsAbAutoCompleteSearchString* searchStr, PRBool searchSubDirectory, nsIAutoCompleteResults* results)
+nsAbAutoCompleteSession::SearchReplicatedLDAPDirectories(nsIPrefBranch *aPref, nsAbAutoCompleteSearchString* searchStr, PRBool searchSubDirectory, nsIAutoCompleteResults* results)
 {
   NS_ENSURE_ARG_POINTER(aPref);
 
   nsXPIDLCString prefName;
-  nsresult rv = aPref->CopyCharPref("ldap_2.autoComplete.directoryServer", getter_Copies(prefName));
+  nsresult rv = aPref->GetCharPref("ldap_2.autoComplete.directoryServer", getter_Copies(prefName));
   NS_ENSURE_SUCCESS(rv,rv);
 
   if (prefName.IsEmpty())
@@ -572,7 +562,7 @@ nsAbAutoCompleteSession::SearchReplicatedLDAPDirectories(nsIPref *aPref, nsAbAut
   fileNamePref = prefName + NS_LITERAL_CSTRING(".filename");
 
   nsXPIDLCString fileName;
-  rv = aPref->CopyCharPref(fileNamePref.get(), getter_Copies(fileName));
+  rv = aPref->GetCharPref(fileNamePref.get(), getter_Copies(fileName));
   NS_ENSURE_SUCCESS(rv,rv);
 
   // if there is no fileName, bail out now.
@@ -612,7 +602,7 @@ nsresult nsAbAutoCompleteSession::SearchDirectory(const nsACString& aURI, nsAbAu
     if (!searchDuringLocalAutocomplete)
       return NS_OK;
 
-    if (!aURI.Equals(NS_LITERAL_CSTRING(kAllDirectoryRoot)))
+    if (!aURI.EqualsLiteral(kAllDirectoryRoot))
         rv = SearchCards(directory, searchStr, results);
     
     if (!searchSubDirectory)
@@ -716,10 +706,11 @@ NS_IMETHODIMP nsAbAutoCompleteSession::OnStartLookup(const PRUnichar *uSearchStr
     PRBool enableLocalAutocomplete;
     PRBool enableReplicatedLDAPAutocomplete;
 
-    nsCOMPtr<nsIPref> prefs = do_GetService(NS_PREF_CONTRACTID, &rv); 
+    nsCOMPtr<nsIPrefBranch> prefs(do_GetService(NS_PREFSERVICE_CONTRACTID, &rv));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = NeedToSearchLocalDirectories(prefs, &enableLocalAutocomplete);
+    // check if using autocomplete for local address books
+    rv = prefs->GetBoolPref("mail.enable_autocomplete", &enableLocalAutocomplete);
     NS_ENSURE_SUCCESS(rv,rv);
 
     rv = NeedToSearchReplicatedLDAPDirectories(prefs, &enableReplicatedLDAPAutocomplete);

@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is Mozilla Communicator client code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -28,16 +28,16 @@
  *   Michael Lowe <michael.lowe@bigfoot.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -81,7 +81,7 @@
 #include "nsIMdbFactoryFactory.h"
 
 #include "nsIPrefService.h"
-#include "nsIPrefBranchInternal.h"
+#include "nsIPrefBranch2.h"
 
 #include "nsIObserverService.h"
 #include "nsITextToSubURI.h"
@@ -111,11 +111,6 @@ nsIPrefBranch* nsGlobalHistory::gPrefBranch = nsnull;
 
 #define FIND_BY_AGEINDAYS_PREFIX "find:datasource=history&match=AgeInDays&method="
 
-// see bug #319004 -- clamp title and URL to generously-large but not too large
-// length
-#define HISTORY_URI_LENGTH_MAX 65536
-#define HISTORY_TITLE_LENGTH_MAX 4096
-
 // sync history every 10 seconds
 #define HISTORY_SYNC_TIMEOUT (10 * PR_MSEC_PER_SEC)
 //#define HISTORY_SYNC_TIMEOUT 3000 // every 3 seconds - testing only!
@@ -134,7 +129,7 @@ static NS_DEFINE_CID(kStringBundleServiceCID, NS_STRINGBUNDLESERVICE_CID);
 
 // closure structures for RemoveMatchingRows
 struct matchExpiration_t {
-  PRInt64 *expirationDate;
+  PRTime *expirationDate;
   nsGlobalHistory *history;
 };
 
@@ -207,30 +202,6 @@ struct searchQuery {
   mdb_column groupBy;           // column to group by
 };
 
-static nsresult
-PRInt64ToChars(const PRInt64& aValue, nsACString& aResult)
-{
-  // Convert an unsigned 64-bit value to a string of up to aSize
-  // decimal digits, placed in aBuf.
-  nsInt64 value(aValue);
-
-  aResult.Truncate(0);
-
-  if (value == nsInt64(0)) {
-    aResult.Append('0');
-  }
-
-  while (value != nsInt64(0)) {
-    PRInt32 ones = PRInt32(value % nsInt64(10));
-    value /= nsInt64(10);
-
-    if (ones <=9) 
-      aResult.Insert(char('0' + ones), 0);
-  }
-  
-  return NS_OK;
-}
-
 static PRBool HasCell(nsIMdbEnv *aEnv, nsIMdbRow* aRow, mdb_column aCol)
 {
   mdbYarn yarn;
@@ -244,54 +215,33 @@ static PRBool HasCell(nsIMdbEnv *aEnv, nsIMdbRow* aRow, mdb_column aCol)
   return (yarn.mYarn_Fill != 0);
 }
 
-
-//----------------------------------------------------------------------
-
-static nsresult
-CharsToPRInt64(const char* aBuf, PRUint32 aCount, PRInt64* aResult)
-{
-  // Convert aBuf of exactly aCount decimal characters to a 64-bit
-  // unsigned integer value.
-  nsInt64 result(0);
-
-  while (aCount-- > 0) {
-    PRInt32 digit = (*aBuf++) - '0';
-    result *= nsInt64(10);
-    result += nsInt64(digit);
-  }
-
-  *aResult = result;
-  return NS_OK;
-}
-
-
 PRTime
-nsGlobalHistory::NormalizeTime(PRInt64 aTime)
+nsGlobalHistory::NormalizeTime(PRTime aTime)
 {
   // we can optimize this by converting the time to local time, rounding
   // down to the previous day boundary, and then converting back to UTC.
   // This avoids two costly calls to localtime()
 
   // we calculate (gmtTime - (gmtTime % MSECS_PER_DAY)) - mCachedGMTOffset
-  PRInt64 gmtTime;
+  PRTime gmtTime;
   LL_ADD(gmtTime, aTime, mCachedGMTOffset);
   PRInt64 curDayUSec;
   LL_MOD(curDayUSec, gmtTime, MSECS_PER_DAY);
-  PRInt64 gmtMidnight;
+  PRTime gmtMidnight;
   LL_SUB(gmtMidnight, gmtTime, curDayUSec);
-  PRInt64 localMidnight;
+  PRTime localMidnight;
   LL_SUB(localMidnight, gmtMidnight, mCachedGMTOffset);
   
   return localMidnight;
 }
 
 PRInt32
-nsGlobalHistory::GetAgeInDays(PRInt64 aDate)
+nsGlobalHistory::GetAgeInDays(PRTime aDate)
 {
-  PRInt64 timeNow      = GetNow();
-  PRInt64 dateMidnight = NormalizeTime(aDate);
+  PRTime timeNow      = GetNow();
+  PRTime dateMidnight = NormalizeTime(aDate);
 
-  PRInt64 diff;
+  PRTime diff;
   LL_SUB(diff, timeNow, dateMidnight);
   PRInt64 ageInDays;
   LL_DIV(ageInDays, diff, MSECS_PER_DAY);
@@ -302,7 +252,7 @@ nsGlobalHistory::GetAgeInDays(PRInt64 aDate)
 }
 
 PRBool
-nsGlobalHistory::MatchExpiration(nsIMdbRow *row, PRInt64* expirationDate)
+nsGlobalHistory::MatchExpiration(nsIMdbRow *row, PRTime* expirationDate)
 {
   nsresult rv;
   
@@ -312,7 +262,7 @@ nsGlobalHistory::MatchExpiration(nsIMdbRow *row, PRInt64* expirationDate)
   if (HasCell(mEnv, row, kToken_HiddenColumn) && HasCell(mEnv, row, kToken_TypedColumn))
     return PR_TRUE;
 
-  PRInt64 lastVisitedTime;
+  PRTime lastVisitedTime;
   rv = GetRowValue(row, kToken_LastVisitDateColumn, &lastVisitedTime);
 
   if (NS_FAILED(rv)) 
@@ -341,7 +291,6 @@ matchAgeInDaysCallback(nsIMdbRow *row, void *aClosure)
   
   // XXX convert the property to a column, get the column value
 
-  PRInt64 rowDate;
   mdb_column column;
   mdb_err err = store->StringToToken(env, "LastVisitDate", &column);
   if (err != 0) return PR_FALSE;
@@ -350,7 +299,8 @@ matchAgeInDaysCallback(nsIMdbRow *row, void *aClosure)
   err = row->AliasCellYarn(env, column, &yarn);
   if (err != 0) return PR_FALSE;
   
-  CharsToPRInt64((const char*)yarn.mYarn_Buf, yarn.mYarn_Fill, &rowDate);
+  PRTime rowDate;
+  PR_sscanf((const char*)yarn.mYarn_Buf, "%lld", &rowDate);
 
   PRInt32 days = matchSearchTerm->globalHist->GetAgeInDays(rowDate);
   
@@ -534,10 +484,7 @@ nsGlobalHistory::~nsGlobalHistory()
   NS_IF_RELEASE(mStore);
   
   if (--gRefCnt == 0) {
-    if (gRDFService) {
-      nsServiceManager::ReleaseService(kRDFServiceCID, gRDFService);
-      gRDFService = nsnull;
-    }
+    NS_IF_RELEASE(gRDFService);
 
     NS_IF_RELEASE(kNC_Page);
     NS_IF_RELEASE(kNC_Date);
@@ -592,7 +539,7 @@ NS_IMPL_ISUPPORTS7(nsGlobalHistory,
 
 
 NS_IMETHODIMP
-nsGlobalHistory::AddURI(nsIURI *aURI, PRBool aRedirect, PRBool aTopLevel)
+nsGlobalHistory::AddURI(nsIURI *aURI, PRBool aRedirect, PRBool aTopLevel, nsIURI *aReferrer)
 {
   nsresult rv;
   NS_ENSURE_ARG_POINTER(aURI);
@@ -640,10 +587,13 @@ nsGlobalHistory::AddURI(nsIURI *aURI, PRBool aRedirect, PRBool aTopLevel)
   rv = aURI->GetSpec(URISpec);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  if (URISpec.Length() > HISTORY_URI_LENGTH_MAX)
-     return NS_OK;
+  nsCAutoString referrerSpec;
+  if (aReferrer) {
+    rv = aReferrer->GetSpec(referrerSpec);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
 
-  PRInt64 now = GetNow();
+  PRTime now = GetNow();
 
   // For notifying observers, later...
   nsCOMPtr<nsIRDFResource> url;
@@ -660,9 +610,9 @@ nsGlobalHistory::AddURI(nsIURI *aURI, PRBool aRedirect, PRBool aTopLevel)
   if (NS_SUCCEEDED(rv)) {
 
     // update the database, and get the old info back
-    PRInt64 oldDate;
+    PRTime oldDate;
     PRInt32 oldCount;
-    rv = AddExistingPageToDatabase(row, now, &oldDate, &oldCount);
+    rv = AddExistingPageToDatabase(row, now, referrerSpec.get(), &oldDate, &oldCount);
     NS_ASSERTION(NS_SUCCEEDED(rv), "AddExistingPageToDatabase failed; see bug 88961");
     if (NS_FAILED(rv)) return rv;
     
@@ -691,7 +641,7 @@ nsGlobalHistory::AddURI(nsIURI *aURI, PRBool aRedirect, PRBool aTopLevel)
     
   }
   else {
-    rv = AddNewPageToDatabase(URISpec.get(), now, getter_AddRefs(row));
+    rv = AddNewPageToDatabase(URISpec.get(), now, referrerSpec.get(), getter_AddRefs(row));
     NS_ASSERTION(NS_SUCCEEDED(rv), "AddNewPageToDatabase failed; see bug 88961");
     if (NS_FAILED(rv)) return rv;
     
@@ -746,11 +696,13 @@ nsGlobalHistory::AddURI(nsIURI *aURI, PRBool aRedirect, PRBool aTopLevel)
 
 nsresult
 nsGlobalHistory::AddExistingPageToDatabase(nsIMdbRow *row,
-                                           PRInt64 aDate,
-                                           PRInt64 *aOldDate,
+                                           PRTime aDate,
+                                           const char *aReferrer,
+                                           PRTime *aOldDate,
                                            PRInt32 *aOldCount)
 {
   nsresult rv;
+  nsCAutoString oldReferrer;
   
   // if the page was typed, unhide it now because it's
   // known to be valid
@@ -771,12 +723,20 @@ nsGlobalHistory::AddExistingPageToDatabase(nsIMdbRow *row,
   SetRowValue(row, kToken_LastVisitDateColumn, aDate);
   SetRowValue(row, kToken_VisitCountColumn, (*aOldCount) + 1);
 
+  if (aReferrer && *aReferrer) {
+    rv = GetRowValue(row, kToken_ReferrerColumn, oldReferrer);
+    // No referrer? Now there is!
+    if (NS_FAILED(rv) || oldReferrer.IsEmpty())
+      SetRowValue(row, kToken_ReferrerColumn, aReferrer);
+  }
+
   return NS_OK;
 }
 
 nsresult
 nsGlobalHistory::AddNewPageToDatabase(const char *aURL,
-                                      PRInt64 aDate,
+                                      PRTime aDate,
+                                      const char *aReferrer,
                                       nsIMdbRow **aResult)
 {
   mdb_err err;
@@ -800,6 +760,10 @@ nsGlobalHistory::AddNewPageToDatabase(const char *aURL,
   // Set the date.
   SetRowValue(row, kToken_LastVisitDateColumn, aDate);
   SetRowValue(row, kToken_FirstVisitDateColumn, aDate);
+
+  // Set the referrer if there is one.
+  if (aReferrer && *aReferrer)
+    SetRowValue(row, kToken_ReferrerColumn, aReferrer);
 
   nsCOMPtr<nsIURI> uri;
   NS_NewURI(getter_AddRefs(uri), nsDependentCString(aURL), nsnull, nsnull);
@@ -846,11 +810,11 @@ nsGlobalHistory::RemovePageInternal(const char *aSpec)
 }
 
 nsresult
-nsGlobalHistory::SetRowValue(nsIMdbRow *aRow, mdb_column aCol, const PRInt64& aValue)
+nsGlobalHistory::SetRowValue(nsIMdbRow *aRow, mdb_column aCol, const PRTime& aValue)
 {
   mdb_err err;
   nsCAutoString val;
-  PRInt64ToChars(aValue, val);
+  val.AppendInt(aValue);
 
   mdbYarn yarn = { (void *)val.get(), val.Length(), val.Length(), 0, 0, nsnull };
   
@@ -957,7 +921,9 @@ nsGlobalHistory::GetRowValue(nsIMdbRow *aRow, mdb_column aCol,
 
     // eventually we'll be supporting this in SetRowValue()
   case 1:                       // UTF8
-    aResult.Assign(NS_ConvertUTF8toUCS2((const char*)yarn.mYarn_Buf, yarn.mYarn_Fill));
+    CopyUTF8toUTF16(Substring((const char*)yarn.mYarn_Buf,
+                              (const char*)yarn.mYarn_Buf + yarn.mYarn_Fill),
+                    aResult);
     break;
 
   default:
@@ -987,7 +953,7 @@ nsGlobalHistory::SwapBytes(const PRUnichar *source, PRUnichar *dest,
       
 nsresult
 nsGlobalHistory::GetRowValue(nsIMdbRow *aRow, mdb_column aCol,
-                             PRInt64 *aResult)
+                             PRTime *aResult)
 {
   mdb_err err;
   
@@ -1000,7 +966,9 @@ nsGlobalHistory::GetRowValue(nsIMdbRow *aRow, mdb_column aCol,
   if (!yarn.mYarn_Fill || !yarn.mYarn_Buf)
     return NS_OK;
 
-  return CharsToPRInt64((char *)yarn.mYarn_Buf, yarn.mYarn_Fill, aResult);
+  PR_sscanf((const char*)yarn.mYarn_Buf, "%lld", aResult);
+
+  return NS_OK;
 }
 
 nsresult
@@ -1057,7 +1025,7 @@ nsGlobalHistory::SetPageTitle(nsIURI *aURI, const nsAString& aTitle)
   nsresult rv;
   NS_ENSURE_ARG_POINTER(aURI);
 
-  nsAutoString titleString(StringHead(aTitle, HISTORY_TITLE_LENGTH_MAX));
+  const nsAFlatString& titleString = PromiseFlatString(aTitle);
 
   // skip about: URIs to avoid reading in the db (about:blank, especially)
   PRBool isAbout;
@@ -1349,9 +1317,6 @@ nsGlobalHistory::HidePage(nsIURI *aURI)
   rv = aURI->GetSpec(URISpec);
   NS_ENSURE_SUCCESS(rv, rv);
   
-  if (URISpec.Length() > HISTORY_URI_LENGTH_MAX)
-     return NS_OK;
-
   nsCOMPtr<nsIMdbRow> row;
 
   rv = FindRow(kToken_URLColumn, URISpec.get(), getter_AddRefs(row));
@@ -1359,7 +1324,7 @@ nsGlobalHistory::HidePage(nsIURI *aURI)
   if (NS_FAILED(rv)) {
     // it hasn't been visited yet, but if one ever comes in, we need
     // to hide it when it is visited
-    rv = AddURI(aURI, PR_FALSE, PR_FALSE);
+    rv = AddURI(aURI, PR_FALSE, PR_FALSE, nsnull);
     if (NS_FAILED(rv)) return rv;
     
     rv = FindRow(kToken_URLColumn, URISpec.get(), getter_AddRefs(row));
@@ -1385,13 +1350,10 @@ nsGlobalHistory::MarkPageAsTyped(nsIURI *aURI)
   nsresult rv = aURI->GetSpec(spec);
   if (NS_FAILED(rv)) return rv;
 
-  if (spec.Length() > HISTORY_URI_LENGTH_MAX)
-     return NS_OK;
-
   nsCOMPtr<nsIMdbRow> row;
   rv = FindRow(kToken_URLColumn, spec.get(), getter_AddRefs(row));
   if (NS_FAILED(rv)) {
-    rv = AddNewPageToDatabase(spec.get(), GetNow(), getter_AddRefs(row));
+    rv = AddNewPageToDatabase(spec.get(), GetNow(), nsnull, getter_AddRefs(row));
     NS_ENSURE_SUCCESS(rv, rv);
 
     // We don't know if this is a valid URI yet. Hide it until it finishes
@@ -1526,8 +1488,7 @@ nsGlobalHistory::GetSources(nsIRDFResource* aProperty,
         if (NS_FAILED(rv)) return rv;
 
         nsCAutoString valueStr;
-        rv = PRInt64ToChars(n, valueStr);
-        if (NS_FAILED(rv)) return rv;
+        valueStr.AppendInt(n);
         
         value = (void *)ToNewCString(valueStr);
         if (aProperty == kNC_Date)
@@ -1712,7 +1673,7 @@ nsGlobalHistory::GetTarget(nsIRDFResource* aSource,
     if (aProperty == kNC_Date  ||
         aProperty == kNC_FirstVisitDate) {
       // Last visit date
-      PRInt64 i;
+      PRTime i;
       if (aProperty == kNC_Date)
         rv = GetRowValue(row, kToken_LastVisitDateColumn, &i);
       else
@@ -1744,7 +1705,7 @@ nsGlobalHistory::GetTarget(nsIRDFResource* aSource,
       return CallQueryInterface(visitCountLiteral, aTarget);
     }
     else if (aProperty == kNC_AgeInDays) {
-      PRInt64 lastVisitDate;
+      PRTime lastVisitDate;
       rv = GetRowValue(row, kToken_LastVisitDateColumn, &lastVisitDate);
       if (NS_FAILED(rv)) return rv;
       
@@ -1787,7 +1748,7 @@ nsGlobalHistory::GetTarget(nsIRDFResource* aSource,
         if (NS_FAILED(rv)) return rv;
         
         // assume the url is in UTF8
-        title = NS_ConvertUTF8toUCS2(filename);
+        AppendUTF8toUTF16(filename, title);
       }
       if (NS_FAILED(rv)) return rv;
 
@@ -1866,7 +1827,7 @@ nsGlobalHistory::SetDirty()
 
 // hack to avoid calling PR_Now() too often, as is the case when
 // we're asked the ageindays of many history entries in a row
-PRInt64
+PRTime
 nsGlobalHistory::GetNow()
 {
   if (!mNowValid) {             // not dirty, mLastNow is crufty
@@ -2448,16 +2409,14 @@ nsGlobalHistory::Init()
 
   gPrefBranch->GetIntPref(PREF_BROWSER_HISTORY_EXPIRE_DAYS, &mExpireDays);
   gPrefBranch->GetBoolPref(PREF_AUTOCOMPLETE_ONLY_TYPED, &mAutocompleteOnlyTyped);
-  nsCOMPtr<nsIPrefBranchInternal> pbi = do_QueryInterface(gPrefBranch);
+  nsCOMPtr<nsIPrefBranch2> pbi = do_QueryInterface(gPrefBranch);
   if (pbi) {
     pbi->AddObserver(PREF_AUTOCOMPLETE_ONLY_TYPED, this, PR_FALSE);
     pbi->AddObserver(PREF_BROWSER_HISTORY_EXPIRE_DAYS, this, PR_FALSE);
   }
 
   if (gRefCnt++ == 0) {
-    rv = nsServiceManager::GetService(kRDFServiceCID,
-                                      NS_GET_IID(nsIRDFService),
-                                      (nsISupports**) &gRDFService);
+    rv = CallGetService(kRDFServiceCID, &gRDFService);
 
     NS_ASSERTION(NS_SUCCEEDED(rv), "unable to get RDF service");
     if (NS_FAILED(rv)) return rv;
@@ -2526,11 +2485,8 @@ nsGlobalHistory::OpenDB()
   NS_ENSURE_SUCCESS(rv, rv);
 
   static NS_DEFINE_CID(kMorkCID, NS_MORK_CID);
-  nsCOMPtr<nsIMdbFactoryFactory> factoryfactory;
-  rv = nsComponentManager::CreateInstance(kMorkCID,
-                                          nsnull,
-                                          NS_GET_IID(nsIMdbFactoryFactory),
-                                          getter_AddRefs(factoryfactory));
+  nsCOMPtr<nsIMdbFactoryFactory> factoryfactory =
+      do_CreateInstance(kMorkCID, &rv);
   NS_ENSURE_SUCCESS(rv, rv);
 
   rv = factoryfactory->GetMdbFactory(&gMdbFactory);
@@ -2715,8 +2671,8 @@ nsGlobalHistory::InitByteOrder(PRBool aForce)
   if (!aForce)
     rv = GetByteOrder(getter_Copies(file_byte_order));
   if (aForce || NS_FAILED(rv) ||
-      !(file_byte_order.Equals(NS_LITERAL_CSTRING("BE")) ||
-        file_byte_order.Equals(NS_LITERAL_CSTRING("LE")))) {
+      !(file_byte_order.EqualsLiteral("BE") ||
+        file_byte_order.EqualsLiteral("LE"))) {
     // Byte order is not yet set, or needs to be reset; initialize it.
     mReverseByteOrder = PR_FALSE;
     rv = SaveByteOrder(machine_byte_order.get());
@@ -3321,29 +3277,29 @@ nsGlobalHistory::TokenListToSearchQuery(const nsVoidArray& aTokens,
     // per-term tokens
     const nsASingleFragmentCString& tokenName =
         Substring(token->tokenName, token->tokenName + token->tokenNameLength);
-    if (tokenName.Equals(NS_LITERAL_CSTRING("datasource"))) {
+    if (tokenName.EqualsLiteral("datasource")) {
       datasource = token->tokenValue;
       datasourceLen = token->tokenValueLength;
     }
-    else if (tokenName.Equals(NS_LITERAL_CSTRING("match"))) {
+    else if (tokenName.EqualsLiteral("match")) {
       if (Substring(token->tokenValue, token->tokenValue+token->tokenValueLength).Equals("AgeInDays"))
         matchCallback = matchAgeInDaysCallback;
       
       property = token->tokenValue;
       propertyLen = token->tokenValueLength;
     }
-    else if (tokenName.Equals(NS_LITERAL_CSTRING("method"))) {
+    else if (tokenName.EqualsLiteral("method")) {
       method = token->tokenValue;
       methodLen = token->tokenValueLength;
     }    
-    else if (tokenName.Equals(NS_LITERAL_CSTRING("text"))) {
+    else if (tokenName.EqualsLiteral("text")) {
       text = token->tokenValue;
       textLen = token->tokenValueLength;
     }
     
     // really, we should be storing the group-by as a column number or
     // rdf resource
-    else if (tokenName.Equals(NS_LITERAL_CSTRING("groupby"))) {
+    else if (tokenName.EqualsLiteral("groupby")) {
       mdb_err err;
       err = mStore->QueryToken(mEnv,
                                nsCAutoString(token->tokenValue).get(),
@@ -3412,7 +3368,7 @@ nsGlobalHistory::NotifyFindAssertions(nsIRDFResource *aSource,
   // appropriate assertions
 
   // first pull out the appropriate values
-  PRInt64 lastVisited;
+  PRTime lastVisited;
   GetRowValue(aRow, kToken_LastVisitDateColumn, &lastVisited);
 
   PRInt32 ageInDays = GetAgeInDays(lastVisited);
@@ -3505,7 +3461,7 @@ nsGlobalHistory::NotifyFindUnassertions(nsIRDFResource *aSource,
   NotifyUnassert(kNC_HistoryRoot, kNC_child, aSource);
 
   //    first get age in days
-  PRInt64 lastVisited;
+  PRTime lastVisited;
   GetRowValue(aRow, kToken_LastVisitDateColumn, &lastVisited);
   PRInt32 ageInDays = GetAgeInDays(lastVisited);
   nsCAutoString ageString; ageString.AppendInt(ageInDays);
@@ -3781,7 +3737,7 @@ nsGlobalHistory::GetFindUriPrefix(const searchQuery& aQuery,
     aResult.Append(term->method);
 
     aResult.Append("&text=");
-    aResult.Append(NS_ConvertUCS2toUTF8(term->text));
+    AppendUTF16toUTF8(term->text, aResult);
   }
 
   if (aQuery.groupBy == 0) return;
@@ -3917,7 +3873,9 @@ nsGlobalHistory::RowMatches(nsIMdbRow *aRow,
       PRInt32 yarnLength = yarn.mYarn_Fill;
       nsCAutoString titleStr;
       if (property_column == kToken_NameColumn) {
-        titleStr =  NS_ConvertUCS2toUTF8((const PRUnichar*)yarn.mYarn_Buf, yarnLength);
+        AppendUTF16toUTF8(Substring((const PRUnichar*)yarn.mYarn_Buf,
+                                    (const PRUnichar*)yarn.mYarn_Buf + yarnLength),
+                          titleStr);
         startPtr = titleStr.get();
         yarnLength = titleStr.Length();
       }
@@ -4294,12 +4252,12 @@ nsGlobalHistory::AutoCompleteSearch(const nsAString& aSearchString,
     AutoCompleteSortClosure closure;
     closure.history = this;
     closure.prefixCount = AUTOCOMPLETE_PREFIX_LIST_COUNT;
-    closure.prefixes[0] = NS_STATIC_CAST(nsAFlatString*, &prefixHWStr);
-    closure.prefixes[1] = NS_STATIC_CAST(nsAFlatString*, &prefixHStr);
-    closure.prefixes[2] = NS_STATIC_CAST(nsAFlatString*, &prefixHSWStr);
-    closure.prefixes[3] = NS_STATIC_CAST(nsAFlatString*, &prefixHSStr);
-    closure.prefixes[4] = NS_STATIC_CAST(nsAFlatString*, &prefixFFStr);
-    closure.prefixes[5] = NS_STATIC_CAST(nsAFlatString*, &prefixFStr);
+    closure.prefixes[0] = &prefixHWStr;
+    closure.prefixes[1] = &prefixHStr;
+    closure.prefixes[2] = &prefixHSWStr;
+    closure.prefixes[3] = &prefixHSStr;
+    closure.prefixes[4] = &prefixFFStr;
+    closure.prefixes[5] = &prefixFStr;
 
     // sort it
     NS_QuickSort(items, count, sizeof(nsIAutoCompleteItem*),

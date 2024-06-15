@@ -24,13 +24,13 @@
     </content>
     
     <implementation>
-      <property name="title" onget="return this.getAttribute('title')"
-                             onset="this.setAttribute('title', val);"/>
+      <property name="title" onget="return document.title;"
+                             onset="return document.title = val;"/>
 
       <property name="canAdvance" onget="return this._canAdvance;"
-                                  onset="this._canAdvance=val; this._nextButton.setAttribute('disabled', !val);"/>
+                                  onset="this._canAdvance=val; this._nextButton.disabled = !val;"/>
       <property name="canRewind" onget="return this._canRewind;"
-                                 onset="this._canRewind=val; this._backButton.setAttribute('disabled', !val);"/>
+                                 onset="this._canRewind=val; this._backButton.disabled = !val;"/>
 
       <property name="pageStep" onget="return this._pageStack.length"/>
 
@@ -64,9 +64,19 @@
           if (this.onFirstPage) {
             this.canRewind = false;
             this.setAttribute("firstpage", "true");
+#ifdef XP_UNIX
+#ifndef XP_MACOSX
+            this._backButton.setAttribute('hidden', 'true');
+#endif
+#endif
           } else {
             this.canRewind = true;
             this.setAttribute("firstpage", "false");
+#ifdef XP_UNIX
+#ifndef XP_MACOSX
+            this._backButton.setAttribute('hidden', 'false');
+#endif
+#endif
           }
                     
           if (this.onLastPage) {
@@ -118,7 +128,7 @@
         <body>
         <![CDATA[
           var btns = this.getElementsByAttribute("dlgtype", aDlgType);
-          return btns.length > 0 ? btns[0] : document.getAnonymousElementByAttribute(this._wizardButtons, "dlgtype", aDlgType);
+          return btns.item(0) ? btns[0] : document.getAnonymousElementByAttribute(this._wizardButtons, "dlgtype", aDlgType);
         ]]>
         </body>
       </method>
@@ -184,7 +194,7 @@
         <parameter name="aPageId"/>
         <body><![CDATA[
           var els = this.getElementsByAttribute("pageid", aPageId);
-          return els.length > 0 ? els[0] : null;
+          return els.item(0);
         ]]></body>
       </method>
 
@@ -328,7 +338,15 @@
          var btn = document.getAnonymousElementByAttribute(this._wizardButtons, "dlgtype", aName);
          if (btn) {
            btn.addEventListener("command", this["_"+aName+"Func"], false);
+#ifdef XP_UNIX
+#ifdef XP_MACOSX
+           btn.setAttribute("label", this._bundle.GetStringFromName("button-"+aName+"-mac"));
+#else
+           btn.setAttribute("label", this._bundle.GetStringFromName("button-"+aName+"-unix"));
+#endif
+#else
            btn.setAttribute("label", this._bundle.GetStringFromName("button-"+aName));
+#endif
            this["_"+aName+"Button"] = btn;
          }
          return btn;
@@ -356,12 +374,10 @@
       </method>
 
       <method name="_hitEnter">
+        <parameter name="evt"/>
         <body>
         <![CDATA[
-          // if a button is focused, dispatch its command instead 
-          // of advancing the wizard
-          var focused = document.commandDispatcher.focusedElement;
-          if (!(focused && focused.localName == "button" && focused.hasAttribute("dlgtype")))
+          if (!evt.getPreventDefault())
             this.advance();
         ]]>
         </body>
@@ -395,9 +411,14 @@
     </implementation>
 
     <handlers>
-      <handler event="keypress" keycode="VK_ENTER" action="this._hitEnter()"/>
-      <handler event="keypress" keycode="VK_RETURN" action="this._hitEnter()"/>
-      <handler event="keypress" keycode="VK_ESCAPE" action="this.cancel();"/>
+      <handler event="keypress" keycode="VK_ENTER"
+               group="system" action="this._hitEnter(event)"/>
+      <handler event="keypress" keycode="VK_RETURN"
+               group="system" action="this._hitEnter(event)"/>
+      <handler event="keypress" keycode="VK_ESCAPE" group="system">
+        if (!event.getPreventDefault())
+          this.cancel();
+      </handler>
     </handlers>
   </binding>
 
@@ -478,16 +499,22 @@
         <xul:separator class="wizard-buttons-separator groove"/>
         <xul:hbox class="wizard-buttons-box-2">
           <xul:spacer flex="1"/>
-          <xul:button class="wizard-button" dlgtype="back"/>
+#ifdef XP_UNIX
+          <xul:button class="wizard-button" dlgtype="cancel" icon="cancel"/>
+          <xul:spacer style="width: 24px"/>
+#endif
+          <xul:button class="wizard-button" dlgtype="back" icon="go-back"/>
           <xul:deck class="wizard-next-deck" anonid="WizardButtonDeck">
             <xul:hbox>
               <xul:button class="wizard-button" dlgtype="finish" default="true" flex="1"/> 
             </xul:hbox>
             <xul:hbox>
-              <xul:button class="wizard-button" dlgtype="next" default="true" flex="1"/> 
+              <xul:button class="wizard-button" dlgtype="next" icon="go-forward" default="true" flex="1"/> 
             </xul:hbox>
           </xul:deck>
-          <xul:button class="wizard-button" dlgtype="cancel"/> 
+#ifndef XP_UNIX
+          <xul:button class="wizard-button" dlgtype="cancel" icon="cancel"/> 
+#endif
         </xul:hbox>
       </xul:vbox>
     </content>

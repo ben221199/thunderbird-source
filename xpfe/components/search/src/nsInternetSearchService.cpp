@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 8 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -23,16 +23,16 @@
  *   Robert John Churchill      <rjc@netscape.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -41,6 +41,8 @@
  */
 
 #include "nsInternetSearchService.h"
+#include "nsLocalSearchService.h"
+
 #include "nscore.h"
 #include "nsIEnumerator.h"
 #include "nsIRDFObserver.h"
@@ -82,6 +84,7 @@
 #include "nsUnicharUtils.h"
 #include "nsReadableUtils.h"
 #include "nsIPrefLocalizedString.h"
+#include "nsIGenericFactory.h"
 
 #ifdef	XP_MAC
 #include <Files.h>
@@ -104,12 +107,13 @@
 #define POSTHEADER_PREFIX "Content-type: application/x-www-form-urlencoded\r\nContent-Length: "
 #define POSTHEADER_SUFFIX "\r\n\r\n"
 #define SEARCH_PROPERTIES "chrome://communicator/locale/search/search-panel.properties"
-#ifdef MOZ_PHOENIX
-#define SEARCHCONFIG_PROPERTIES "chrome://browser/content/searchconfig.properties"
+#ifdef MOZ_XUL_APP
+#define SEARCHCONFIG_PROPERTIES "chrome://branding/content/searchconfig.properties"
+#define INTL_PROPERTIES "chrome://global/locale/intl.properties"
 #else
 #define SEARCHCONFIG_PROPERTIES "chrome://navigator/content/searchconfig.properties"
+#define INTL_PROPERTIES "chrome://navigator/locale/navigator.properties"
 #endif
-#define INTL_PROPERTIES "chrome://global/locale/intl.properties"
 
 static NS_DEFINE_CID(kRDFServiceCID,               NS_RDFSERVICE_CID);
 static NS_DEFINE_CID(kRDFContainerCID,             NS_RDFCONTAINER_CID);
@@ -431,14 +435,10 @@ InternetSearchDataSource::InternetSearchDataSource(void)
 {
 	if (gRefCnt++ == 0)
 	{
-		nsresult rv = nsServiceManager::GetService(kRDFServiceCID,
-			NS_GET_IID(nsIRDFService), (nsISupports**) &gRDFService);
-		PR_ASSERT(NS_SUCCEEDED(rv));
+		nsresult rv = CallGetService(kRDFServiceCID, &gRDFService);
+		NS_ASSERTION(NS_SUCCEEDED(rv), "unable to get RDF service");
 
-		rv = nsServiceManager::GetService(kRDFContainerUtilsCID,
-						  NS_GET_IID(nsIRDFContainerUtils),
-						  (nsISupports**) &gRDFC);
-
+		rv = CallGetService(kRDFContainerUtilsCID, &gRDFC);
 		NS_ASSERTION(NS_SUCCEEDED(rv), "unable to get RDF container utils");
 
 		gRDFService->GetResource(NS_LITERAL_CSTRING(kURINC_SearchEngineRoot),
@@ -544,8 +544,8 @@ InternetSearchDataSource::InternetSearchDataSource(void)
 
 		gRDFService->GetLiteral(NS_LITERAL_STRING("true").get(), &kTrueLiteral);
 
-		rv = nsServiceManager::GetService(kPrefCID, NS_GET_IID(nsIPref), getter_AddRefs(prefs));
-		if (NS_SUCCEEDED(rv) && (prefs))
+		prefs = do_GetService(kPrefCID);
+		if (prefs)
 		{
 			prefs->RegisterCallback("browser.search.mode", searchModePrefCallback, this);
 			prefs->GetIntPref("browser.search.mode", &gBrowserSearchMode);
@@ -634,18 +634,12 @@ InternetSearchDataSource::~InternetSearchDataSource (void)
 			prefs = nsnull;
 		}
 
-		if (gRDFC)
-		{
-			nsServiceManager::ReleaseService(kRDFContainerUtilsCID, gRDFC);
-			gRDFC = nsnull;
-		}
+    NS_IF_RELEASE(gRDFC);
 
 		if (gRDFService)
 		{
 			gRDFService->UnregisterDataSource(this);
-
-			nsServiceManager::ReleaseService(kRDFServiceCID, gRDFService);
-			gRDFService = nsnull;
+      NS_RELEASE(gRDFService);
 		}
 	}
 }
@@ -940,8 +934,7 @@ InternetSearchDataSource::Init()
 {
 	nsresult	rv = NS_ERROR_OUT_OF_MEMORY;
 
-	if (NS_FAILED(rv = nsComponentManager::CreateInstance(kRDFInMemoryDataSourceCID,
-		nsnull, NS_GET_IID(nsIRDFDataSource), (void **)&mInner)))
+	if (NS_FAILED(rv = CallCreateInstance(kRDFInMemoryDataSourceCID, &mInner)))
 		return(rv);
 
 	// get localstore, as we'll be using it
@@ -956,7 +949,7 @@ InternetSearchDataSource::Init()
 		return(rv);
 
 	rv = NS_NewLoadGroup(getter_AddRefs(mLoadGroup), nsnull);
-	PR_ASSERT(NS_SUCCEEDED(rv));
+	NS_ASSERTION(NS_SUCCEEDED(rv), "failed to create load group");
 
 	if (!mTimer)
 	{
@@ -1165,15 +1158,15 @@ InternetSearchDataSource::GetTarget(nsIRDFResource *source,
         nsAutoString name;
 
         if (source == kNC_SearchCommand_AddToBookmarks)
-          name = NS_LITERAL_STRING("addtobookmarks");
+          name.AssignLiteral("addtobookmarks");
         else if (source == kNC_SearchCommand_AddQueryToBookmarks)
-          name = NS_LITERAL_STRING("addquerytobookmarks");
+          name.AssignLiteral("addquerytobookmarks");
         else if (source == kNC_SearchCommand_FilterResult)
-          name = NS_LITERAL_STRING("excludeurl");
+          name.AssignLiteral("excludeurl");
         else if (source == kNC_SearchCommand_FilterSite)
-          name = NS_LITERAL_STRING("excludedomain");
+          name.AssignLiteral("excludedomain");
         else if (source == kNC_SearchCommand_ClearFilters)
-          name = NS_LITERAL_STRING("clearfilters");
+          name.AssignLiteral("clearfilters");
 
         rv = bundle->GetStringFromName(name.get(), getter_Copies(valUni));
         if (NS_SUCCEEDED(rv) && valUni && *valUni) {
@@ -1385,9 +1378,8 @@ InternetSearchDataSource::GetTargets(nsIRDFResource *source,
 nsresult
 InternetSearchDataSource::GetCategoryList()
 {
-	nsIRDFDataSource	*ds = nsnull;
-	nsresult rv = nsComponentManager::CreateInstance(kRDFXMLDataSourceCID,
-			nsnull, NS_GET_IID(nsIRDFDataSource), (void**) &ds);
+	nsIRDFDataSource	*ds;
+	nsresult rv = CallCreateInstance(kRDFXMLDataSourceCID, &ds);
 	if (NS_FAILED(rv))	return(rv);
 	if (!ds)		return(NS_ERROR_UNEXPECTED);
 
@@ -2752,14 +2744,14 @@ InternetSearchDataSource::GetInternetSearchURL(const char *searchEngineURI,
 
 	if (NS_FAILED(rv = GetData(dataUni, "search", 0, "method", method)))
 	    return(rv);
-  if (NS_FAILED(rv = GetData(dataUni, "search", 0, "name", name)))
-      return(rv);
+	if (NS_FAILED(rv = GetData(dataUni, "search", 0, "name", name)))
+	    return(rv);
 	if (NS_FAILED(rv = GetInputs(dataUni, name, userVar, text, input, direction, pageNumber, whichButtons)))
 	    return(rv);
 	if (input.IsEmpty())				return(NS_ERROR_UNEXPECTED);
 
 	// we can only handle HTTP GET
-	if (!method.EqualsIgnoreCase("get"))	return(NS_ERROR_UNEXPECTED);
+	if (!method.LowerCaseEqualsLiteral("get"))	return(NS_ERROR_UNEXPECTED);
 	// HTTP Get method support
 	action += NS_LITERAL_STRING("?") + input;
 
@@ -2886,10 +2878,10 @@ InternetSearchDataSource::FindInternetSearchResults(const char *url, PRBool *sea
 		searchURL.AssignWithConversion(url);
 
 		// look for query option which is the string the user is searching for
-		nsAutoString	userVar, inputUnused, engineNameStr;
+ 		nsAutoString	userVar, inputUnused, engineNameStr;
   	GetData(dataUni, "search", 0, "name", engineNameStr);
 
-    if (NS_FAILED(rv = GetInputs(dataUni, engineNameStr, userVar, nsAutoString(), inputUnused, 0, 0, 0)))  return(rv);
+    if (NS_FAILED(rv = GetInputs(dataUni, engineNameStr, userVar, EmptyString(), inputUnused, 0, 0, 0)))  return(rv);
 		if (userVar.IsEmpty())	return(NS_RDF_NO_VALUE);
 
 		nsAutoString	queryStr;
@@ -3014,7 +3006,7 @@ InternetSearchDataSource::FindInternetSearchResults(const char *url, PRBool *sea
 		ClearResults(PR_FALSE);
 
 		// do the search
-		DoSearch(nsnull, engine, searchURL, nsAutoString());
+		DoSearch(nsnull, engine, searchURL, EmptyString());
 
 		*searchInProgress = PR_TRUE;
 	}
@@ -3279,7 +3271,7 @@ InternetSearchDataSource::BeginSearchRequest(nsIRDFResource *source, PRBool doNe
 		
 		if (!attrib.IsEmpty() && !value.IsEmpty())
 		{
-			if (attrib.EqualsIgnoreCase("engine"))
+			if (attrib.LowerCaseEqualsLiteral("engine"))
 			{
 				if ((value.Find(kEngineProtocol) == 0) ||
 					(value.Find(kURINC_SearchCategoryEnginePrefix) == 0))
@@ -3291,7 +3283,7 @@ InternetSearchDataSource::BeginSearchRequest(nsIRDFResource *source, PRBool doNe
 					}
 				}
 			}
-			else if (attrib.EqualsIgnoreCase("text"))
+			else if (attrib.LowerCaseEqualsLiteral("text"))
 			{
 				text = value;
 			}
@@ -3341,7 +3333,7 @@ InternetSearchDataSource::BeginSearchRequest(nsIRDFResource *source, PRBool doNe
 
     if (doNetworkRequest)
 		{
-			DoSearch(source, engine, nsAutoString(), text);
+			DoSearch(source, engine, EmptyString(), text);
 			requestInitiated = PR_TRUE;
 		}
 	}
@@ -3597,14 +3589,14 @@ InternetSearchDataSource::updateDataHintsInGraph(nsIRDFResource *engine, const P
 			// if we have a ".hqx" extension, strip it off
 			nsAutoString	extension;
 			updateStr.Right(extension, 4);
-			if (extension.EqualsIgnoreCase(".hqx"))
+			if (extension.LowerCaseEqualsLiteral(".hqx"))
 			{
 				updateStr.Truncate(updateStr.Length() - 4);
 			}
 
 			// now, either way, ensure that we have a ".src" file
 			updateStr.Right(extension, 4);
-      if (!extension.EqualsIgnoreCase(".src"))
+      if (!extension.LowerCaseEqualsLiteral(".src"))
 			{
 				// and if we don't, toss it
 				updateStr.Truncate();
@@ -3757,9 +3749,9 @@ InternetSearchDataSource::MapEncoding(const nsString &numericEncoding,
   if (!numericEncoding.IsEmpty())	{
     for (PRUint32 i = 0; encodingList[i].numericEncoding != nsnull; i++)
     {
-      if (numericEncoding.EqualsWithConversion(encodingList[i].numericEncoding)) 
+      if (numericEncoding.EqualsASCII(encodingList[i].numericEncoding)) 
       {
-        stringEncoding.AssignWithConversion(encodingList[i].stringEncoding);
+        stringEncoding.AssignASCII(encodingList[i].stringEncoding);
         return NS_OK;
       }
     }
@@ -3775,7 +3767,7 @@ InternetSearchDataSource::MapEncoding(const nsString &numericEncoding,
     stringEncoding = defCharset;
   else
     // make "ISO-8859-1" as the default (not "UTF-8")
-    stringEncoding.Assign(NS_LITERAL_STRING("ISO-8859-1"));
+    stringEncoding.AssignLiteral("ISO-8859-1");
 
   return(NS_OK);
 }
@@ -3956,7 +3948,7 @@ InternetSearchDataSource::DoSearch(nsIRDFResource *source, nsIRDFResource *engin
 	if (!fullURL.IsEmpty())
 	{
 		action.Assign(fullURL);
-		methodStr.Assign(NS_LITERAL_STRING("get"));
+		methodStr.AssignLiteral("get");
 	}
 	else
 	{
@@ -4027,7 +4019,7 @@ InternetSearchDataSource::DoSearch(nsIRDFResource *source, nsIRDFResource *engin
 		}
 	}
 
-	if (fullURL.IsEmpty() && methodStr.EqualsIgnoreCase("get"))
+	if (fullURL.IsEmpty() && methodStr.LowerCaseEqualsLiteral("get"))
 	{
     nsAutoString engineNameStr;
   	GetData(dataUni, "search", 0, "name", engineNameStr);
@@ -4064,7 +4056,7 @@ InternetSearchDataSource::DoSearch(nsIRDFResource *source, nsIRDFResource *engin
 			// get it just from the cache if we can (do not validate)
 			channel->SetLoadFlags(nsIRequest::LOAD_FROM_CACHE);
 
-			if (methodStr.EqualsIgnoreCase("post"))
+			if (methodStr.LowerCaseEqualsLiteral("post"))
 			{
 				nsCOMPtr<nsIHttpChannel> httpChannel (do_QueryInterface(channel));
 				if (httpChannel)
@@ -4073,9 +4065,9 @@ InternetSearchDataSource::DoSearch(nsIRDFResource *source, nsIRDFResource *engin
 				    
 				    // construct post data to send
 				    nsAutoString	postStr;
-				    postStr.AssignWithConversion(POSTHEADER_PREFIX);
+				    postStr.AssignASCII(POSTHEADER_PREFIX);
 				    postStr.AppendInt(input.Length(), 10);
-				    postStr.AppendWithConversion(POSTHEADER_SUFFIX);
+				    postStr.AppendASCII(POSTHEADER_SUFFIX);
 				    postStr += input;
 				    
 				    nsCOMPtr<nsIInputStream>	postDataStream;
@@ -4180,7 +4172,7 @@ InternetSearchDataSource::SaveEngineInfoIntoGraph(nsIFile *file, nsIFile *icon,
 	if ((extensionOffset = basename.RFindChar(PRUnichar('.'))) > 0)
 	{
 		basename.Truncate(extensionOffset);
-		basename.Append(NS_LITERAL_STRING(".src"));
+		basename.AppendLiteral(".src");
 	}
 
   nsCAutoString filePath;
@@ -4188,25 +4180,25 @@ InternetSearchDataSource::SaveEngineInfoIntoGraph(nsIFile *file, nsIFile *icon,
   if (NS_FAILED(rv)) return rv;
   
 	nsAutoString	searchURL;
-	searchURL.AssignWithConversion(kEngineProtocol);
+	searchURL.AssignASCII(kEngineProtocol);
 	char		*uriCescaped = nsEscape(filePath.get(), url_Path);
 	if (!uriCescaped)	return(NS_ERROR_NULL_POINTER);
-	searchURL.AppendWithConversion(uriCescaped);
+	searchURL.AppendASCII(uriCescaped);
 	nsCRT::free(uriCescaped);
 
 	if ((extensionOffset = searchURL.RFindChar(PRUnichar('.'))) > 0)
 	{
 		searchURL.Truncate(extensionOffset);
-		searchURL.Append(NS_LITERAL_STRING(".src"));
+		searchURL.AppendLiteral(".src");
 	}
 
 	if (NS_FAILED(rv = gRDFService->GetUnicodeResource(searchURL,
 		getter_AddRefs(searchRes))))	return(rv);
 
 	// save the basename reference
-	if (basename.Length() > 0)
+	if (!basename.IsEmpty())
 	{
-		basename.InsertWithConversion(kURINC_SearchCategoryEngineBasenamePrefix, 0);
+		basename.Insert(NS_ConvertASCIItoUTF16(kURINC_SearchCategoryEngineBasenamePrefix), 0);
 
 		if (NS_FAILED(rv = gRDFService->GetUnicodeResource(basename,
 			getter_AddRefs(categoryRes))))	return(rv);
@@ -4231,7 +4223,7 @@ InternetSearchDataSource::SaveEngineInfoIntoGraph(nsIFile *file, nsIFile *icon,
 		nsCAutoString iconFileURL;
 		if (NS_FAILED(rv = NS_GetURLSpecFromFile(icon, iconFileURL)))
 			return(rv);
-		iconURL = NS_ConvertUTF8toUCS2(iconFileURL);
+		AppendUTF8toUTF16(iconFileURL, iconURL);
 	}
 #ifdef XP_MAC
 	else if (file)
@@ -4239,8 +4231,8 @@ InternetSearchDataSource::SaveEngineInfoIntoGraph(nsIFile *file, nsIFile *icon,
 		nsCAutoString  fileURL;
 		if (NS_FAILED(rv = NS_GetURLSpecFromFile(file,fileURL)))
 			return(rv);
-		iconURL.Assign(NS_LITERAL_STRING("moz-icon:"));
-		iconURL.Append(NS_ConvertUTF8toUCS2(fileURL));
+		iconURL.AssignLiteral("moz-icon:");
+		AppendUTF8toUTF16(fileURL, iconURL);
 	}
 #endif
 
@@ -4289,7 +4281,7 @@ InternetSearchDataSource::SaveEngineInfoIntoGraph(nsIFile *file, nsIFile *icon,
 			if (catURI)
 			{
 				nsAutoString	catList;
-				catList.AssignWithConversion(kURINC_SearchCategoryPrefix);
+				catList.AssignASCII(kURINC_SearchCategoryPrefix);
 				catList.AppendWithConversion(catURI);
 				gRDFService->GetUnicodeResource(catList, getter_AddRefs(catRes));
 			}
@@ -4297,10 +4289,7 @@ InternetSearchDataSource::SaveEngineInfoIntoGraph(nsIFile *file, nsIFile *icon,
 			nsCOMPtr<nsIRDFContainer> container;
 			if (catRes)
 			{
-				rv = nsComponentManager::CreateInstance(kRDFContainerCID,
-									nsnull,
-									NS_GET_IID(nsIRDFContainer),
-									getter_AddRefs(container));
+				container = do_CreateInstance(kRDFContainerCID, &rv);
 			}
 			if (container)
 			{
@@ -4420,7 +4409,7 @@ InternetSearchDataSource::GetSearchEngineList(nsIFile *searchDir,
 
 		// check the extension (must be ".src")
 		nsAutoString	extension;
-		if ((uri.Right(extension, 4) != 4) || (!extension.EqualsIgnoreCase(".src")))
+		if ((uri.Right(extension, 4) != 4) || (!extension.LowerCaseEqualsLiteral(".src")))
 		{
 			continue;
 		}
@@ -4572,7 +4561,7 @@ InternetSearchDataSource::GetData(const PRUnichar *dataUni, const char *sectionT
 	PRBool		inSection = PR_FALSE;
 
 	nsAutoString	section;
-	section.Assign(NS_LITERAL_STRING("<"));
+	section.AssignLiteral("<");
 	section.AppendWithConversion(sectionToFind);
 
 	while(!buffer.IsEmpty())
@@ -4815,10 +4804,10 @@ InternetSearchDataSource::GetInputs(const PRUnichar *dataUni, nsString &engineNa
 			{
 				if (!input.IsEmpty())
 				{
-					input.Append(NS_LITERAL_STRING("&"));
+					input.AppendLiteral("&");
 				}
 				input += nameAttrib;
-        input.Append(NS_LITERAL_STRING("="));
+        input.AppendLiteral("=");
         if (!inDirInput)
 				input += valueAttrib;
         else
@@ -5472,7 +5461,7 @@ InternetSearchDataSource::ParseHTML(nsIURI *aURL, nsIRDFResource *mParent,
 	aURL->GetPath(serverPath);
 	if (!serverPath.IsEmpty())
 	{
-        serverPathStr = NS_ConvertUTF8toUCS2(serverPath);
+        AppendUTF8toUTF16(serverPath, serverPathStr);
         serverPath.Truncate();
 
 		PRInt32 serverOptionsOffset = serverPathStr.FindChar(PRUnichar('?'));
@@ -5516,7 +5505,7 @@ InternetSearchDataSource::ParseHTML(nsIURI *aURL, nsIRDFResource *mParent,
 		nsAutoString	nameStartStr, nameEndStr;
 		nsAutoString	emailStartStr, emailEndStr;
 		nsAutoString	browserResultTypeStr;
-		browserResultTypeStr.Assign(NS_LITERAL_STRING("result"));		// default to "result"
+		browserResultTypeStr.AssignLiteral("result");		// default to "result"
 
 		// use a nsDependentString so that "htmlPage" data isn't copied
 		nsDependentString  htmlResults(htmlPage, htmlPageSize);
@@ -5533,7 +5522,7 @@ InternetSearchDataSource::ParseHTML(nsIURI *aURL, nsIRDFResource *mParent,
 			GetData(dataUni, "interpret", interpretSectionNum, "bannerStart", bannerStartStr);
 			GetData(dataUni, "interpret", interpretSectionNum, "bannerEnd", bannerEndStr);
 			GetData(dataUni, "interpret", interpretSectionNum, "skiplocal", skiplocalStr);
-			skipLocalFlag = (skiplocalStr.EqualsIgnoreCase("true")) ? PR_TRUE : PR_FALSE;
+			skipLocalFlag = (skiplocalStr.LowerCaseEqualsLiteral("true")) ? PR_TRUE : PR_FALSE;
 
 			// shopping channel support
 			GetData(dataUni, "interpret", interpretSectionNum, "priceStart", priceStartStr);
@@ -5555,7 +5544,7 @@ InternetSearchDataSource::ParseHTML(nsIURI *aURL, nsIRDFResource *mParent,
 			GetData(dataUni, "interpret", interpretSectionNum, "browserResultType", browserResultTypeStr);
 			if (browserResultTypeStr.IsEmpty())
 			{
-				browserResultTypeStr.Assign(NS_LITERAL_STRING("result"));	// default to "result"
+				browserResultTypeStr.AssignLiteral("result");	// default to "result"
 			}
 		}
 
@@ -5621,7 +5610,7 @@ InternetSearchDataSource::ParseHTML(nsIURI *aURL, nsIRDFResource *mParent,
 		// if resultItemStartStr is not specified, try making it just be "HREF="
 		if (resultItemStartStr.IsEmpty())
 		{
-			resultItemStartStr.Assign(NS_LITERAL_STRING("HREF="));
+			resultItemStartStr.AssignLiteral("HREF=");
 			trimItemStart = PR_FALSE;
 		}
 
@@ -5780,10 +5769,6 @@ InternetSearchDataSource::ParseHTML(nsIURI *aURL, nsIRDFResource *mParent,
 
 			nsCOMPtr<nsIRDFResource>	res;
 
-// #define	OLDWAY
-#ifdef	OLDWAY
-			rv = gRDFService->GetResource(nsCAutoString(hrefStr), getter_AddRefs(res));
-#else		
 			// save HREF attribute as URL
 			if (NS_SUCCEEDED(rv = gRDFService->GetAnonymousResource(getter_AddRefs(res))))
 			{
@@ -5797,7 +5782,7 @@ InternetSearchDataSource::ParseHTML(nsIURI *aURL, nsIRDFResource *mParent,
 					}
 				}
 			}
-	#endif
+
 			if (NS_FAILED(rv))	continue;
 			
 			// set HTML response chunk
@@ -5898,9 +5883,6 @@ InternetSearchDataSource::ParseHTML(nsIURI *aURL, nsIRDFResource *mParent,
 
 			// look for Name (if it isn't already set)
 			nsCOMPtr<nsIRDFNode>		oldNameRes = nsnull;
-#ifdef	OLDWAY
-			mInner->GetTarget(res, kNC_Name, PR_TRUE, getter_AddRefs(oldNameRes));
-#endif
 			if (!oldNameRes)
 			{
 				if (!nameStr.IsEmpty())
@@ -6054,9 +6036,6 @@ InternetSearchDataSource::ParseHTML(nsIURI *aURL, nsIRDFResource *mParent,
 
 			// look for Relevance (if it isn't already set)
 			nsCOMPtr<nsIRDFNode>		oldRelRes = nsnull;
-#ifdef	OLDWAY
-			mInner->GetTarget(res, kNC_Relevance, PR_TRUE, getter_AddRefs(oldRelRes));
-#endif
 			if (!oldRelRes)
 			{
 				if (!relItem.IsEmpty())
@@ -6099,7 +6078,7 @@ InternetSearchDataSource::ParseHTML(nsIURI *aURL, nsIRDFResource *mParent,
 				}
 				if (relItem.IsEmpty())
 				{
-					relItem.Assign(NS_LITERAL_STRING("-"));
+					relItem.AssignLiteral("-");
 				}
 
 				const PRUnichar *relItemUni = relItem.get();
@@ -6112,7 +6091,7 @@ InternetSearchDataSource::ParseHTML(nsIURI *aURL, nsIRDFResource *mParent,
 					}
 				}
 
-				if ((!relItem.IsEmpty()) && (!relItem.Equals(NS_LITERAL_STRING("-"))))
+				if ((!relItem.IsEmpty()) && (!relItem.EqualsLiteral("-")))
 				{
 					// If its a percentage, remove "%"
 					if (relItem[relItem.Length()-1] == PRUnichar('%'))
@@ -6122,7 +6101,7 @@ InternetSearchDataSource::ParseHTML(nsIURI *aURL, nsIRDFResource *mParent,
 
 					// left-pad with "0"s and set special sorting value
 					nsAutoString	zero;
-					zero.Assign(NS_LITERAL_STRING("000"));
+					zero.AssignLiteral("000");
 					if (relItem.Length() < 3)
 					{
 						relItem.Insert(zero.get(), 0, zero.Length() - relItem.Length()); 
@@ -6130,7 +6109,7 @@ InternetSearchDataSource::ParseHTML(nsIURI *aURL, nsIRDFResource *mParent,
 				}
 				else
 				{
-					relItem.Assign(NS_LITERAL_STRING("000"));
+					relItem.AssignLiteral("000");
 				}
 
 				const PRUnichar	*relSortUni = relItem.get();
@@ -6149,9 +6128,6 @@ InternetSearchDataSource::ParseHTML(nsIURI *aURL, nsIRDFResource *mParent,
 
 			// set reference to engine this came from (if it isn't already set)
 			nsCOMPtr<nsIRDFNode>		oldEngineRes = nsnull;
-#ifdef	OLDWAY
-			mInner->GetTarget(res, kNC_Engine, PR_TRUE, getter_AddRefs(oldEngineRes));
-#endif
 			if (!oldEngineRes)
 			{
 				if (!engineStr.IsEmpty())
@@ -6175,10 +6151,10 @@ InternetSearchDataSource::ParseHTML(nsIURI *aURL, nsIRDFResource *mParent,
 			// if no branding icon, use some default icons
 			nsAutoString	iconChromeDefault;
 
-			if (browserResultTypeStr.EqualsIgnoreCase("category"))
-				iconChromeDefault.Assign(NS_LITERAL_STRING("chrome://communicator/skin/search/category.gif"));
-			else if ((browserResultTypeStr.EqualsIgnoreCase("result")) && (!engineIconNode))
-				iconChromeDefault.Assign(NS_LITERAL_STRING("chrome://communicator/skin/search/result.gif"));
+			if (browserResultTypeStr.LowerCaseEqualsLiteral("category"))
+				iconChromeDefault.AssignLiteral("chrome://communicator/skin/search/category.gif");
+			else if ((browserResultTypeStr.LowerCaseEqualsLiteral("result")) && (!engineIconNode))
+				iconChromeDefault.AssignLiteral("chrome://communicator/skin/search/result.gif");
 
 			if (!iconChromeDefault.IsEmpty())
 			{
@@ -6329,106 +6305,106 @@ InternetSearchDataSource::ConvertEntities(nsString &nameStr, PRBool removeHTMLFl
 		nameStr.Cut(ampOffset, semiOffset-ampOffset+1);
 
 		PRUnichar	entityChar = 0;
-		if (entityStr.EqualsIgnoreCase("&quot;"))	entityChar = PRUnichar('\"');
-		else if (entityStr.EqualsIgnoreCase("&amp;"))	entityChar = PRUnichar('&');
-		else if (entityStr.EqualsIgnoreCase("&nbsp;"))	entityChar = PRUnichar(' ');
-		else if (entityStr.EqualsIgnoreCase("&lt;"))		entityChar = PRUnichar('<');
-		else if (entityStr.EqualsIgnoreCase("&gt;"))		entityChar = PRUnichar('>');
-		else if (entityStr.EqualsIgnoreCase("&iexcl;"))	entityChar = PRUnichar(161);
-		else if (entityStr.EqualsIgnoreCase("&cent;"))	entityChar = PRUnichar(162);
-		else if (entityStr.EqualsIgnoreCase("&pound;"))	entityChar = PRUnichar(163);
-		else if (entityStr.EqualsIgnoreCase("&curren;"))	entityChar = PRUnichar(164);
-		else if (entityStr.EqualsIgnoreCase("&yen;"))	entityChar = PRUnichar(165);
-		else if (entityStr.EqualsIgnoreCase("&brvbar;"))	entityChar = PRUnichar(166);
-		else if (entityStr.EqualsIgnoreCase("&sect;"))	entityChar = PRUnichar(167);
-		else if (entityStr.EqualsIgnoreCase("&uml;"))	entityChar = PRUnichar(168);
-		else if (entityStr.EqualsIgnoreCase("&copy;"))	entityChar = PRUnichar(169);
-		else if (entityStr.EqualsIgnoreCase("&ordf;"))	entityChar = PRUnichar(170);
-		else if (entityStr.EqualsIgnoreCase("&laquo;"))	entityChar = PRUnichar(171);
-		else if (entityStr.EqualsIgnoreCase("&not;"))	entityChar = PRUnichar(172);
-		else if (entityStr.EqualsIgnoreCase("&shy;"))	entityChar = PRUnichar(173);
-		else if (entityStr.EqualsIgnoreCase("&reg;"))	entityChar = PRUnichar(174);
-		else if (entityStr.EqualsIgnoreCase("&macr;"))	entityChar = PRUnichar(175);
-		else if (entityStr.EqualsIgnoreCase("&deg;"))	entityChar = PRUnichar(176);
-		else if (entityStr.EqualsIgnoreCase("&plusmn;"))	entityChar = PRUnichar(177);
-		else if (entityStr.EqualsIgnoreCase("&sup2;"))	entityChar = PRUnichar(178);
-		else if (entityStr.EqualsIgnoreCase("&sup3;"))	entityChar = PRUnichar(179);
-		else if (entityStr.EqualsIgnoreCase("&acute;"))	entityChar = PRUnichar(180);
-		else if (entityStr.EqualsIgnoreCase("&micro;"))	entityChar = PRUnichar(181);
-		else if (entityStr.EqualsIgnoreCase("&para;"))	entityChar = PRUnichar(182);
-		else if (entityStr.EqualsIgnoreCase("&middot;"))	entityChar = PRUnichar(183);
-		else if (entityStr.EqualsIgnoreCase("&cedil;"))	entityChar = PRUnichar(184);
-		else if (entityStr.EqualsIgnoreCase("&sup1;"))	entityChar = PRUnichar(185);
-		else if (entityStr.EqualsIgnoreCase("&ordm;"))	entityChar = PRUnichar(186);
-		else if (entityStr.EqualsIgnoreCase("&raquo;"))	entityChar = PRUnichar(187);
-		else if (entityStr.EqualsIgnoreCase("&frac14;"))	entityChar = PRUnichar(188);
-		else if (entityStr.EqualsIgnoreCase("&frac12;"))	entityChar = PRUnichar(189);
-		else if (entityStr.EqualsIgnoreCase("&frac34;"))	entityChar = PRUnichar(190);
-		else if (entityStr.EqualsIgnoreCase("&iquest;"))	entityChar = PRUnichar(191);
-		else if (entityStr.EqualsIgnoreCase("&Agrave;"))	entityChar = PRUnichar(192);
-		else if (entityStr.EqualsIgnoreCase("&Aacute;"))	entityChar = PRUnichar(193);
-		else if (entityStr.EqualsIgnoreCase("&Acirc;"))	entityChar = PRUnichar(194);
-		else if (entityStr.EqualsIgnoreCase("&Atilde;"))	entityChar = PRUnichar(195);
-		else if (entityStr.EqualsIgnoreCase("&Auml;"))	entityChar = PRUnichar(196);
-		else if (entityStr.EqualsIgnoreCase("&Aring;"))	entityChar = PRUnichar(197);
-		else if (entityStr.EqualsIgnoreCase("&AElig;"))	entityChar = PRUnichar(198);
-		else if (entityStr.EqualsIgnoreCase("&Ccedil;"))	entityChar = PRUnichar(199);
-		else if (entityStr.EqualsIgnoreCase("&Egrave;"))	entityChar = PRUnichar(200);
-		else if (entityStr.EqualsIgnoreCase("&Eacute;"))	entityChar = PRUnichar(201);
-		else if (entityStr.EqualsIgnoreCase("&Ecirc;"))	entityChar = PRUnichar(202);
-		else if (entityStr.EqualsIgnoreCase("&Euml;"))	entityChar = PRUnichar(203);
-		else if (entityStr.EqualsIgnoreCase("&Igrave;"))	entityChar = PRUnichar(204);
-		else if (entityStr.EqualsIgnoreCase("&Iacute;"))	entityChar = PRUnichar(205);
-		else if (entityStr.EqualsIgnoreCase("&Icirc;"))	entityChar = PRUnichar(206);
-		else if (entityStr.EqualsIgnoreCase("&Iuml;"))	entityChar = PRUnichar(207);
-		else if (entityStr.EqualsIgnoreCase("&ETH;"))	entityChar = PRUnichar(208);
-		else if (entityStr.EqualsIgnoreCase("&Ntilde;"))	entityChar = PRUnichar(209);
-		else if (entityStr.EqualsIgnoreCase("&Ograve;"))	entityChar = PRUnichar(210);
-		else if (entityStr.EqualsIgnoreCase("&Oacute;"))	entityChar = PRUnichar(211);
-		else if (entityStr.EqualsIgnoreCase("&Ocirc;"))	entityChar = PRUnichar(212);
-		else if (entityStr.EqualsIgnoreCase("&Otilde;"))	entityChar = PRUnichar(213);
-		else if (entityStr.EqualsIgnoreCase("&Ouml;"))	entityChar = PRUnichar(214);
-		else if (entityStr.EqualsIgnoreCase("&times;"))	entityChar = PRUnichar(215);
-		else if (entityStr.EqualsIgnoreCase("&Oslash;"))	entityChar = PRUnichar(216);
-		else if (entityStr.EqualsIgnoreCase("&Ugrave;"))	entityChar = PRUnichar(217);
-		else if (entityStr.EqualsIgnoreCase("&Uacute;"))	entityChar = PRUnichar(218);
-		else if (entityStr.EqualsIgnoreCase("&Ucirc;"))	entityChar = PRUnichar(219);
-		else if (entityStr.EqualsIgnoreCase("&Uuml;"))	entityChar = PRUnichar(220);
-		else if (entityStr.EqualsIgnoreCase("&Yacute;"))	entityChar = PRUnichar(221);
-		else if (entityStr.EqualsIgnoreCase("&THORN;"))	entityChar = PRUnichar(222);
-		else if (entityStr.EqualsIgnoreCase("&szlig;"))	entityChar = PRUnichar(223);
-		else if (entityStr.EqualsIgnoreCase("&agrave;"))	entityChar = PRUnichar(224);
-		else if (entityStr.EqualsIgnoreCase("&aacute;"))	entityChar = PRUnichar(225);
-		else if (entityStr.EqualsIgnoreCase("&acirc;"))	entityChar = PRUnichar(226);
-		else if (entityStr.EqualsIgnoreCase("&atilde;"))	entityChar = PRUnichar(227);
-		else if (entityStr.EqualsIgnoreCase("&auml;"))	entityChar = PRUnichar(228);
-		else if (entityStr.EqualsIgnoreCase("&aring;"))	entityChar = PRUnichar(229);
-		else if (entityStr.EqualsIgnoreCase("&aelig;"))	entityChar = PRUnichar(230);
-		else if (entityStr.EqualsIgnoreCase("&ccedil;"))	entityChar = PRUnichar(231);
-		else if (entityStr.EqualsIgnoreCase("&egrave;"))	entityChar = PRUnichar(232);
-		else if (entityStr.EqualsIgnoreCase("&eacute;"))	entityChar = PRUnichar(233);
-		else if (entityStr.EqualsIgnoreCase("&ecirc;"))	entityChar = PRUnichar(234);
-		else if (entityStr.EqualsIgnoreCase("&euml;"))	entityChar = PRUnichar(235);
-		else if (entityStr.EqualsIgnoreCase("&igrave;"))	entityChar = PRUnichar(236);
-		else if (entityStr.EqualsIgnoreCase("&iacute;"))	entityChar = PRUnichar(237);
-		else if (entityStr.EqualsIgnoreCase("&icirc;"))	entityChar = PRUnichar(238);
-		else if (entityStr.EqualsIgnoreCase("&iuml;"))	entityChar = PRUnichar(239);
-		else if (entityStr.EqualsIgnoreCase("&eth;"))	entityChar = PRUnichar(240);
-		else if (entityStr.EqualsIgnoreCase("&ntilde;"))	entityChar = PRUnichar(241);
-		else if (entityStr.EqualsIgnoreCase("&ograve;"))	entityChar = PRUnichar(242);
-		else if (entityStr.EqualsIgnoreCase("&oacute;"))	entityChar = PRUnichar(243);
-		else if (entityStr.EqualsIgnoreCase("&ocirc;"))	entityChar = PRUnichar(244);
-		else if (entityStr.EqualsIgnoreCase("&otilde;"))	entityChar = PRUnichar(245);
-		else if (entityStr.EqualsIgnoreCase("&ouml;"))	entityChar = PRUnichar(246);
-		else if (entityStr.EqualsIgnoreCase("&divide;"))	entityChar = PRUnichar(247);
-		else if (entityStr.EqualsIgnoreCase("&oslash;"))	entityChar = PRUnichar(248);
-		else if (entityStr.EqualsIgnoreCase("&ugrave;"))	entityChar = PRUnichar(249);
-		else if (entityStr.EqualsIgnoreCase("&uacute;"))	entityChar = PRUnichar(250);
-		else if (entityStr.EqualsIgnoreCase("&ucirc;"))	entityChar = PRUnichar(251);
-		else if (entityStr.EqualsIgnoreCase("&uuml;"))	entityChar = PRUnichar(252);
-		else if (entityStr.EqualsIgnoreCase("&yacute;"))	entityChar = PRUnichar(253);
-		else if (entityStr.EqualsIgnoreCase("&thorn;"))	entityChar = PRUnichar(254);
-		else if (entityStr.EqualsIgnoreCase("&yuml;"))	entityChar = PRUnichar(255);
+		if (entityStr.LowerCaseEqualsLiteral("&quot;"))	entityChar = PRUnichar('\"');
+		else if (entityStr.LowerCaseEqualsLiteral("&amp;"))	entityChar = PRUnichar('&');
+		else if (entityStr.LowerCaseEqualsLiteral("&nbsp;"))	entityChar = PRUnichar(' ');
+		else if (entityStr.LowerCaseEqualsLiteral("&lt;"))		entityChar = PRUnichar('<');
+		else if (entityStr.LowerCaseEqualsLiteral("&gt;"))		entityChar = PRUnichar('>');
+		else if (entityStr.LowerCaseEqualsLiteral("&iexcl;"))	entityChar = PRUnichar(161);
+		else if (entityStr.LowerCaseEqualsLiteral("&cent;"))	entityChar = PRUnichar(162);
+		else if (entityStr.LowerCaseEqualsLiteral("&pound;"))	entityChar = PRUnichar(163);
+		else if (entityStr.LowerCaseEqualsLiteral("&curren;"))	entityChar = PRUnichar(164);
+		else if (entityStr.LowerCaseEqualsLiteral("&yen;"))	entityChar = PRUnichar(165);
+		else if (entityStr.LowerCaseEqualsLiteral("&brvbar;"))	entityChar = PRUnichar(166);
+		else if (entityStr.LowerCaseEqualsLiteral("&sect;"))	entityChar = PRUnichar(167);
+		else if (entityStr.LowerCaseEqualsLiteral("&uml;"))	entityChar = PRUnichar(168);
+		else if (entityStr.LowerCaseEqualsLiteral("&copy;"))	entityChar = PRUnichar(169);
+		else if (entityStr.LowerCaseEqualsLiteral("&ordf;"))	entityChar = PRUnichar(170);
+		else if (entityStr.LowerCaseEqualsLiteral("&laquo;"))	entityChar = PRUnichar(171);
+		else if (entityStr.LowerCaseEqualsLiteral("&not;"))	entityChar = PRUnichar(172);
+		else if (entityStr.LowerCaseEqualsLiteral("&shy;"))	entityChar = PRUnichar(173);
+		else if (entityStr.LowerCaseEqualsLiteral("&reg;"))	entityChar = PRUnichar(174);
+		else if (entityStr.LowerCaseEqualsLiteral("&macr;"))	entityChar = PRUnichar(175);
+		else if (entityStr.LowerCaseEqualsLiteral("&deg;"))	entityChar = PRUnichar(176);
+		else if (entityStr.LowerCaseEqualsLiteral("&plusmn;"))	entityChar = PRUnichar(177);
+		else if (entityStr.LowerCaseEqualsLiteral("&sup2;"))	entityChar = PRUnichar(178);
+		else if (entityStr.LowerCaseEqualsLiteral("&sup3;"))	entityChar = PRUnichar(179);
+		else if (entityStr.LowerCaseEqualsLiteral("&acute;"))	entityChar = PRUnichar(180);
+		else if (entityStr.LowerCaseEqualsLiteral("&micro;"))	entityChar = PRUnichar(181);
+		else if (entityStr.LowerCaseEqualsLiteral("&para;"))	entityChar = PRUnichar(182);
+		else if (entityStr.LowerCaseEqualsLiteral("&middot;"))	entityChar = PRUnichar(183);
+		else if (entityStr.LowerCaseEqualsLiteral("&cedil;"))	entityChar = PRUnichar(184);
+		else if (entityStr.LowerCaseEqualsLiteral("&sup1;"))	entityChar = PRUnichar(185);
+		else if (entityStr.LowerCaseEqualsLiteral("&ordm;"))	entityChar = PRUnichar(186);
+		else if (entityStr.LowerCaseEqualsLiteral("&raquo;"))	entityChar = PRUnichar(187);
+		else if (entityStr.LowerCaseEqualsLiteral("&frac14;"))	entityChar = PRUnichar(188);
+		else if (entityStr.LowerCaseEqualsLiteral("&frac12;"))	entityChar = PRUnichar(189);
+		else if (entityStr.LowerCaseEqualsLiteral("&frac34;"))	entityChar = PRUnichar(190);
+		else if (entityStr.LowerCaseEqualsLiteral("&iquest;"))	entityChar = PRUnichar(191);
+		else if (entityStr.LowerCaseEqualsLiteral("&agrave;"))	entityChar = PRUnichar(192);
+		else if (entityStr.LowerCaseEqualsLiteral("&aacute;"))	entityChar = PRUnichar(193);
+		else if (entityStr.LowerCaseEqualsLiteral("&acirc;"))	entityChar = PRUnichar(194);
+		else if (entityStr.LowerCaseEqualsLiteral("&atilde;"))	entityChar = PRUnichar(195);
+		else if (entityStr.LowerCaseEqualsLiteral("&auml;"))	entityChar = PRUnichar(196);
+		else if (entityStr.LowerCaseEqualsLiteral("&aring;"))	entityChar = PRUnichar(197);
+		else if (entityStr.LowerCaseEqualsLiteral("&aelig;"))	entityChar = PRUnichar(198);
+		else if (entityStr.LowerCaseEqualsLiteral("&ccedil;"))	entityChar = PRUnichar(199);
+		else if (entityStr.LowerCaseEqualsLiteral("&egrave;"))	entityChar = PRUnichar(200);
+		else if (entityStr.LowerCaseEqualsLiteral("&eacute;"))	entityChar = PRUnichar(201);
+		else if (entityStr.LowerCaseEqualsLiteral("&ecirc;"))	entityChar = PRUnichar(202);
+		else if (entityStr.LowerCaseEqualsLiteral("&euml;"))	entityChar = PRUnichar(203);
+		else if (entityStr.LowerCaseEqualsLiteral("&igrave;"))	entityChar = PRUnichar(204);
+		else if (entityStr.LowerCaseEqualsLiteral("&iacute;"))	entityChar = PRUnichar(205);
+		else if (entityStr.LowerCaseEqualsLiteral("&icirc;"))	entityChar = PRUnichar(206);
+		else if (entityStr.LowerCaseEqualsLiteral("&iuml;"))	entityChar = PRUnichar(207);
+		else if (entityStr.LowerCaseEqualsLiteral("&eth;"))	entityChar = PRUnichar(208);
+		else if (entityStr.LowerCaseEqualsLiteral("&ntilde;"))	entityChar = PRUnichar(209);
+		else if (entityStr.LowerCaseEqualsLiteral("&ograve;"))	entityChar = PRUnichar(210);
+		else if (entityStr.LowerCaseEqualsLiteral("&oacute;"))	entityChar = PRUnichar(211);
+		else if (entityStr.LowerCaseEqualsLiteral("&ocirc;"))	entityChar = PRUnichar(212);
+		else if (entityStr.LowerCaseEqualsLiteral("&otilde;"))	entityChar = PRUnichar(213);
+		else if (entityStr.LowerCaseEqualsLiteral("&ouml;"))	entityChar = PRUnichar(214);
+		else if (entityStr.LowerCaseEqualsLiteral("&times;"))	entityChar = PRUnichar(215);
+		else if (entityStr.LowerCaseEqualsLiteral("&oslash;"))	entityChar = PRUnichar(216);
+		else if (entityStr.LowerCaseEqualsLiteral("&ugrave;"))	entityChar = PRUnichar(217);
+		else if (entityStr.LowerCaseEqualsLiteral("&uacute;"))	entityChar = PRUnichar(218);
+		else if (entityStr.LowerCaseEqualsLiteral("&ucirc;"))	entityChar = PRUnichar(219);
+		else if (entityStr.LowerCaseEqualsLiteral("&uuml;"))	entityChar = PRUnichar(220);
+		else if (entityStr.LowerCaseEqualsLiteral("&yacute;"))	entityChar = PRUnichar(221);
+		else if (entityStr.LowerCaseEqualsLiteral("&thorn;"))	entityChar = PRUnichar(222);
+		else if (entityStr.LowerCaseEqualsLiteral("&szlig;"))	entityChar = PRUnichar(223);
+		else if (entityStr.LowerCaseEqualsLiteral("&agrave;"))	entityChar = PRUnichar(224);
+		else if (entityStr.LowerCaseEqualsLiteral("&aacute;"))	entityChar = PRUnichar(225);
+		else if (entityStr.LowerCaseEqualsLiteral("&acirc;"))	entityChar = PRUnichar(226);
+		else if (entityStr.LowerCaseEqualsLiteral("&atilde;"))	entityChar = PRUnichar(227);
+		else if (entityStr.LowerCaseEqualsLiteral("&auml;"))	entityChar = PRUnichar(228);
+		else if (entityStr.LowerCaseEqualsLiteral("&aring;"))	entityChar = PRUnichar(229);
+		else if (entityStr.LowerCaseEqualsLiteral("&aelig;"))	entityChar = PRUnichar(230);
+		else if (entityStr.LowerCaseEqualsLiteral("&ccedil;"))	entityChar = PRUnichar(231);
+		else if (entityStr.LowerCaseEqualsLiteral("&egrave;"))	entityChar = PRUnichar(232);
+		else if (entityStr.LowerCaseEqualsLiteral("&eacute;"))	entityChar = PRUnichar(233);
+		else if (entityStr.LowerCaseEqualsLiteral("&ecirc;"))	entityChar = PRUnichar(234);
+		else if (entityStr.LowerCaseEqualsLiteral("&euml;"))	entityChar = PRUnichar(235);
+		else if (entityStr.LowerCaseEqualsLiteral("&igrave;"))	entityChar = PRUnichar(236);
+		else if (entityStr.LowerCaseEqualsLiteral("&iacute;"))	entityChar = PRUnichar(237);
+		else if (entityStr.LowerCaseEqualsLiteral("&icirc;"))	entityChar = PRUnichar(238);
+		else if (entityStr.LowerCaseEqualsLiteral("&iuml;"))	entityChar = PRUnichar(239);
+		else if (entityStr.LowerCaseEqualsLiteral("&eth;"))	entityChar = PRUnichar(240);
+		else if (entityStr.LowerCaseEqualsLiteral("&ntilde;"))	entityChar = PRUnichar(241);
+		else if (entityStr.LowerCaseEqualsLiteral("&ograve;"))	entityChar = PRUnichar(242);
+		else if (entityStr.LowerCaseEqualsLiteral("&oacute;"))	entityChar = PRUnichar(243);
+		else if (entityStr.LowerCaseEqualsLiteral("&ocirc;"))	entityChar = PRUnichar(244);
+		else if (entityStr.LowerCaseEqualsLiteral("&otilde;"))	entityChar = PRUnichar(245);
+		else if (entityStr.LowerCaseEqualsLiteral("&ouml;"))	entityChar = PRUnichar(246);
+		else if (entityStr.LowerCaseEqualsLiteral("&divide;"))	entityChar = PRUnichar(247);
+		else if (entityStr.LowerCaseEqualsLiteral("&oslash;"))	entityChar = PRUnichar(248);
+		else if (entityStr.LowerCaseEqualsLiteral("&ugrave;"))	entityChar = PRUnichar(249);
+		else if (entityStr.LowerCaseEqualsLiteral("&uacute;"))	entityChar = PRUnichar(250);
+		else if (entityStr.LowerCaseEqualsLiteral("&ucirc;"))	entityChar = PRUnichar(251);
+		else if (entityStr.LowerCaseEqualsLiteral("&uuml;"))	entityChar = PRUnichar(252);
+		else if (entityStr.LowerCaseEqualsLiteral("&yacute;"))	entityChar = PRUnichar(253);
+		else if (entityStr.LowerCaseEqualsLiteral("&thorn;"))	entityChar = PRUnichar(254);
+		else if (entityStr.LowerCaseEqualsLiteral("&yuml;"))	entityChar = PRUnichar(255);
 
 		startOffset = ampOffset;
 		if (entityChar != 0)
@@ -6484,3 +6460,19 @@ InternetSearchDataSource::Observe(nsISupports *aSubject, const char *aTopic, con
 
     return rv;
 }
+
+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(LocalSearchDataSource, Init)
+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(InternetSearchDataSource, Init)
+
+static const nsModuleComponentInfo components[] = {
+    { "Local Search", NS_RDFFINDDATASOURCE_CID,
+      NS_LOCALSEARCH_SERVICE_CONTRACTID, LocalSearchDataSourceConstructor },
+    { "Local Search", NS_RDFFINDDATASOURCE_CID,
+      NS_LOCALSEARCH_DATASOURCE_CONTRACTID, LocalSearchDataSourceConstructor },
+    { "Internet Search", NS_RDFSEARCHDATASOURCE_CID,
+      NS_INTERNETSEARCH_SERVICE_CONTRACTID, InternetSearchDataSourceConstructor },
+    { "Internet Search", NS_RDFSEARCHDATASOURCE_CID,
+      NS_INTERNETSEARCH_DATASOURCE_CONTRACTID, InternetSearchDataSourceConstructor },
+};
+
+NS_IMPL_NSGETMODULE(SearchServiceModule, components)

@@ -1,38 +1,41 @@
 <?xml version="1.0"?>
 
-<!--
-   - The contents of this file are subject to the Mozilla Public
-   - License Version 1.1 (the "License"); you may not use this file
-   - except in compliance with the License. You may obtain a copy of
-   - the License at http://www.mozilla.org/MPL/
+<!-- ***** BEGIN LICENSE BLOCK *****
+   - Version: MPL 1.1/GPL 2.0/LGPL 2.1
    -
-   - Software distributed under the License is distributed on an "AS
-   - IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
-   - implied. See the License for the specific language governing
-   - rights and limitations under the License.
+   - The contents of this file are subject to the Mozilla Public License Version
+   - 1.1 (the "License"); you may not use this file except in compliance with
+   - the License. You may obtain a copy of the License at
+   - http://www.mozilla.org/MPL/
    -
-   - The Original Code is this file as it was released on
-   - March 28, 2001.
+   - Software distributed under the License is distributed on an "AS IS" basis,
+   - WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+   - for the specific language governing rights and limitations under the
+   - License.
    -
-   - The Initial Developer of the Original Code is David Hyatt
-   - Portions created by David Hyatt are Copyright (C) 2001
-   - David Hyatt.  All Rights Reserved.
+   - The Original Code is this file as it was released on March 28, 2001.
+   -
+   - The Initial Developer of the Original Code is
+   - David Hyatt.
+   - Portions created by the Initial Developer are Copyright (C) 2001
+   - the Initial Developer. All Rights Reserved.
    -
    - Contributor(s):
    -   David Hyatt <hyatt@netscape.com> (Original Author of <tabbrowser>)
    -
-   - Alternatively, the contents of this file may be used under the
-   - terms of the GNU General Public License Version 2 or later (the
-   - "GPL"), in which case the provisions of the GPL are applicable
-   - instead of those above.  If you wish to allow use of your
-   - version of this file only under the terms of the GPL and not to
-   - allow others to use your version of this file under the MPL,
-   - indicate your decision by deleting the provisions above and
-   - replace them with the notice and other provisions required by
-   - the GPL.  If you do not delete the provisions above, a recipient
-   - may use your version of this file under either the MPL or the
-   - GPL.
-  -->
+   - Alternatively, the contents of this file may be used under the terms of
+   - either the GNU General Public License Version 2 or later (the "GPL"), or
+   - the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+   - in which case the provisions of the GPL or the LGPL are applicable instead
+   - of those above. If you wish to allow use of your version of this file only
+   - under the terms of either the GPL or the LGPL, and not to allow others to
+   - use your version of this file under the terms of the MPL, indicate your
+   - decision by deleting the provisions above and replace them with the notice
+   - and other provisions required by the GPL or the LGPL. If you do not delete
+   - the provisions above, a recipient may use your version of this file under
+   - the terms of any one of the MPL, the GPL or the LGPL.
+   -
+   - ***** END LICENSE BLOCK ***** -->
 
 <!DOCTYPE bindings [
 <!ENTITY % tabBrowserDTD SYSTEM "chrome://global/locale/tabbrowser.dtd" >
@@ -80,7 +83,6 @@
           <xul:tabs class="tabbrowser-tabs" closebutton="true" flex="1"
                     setfocus="false"
                     onclick="this.parentNode.parentNode.parentNode.onTabClick(event);"
-                    onmousedown="this.parentNode.parentNode.parentNode.updateContextTab(event);"
                     ondragover="nsDragAndDrop.dragOver(event, this.parentNode.parentNode.parentNode);
                                 event.stopPropagation();"
                     ondragdrop="nsDragAndDrop.drop(event, this.parentNode.parentNode.parentNode);
@@ -91,14 +93,14 @@
                                 while (node.localName != 'tabbrowser')
                                   node = node.parentNode;
                                 node.removeCurrentTab();">
-            <xul:tab validate="never" 
+            <xul:tab selected="true" validate="never"
                      onerror="this.parentNode.parentNode.parentNode.parentNode.addToMissedIconCache(this.getAttribute('image'));
                               this.removeAttribute('image');"
                      maxwidth="250" width="0" minwidth="30" flex="100"
                      class="tabbrowser-tab" label="&untitledTab;" crop="end"/>
           </xul:tabs>
         </xul:hbox>
-        <xul:tabpanels flex="1" class="plain">
+        <xul:tabpanels flex="1" class="plain" selectedIndex="0">
           <xul:vbox flex="1">
             <xul:browsermessage hidden="true" type="top"/>
             <xul:browser flex="1" type="content-primary" message="true" disablehistory="true" xbl:inherits="tooltip=contenttooltip,contextmenu=contentcontextmenu,autocompletepopup"/>
@@ -225,6 +227,10 @@
             message.docShell = aDocShell;
             message.closeButton = aShowCloseButton;
             aBrowser.isShowingMessage = true;
+            // Fire event for accessibility APIs
+            var event = document.createEvent("Events");
+            event.initEvent("AlertActive", true, true);
+            message.dispatchEvent(event);
           ]]>
         </body>
       </method>
@@ -287,7 +293,7 @@
               if (aStateFlags & nsIWebProgressListener.STATE_START)
                   this.mBrowser.mFavIconURL = null;
 
-              if (aStateFlags & nsIWebProgressListener.STATE_START && 
+              if (aStateFlags & nsIWebProgressListener.STATE_START &&
                   aStateFlags & nsIWebProgressListener.STATE_IS_NETWORK) {
                 // It's okay to clear what the user typed when we start
                 // loading a document. If the user types, this flag gets
@@ -300,7 +306,7 @@
                 if (!this.mBlank) {
                   this.mTab.setAttribute("busy", "true");
                   this.mTab.label = this.mTabBrowser.mStringBundle.getString("tabs.loading");
-                  this.mTab.removeAttribute("image"); 
+                  this.mTab.removeAttribute("image");
                   this.mIcon = null;
 
                   if (this.mTabBrowser.mCurrentTab == this.mTab)
@@ -346,10 +352,10 @@
                     p.onStateChange(aWebProgress, aRequest, aStateFlags, aStatus);
                 }
               }
-            }
-            ,
+            },
 
-            onLocationChange : function(aWebProgress, aRequest, aLocation) {
+            onLocationChange : function(aWebProgress, aRequest, aLocation)
+            {
               // The document loaded correctly, clear the value if we should
               if (this.mBrowser.userTypedClear)
                 this.mBrowser.userTypedValue = null;
@@ -363,7 +369,8 @@
               }
             },
 
-            onStatusChange : function(aWebProgress, aRequest, aStatus, aMessage) {
+            onStatusChange : function(aWebProgress, aRequest, aStatus, aMessage)
+            {
               if (this.mBlank)
                 return;
 
@@ -387,6 +394,13 @@
               }
             },
 
+            setIcon : function(aURI)
+            {
+              this.mIcon = aURI;
+              if (!this.mTab.hasAttribute("busy"))
+                this.mTab.setAttribute("image", aURI);
+            },
+
             QueryInterface : function(aIID)
             {
               if (aIID.equals(Components.interfaces.nsIWebProgressListener) ||
@@ -395,8 +409,7 @@
                 return this;
               throw Components.results.NS_NOINTERFACE;
             }
-                  
-            });
+          });
         ]]>
         </body>
       </method>
@@ -416,7 +429,7 @@
         <body>
           <![CDATA[
             return (aURI && this.mPrefs.getBoolPref("browser.chrome.site_icons") &&
-                    this.mPrefs.getBoolPref("browser.chrome.favicons") && 
+                    this.mPrefs.getBoolPref("browser.chrome.favicons") &&
                     ("schemeIs" in aURI) && (aURI.schemeIs("http") || aURI.schemeIs("https")));
           ]]>
         </body>
@@ -428,7 +441,11 @@
         <parameter name="aElt"/>
         <body>
           <![CDATA[
-            var iconURL = this.buildFavIconString(aURI);
+            var iconURL;
+            if (this.contentDocument instanceof ImageDocument)
+              iconURL = this.currentURI.spec;
+            else
+              iconURL = this.buildFavIconString(aURI);
             if (!this.isFavIconKnownMissing(iconURL))
               aElt.setAttribute(aAttr, iconURL);
           ]]>
@@ -492,47 +509,22 @@
           <![CDATA[
             var newTitle = "";
             var docTitle;
-            var docElement = this.ownerDocument.documentElement;
             if (this.docShell.contentViewer)
               docTitle = this.contentTitle;
-
+            
             if (!docTitle)
-              docTitle = docElement.getAttribute("titledefault");
+              docTitle = this.ownerDocument.documentElement.getAttribute("titledefault");
 
-            var modifier = docElement.getAttribute("titlemodifier");
-            var sep = docElement.getAttribute("titlemenuseparator");
+            var modifier = this.ownerDocument.documentElement.getAttribute("titlemodifier");
             if (docTitle) {
-              newTitle += docElement.getAttribute("titlepreface");
+              newTitle += this.ownerDocument.documentElement.getAttribute("titlepreface");
               newTitle += docTitle;
+              var sep = this.ownerDocument.documentElement.getAttribute("titlemenuseparator");
               if (modifier)
                 newTitle += sep;
             }
             newTitle += modifier;
-
-            // if location bar is hidden and the URL type supports a host
-            // then add the scheme and host to the title to prevent spoofing
-            try {
-              if (docElement.getAttribute("chromehidden").indexOf("location") != -1) {
-                var host = this.mURIFixup.createExposableURI(
-                             this.mCurrentBrowser.currentURI).prePath;
-                if (host)
-                  newTitle = host + sep + newTitle;
-              }
-            } catch (e) {}
-
-            window.title = newTitle;
-          ]]>
-        </body>
-      </method>
-
-      <method name="updateContextTab">
-        <parameter name="aEvent"/>
-        <body>
-          <![CDATA[
-            if (aEvent.originalTarget.localName == "tab")
-              this.mContextTab = aEvent.originalTarget;
-            else
-              this.mContextTab = document.popupNode;
+            this.ownerDocument.title = newTitle;
           ]]>
         </body>
       </method>
@@ -541,10 +533,11 @@
         <parameter name="aPopupMenu"/>
         <body>
           <![CDATA[
+            this.mContextTab = document.popupNode;
             var disabled = this.mPanelContainer.childNodes.length == 1;
             var menuItems = aPopupMenu.getElementsByAttribute("tbattr", "tabbrowser-multiple");
             for (var i = 0; i < menuItems.length; i++)
-              menuItems[i].setAttribute("disabled", disabled);
+              menuItems[i].disabled = disabled;
           ]]>
         </body>
       </method>
@@ -557,9 +550,43 @@
               return;
 
             if (this.mCurrentBrowser) {
-              this.mCurrentBrowser.focusedWindow = document.commandDispatcher.focusedWindow;
-              this.mCurrentBrowser.focusedElement = document.commandDispatcher.focusedElement;
-               this.mCurrentBrowser.setAttribute("type", "content");
+              // Only save the focused element if it is in our content window
+              // or in an ancestor window.
+              var focusedWindow = document.commandDispatcher.focusedWindow;
+              var saveFocus = false;
+
+              if (focusedWindow.top == window.content) {
+                saveFocus = true;
+              } else {
+                var contentWindow = window;
+
+                while (contentWindow) {
+                  if (contentWindow == focusedWindow) {
+                    saveFocus = true;
+                    break;
+                  }
+
+                  if (contentWindow.parent == contentWindow) {
+                    break;
+                  }
+
+                  contentWindow = contentWindow.parent;
+                }
+              }
+
+              if (saveFocus) {
+                // Preserve the currently-focused element or DOM window for
+                // this tab.
+
+                this.mCurrentBrowser.focusedWindow = focusedWindow;
+                this.mCurrentBrowser.focusedElement = document.commandDispatcher.focusedElement;
+              }
+
+              if (this.mCurrentBrowser.focusedElement) {
+                // Clear focus outline before we draw on top of it
+                this.mCurrentBrowser.focusedElement.blur();
+              }
+              this.mCurrentBrowser.setAttribute("type", "content");
             }
             
             var updatePageReport = false;
@@ -597,7 +624,7 @@
                 if (listener.mIcon) {
                   if (this.isFavIconKnownMissing(listener.mIcon))
                     listener.mIcon = null;
-                  else
+                  else if ('onLinkIconAvailable' in p)
                     p.onLinkIconAvailable(newBrowser, listener.mIcon);
                 }
               }
@@ -608,7 +635,7 @@
 
             // Update the window title.
             this.updateTitlebar();
-            
+
             // If the new tab is busy, and our current state is not busy, then
             // we need to fire a start to all progress listeners.
             const nsIWebProgressListener = Components.interfaces.nsIWebProgressListener;
@@ -634,24 +661,35 @@
               }
             }
 
-            function setFocus(element) {
-              Components.lookupMethod(element, "focus").call(element);
+            if (document.commandDispatcher.focusedElement &&
+                document.commandDispatcher.focusedElement.parentNode ==
+                this.mCurrentTab.parentNode) {
+              // The focus is on a tab in the same tab panel
+              return;  // If focus was on a tab, switching tabs focuses the new tab
             }
 
+            var whatToFocus = window.content;
+
             // Focus the previously focused element or window
-            document.commandDispatcher.suppressFocusScroll = true;
             if (newBrowser.focusedElement) {
-              try {
-                setFocus(newBrowser.focusedElement);
-              } catch (e) {
-                setFocus(newBrowser.focusedWindow);
+              if (newBrowser.focusedElement.parentNode !=
+                  this.mCurrentTab.parentNode) {
+                // Focus the remembered element unless it's in the current tab panel
+                whatToFocus = newBrowser.focusedElement;
               }
             }
-            else if (newBrowser.focusedWindow)
-              setFocus(newBrowser.focusedWindow);
-            else // new tab, focus our new content area
-              setTimeout(setFocus, 0, window.content);
-            document.commandDispatcher.suppressFocusScroll = false;    
+            else if (newBrowser.focusedWindow) {
+              whatToFocus = newBrowser.focusedWindow;
+            }
+
+            function setFocus(element) {
+              document.commandDispatcher.suppressFocusScroll = true;
+              Components.lookupMethod(element, "focus").call(element);
+              document.commandDispatcher.suppressFocusScroll = false;
+            }
+
+            // Use setTimeout to avoid focus outline ghosting.
+            setTimeout(setFocus, 0, whatToFocus);
           ]]>
         </body>
       </method>
@@ -674,9 +712,6 @@
         <parameter name="event"/>
         <body>
           <![CDATA[
-            if (!event.isTrusted)
-              return;
-
             // mechanism for reading properties of the underlying XPCOM object
             // (ignoring potential getters/setters added by malicious content)
             var safeGetProperty = function(obj, propname) {
@@ -755,13 +790,13 @@
             }
 
             if (listener)
-              listener.mIcon = href;
+              listener.setIcon(href);
 
             if (tabBrowser.mProgressListeners) {
               var targetBrowser = tabBrowser.getBrowserAtIndex(browserIndex);
               for (i = 0; i < tabBrowser.mProgressListeners.length; i++) {
                 var p = tabBrowser.mProgressListeners[i];
-                if (p)
+                if (p && 'onLinkIconAvailable' in p)
                   p.onLinkIconAvailable(targetBrowser, href);
               }
             }
@@ -799,7 +834,7 @@
           <![CDATA[
             var browser = this.getBrowserForTab(aTab);
             var crop = "end";
-            var title = browser.contentTitle;
+            var title = browser.contentDocument.title;
             
             if (!title) {
               if (browser.currentURI.spec) {
@@ -898,7 +933,9 @@
             }
 
             // Wire up a progress listener to our filter.
-            const listener = this.mTabProgressListener(this.mCurrentTab, this.mCurrentBrowser, false);
+            const listener = this.mTabProgressListener(this.mCurrentTab,
+                                                       this.mCurrentBrowser,
+                                                       false);
             filter.addProgressListener(listener, Components.interfaces.nsIWebProgress.NOTIFY_ALL);
             this.mTabListeners[0] = listener;
           ]]>
@@ -925,15 +962,13 @@
         <parameter name="aPostData"/>
         <body>
           <![CDATA[
-            var blank = (aURI == "about:blank");
-
             if (!this.mTabbedMode)
               this.enterTabbedMode();
 
-            var b = document.createElementNS("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul",
-                                             "browser"); 
             var t = document.createElementNS("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul",
                                              "tab");
+
+            var blank = (aURI == "about:blank");
 
             if (blank)
               t.setAttribute("label", this.mStringBundle.getString("tabs.untitled"));
@@ -949,12 +984,14 @@
             t.setAttribute("onerror", "this.parentNode.parentNode.parentNode.parentNode.addToMissedIconCache(this.getAttribute('image')); this.removeAttribute('image');");
             this.mTabContainer.appendChild(t);
 
+            var b = document.createElementNS("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul",
+                                             "browser");
             b.setAttribute("type", "content");
             b.setAttribute("message", "true");
             b.setAttribute("contextmenu", this.getAttribute("contentcontextmenu"));
             b.setAttribute("tooltip", this.getAttribute("contenttooltip"));
             b.setAttribute("autocompletepopup", this.getAttribute("autocompletepopup"));
-            
+
             // Add the Message and the Browser to the box            
             var vbox = document.createElementNS("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul",
                                                 "vbox"); 
@@ -992,7 +1029,7 @@
               if (aPostData === undefined)
                 aPostData = null;
               b.loadURIWithFlags(aURI, nsIWebNavigation.LOAD_FLAGS_NONE,
-                                 aReferrerURI, aPostData, null);
+                                 aReferrerURI, aCharset, aPostData);
             }
 
             return t;
@@ -1148,7 +1185,16 @@
             // clean up the before/afterselected attributes before removing the tab
             oldTab.selected = false;
 
-            // XXX browser's destructor isn't always called, so we force a cleanup ourselves
+            // Because of the way XBL works (fields just set JS
+            // properties on the element) and the code we have in place
+            // to preserve the JS objects for any elements that have
+            // JS properties set on them, the browser element won't be
+            // destroyed until the document goes away.  So we force a
+            // cleanup ourselves.
+            // This has to happen before we remove the child so that the
+            // XBL implementation of nsIObserver still works.  But
+            // clearing focusedWindow happens below because it gets
+            // reset by updateCurrentBrowser.
             oldBrowser.destroy();
             
             this.mTabContainer.removeChild(oldTab);
@@ -1158,6 +1204,10 @@
             this.mPanelContainer.selectedIndex = newIndex;
             
             this.updateCurrentBrowser();
+
+            // see comment above destroy above
+            oldBrowser.focusedWindow = null;
+            oldBrowser.focusedElement = null;
             }
           ]]>
         </body>
@@ -1625,7 +1675,7 @@
                 secMan.checkLoadURIStr(sourceURI, aUrl,
                                        nsIScriptSecurityManager.STANDARD);
               } catch (e) {
-                // Stop even propagation right here.
+                // Stop event propagation right here.
                 aEvent.stopPropagation();
 
                 throw "Drop of " + aUrl + " denied.";
@@ -1644,8 +1694,10 @@
 	    return;
 	  }
 
+#ifndef XP_MACOSX
           if (aEvent.ctrlKey && aEvent.keyCode == KeyEvent.DOM_VK_F4 && this.tabbrowser.mTabBox.handleCtrlPageUpDown)
             this.tabbrowser.removeCurrentTab();
+#endif
         }
       })]]>
       </field>      
@@ -1669,6 +1721,7 @@
         <![CDATA[
           this.mCurrentBrowser = this.getBrowserAtIndex(0);
           this.mCurrentTab = this.mTabContainer.firstChild;
+          this.mTabBox.handleCtrlTab = !/Mac/.test(navigator.platform);
           document.addEventListener("keypress", this._keyEventHandler, false);
         ]]>
       </constructor>
@@ -1726,7 +1779,7 @@
           // We're about to open a modal dialog, make sure the opening
           // tab is brought to the front.
 
-          var targetTop = new XPCNativeWrapper(event.target, "top").top;
+          var targetTop = event.target.top;
 
           for (var i = 0; i < browsers.length; ++i) {
             if (this.getBrowserAtIndex(i).contentWindow == targetTop) {

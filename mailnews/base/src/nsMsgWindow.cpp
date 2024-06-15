@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1999
  * the Initial Developer. All Rights Reserved.
@@ -22,16 +22,16 @@
  * Contributor(s):
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -66,15 +66,12 @@
 #include "nsMsgI18N.h"
 #include "nsIWebNavigation.h"
 #include "nsISupportsObsolete.h"
-// XXX Remove
-#include "nsIWebShell.h"
 
 // used to dispatch urls to default protocol handlers
 #include "nsCExternalHandlerService.h"
 #include "nsIExternalProtocolService.h"
 
 static NS_DEFINE_CID(kTransactionManagerCID, NS_TRANSACTIONMANAGER_CID);
-static NS_DEFINE_CID(kComponentManagerCID,  NS_COMPONENTMANAGER_CID);
 
 NS_IMPL_THREADSAFE_ISUPPORTS3(nsMsgWindow,
                               nsIMsgWindow,
@@ -95,24 +92,20 @@ nsMsgWindow::~nsMsgWindow()
 nsresult nsMsgWindow::Init()
 {
   // register ourselves as a content listener with the uri dispatcher service
-  nsresult rv = NS_OK;
+  nsresult rv;
   nsCOMPtr<nsIURILoader> dispatcher = 
            do_GetService(NS_URI_LOADER_CONTRACTID, &rv);
-  if (NS_SUCCEEDED(rv)) 
-    rv = dispatcher->RegisterContentListener(this);
+  if (NS_FAILED(rv))
+    return rv;
+
+  rv = dispatcher->RegisterContentListener(this);
+  if (NS_FAILED(rv))
+    return rv;
 
   // create Undo/Redo Transaction Manager
-  nsCOMPtr<nsIComponentManager> compMgr = 
-           do_GetService(kComponentManagerCID, &rv);
-
+  mTransactionManager = do_CreateInstance(kTransactionManagerCID, &rv);
   if (NS_SUCCEEDED(rv))
-  {
-    rv = compMgr->CreateInstance(kTransactionManagerCID, nsnull,
-                                 NS_GET_IID(nsITransactionManager),
-                                 getter_AddRefs(mTransactionManager));
-    if (NS_SUCCEEDED(rv))
-      mTransactionManager->SetMaxTransactionCount(-1);
-  }
+    mTransactionManager->SetMaxTransactionCount(-1);
 
   return rv;
 }
@@ -126,13 +119,13 @@ void nsMsgWindow::GetMessageWindowDocShell(nsIDocShell ** aDocShell)
     nsCOMPtr<nsIDocShell> rootShell(do_QueryReferent(mRootDocShellWeak));
     if (rootShell)
     {
-      nsCOMPtr<nsIDocShellTreeNodeTmp> rootAsNode(do_QueryInterface(rootShell));
+      nsCOMPtr<nsIDocShellTreeNode> rootAsNode(do_QueryInterface(rootShell));
 
       nsCOMPtr<nsIDocShellTreeItem> msgDocShellItem;
       if(rootAsNode)
-         rootAsNode->FindChildWithNameTmp(NS_LITERAL_STRING("messagepane").get(),
-                                          PR_TRUE, PR_FALSE, nsnull, nsnull,
-                                          getter_AddRefs(msgDocShellItem));
+         rootAsNode->FindChildWithName(NS_LITERAL_STRING("messagepane").get(),
+                                       PR_TRUE, PR_FALSE, nsnull, nsnull,
+                                       getter_AddRefs(msgDocShellItem));
 
       docShell = do_QueryInterface(msgDocShellItem);
       // we don't own mMessageWindowDocShell so don't try to keep a reference to it!
@@ -174,10 +167,12 @@ NS_IMETHODIMP nsMsgWindow::CloseWindow()
   StopUrls();
 
   nsCOMPtr<nsIDocShell> rootShell(do_QueryReferent(mRootDocShellWeak));
-
   if(rootShell)
   {
-    rootShell->SetParentURIContentListener(nsnull);
+    nsCOMPtr<nsIURIContentListener> listener(do_GetInterface(rootShell));
+    if (listener) {
+      listener->SetParentContentListener(nsnull);
+    }
     mRootDocShellWeak = nsnull;
     mMessageWindowDocShellWeak = nsnull;
   }
@@ -275,16 +270,12 @@ NS_IMETHODIMP nsMsgWindow::SetOpenFolder(nsIMsgFolder * aOpenFolder)
 
 NS_IMETHODIMP nsMsgWindow::GetRootDocShell(nsIDocShell * *aDocShell)
 {
-  if(!aDocShell)
-    return NS_ERROR_NULL_POINTER;
-
-  nsCOMPtr<nsIDocShell> rootShell(do_QueryReferent(mRootDocShellWeak));
-
-  if (rootShell == nsnull)
+  if (mRootDocShellWeak) {
+    CallQueryReferent(mRootDocShellWeak.get(), aDocShell);
+  } else {
     *aDocShell = nsnull;
-  else
-    rootShell->QueryInterface(nsIDocShell::GetIID(), (void **) aDocShell);
-
+  }
+  
   return NS_OK;
 }
 
@@ -295,7 +286,10 @@ NS_IMETHODIMP nsMsgWindow::SetRootDocShell(nsIDocShell * aDocShell)
   if (aDocShell)
   {
     mRootDocShellWeak = do_GetWeakReference(aDocShell);
-    aDocShell->SetParentURIContentListener(this);
+    nsCOMPtr<nsIURIContentListener> listener(do_GetInterface(aDocShell));
+    if (listener) {
+      listener->SetParentContentListener(this);
+    }
 	// be sure to set the application flag on the root docshell
 	// so it knows we are a mail application.
 	aDocShell->SetAppType(nsIDocShell::APP_TYPE_MAIL);
@@ -388,30 +382,12 @@ NS_IMETHODIMP nsMsgWindow::SetDOMWindow(nsIDOMWindowInternal *aWindow)
 NS_IMETHODIMP nsMsgWindow::StopUrls()
 {
   m_stopped = PR_TRUE;
-  nsCOMPtr<nsIDocShell> docShell;
-  GetRootDocShell(getter_AddRefs(docShell));
-  if (docShell)
+  nsCOMPtr<nsIWebNavigation> webnav(do_QueryReferent(mRootDocShellWeak));
+  if (webnav)
   {
-    nsCOMPtr<nsIWebNavigation> webnav(do_QueryInterface(docShell));
     return webnav->Stop(nsIWebNavigation::STOP_NETWORK);
   }
   
-  nsCOMPtr<nsIDocShell> rootShell(do_QueryReferent(mRootDocShellWeak));
-  nsCOMPtr <nsIWebShell> rootWebShell(do_QueryInterface(rootShell));
-	if (rootWebShell)
-	{
-		nsCOMPtr <nsIDocumentLoader> docLoader;
-		nsCOMPtr <nsILoadGroup> loadGroup;
-
-		rootWebShell->GetDocumentLoader(*getter_AddRefs(docLoader));
-		if (docLoader)
-		{
-			docLoader->GetLoadGroup(getter_AddRefs(loadGroup));
-			if (loadGroup)
-				loadGroup->Cancel(NS_BINDING_ABORTED);
-		}
-		return NS_OK;
-	}
 	return NS_ERROR_NULL_POINTER;
 }
 

@@ -72,8 +72,7 @@ struct JSStackFrame {
     JSObject        *sharpArray;    /* scope for #n= initializer vars */
     uint32          flags;          /* frame flags -- see below */
     JSStackFrame    *dormantNext;   /* next dormant frame chain */
-    JSAtomMap       *objAtomMap;    /* object atom map, non-null only if we
-                                       hit a regexp object literal */
+    JSObject        *xmlNamespace;  /* null or default xml namespace in E4X */
 };
 
 typedef struct JSInlineFrame {
@@ -95,7 +94,7 @@ typedef struct JSInlineFrame {
 #define JSFRAME_SPECIAL       0x30  /* special evaluation frame flags */
 #define JSFRAME_COMPILING     0x40  /* frame is being used by compiler */
 #define JSFRAME_COMPILE_N_GO  0x80  /* compiler-and-go mode, can optimize name
-                                       references based on scope chain */ 
+                                       references based on scope chain */
 #define JSFRAME_SCRIPT_OBJECT 0x100 /* compiling source for a Script object */
 
 #define JSFRAME_OVERRIDE_SHIFT 24   /* override bit-set params; see jsfun.c */
@@ -248,9 +247,19 @@ js_GetLocalVariable(JSContext *cx, JSObject *obj, jsval id, jsval *vp);
 extern JSBool
 js_SetLocalVariable(JSContext *cx, JSObject *obj, jsval id, jsval *vp);
 
+#ifdef DUMP_CALL_TABLE
+# define JSOPTION_LOGCALL_TOSOURCE JS_BIT(15)
+
+extern JSHashTable  *js_CallTable;
+extern size_t       js_LogCallToSourceLimit;
+
+extern void         js_DumpCallTable(JSContext *cx);
+#endif
+
 /*
  * NB: js_Invoke requires that cx is currently running JS (i.e., that cx->fp
- * is non-null).
+ * is non-null), and that the callee, |this| parameter, and actual arguments
+ * are already pushed on the stack under cx->fp->sp.
  */
 extern JS_FRIEND_API(JSBool)
 js_Invoke(JSContext *cx, uintN argc, uintN flags);
@@ -276,7 +285,7 @@ extern JSBool
 js_InternalInvoke(JSContext *cx, JSObject *obj, jsval fval, uintN flags,
                   uintN argc, jsval *argv, jsval *rval);
 
-extern JS_FRIEND_API(JSBool)
+extern JSBool
 js_InternalGetOrSet(JSContext *cx, JSObject *obj, jsid id, jsval fval,
                     JSAccessMode mode, uintN argc, jsval *argv, jsval *rval);
 
@@ -286,10 +295,13 @@ js_Execute(JSContext *cx, JSObject *chain, JSScript *script,
 
 extern JSBool
 js_CheckRedeclaration(JSContext *cx, JSObject *obj, jsid id, uintN attrs,
-                      JSBool *foundp);
+                      JSObject **objp, JSProperty **propp);
 
 extern JSBool
-js_Interpret(JSContext *cx, jsval *result);
+js_StrictlyEqual(jsval lval, jsval rval);
+
+extern JSBool
+js_Interpret(JSContext *cx, jsbytecode *pc, jsval *result);
 
 JS_END_EXTERN_C
 

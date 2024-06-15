@@ -7,12 +7,16 @@ function nsRDFItemUpdater(aClientOS, aChromeLocale){
   this._os = Components.classes["@mozilla.org/observer-service;1"]
                        .getService(Components.interfaces.nsIObserverService);
 
-  var prefBranch = Components.classes["@mozilla.org/preferences-service;1"]
-                             .getService(Components.interfaces.nsIPrefBranch);
-  this.appID = prefBranch.getCharPref("app.id");
-  this.buildID = prefBranch.getCharPref("app.build_id");
+  var app = Components.classes["@mozilla.org/xre/app-info;1"]
+                      .getService(Components.interfaces.nsIXULAppInfo);
+  this.appID = app.ID;
+  this.buildID = app.geckoBuildID;
+
   this.clientOS = aClientOS;
   this.chromeLocale = aChromeLocale;
+
+  var prefBranch = Components.classes["@mozilla.org/preferences-service;1"]
+                             .getService(Components.interfaces.nsIPrefBranch);
   this.dsURI = prefBranch.getComplexValue("pfs.datasource.url",
                                      Components.interfaces.nsIPrefLocalizedString).data;
 }
@@ -20,7 +24,8 @@ function nsRDFItemUpdater(aClientOS, aChromeLocale){
 nsRDFItemUpdater.prototype = {
   checkForPlugin: function (aPluginRequestItem){
     var dsURI = this.dsURI;
-    dsURI = dsURI.replace(/%PLUGIN_MIMETYPE%/g, aPluginRequestItem.mimetype);
+    // escape the mimetype as mimetypes can contain '+', which will break pfs.
+    dsURI = dsURI.replace(/%PLUGIN_MIMETYPE%/g, encodeURIComponent(aPluginRequestItem.mimetype));
     dsURI = dsURI.replace(/%APP_ID%/g, this.appID);
     dsURI = dsURI.replace(/%APP_VERSION%/g, this.buildID);
     dsURI = dsURI.replace(/%CLIENT_OS%/g, this.clientOS);

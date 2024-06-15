@@ -13,6 +13,11 @@
 #
 # The Original Code is News and Blogs Account Settings. 
 #
+# The Initial Developer of the Original Code is
+# The Mozilla Foundation.
+# Portions created by the Initial Developer are Copyright (C) 2004
+# the Initial Developer. All Rights Reserved.
+#
 # Contributor(s):
 #   Scott MacGregor <mscott@mozilla.org>
 #
@@ -58,6 +63,6 @@ function manageSubscriptions()
   if (lastSubscriptionWindow)
     lastSubscriptionWindow.focus();
   else 
-    window.openDialog("chrome://messenger-newsblog/content/subscriptions.xul", "",
+    window.openDialog("chrome://messenger-newsblog/content/feed-subscriptions.xul", "",
                       "centerscreen,resizable=yes", { server: gIncomingServer});
 }

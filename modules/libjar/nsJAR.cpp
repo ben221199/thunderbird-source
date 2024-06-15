@@ -1,29 +1,44 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/*
- * The contents of this file are subject to the Netscape Public
- * License Version 1.1 (the "License"); you may not use this file
- * except in compliance with the License. You may obtain a copy of
- * the License at http://www.mozilla.org/NPL/
+/* ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * Software distributed under the License is distributed on an "AS
- * IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
- * implied. See the License for the specific language governing
- * rights and limitations under the License.
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
- * The Original Code is Mozilla Communicator client code, 
- * released March 31, 1998. 
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+ * for the specific language governing rights and limitations under the
+ * License.
  *
- * The Initial Developer of the Original Code is Netscape Communications 
- * Corporation.  Portions created by Netscape are
- * Copyright (C) 1998 Netscape Communications Corporation. All
- * Rights Reserved.
+ * The Original Code is Mozilla Communicator client code, released
+ * March 31, 1998.
  *
- * Contributor(s): 
- *     Daniel Veditz <dveditz@netscape.com>
- *     Samir Gehani <sgehani@netscape.com>
- *     Mitch Stoltz <mstoltz@netsape.com>
- *     Pierre Phaneuf <pp@ludusdesign.com>
- */
+ * The Initial Developer of the Original Code is
+ * Netscape Communications Corporation.
+ * Portions created by the Initial Developer are Copyright (C) 1998
+ * the Initial Developer. All Rights Reserved.
+ *
+ * Contributor(s):
+ *   Daniel Veditz <dveditz@netscape.com>
+ *   Samir Gehani <sgehani@netscape.com>
+ *   Mitch Stoltz <mstoltz@netsape.com>
+ *   Pierre Phaneuf <pp@ludusdesign.com>
+ *
+ * Alternatively, the contents of this file may be used under the terms of
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
+ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK ***** */
 #include <string.h>
 #include "nsJARInputStream.h"
 #include "nsJAR.h"
@@ -179,7 +194,7 @@ nsrefcnt nsJAR::Release(void)
   if (0 == count) {
     mRefCnt = 1; /* stabilize */ 
     /* enable this to find non-threadsafe destructors: */ 
-    /* NS_ASSERT_OWNINGTHREAD(_class); */ 
+    /* NS_ASSERT_OWNINGTHREAD(nsJAR); */ 
     NS_DELETEXPCOM(this); 
     return 0; 
   }
@@ -840,31 +855,31 @@ void nsJAR::ReportError(const char* aFilename, PRInt16 errorCode)
 {
   //-- Generate error message
   nsAutoString message; 
-  message.Assign(NS_LITERAL_STRING("Signature Verification Error: the signature on "));
+  message.AssignLiteral("Signature Verification Error: the signature on ");
   if (aFilename)
     message.AppendWithConversion(aFilename);
   else
-    message.Append(NS_LITERAL_STRING("this .jar archive"));
-  message.Append(NS_LITERAL_STRING(" is invalid because "));
+    message.AppendLiteral("this .jar archive");
+  message.AppendLiteral(" is invalid because ");
   switch(errorCode)
   {
   case nsIJAR::NOT_SIGNED:
-    message.Append(NS_LITERAL_STRING("the archive did not contain a valid PKCS7 signature."));
+    message.AppendLiteral("the archive did not contain a valid PKCS7 signature.");
     break;
   case nsIJAR::INVALID_SIG:
     message.Append(NS_LITERAL_STRING("the digital signature (*.RSA) file is not a valid signature of the signature instruction file (*.SF)."));
     break;
   case nsIJAR::INVALID_UNKNOWN_CA:
-    message.Append(NS_LITERAL_STRING("the certificate used to sign this file has an unrecognized issuer."));
+    message.AppendLiteral("the certificate used to sign this file has an unrecognized issuer.");
     break;
   case nsIJAR::INVALID_MANIFEST:
     message.Append(NS_LITERAL_STRING("the signature instruction file (*.SF) does not contain a valid hash of the MANIFEST.MF file."));
     break;
   case nsIJAR::INVALID_ENTRY:
-    message.Append(NS_LITERAL_STRING("the MANIFEST.MF file does not contain a valid hash of the file being verified."));
+    message.AppendLiteral("the MANIFEST.MF file does not contain a valid hash of the file being verified.");
     break;
   default:
-    message.Append(NS_LITERAL_STRING("of an unknown problem."));
+    message.AppendLiteral("of an unknown problem.");
   }
   
   // Report error in JS console
@@ -1152,15 +1167,15 @@ nsZipReaderCache::nsZipReaderCache()
 NS_IMETHODIMP
 nsZipReaderCache::Init(PRUint32 cacheSize)
 {
-  nsresult rv;
   mCacheSize = cacheSize; 
   
 // Register as a memory pressure observer 
   nsCOMPtr<nsIObserverService> os = 
-           do_GetService("@mozilla.org/observer-service;1", &rv);
-  if (NS_SUCCEEDED(rv))   
+           do_GetService("@mozilla.org/observer-service;1");
+  if (os)
   {
-    rv = os->AddObserver(this, "memory-pressure", PR_TRUE);
+    os->AddObserver(this, "memory-pressure", PR_TRUE);
+    os->AddObserver(this, "chrome-flush-caches", PR_TRUE);
   }
 // ignore failure of the observer registration.
 
@@ -1354,7 +1369,7 @@ nsZipReaderCache::Observe(nsISupports *aSubject,
                           const char *aTopic, 
                           const PRUnichar *aSomeData)
 {
-  if (nsCRT::strcmp(aTopic, "memory-pressure") == 0) {
+  if (strcmp(aTopic, "memory-pressure") == 0) {
     nsAutoLock lock(mLock);
     while (PR_TRUE) {
       nsHashKey* flushable = nsnull;
@@ -1368,7 +1383,11 @@ nsZipReaderCache::Observe(nsISupports *aSubject,
       printf("flushed something from the jar cache\n");
 #endif
     }
-  }  
+  }
+  else if (strcmp(aTopic, "chrome-flush-caches") == 0) {
+    mZips.Enumerate(DropZipReaderCache, nsnull);
+    mZips.Reset();
+  }
   return NS_OK;
 }
 

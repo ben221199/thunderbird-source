@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,33 +14,32 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
  *
- *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 #include "nsCOMPtr.h"
 #include "nsIServiceManager.h"
-#include "nsIHTMLFragmentContentSink.h"
+#include "nsIFragmentContentSink.h"
+#include "nsIHTMLContentSink.h"
 #include "nsIParser.h"
 #include "nsIParserService.h"
-#include "nsIHTMLContent.h"
 #include "nsHTMLAtoms.h"
 #include "nsHTMLTokens.h"
 #include "nsGenericHTMLElement.h"
@@ -50,7 +49,6 @@
 #include "nsIDOMDocumentFragment.h"
 #include "nsVoidArray.h"
 #include "nsITextContent.h"
-#include "nsINameSpace.h"
 #include "nsINameSpaceManager.h"
 #include "nsIDocument.h"
 #include "nsINodeInfo.h"
@@ -59,6 +57,8 @@
 #include "nsUnicharUtils.h"
 #include "nsContentUtils.h"
 #include "nsEscape.h"
+#include "nsNodeInfoManager.h"
+#include "nsContentCreatorFunctions.h"
 
 //
 // XXX THIS IS TEMPORARY CODE
@@ -67,9 +67,10 @@
 // at some pointe really soon!
 //
 
-class nsHTMLFragmentContentSink : public nsIHTMLFragmentContentSink {
+class nsHTMLFragmentContentSink : public nsIFragmentContentSink,
+                                  public nsIHTMLContentSink {
 public:
-  nsHTMLFragmentContentSink();
+  nsHTMLFragmentContentSink(PRBool aAllContent = PR_FALSE);
   virtual ~nsHTMLFragmentContentSink();
 
   // nsISupports
@@ -81,7 +82,7 @@ public:
   NS_IMETHOD WillInterrupt(void);
   NS_IMETHOD WillResume(void);
   NS_IMETHOD SetParser(nsIParser* aParser);
-  NS_IMETHOD FlushPendingNotifications() { return NS_OK; }
+  virtual void FlushContent(PRBool aNotify) { }
   NS_IMETHOD SetDocumentCharset(nsACString& aCharset) { return NS_OK; }
   virtual nsISupports *GetTarget() { return mTargetDocument; }
 
@@ -119,9 +120,11 @@ public:
   NS_IMETHOD AddProcessingInstruction(const nsIParserNode& aNode);
   NS_IMETHOD AddDocTypeDecl(const nsIParserNode& aNode);
 
-  // nsIHTMLFragmentContentSink
+  // nsIFragmentContentSink
   NS_IMETHOD GetFragment(nsIDOMDocumentFragment** aFragment);
   NS_IMETHOD SetTargetDocument(nsIDocument* aDocument);
+  NS_IMETHOD WillBuildContent();
+  NS_IMETHOD DidBuildContent();
 
   nsIContent* GetCurrentContent();
   PRInt32 PushContent(nsIContent *aContent);
@@ -131,21 +134,21 @@ public:
                          nsIContent* aContent);
 
   nsresult AddText(const nsAString& aString);
-  nsresult AddTextToContent(nsIHTMLContent* aContent,const nsString& aText);
+  nsresult AddTextToContent(nsIContent* aContent, const nsAString& aText);
   nsresult FlushText();
 
-  void ProcessBaseTag(nsIHTMLContent* aContent);
-  void AddBaseTagInfo(nsIHTMLContent* aContent);
+  void ProcessBaseTag(nsIContent* aContent);
+  void AddBaseTagInfo(nsIContent* aContent);
 
   nsresult Init();
+  nsresult SetDocumentTitle(const nsAString& aString, const nsIParserNode* aNode);
 
-  PRBool mHitSentinel;
-  PRBool mSeenBody;
+  PRPackedBool mAllContent;
+  PRPackedBool mProcessing;
+  PRPackedBool mSeenBody;
 
-  nsIContent* mRoot;
-  nsIParser* mParser;
-  nsIDOMHTMLFormElement* mCurrentForm;
-  nsIHTMLContent* mCurrentMap;
+  nsCOMPtr<nsIContent> mRoot;
+  nsCOMPtr<nsIParser> mParser;
 
   nsVoidArray* mContentStack;
 
@@ -157,54 +160,48 @@ public:
   nsString mBaseTarget;
 
   nsCOMPtr<nsIDocument> mTargetDocument;
-  nsCOMPtr<nsINodeInfoManager> mNodeInfoManager;
+  nsRefPtr<nsNodeInfoManager> mNodeInfoManager;
 };
 
-class nsHTMLFragmentContentSink2 : public nsHTMLFragmentContentSink
-{
-public:
-  nsHTMLFragmentContentSink2() { mHitSentinel = PR_TRUE; mSeenBody = PR_FALSE;}
-  virtual ~nsHTMLFragmentContentSink2() {}
-};
-
-nsresult
-NS_NewHTMLFragmentContentSink2(nsIHTMLFragmentContentSink** aResult)
+static nsresult
+NewHTMLFragmentContentSinkHelper(PRBool aAllContent, nsIFragmentContentSink** aResult)
 {
   NS_PRECONDITION(aResult, "Null out ptr");
+  if (nsnull == aResult) {
+    return NS_ERROR_NULL_POINTER;
+  }
 
-  *aResult = new nsHTMLFragmentContentSink2();
-  NS_ENSURE_TRUE(*aResult, NS_ERROR_OUT_OF_MEMORY);
-
-  NS_ADDREF(*aResult);
-
+  nsHTMLFragmentContentSink* it = new nsHTMLFragmentContentSink(aAllContent);
+  if (nsnull == it) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+  
+  NS_ADDREF(*aResult = it);
+  
   return NS_OK;
 }
 
 nsresult
-NS_NewHTMLFragmentContentSink(nsIHTMLFragmentContentSink** aResult)
+NS_NewHTMLFragmentContentSink2(nsIFragmentContentSink** aResult)
 {
-  NS_PRECONDITION(aResult, "Null out ptr");
-
-  *aResult = new nsHTMLFragmentContentSink();
-  NS_ENSURE_TRUE(*aResult, NS_ERROR_OUT_OF_MEMORY);
-
-  NS_ADDREF(*aResult);
-
-  return NS_OK;
+  return NewHTMLFragmentContentSinkHelper(PR_TRUE,aResult);
 }
 
-nsHTMLFragmentContentSink::nsHTMLFragmentContentSink()
+nsresult
+NS_NewHTMLFragmentContentSink(nsIFragmentContentSink** aResult)
 {
-  mHitSentinel = PR_FALSE;
-  mSeenBody = PR_TRUE;
-  mRoot = nsnull;
-  mParser = nsnull;
-  mCurrentForm = nsnull;
-  mCurrentMap = nsnull;
-  mContentStack = nsnull;
-  mText = nsnull;
-  mTextLength = 0;
-  mTextSize = 0;
+  return NewHTMLFragmentContentSinkHelper(PR_FALSE,aResult);
+}
+
+nsHTMLFragmentContentSink::nsHTMLFragmentContentSink(PRBool aAllContent)
+  : mAllContent(aAllContent),
+    mProcessing(aAllContent),
+    mSeenBody(!aAllContent),
+    mContentStack(nsnull),
+    mText(nsnull),
+    mTextLength(0),
+    mTextSize(0)
+{
 }
 
 nsHTMLFragmentContentSink::~nsHTMLFragmentContentSink()
@@ -212,10 +209,6 @@ nsHTMLFragmentContentSink::~nsHTMLFragmentContentSink()
   // Should probably flush the text buffer here, just to make sure:
   //FlushText();
 
-  NS_IF_RELEASE(mRoot);
-  NS_IF_RELEASE(mParser);
-  NS_IF_RELEASE(mCurrentForm);
-  NS_IF_RELEASE(mCurrentMap);
   if (nsnull != mContentStack) {
     // there shouldn't be anything here except in an error condition
     PRInt32 indx = mContentStack->Count();
@@ -233,10 +226,10 @@ NS_IMPL_ADDREF(nsHTMLFragmentContentSink)
 NS_IMPL_RELEASE(nsHTMLFragmentContentSink)
 
 NS_INTERFACE_MAP_BEGIN(nsHTMLFragmentContentSink)
-  NS_INTERFACE_MAP_ENTRY(nsIHTMLFragmentContentSink)
+  NS_INTERFACE_MAP_ENTRY(nsIFragmentContentSink)
   NS_INTERFACE_MAP_ENTRY(nsIHTMLContentSink)
   NS_INTERFACE_MAP_ENTRY(nsIContentSink)
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIHTMLFragmentContentSink)
+  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIFragmentContentSink)
 NS_INTERFACE_MAP_END
 
 
@@ -253,7 +246,9 @@ nsHTMLFragmentContentSink::WillBuildModel(void)
   nsresult rv = NS_NewDocumentFragment(getter_AddRefs(frag), mTargetDocument);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  return CallQueryInterface(frag, &mRoot);
+  mRoot = do_QueryInterface(frag, &rv);
+  
+  return rv;
 }
 
 NS_IMETHODIMP
@@ -263,7 +258,7 @@ nsHTMLFragmentContentSink::DidBuildModel(void)
 
   // Drop our reference to the parser to get rid of a circular
   // reference.
-  NS_IF_RELEASE(mParser);
+  mParser = nsnull;
 
   return NS_OK;
 }
@@ -283,9 +278,7 @@ nsHTMLFragmentContentSink::WillResume(void)
 NS_IMETHODIMP
 nsHTMLFragmentContentSink::SetParser(nsIParser* aParser)
 {
-  NS_IF_RELEASE(mParser);
   mParser = aParser;
-  NS_IF_ADDREF(mParser);
 
   return NS_OK;
 }
@@ -305,34 +298,7 @@ nsHTMLFragmentContentSink::EndContext(PRInt32 aID)
 NS_IMETHODIMP
 nsHTMLFragmentContentSink::SetTitle(const nsString& aValue)
 {
-  NS_ENSURE_TRUE(mNodeInfoManager, NS_ERROR_NOT_INITIALIZED);
-
-  nsresult result=NS_OK;
-
-  nsCOMPtr<nsINodeInfo> nodeInfo;
-  result = mNodeInfoManager->GetNodeInfo(nsHTMLAtoms::title, nsnull,
-                                         kNameSpaceID_None,
-                                         getter_AddRefs(nodeInfo));
-  if(NS_SUCCEEDED(result)) {
-    nsCOMPtr<nsIHTMLContent> content=nsnull;
-    result = NS_NewHTMLTitleElement(getter_AddRefs(content), nodeInfo);
-
-    if (NS_SUCCEEDED(result)) {
-      nsIContent *parent = GetCurrentContent();
-
-      if (nsnull == parent) {
-        parent = mRoot;
-      }
-
-      result=parent->AppendChildTo(content, PR_FALSE, PR_FALSE);
-
-      if (NS_SUCCEEDED(result)) {
-        result=AddTextToContent(content,aValue);
-      }
-    }
-  }
-
-  return result;
+  return SetDocumentTitle(aValue, nsnull);
 }
 
 NS_IMETHODIMP
@@ -416,7 +382,7 @@ nsHTMLFragmentContentSink::CloseMap()
 }
 
 void
-nsHTMLFragmentContentSink::ProcessBaseTag(nsIHTMLContent* aContent)
+nsHTMLFragmentContentSink::ProcessBaseTag(nsIContent* aContent)
 {
   nsAutoString value;
   if (NS_CONTENT_ATTR_HAS_VALUE == aContent->GetAttr(kNameSpaceID_None, nsHTMLAtoms::href, value)) {
@@ -428,7 +394,7 @@ nsHTMLFragmentContentSink::ProcessBaseTag(nsIHTMLContent* aContent)
 }
 
 void
-nsHTMLFragmentContentSink::AddBaseTagInfo(nsIHTMLContent* aContent)
+nsHTMLFragmentContentSink::AddBaseTagInfo(nsIContent* aContent)
 {
   if (aContent) {
     if (!mBaseHREF.IsEmpty()) {
@@ -440,25 +406,48 @@ nsHTMLFragmentContentSink::AddBaseTagInfo(nsIHTMLContent* aContent)
   }
 }
 
-static const char kSentinelStr[] = "endnote";
+nsresult
+nsHTMLFragmentContentSink::SetDocumentTitle(const nsAString& aString, const nsIParserNode* aNode)
+{
+  NS_ENSURE_TRUE(mNodeInfoManager, NS_ERROR_NOT_INITIALIZED);
+
+  nsCOMPtr<nsINodeInfo> nodeInfo;
+  nsresult rv = mNodeInfoManager->GetNodeInfo(nsHTMLAtoms::title, nsnull,
+                                              kNameSpaceID_None,
+                                              getter_AddRefs(nodeInfo));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsRefPtr<nsGenericHTMLElement> content = NS_NewHTMLTitleElement(nodeInfo);
+  NS_ENSURE_TRUE(content, NS_ERROR_OUT_OF_MEMORY);
+
+  nsIContent *parent = GetCurrentContent();
+
+  if (!parent) {
+    parent = mRoot;
+  }
+
+  if (aNode) {
+    AddAttributes(*aNode, content);
+  }
+
+  rv = parent->AppendChildTo(content, PR_FALSE);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  return AddTextToContent(content, aString);
+}
 
 NS_IMETHODIMP
 nsHTMLFragmentContentSink::OpenContainer(const nsIParserNode& aNode)
 {
   NS_ENSURE_TRUE(mNodeInfoManager, NS_ERROR_NOT_INITIALIZED);
 
-  nsAutoString tag;
   nsresult result = NS_OK;
 
-  tag.Assign(aNode.GetText());
-  if (tag.EqualsIgnoreCase(kSentinelStr)) {
-    mHitSentinel = PR_TRUE;
-  }
-  else if (mHitSentinel) {
+  if (mProcessing) {
     FlushText();
 
     nsHTMLTag nodeType = nsHTMLTag(aNode.GetNodeType());
-    nsIHTMLContent *content = nsnull;
+    nsIContent *content = nsnull;
 
     nsCOMPtr<nsINodeInfo> nodeInfo;
 
@@ -486,7 +475,7 @@ nsHTMLFragmentContentSink::OpenContainer(const nsIParserNode& aNode)
 
     NS_ENSURE_SUCCESS(result, result);
 
-    result = NS_CreateHTMLElement(&content, nodeInfo, PR_FALSE);
+    result = NS_NewHTMLElement(&content, nodeInfo);
 
     if (NS_OK == result) {
       result = AddAttributes(aNode, content);
@@ -497,7 +486,7 @@ nsHTMLFragmentContentSink::OpenContainer(const nsIParserNode& aNode)
           parent = mRoot;
         }
 
-        parent->AppendChildTo(content, PR_FALSE, PR_FALSE);
+        parent->AppendChildTo(content, PR_FALSE);
         PushContent(content);
       }
     }
@@ -519,7 +508,7 @@ nsHTMLFragmentContentSink::OpenContainer(const nsIParserNode& aNode)
 NS_IMETHODIMP
 nsHTMLFragmentContentSink::CloseContainer(const nsHTMLTag aTag)
 {
-  if (mHitSentinel && (nsnull != GetCurrentContent())) {
+  if (mProcessing && (nsnull != GetCurrentContent())) {
     nsIContent* content;
     FlushText();
     content = PopContent();
@@ -537,6 +526,19 @@ nsHTMLFragmentContentSink::AddHeadContent(const nsIParserNode& aNode)
 NS_IMETHODIMP
 nsHTMLFragmentContentSink::AddLeaf(const nsIParserNode& aNode)
 {
+  if (eHTMLTag_title == aNode.GetNodeType()) {
+    nsCOMPtr<nsIDTD> dtd;
+    mParser->GetDTD(getter_AddRefs(dtd));
+    NS_ENSURE_TRUE(dtd, NS_ERROR_FAILURE);
+
+    nsAutoString skippedContent;
+    PRInt32 lineNo = 0;
+
+    dtd->CollectSkippedContent(eHTMLTag_title, skippedContent, lineNo);
+
+    return SetDocumentTitle(skippedContent, &aNode);
+  }
+
   NS_ENSURE_TRUE(mNodeInfoManager, NS_ERROR_NOT_INITIALIZED);
 
   nsresult result = NS_OK;
@@ -547,7 +549,7 @@ nsHTMLFragmentContentSink::AddLeaf(const nsIParserNode& aNode)
         FlushText();
 
         // Create new leaf content object
-        nsCOMPtr<nsIHTMLContent> content;
+        nsCOMPtr<nsIContent> content;
         nsHTMLTag nodeType = nsHTMLTag(aNode.GetNodeType());
 
         nsIParserService* parserService =
@@ -576,7 +578,7 @@ nsHTMLFragmentContentSink::AddLeaf(const nsIParserNode& aNode)
         NS_ENSURE_SUCCESS(result, result);
 
         if(NS_SUCCEEDED(result)) {
-          result = NS_CreateHTMLElement(getter_AddRefs(content), nodeInfo, PR_FALSE);
+          result = NS_NewHTMLElement(getter_AddRefs(content), nodeInfo);
 
           if (NS_OK == result) {
             result = AddAttributes(aNode, content);
@@ -587,15 +589,14 @@ nsHTMLFragmentContentSink::AddLeaf(const nsIParserNode& aNode)
                 parent = mRoot;
               }
 
-              parent->AppendChildTo(content, PR_FALSE, PR_FALSE);
+              parent->AppendChildTo(content, PR_FALSE);
             }
           }
 
-          if(nodeType == eHTMLTag_plaintext ||
-             nodeType == eHTMLTag_script    ||
+          if(nodeType == eHTMLTag_script    ||
              nodeType == eHTMLTag_style     ||
              nodeType == eHTMLTag_textarea  ||
-             nodeType == eHTMLTag_xmp) {
+             nodeType == eHTMLTag_server) {
 
             // Create a text node holding the content
             nsCOMPtr<nsIDTD> dtd;
@@ -661,7 +662,7 @@ nsHTMLFragmentContentSink::AddComment(const nsIParserNode& aNode)
         parent = mRoot;
       }
 
-      parent->AppendChildTo(comment, PR_FALSE, PR_FALSE);
+      parent->AppendChildTo(comment, PR_FALSE);
     }
     NS_RELEASE(comment);
   }
@@ -704,20 +705,29 @@ nsHTMLFragmentContentSink::SetTargetDocument(nsIDocument* aTargetDocument)
   NS_ENSURE_ARG_POINTER(aTargetDocument);
 
   mTargetDocument = aTargetDocument;
-  mNodeInfoManager = aTargetDocument->GetNodeInfoManager();
-  if (mNodeInfoManager) {
-    return NS_OK;
+  mNodeInfoManager = aTargetDocument->NodeInfoManager();
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsHTMLFragmentContentSink::WillBuildContent()
+{
+  mProcessing = PR_TRUE;
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsHTMLFragmentContentSink::DidBuildContent()
+{
+  if (!mAllContent) {
+    FlushText();
+    DidBuildModel(); // Release our ref to the parser now.
+    mProcessing = PR_FALSE;
   }
 
-  nsresult rv = NS_NewNodeInfoManager(getter_AddRefs(mNodeInfoManager));
-  NS_ENSURE_SUCCESS(rv, rv);
-  
-  rv = mNodeInfoManager->Init(aTargetDocument);
-  if (NS_FAILED(rv)) {
-    mNodeInfoManager = nsnull;
-  }
-
-  return rv;
+  return NS_OK;
 }
 
 nsIContent*
@@ -803,7 +813,7 @@ nsHTMLFragmentContentSink::AddText(const nsAString& aString)
 }
 
 nsresult
-nsHTMLFragmentContentSink::AddTextToContent(nsIHTMLContent* aContent,const nsString& aText) {
+nsHTMLFragmentContentSink::AddTextToContent(nsIContent* aContent, const nsAString& aText) {
   NS_ASSERTION(aContent !=nsnull, "can't add text w/o a content");
 
   nsresult result=NS_OK;
@@ -815,7 +825,7 @@ nsHTMLFragmentContentSink::AddTextToContent(nsIHTMLContent* aContent,const nsStr
       if (NS_SUCCEEDED(result)) {
         text->SetText(aText, PR_TRUE);
 
-        result = aContent->AppendChildTo(text, PR_FALSE, PR_FALSE);
+        result = aContent->AppendChildTo(text, PR_FALSE);
       }
     }
   }
@@ -843,7 +853,7 @@ nsHTMLFragmentContentSink::FlushText()
     parent = mRoot;
   }
 
-  rv = parent->AppendChildTo(content, PR_FALSE, PR_FALSE);
+  rv = parent->AppendChildTo(content, PR_FALSE);
 
   mTextLength = 0;
 
@@ -866,7 +876,7 @@ nsHTMLFragmentContentSink::AddAttributes(const nsIParserNode& aNode,
     return NS_OK;
   }
 
-  nsAutoString k;
+  nsCAutoString k;
   nsHTMLTag nodeType = nsHTMLTag(aNode.GetNodeType());
 
   // The attributes are on the parser node in the order they came in in the
@@ -881,7 +891,9 @@ nsHTMLFragmentContentSink::AddAttributes(const nsIParserNode& aNode,
   for (PRInt32 i = ac - 1; i >= 0; i--) {
     // Get lower-cased key
     const nsAString& key = aNode.GetKeyAt(i);
-    k.Assign(key);
+    // Copy up-front to avoid shared-buffer overhead (and convert to UTF-8
+    // at the same time since that's what the atom table uses).
+    CopyUTF16toUTF8(key, k);
     ToLowerCase(k);
 
     nsCOMPtr<nsIAtom> keyAtom = do_GetAtom(k);

@@ -44,6 +44,7 @@
 #include "nsCOMPtr.h"
 #include "nsCRT.h"
 #include "prlog.h"
+#include "nsInt64.h"
 
 #if defined(PR_LOGGING)
 //
@@ -146,7 +147,7 @@ private:
 
     // separate refcnt so that we know when to close the consumer
     nsrefcnt                       mReaderRefCnt;
-    PRUint32                       mLogicalOffset;
+    nsInt64                        mLogicalOffset;
     PRPackedBool                   mBlocking;
 
     // these variables can only be accessed while inside the pipe's monitor
@@ -200,7 +201,7 @@ private:
 
     // separate refcnt so that we know when to close the producer
     nsrefcnt                        mWriterRefCnt;
-    PRUint32                        mLogicalOffset;
+    nsInt64                         mLogicalOffset;
     PRPackedBool                    mBlocking;
 
     // these variables can only be accessed while inside the pipe's monitor
@@ -661,15 +662,14 @@ nsPipeInputStream::OnInputException(nsresult reason, nsPipeEvents &events)
 NS_IMETHODIMP_(nsrefcnt)
 nsPipeInputStream::AddRef(void)
 {
-    PR_AtomicIncrement((PRInt32*)&mReaderRefCnt);
+    ++mReaderRefCnt;
     return mPipe->AddRef();
 }
 
 NS_IMETHODIMP_(nsrefcnt)
 nsPipeInputStream::Release(void)
 {
-    nsrefcnt count = PR_AtomicDecrement((PRInt32 *)&mReaderRefCnt);
-    if (count == 0)
+    if (--mReaderRefCnt == 0)
         Close();
     return mPipe->Release();
 }
@@ -850,14 +850,14 @@ nsPipeInputStream::AsyncWait(nsIInputStreamCallback *callback,
 }
 
 NS_IMETHODIMP
-nsPipeInputStream::Seek(PRInt32 whence, PRInt32 offset)
+nsPipeInputStream::Seek(PRInt32 whence, PRInt64 offset)
 {
     NS_NOTREACHED("nsPipeInputStream::Seek");
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP
-nsPipeInputStream::Tell(PRUint32 *offset)
+nsPipeInputStream::Tell(PRInt64 *offset)
 {
     *offset = mLogicalOffset;
     return NS_OK;
@@ -1018,15 +1018,14 @@ nsPipeOutputStream::OnOutputException(nsresult reason, nsPipeEvents &events)
 NS_IMETHODIMP_(nsrefcnt)
 nsPipeOutputStream::AddRef()
 {
-    PR_AtomicIncrement((PRInt32*)&mWriterRefCnt);
+    mWriterRefCnt++;
     return mPipe->AddRef();
 }
 
 NS_IMETHODIMP_(nsrefcnt)
 nsPipeOutputStream::Release()
 {
-    nsrefcnt count = PR_AtomicDecrement((PRInt32 *)&mWriterRefCnt);
-    if (count == 0)
+    if (--mWriterRefCnt == 0)
         Close();
     return mPipe->Release();
 }
@@ -1216,14 +1215,14 @@ nsPipeOutputStream::AsyncWait(nsIOutputStreamCallback *callback,
 }
 
 NS_IMETHODIMP
-nsPipeOutputStream::Seek(PRInt32 whence, PRInt32 offset)
+nsPipeOutputStream::Seek(PRInt32 whence, PRInt64 offset)
 {
     NS_NOTREACHED("nsPipeOutputStream::Seek");
     return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP
-nsPipeOutputStream::Tell(PRUint32 *offset)
+nsPipeOutputStream::Tell(PRInt64 *offset)
 {
     *offset = mLogicalOffset;
     return NS_OK;

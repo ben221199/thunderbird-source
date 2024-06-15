@@ -1,11 +1,11 @@
 /* -*- Mode: Java; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -22,37 +22,28 @@
  * Contributor(s):
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
  * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
-pref("general.useragent.vendor", "Thunderbird");
-pref("general.useragent.vendorSub", 
-#expand __APP_VERSION__
-);
+#expand pref("general.useragent.extra.thunderbird", "Thunderbird/__APP_VERSION__");
 
-// This is this application's unique identifier used by the Extension System to identify
-// this application as an extension target, and by the SmartUpdate system to identify
-// this application to the Update server.
-pref("app.id", "{3550f703-e582-4d05-9a08-453d09bdfdc6}");
-pref("app.version", 
-#expand __APP_VERSION__
-);
-pref("app.build_id", 
-#expand __BUILD_ID__
-);
-pref("app.extensions.version", "1.0");
+#expand pref("general.useragent.locale", "__AB_CD__");
+pref("general.skins.selectedSkin", "classic/1.0");
+
+pref("app.extensions.version", "1.0+");
 
 #ifdef XP_MACOSX
+pref("browser.chromeURL", "chrome://messenger/content/messengercompose/messengercompose.xul");
 pref("mail.biff.animate_dock_icon", false);
 #endif
 
@@ -67,6 +58,13 @@ pref("app.update.lastUpdateDate", 0);           // UTC offset when last App upda
                                                 // performed. 
 pref("app.update.performed", false);            // Whether or not an update has been 
                                                 // performed this session. 
+
+// Developers can set this to |true| if they are constantly changing files in their
+// extensions directory so that the extension system does not constantly think that
+// their extensions are being updated and thus reregistered every time the app is started
+pref("extensions.ignoreMTimeChanges", false);
+// Enables some extra Extension System Logging (can reduce performance) 
+pref("extensions.logging.enabled", false); 
 
 // Symmetric (can be overridden by individual extensions) update preferences.
 // e.g.
@@ -116,6 +114,20 @@ pref("update.severity", 0);
 pref("xpinstall.whitelist.add", "update.mozilla.org");
 pref("xpinstall.whitelist.add.103", "addons.mozilla.org");
 
+pref("mail.phishing.detection.enabled", true); // enable / disable phishing detection for link clicks
+pref("mail.spellcheck.inline", true);
+
+#ifdef XP_WIN
+pref("browser.preferences.instantApply", false);
+#else
+pref("browser.preferences.instantApply", true);
+#endif
+#ifdef XP_MACOSX
+pref("browser.preferences.animateFadeIn", true);
+#else
+pref("browser.preferences.animateFadeIn", false);
+#endif
+
 /////////////////////////////////////////////////////////////////
 // Overrides of the seamonkey suite mailnews.js prefs
 ///////////////////////////////////////////////////////////////// 
@@ -138,18 +150,20 @@ pref("editor.singleLine.pasteNewlines", 4);  // substitute commas for new lines 
 // to avoid the height of the header area from changing when headers are present / not present
 pref("mailnews.headers.minNumHeaders", 0); // 0 means we ignore this pref
 
+pref("mail.compose.dontWarnMail2Newsgroup", false);
+
 pref("messenger.throbber.url","chrome://messenger-region/locale/region.properties");
 pref("mailnews.release_notes.url","chrome://messenger-region/locale/region.properties");
 pref("mailnews.hints_and_tips.url","chrome://messenger-region/locale/region.properties");
 pref("compose.throbber.url","chrome://messenger-region/locale/region.properties");
 pref("addressbook.throbber.url","chrome://messenger-region/locale/region.properties");
 
-// show a broken image icon for blocked remote image requests
 pref("network.image.imageBehavior", 2);
-pref("network.cookie.cookieBehavior", 2); // 0-Accept, 1-dontAcceptForeign, 2-dontUse, 3-p3p
+pref("network.cookie.cookieBehavior", 3); // 0-Accept, 1-dontAcceptForeign, 2-dontUse, 3-p3p
 
-// thunderbird shows size in KB instead of lines by default
-pref("news.show_size_in_lines", false);
+/////////////////////////////////////////////////////////////////
+// End seamonkey suite mailnews.js pref overrides
+///////////////////////////////////////////////////////////////// 
 
 #ifdef MOZ_WIDGET_GTK2
 // whether to check if we're the default mail client on startup (GNOME)
@@ -159,17 +173,10 @@ pref("mail.checkDefaultNews", false);
 #endif
 
 /////////////////////////////////////////////////////////////////
-// End seamonkey suite mailnews.js pref overrides
-///////////////////////////////////////////////////////////////// 
-
-/////////////////////////////////////////////////////////////////
 // Overrides for generic app behavior from the seamonkey suite's all.js
 /////////////////////////////////////////////////////////////////
 
 // l12n and i18n
-#expand pref("general.useragent.locale", "__AB_CD__");
-pref("general.skins.selectedSkin", "classic/1.0");
-
 pref("intl.charsetmenu.mailedit", "chrome://global/locale/intl.properties");
 pref("intl.accept_languages", "chrome://global/locale/intl.properties");
 // collationOption is only set on linux for japanese. see bug 18338 and 62015
@@ -189,6 +196,7 @@ pref("intl.menuitems.alwaysappendaccesskeys","chrome://global/locale/intl.proper
 
 pref("signon.rememberSignons",              true);
 pref("signon.expireMasterPassword",         false);
+pref("signon.SignonFileName",               "signons.txt");
 
 pref("browser.hiddenWindowChromeURL", "chrome://messenger/content/hiddenWindow.xul");
 pref("network.search.url","http://cgi.netscape.com/cgi-bin/url_search.cgi?search=");
@@ -267,25 +275,23 @@ pref("browser.chrome.toolbar_tips",         true);
 // 0 = Pictures Only, 1 = Text Only, 2 = Pictures and Text
 pref("browser.chrome.toolbar_style",        2);
 
-pref("browser.turbo.enabled", false);
-
-pref("browser.xul.error_pages.enabled", true);  
+pref("browser.xul.error_pages.enabled", true);
 
 // Dialog modality issues
-pref("browser.prefWindowModal", true);
 pref("browser.show_about_as_stupid_modal_window", false);
 
 pref("browser.download.progressDnldDialog.keepAlive", true); // keep the dnload progress dialog up after dnload is complete
 pref("browser.download.progressDnldDialog.enable_launch_reveal_buttons", true);
 pref("browser.download.useDownloadDir", false);
 pref("browser.download.folderList", 0);
+pref("browser.download.autoDownload", false);
+pref("browser.download.lastLocation", false);
 
 // various default search settings
 pref("browser.search.defaulturl", "chrome://navigator-region/locale/region.properties");
 pref("browser.search.opensidebarsearchpanel", true);
 pref("browser.search.last_search_category", "NC:SearchCategory?category=urn:search:category:1");
 pref("browser.search.mode", 0);
-pref("browser.search.powermode", 0);
 // basic search popup constraint: minimum sherlock plugin version displayed
 // (note: must be a string representation of a float or it'll default to 0.0)
 pref("browser.search.basic.min_ver", "0.0");
@@ -320,11 +326,6 @@ pref("javascript.options.showInConsole",    true);
 
 pref("network.enableIDN",                   false); // Turn on/off IDN (Internationalized Domain Name) resolution
 pref("wallet.captureForms",                 true);
-pref("wallet.notified",                     false);
-pref("wallet.TutorialFromMenu",             "chrome://navigator/locale/navigator.properties");
-pref("wallet.Server",                       "chrome://navigator/locale/navigator.properties");
-pref("wallet.Samples",                      "chrome://navigator/locale/navigator.properties");
-pref("wallet.version",                      "1");
 pref("wallet.enabled",                      true);
 pref("wallet.crypto",                       false); 
 pref("wallet.crypto.autocompleteoverride",  false); // Ignore 'autocomplete=off' - available only when wallet.crypto is enabled. 
@@ -342,13 +343,10 @@ pref("news.directory",                  "");
 pref("autoupdate.enabled",              true);
 pref("browser.editor.disabled", false);
 pref("spellchecker.dictionary", "");
-pref("profile.allow_automigration", false);   // setting to false bypasses automigration in the profile code
-// profile.migration_behavior determines how the profiles root is set
-// 0 - use NS_APP_USER_PROFILES_ROOT_DIR
-// 1 - create one based on the NS4.x profile root
-// 2 - use, if not empty, profile.migration_directory otherwise same as 0 
-pref("profile.migration_behavior",0);
-pref("profile.migration_directory", "");
+// profile.force.migration can be used to bypass the migration wizard, forcing migration from a particular
+// mail application without any user intervention. Possible values are: 
+// dogbert (4.x), seamonkey (mozilla suite), eudora, oexpress, outlook. 
+pref("profile.force.migration", "");
 
 // Customizable toolbar stuff
 pref("custtoolbar.personal_toolbar_folder", "");
@@ -392,10 +390,11 @@ pref("privacy.popups.statusbar_icon_enabled",     true);
 
 #ifndef XP_MACOSX
 #ifdef XP_UNIX
-// Most Unix people think modal pref windows are stupid:
-pref("browser.prefWindowModal", false);
 // For the download dialog
 pref("browser.download.progressDnldDialog.enable_launch_reveal_buttons", false);
 pref("browser.urlbar.clickSelectsAll", false);
 #endif
 #endif
+
+// prevent status-bar spoofing even if people are foolish enough to turn on JS
+pref("dom.disable_window_status_change",          true);

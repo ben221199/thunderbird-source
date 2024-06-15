@@ -1,8 +1,9 @@
-/.cvsignore/1.1/Sun Aug 18 19:27:53 2002//TTHUNDERBIRD_1_0_8_RELEASE
-/Makefile.in/1.2.22.2/Sat Jul 24 23:58:07 2004//TTHUNDERBIRD_1_0_8_RELEASE
+/.cvsignore/1.1/Sun Aug 18 19:27:53 2002//TTHUNDERBIRD_1_1a1_RELEASE
+/Makefile.in/1.7/Mon Mar  7 18:33:48 2005//TTHUNDERBIRD_1_1a1_RELEASE
+/nsMailDefaultHandler.js/1.4/Mon Apr  4 19:08:49 2005//TTHUNDERBIRD_1_1a1_RELEASE
 D/addrbook////
 D/build////
 D/compose////
 D/gnome////
 D/migration////
-D/prefwindow////
+D/preferences////

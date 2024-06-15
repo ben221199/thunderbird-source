@@ -1,3 +1,40 @@
+# -*- Mode: Java; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 1.1/GPL 2.0/LGPL 2.1
+# 
+# The contents of this file are subject to the Mozilla Public License Version
+# 1.1 (the "License"); you may not use this file except in compliance with
+# the License. You may obtain a copy of the License at
+# http://www.mozilla.org/MPL/
+# 
+# Software distributed under the License is distributed on an "AS IS" basis,
+# WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+# for the specific language governing rights and limitations under the
+# License.
+# 
+# The Original Code is The Update Service.
+# 
+# The Initial Developer of the Original Code is Ben Goodger.
+# Portions created by the Initial Developer are Copyright (C) 2004
+# the Initial Developer. All Rights Reserved.
+# 
+# Contributor(s):
+#   Ben Goodger <ben@bengoodger.com>
+# 
+# Alternatively, the contents of this file may be used under the terms of
+# either the GNU General Public License Version 2 or later (the "GPL"), or
+# the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+# in which case the provisions of the GPL or the LGPL are applicable instead
+# of those above. If you wish to allow use of your version of this file only
+# under the terms of either the GPL or the LGPL, and not to allow others to
+# use your version of this file under the terms of the MPL, indicate your
+# decision by deleting the provisions above and replace them with the notice
+# and other provisions required by the GPL or the LGPL. If you do not delete
+# the provisions above, a recipient may use your version of this file under
+# the terms of any one of the MPL, the GPL or the LGPL.
+# 
+# ***** END LICENSE BLOCK *****
+
 //
 // window.arguments[1...] is an array of nsIUpdateItem implementing objects 
 // that are to be updated. 
@@ -41,9 +78,7 @@
 
 const nsIUpdateItem       = Components.interfaces.nsIUpdateItem;
 const nsIUpdateService    = Components.interfaces.nsIUpdateService;
-const nsIExtensionManager = Components.interfaces.nsIExtensionManager;
 
-const PREF_APP_ID                               = "app.id";
 const PREF_UPDATE_APP_UPDATESAVAILABLE          = "app.update.updatesAvailable";
 const PREF_UPDATE_APP_PERFORMED                 = "app.update.performed";
 
@@ -74,10 +109,6 @@ var gUpdateWizard = {
   
   succeeded: true,
   
-#ifdef MOZ_PHOENIX
-  offeredResetHomepage: false,
-#endif
-
   appComps: {
     upgraded: { 
       core      : [],
@@ -135,13 +166,6 @@ var gUpdateWizard = {
         this.clearExtensionUpdatePrefs();
       }
     }
-
-#ifdef MOZ_PHOENIX
-    if (this.offeredResetHomepage) {
-      pref.setBoolPref("browser.update.resetHomepage", 
-                       document.getElementById("resetHomepage").checked); 
-    }
-#endif
     
     // Send an event to refresh any FE notification components. 
     var os = Components.classes["@mozilla.org/observer-service;1"]
@@ -235,7 +259,8 @@ var gUpdateWizard = {
   {
     var errors = [];
     for (var i = 0; i < this.errorItems.length; ++i)
-      errors.push({ name: this.errorItems[i].name, error: true });
+      errors.push({ name: this.errorItems[i].name, error: true, 
+                    item: this.errorItems[i] });
 
     if (this.errorOnApp) {
       var brandShortName = document.getElementById("brandStrings").getString("brandShortName");
@@ -335,9 +360,9 @@ var gUpdatePage = {
       this._totalCount = gUpdateWizard.items.length;
       if (this._totalCount == 0) {
         var em = Components.classes["@mozilla.org/extensions/manager;1"]
-                            .getService(Components.interfaces.nsIExtensionManager);
-        var extensionCount = em.getItemList(null, nsIUpdateItem.TYPE_EXTENSION, {}).length;
-        var themeCount = em.getItemList(null, nsIUpdateItem.TYPE_THEME, {}).length;
+                           .getService(Components.interfaces.nsIExtensionManager);
+        var extensionCount = em.getItemList(nsIUpdateItem.TYPE_EXTENSION, {}).length;
+        var themeCount = em.getItemList(nsIUpdateItem.TYPE_THEME, {}).length;
 
         this._totalCount = extensionCount + themeCount + 1;
       }
@@ -354,7 +379,7 @@ var gUpdatePage = {
     case "Update:Extension:Item-Started":
       break;
     case "Update:Extension:Item-Ended":
-      if (aSubject) {
+      if (aData == "update-check-success") {
         var item = aSubject.QueryInterface(Components.interfaces.nsIUpdateItem);
         gUpdateWizard.itemsToUpdate.push(item);
       
@@ -978,10 +1003,6 @@ var gRestartPage = {
     gUpdateWizard.setButtonLabels(null, true, null, true, null, true);
     
     // XXXben - we should really have a way to restart the app now from here!
-    
-#ifdef MOZ_PHOENIX
-    gUpdateWizard.offeredResetHomepage = true;
-#endif
 
     document.documentElement.getButton("finish").focus();
 
@@ -1022,38 +1043,3 @@ var gNoUpdatesPage = {
   }
 };
 
-# -*- Mode: Java; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
-# Version: MPL 1.1/GPL 2.0/LGPL 2.1
-# 
-# The contents of this file are subject to the Mozilla Public License Version
-# 1.1 (the "License"); you may not use this file except in compliance with
-# the License. You may obtain a copy of the License at
-# http://www.mozilla.org/MPL/
-# 
-# Software distributed under the License is distributed on an "AS IS" basis,
-# WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
-# for the specific language governing rights and limitations under the
-# License.
-# 
-# The Original Code is The Update Service.
-# 
-# The Initial Developer of the Original Code is Ben Goodger.
-# Portions created by the Initial Developer are Copyright (C) 2004
-# the Initial Developer. All Rights Reserved.
-# 
-# Contributor(s):
-#   Ben Goodger <ben@bengoodger.com>
-# 
-# Alternatively, the contents of this file may be used under the terms of
-# either the GNU General Public License Version 2 or later (the "GPL"), or
-# the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
-# in which case the provisions of the GPL or the LGPL are applicable instead
-# of those above. If you wish to allow use of your version of this file only
-# under the terms of either the GPL or the LGPL, and not to allow others to
-# use your version of this file under the terms of the MPL, indicate your
-# decision by deleting the provisions above and replace them with the notice
-# and other provisions required by the GPL or the LGPL. If you do not delete
-# the provisions above, a recipient may use your version of this file under
-# the terms of any one of the MPL, the GPL or the LGPL.
-# 
-# ***** END LICENSE BLOCK *****

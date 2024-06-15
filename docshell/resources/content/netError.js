@@ -1,33 +1,41 @@
 // Error url MUST be formatted like this:
 //   chrome://neterror.xhtml?e=error&u=url&d=desc
 
+// Note that this file uses document.documentURI to get
+// the URL (with the format from above). This is because
+// document.location.href gets the current URI off the docshell,
+// which is the URL displayed in the location bar, i.e.
+// the URI that the user attempted to load.
+
 function getErrorCode()
 {
-  url = document.location.href;
-  error = url.search(/e\=/);
-  duffUrl = url.search(/\&u\=/);
+  var url = document.documentURI;
+  var error = url.search(/e\=/);
+  var duffUrl = url.search(/\&u\=/);
   return decodeURIComponent(url.slice(error + 2, duffUrl));
 }
 
 function getDuffUrl()
 {
-  url = document.location.href;
-  duffUrl = url.search(/u\=/);
-  desc = url.search(/\&d\=/);
+  var url = document.documentURI;
+  var duffUrl = url.search(/u\=/);
+  var desc = url.search(/\&d\=/);
   return decodeURIComponent(url.slice(duffUrl + 2, desc));
 }
 
 function getDescription()
 {
-  url = document.location.href;
-  desc = url.search(/d\=/);
+  var url = document.documentURI;
+  var desc = url.search(/d\=/);
   return decodeURIComponent(url.slice(desc + 2));
 }
 
 function retryThis()
 {
-  var duffUrl = getDuffUrl();
-  document.location.href = duffUrl;
+  // Session history has the URL of the page that failed
+  // to load, not the one of the error page. So, just call
+  // reload(), which will also repost POST data correctly.
+  location.reload();
 }
 
 function fillIn()

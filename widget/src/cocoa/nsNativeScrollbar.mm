@@ -36,11 +36,10 @@
  * ***** END LICENSE BLOCK ***** */
 
 
+#include <ControlDefinitions.h>
+
 #include "nsNativeScrollbar.h"
 #include "nsIDeviceContext.h"
-#if TARGET_CARBON || (UNIVERSAL_INTERFACES_VERSION >= 0x0330)
-#include <ControlDefinitions.h>
-#endif
 
 #include "nsReadableUtils.h"
 #include "nsWidgetAtoms.h"
@@ -63,6 +62,7 @@ nsNativeScrollbar::nsNativeScrollbar()
   : nsChildView()
   , mContent(nsnull)
   , mMediator(nsnull)
+  , mScrollbar(nsnull)
   , mValue(0)
   , mMaxValue(0)
   , mVisibleImageSize(0)
@@ -76,6 +76,12 @@ nsNativeScrollbar::~nsNativeScrollbar()
 {
 }
 
+NS_IMETHODIMP
+nsNativeScrollbar::Destroy()
+{
+  [mView scrollbarDestroyed];
+  return NS_OK;
+}
 
 //
 // CreateCocoaView
@@ -105,7 +111,7 @@ nsNativeScrollbar::GetQuickDrawPort ( )
   // pray we're always a child of a NSQuickDrawView
   if ( [mParentView isKindOfClass: [ChildView class]] ) {
     NSQuickDrawView* parent = NS_STATIC_CAST(NSQuickDrawView*, mParentView);
-    return [parent qdPort];
+    return (GrafPtr)[parent qdPort];
   }
   
   return nsnull;
@@ -143,7 +149,7 @@ nsNativeScrollbar::DoScroll(NSScrollerPart inPart)
       newPos = oldPos - (mLineIncrement ? mLineIncrement : 1);
       if ( mMediator ) {
         BoundsCheck(0, newPos, mMaxValue);
-        mMediator->ScrollbarButtonPressed(oldPos, newPos);
+        mMediator->ScrollbarButtonPressed(mScrollbar, oldPos, newPos);
       } else {
         UpdateContentPosition(newPos);
       }
@@ -153,7 +159,7 @@ nsNativeScrollbar::DoScroll(NSScrollerPart inPart)
       newPos = oldPos + (mLineIncrement ? mLineIncrement : 1);
       if ( mMediator ) {
         BoundsCheck(0, newPos, mMaxValue);
-        mMediator->ScrollbarButtonPressed(oldPos, newPos);
+        mMediator->ScrollbarButtonPressed(mScrollbar, oldPos, newPos);
       } else {
         UpdateContentPosition(newPos); 
       }
@@ -174,7 +180,7 @@ nsNativeScrollbar::DoScroll(NSScrollerPart inPart)
         PRInt32 op = oldPos, np = mValue;
         if ( np < 0 )
           np = 0;
-        mMediator->PositionChanged(op, np);
+        mMediator->PositionChanged(mScrollbar, op, np);
       }
       break;
     
@@ -185,7 +191,7 @@ nsNativeScrollbar::DoScroll(NSScrollerPart inPart)
         PRInt32 op = oldPos, np = mValue;
         if ( np < 0 )
           np = 0;
-        mMediator->PositionChanged(op, np);
+        mMediator->PositionChanged(mScrollbar, op, np);
       }
       break;
     
@@ -202,7 +208,7 @@ nsNativeScrollbar::DoScroll(NSScrollerPart inPart)
         PRInt32 op = oldPos, np = mValue;
         if ( np < 0 )
           np = 0;
-        mMediator->PositionChanged(op, np);
+        mMediator->PositionChanged(mScrollbar, op, np);
       }
       break;
     
@@ -414,10 +420,12 @@ nsNativeScrollbar::GetNarrowSize(PRInt32* outSize)
 // care about the mediator for <outliner> so we can do row-based scrolling.
 //
 NS_IMETHODIMP
-nsNativeScrollbar::SetContent(nsIContent* inContent, nsIScrollbarMediator* inMediator)
+nsNativeScrollbar::SetContent(nsIContent* inContent, nsISupports* inScrollbar, 
+                              nsIScrollbarMediator* inMediator)
 {
   mContent = inContent;
   mMediator = inMediator;
+  mScrollbar = inScrollbar;
   
   if ( mContent ) {
     // we may have to re-create the scrollbar view as horizontal. Check the
@@ -529,15 +537,15 @@ nsNativeScrollbar::IsEnabled(PRBool *aState)
 //
 - (id)initWithFrame:(NSRect)frameRect geckoChild:(nsNativeScrollbar*)inChild
 {
-  [super initWithFrame:frameRect];
-
-  NS_ASSERTION(inChild, "Need to provide a tether between this and a nsChildView class");
-  mGeckoChild = inChild;
-  
-  // make ourselves the target of the scroll and set the action message
-  [self setTarget:self];
-  [self setAction:@selector(scroll:)];
-  
+  if ((self = [super initWithFrame:frameRect]))
+  {
+    NS_ASSERTION(inChild, "Need to provide a tether between this and a nsChildView class");
+    mGeckoChild = inChild;
+    
+    // make ourselves the target of the scroll and set the action message
+    [self setTarget:self];
+    [self setAction:@selector(scroll:)];
+  }
   return self;
 }
 
@@ -550,7 +558,10 @@ nsNativeScrollbar::IsEnabled(PRBool *aState)
 - (id)initWithFrame:(NSRect)frameRect
 {
   NS_WARNING("You're calling the wrong initializer. You really want -initWithFrame:geckoChild");
-  return [self initWithFrame:frameRect geckoChild:nsnull];
+  if ((self = [self initWithFrame:frameRect geckoChild:nsnull]))
+  {
+  }
+  return self;
 }
 
 
@@ -599,6 +610,34 @@ nsNativeScrollbar::IsEnabled(PRBool *aState)
   // do nothing
 }
 
+//
+// -scrollbarDestroyed
+//
+// the gecko nsNativeScrollbar is being destroyed.
+//
+- (void)scrollbarDestroyed
+{
+  mGeckoChild = nsnull;
+
+  if (mInTracking)
+  {
+    // To get out of the NSScroller tracking loop, we post a fake mouseup event.
+    // We have to do this here, before we are ripped out of the view hierarchy.
+    [NSApp postEvent:[NSEvent mouseEventWithType:NSLeftMouseUp
+                                        location:[NSEvent mouseLocation]
+                                   modifierFlags:0
+                                       timestamp:[[NSApp currentEvent] timestamp]
+                                    windowNumber:[[self window] windowNumber]
+                                         context:NULL
+                                     eventNumber:0
+                                      clickCount:0
+                                        pressure:1.0]
+             atStart:YES];
+
+    mInTracking = NO;
+  }
+}
+
 
 //
 // -scroll
@@ -613,6 +652,52 @@ nsNativeScrollbar::IsEnabled(PRBool *aState)
     mGeckoChild->DoScroll([sender hitPart]);
 }
 
+
+//
+// -trackKnob:
+//
+// overridden to toggle mInTracking on and off
+//
+- (void)trackKnob:(NSEvent *)theEvent
+{
+  mInTracking = YES;
+  NS_DURING   // be sure we always turn mInTracking off.
+    [super trackKnob:theEvent];
+  NS_HANDLER
+  NS_ENDHANDLER
+  mInTracking = NO;
+}
+
+//
+// -trackScrollButtons:
+//
+// overridden to toggle mInTracking on and off
+//
+- (void)trackScrollButtons:(NSEvent *)theEvent
+{
+  mInTracking = YES;
+  NS_DURING   // be sure we always turn mInTracking off.
+    [super trackScrollButtons:theEvent];
+  NS_HANDLER
+  NS_ENDHANDLER
+  mInTracking = NO;
+}
+
+//
+// -trackPagingArea:
+//
+// this method is not documented, but was seen in sampling. We have
+// to override it to toggle mInTracking.
+//
+- (void)trackPagingArea:(id)theEvent
+{
+  mInTracking = YES;
+  NS_DURING   // be sure we always turn mInTracking off.
+    [super trackPagingArea:theEvent];
+  NS_HANDLER
+  NS_ENDHANDLER
+  mInTracking = NO;
+}
 
 @end
 

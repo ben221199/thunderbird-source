@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,28 +14,26 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
  *
- * Original Author: David W. Hyatt (hyatt@netscape.com)
- * 
  * Contributor(s):
- *                 Dan Rosen <dr@netscape.com>
- *                 Dean Tessman <dean_tessman@hotmail.com>
+ *   Dan Rosen <dr@netscape.com>
+ *   Dean Tessman <dean_tessman@hotmail.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -45,7 +43,7 @@
 #include "nsIContent.h"
 #include "prtypes.h"
 #include "nsIAtom.h"
-#include "nsIPresContext.h"
+#include "nsPresContext.h"
 #include "nsStyleContext.h"
 #include "nsCSSRendering.h"
 #include "nsINameSpaceManager.h"
@@ -134,7 +132,7 @@ nsMenuBarFrame::~nsMenuBarFrame()
 }
 
 NS_IMETHODIMP
-nsMenuBarFrame::Init(nsIPresContext*  aPresContext,
+nsMenuBarFrame::Init(nsPresContext*  aPresContext,
                      nsIContent*      aContent,
                      nsIFrame*        aParent,
                      nsStyleContext*  aContext,
@@ -207,8 +205,7 @@ nsMenuBarFrame::SetActive(PRBool aActiveFlag)
     if (!presShell)
       break;
 
-    nsCOMPtr<nsIDocument> document;
-    presShell->GetDocument(getter_AddRefs(document));
+    nsIDocument *document = presShell->GetDocument();
     if (!document)
       break;
 
@@ -217,8 +214,8 @@ nsMenuBarFrame::SetActive(PRBool aActiveFlag)
     if (!windowPrivate)
       break;
 
-    nsCOMPtr<nsIFocusController> focusController;
-    windowPrivate->GetRootFocusController(getter_AddRefs(focusController));
+    nsIFocusController *focusController =
+      windowPrivate->GetRootFocusController();
     if (!focusController)
       break;
 
@@ -228,12 +225,13 @@ nsMenuBarFrame::SetActive(PRBool aActiveFlag)
       break;
 
     nsCOMPtr<nsIDOMDocument> domDoc;
+    nsCOMPtr<nsIDocument> focusedDoc;
     windowInternal->GetDocument(getter_AddRefs(domDoc));
-    document = do_QueryInterface(domDoc);
-    if (!document)
+    focusedDoc = do_QueryInterface(domDoc);
+    if (!focusedDoc)
       break;
 
-    presShell = document->GetShellAt(0);
+    presShell = focusedDoc->GetShellAt(0);
     nsCOMPtr<nsISelectionController> selCon(do_QueryInterface(presShell));
     // there is no selection controller for full page plugins
     if (!selCon)
@@ -253,7 +251,7 @@ nsMenuBarFrame::SetActive(PRBool aActiveFlag)
   NS_NAMED_LITERAL_STRING(active, "DOMMenuBarActive");
   NS_NAMED_LITERAL_STRING(inactive, "DOMMenuBarInactive");
   
-  FireDOMEvent(mPresContext, mIsActive ? active : inactive);
+  FireDOMEvent(mIsActive ? active : inactive);
 
   return NS_OK;
 }
@@ -299,8 +297,7 @@ static void GetInsertionPoint(nsIPresShell* aShell, nsIFrame* aFrame, nsIFrame* 
   nsIContent* child = nsnull;
   if (aChild)
     child = aChild->GetContent();
-  aShell->FrameConstructor()->GetInsertionPoint(aShell, aFrame,
-                                                      child, aResult);
+  aShell->FrameConstructor()->GetInsertionPoint(aFrame, child, aResult);
 }
 
 nsIMenuFrame*
@@ -550,11 +547,7 @@ NS_IMETHODIMP nsMenuBarFrame::SetCurrentMenuItem(nsIMenuFrame* aMenuItem)
     return NS_OK;
 
   PRBool wasOpen = PR_FALSE;
-
-  // check if there's an open context menu, we ignore this
-  if (nsMenuFrame::IsContextMenuActive())
-    return NS_OK;
-
+  
   // Unset the current child.
   if (mCurrentMenu) {
     mCurrentMenu->MenuIsOpen(wasOpen);
@@ -677,21 +670,14 @@ nsMenuBarFrame::HideChain()
     mRecentRollupMenu = mCurrentMenu;
   }
 
+  SetActive(PR_FALSE);
+
   return NS_OK;
 }
 
 NS_IMETHODIMP
 nsMenuBarFrame::DismissChain()
 {
-  // XXX hack if a context menu is active, do an Escape, which is
-  // currently bugged and destroys everything.  We need to close
-  // the context menu first, otherwise SetCurrentMenuItem below
-  // would get blocked.
-  if (nsMenuFrame::IsContextMenuActive()) {
-    PRBool dummy;
-    mCurrentMenu->Escape(dummy);
-  }
-
   // Stop capturing rollups
   if (nsMenuFrame::sDismissalListener)
     nsMenuFrame::sDismissalListener->Unregister();
@@ -790,13 +776,13 @@ nsMenuBarFrame::IsDisabled(nsIContent* aContent)
 {
   nsString disabled;
   aContent->GetAttr(kNameSpaceID_None, nsHTMLAtoms::disabled, disabled);
-  if (disabled.Equals(NS_LITERAL_STRING("true")))
+  if (disabled.EqualsLiteral("true"))
     return PR_TRUE;
   return PR_FALSE;
 }
 
 NS_IMETHODIMP
-nsMenuBarFrame::Destroy(nsIPresContext* aPresContext)
+nsMenuBarFrame::Destroy(nsPresContext* aPresContext)
 {
   mTarget->RemoveEventListener(NS_LITERAL_STRING("keypress"), (nsIDOMKeyListener*)mMenuBarListener, PR_FALSE); 
   mTarget->RemoveEventListener(NS_LITERAL_STRING("keydown"), (nsIDOMKeyListener*)mMenuBarListener, PR_FALSE);  

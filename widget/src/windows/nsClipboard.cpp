@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -22,18 +22,19 @@
  * Contributor(s):
  *   Pierre Phaneuf <pp@ludusdesign.com>
  *   Sean Echevarria <sean@beatnik.com>
+ *   David Gardiner <david.gardiner@unisa.edu.au>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
  * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -61,7 +62,6 @@
 #include "nsIWidget.h"
 #include "nsIComponentManager.h"
 #include "nsWidgetsCID.h"
-#include "nsGfxCIID.h"
 #include "nsCRT.h"
 
 #include "nsVoidArray.h"
@@ -112,8 +112,7 @@ UINT nsClipboard::GetFormat(const char* aMimeStr)
     format = CF_TEXT;
   else if (strcmp(aMimeStr, kUnicodeMime) == 0)
     format = CF_UNICODETEXT;
-  else if (strcmp(aMimeStr, kJPEGImageMime) == 0 ||
-           strcmp(aMimeStr, kNativeImageMime) == 0)
+  else if (strcmp(aMimeStr, kJPEGImageMime) == 0)
     format = CF_DIB;
   else if (strcmp(aMimeStr, kFileMime) == 0 || 
            strcmp(aMimeStr, kFilePromiseMime) == 0)
@@ -132,7 +131,7 @@ UINT nsClipboard::GetFormat(const char* aMimeStr)
 }
 
 //-------------------------------------------------------------------------
-nsresult nsClipboard::CreateNativeDataObject(nsITransferable * aTransferable, IDataObject ** aDataObj)
+nsresult nsClipboard::CreateNativeDataObject(nsITransferable * aTransferable, IDataObject ** aDataObj, nsIURI * uri)
 {
   if (nsnull == aTransferable) {
     return NS_ERROR_FAILURE;
@@ -140,8 +139,11 @@ nsresult nsClipboard::CreateNativeDataObject(nsITransferable * aTransferable, ID
 
   // Create our native DataObject that implements 
   // the OLE IDataObject interface
-  nsDataObj * dataObj;
-  dataObj = new nsDataObj();
+  nsDataObj * dataObj = new nsDataObj(uri);
+
+  if (!dataObj) 
+    return NS_ERROR_OUT_OF_MEMORY;
+
   dataObj->AddRef();
 
   // No set it up with all the right data flavors & enums
@@ -213,14 +215,16 @@ nsresult nsClipboard::SetupNativeDataObject(nsITransferable * aTransferable, IDa
         // the "file" flavors so that the win32 shell knows to create an internet
         // shortcut when it sees one of these beasts.
         FORMATETC shortcutFE;
-        SET_FORMATETC(shortcutFE, ::RegisterClipboardFormat(CFSTR_FILEDESCRIPTOR), 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL)
+        SET_FORMATETC(shortcutFE, ::RegisterClipboardFormat(CFSTR_FILEDESCRIPTORA), 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL)
+        dObj->AddDataFlavor(kURLMime, &shortcutFE);      
+        SET_FORMATETC(shortcutFE, ::RegisterClipboardFormat(CFSTR_FILEDESCRIPTORW), 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL)
         dObj->AddDataFlavor(kURLMime, &shortcutFE);      
         SET_FORMATETC(shortcutFE, ::RegisterClipboardFormat(CFSTR_FILECONTENTS), 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL)
         dObj->AddDataFlavor(kURLMime, &shortcutFE);  
-#ifdef CFSTR_SHELLURL
-        SET_FORMATETC(shortcutFE, ::RegisterClipboardFormat(CFSTR_SHELLURL), 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL)
+        SET_FORMATETC(shortcutFE, ::RegisterClipboardFormat(CFSTR_INETURLA), 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL)
         dObj->AddDataFlavor(kURLMime, &shortcutFE);      
-#endif
+        SET_FORMATETC(shortcutFE, ::RegisterClipboardFormat(CFSTR_INETURLW), 0, DVASPECT_CONTENT, -1, TYMED_HGLOBAL)
+        dObj->AddDataFlavor(kURLMime, &shortcutFE);      
       }
       else if ( strcmp(flavorStr, kPNGImageMime) == 0 || strcmp(flavorStr, kJPEGImageMime) == 0 ||
                   strcmp(flavorStr, kGIFImageMime) == 0 || strcmp(flavorStr, kNativeImageMime) == 0  ) {
@@ -270,7 +274,7 @@ NS_IMETHODIMP nsClipboard::SetNativeClipboardData ( PRInt32 aWhichClipboard )
   ::OleSetClipboard(NULL);
 
   IDataObject * dataObj;
-  if ( NS_SUCCEEDED(CreateNativeDataObject(mTransferable, &dataObj)) ) { // this add refs
+  if ( NS_SUCCEEDED(CreateNativeDataObject(mTransferable, &dataObj, NULL)) ) { // this add refs dataObj
     ::OleSetClipboard(dataObj);
     dataObj->Release();
   }
@@ -427,10 +431,11 @@ nsresult nsClipboard::GetNativeDataOffClipboard(IDataObject * aDataObject, UINT 
   // Currently this is only handling TYMED_HGLOBAL data
   // For Text, Dibs, Files, and generic data (like HTML)
   if (S_OK == hres) {
-    static CLIPFORMAT fileDescriptorFlavor = ::RegisterClipboardFormat( CFSTR_FILEDESCRIPTOR );
-    static CLIPFORMAT fileFlavor = ::RegisterClipboardFormat( CFSTR_FILECONTENTS );
+    static CLIPFORMAT fileDescriptorFlavorA = ::RegisterClipboardFormat( CFSTR_FILEDESCRIPTORA ); 
+    static CLIPFORMAT fileDescriptorFlavorW = ::RegisterClipboardFormat( CFSTR_FILEDESCRIPTORW ); 
+    static CLIPFORMAT fileFlavor = ::RegisterClipboardFormat( CFSTR_FILECONTENTS ); 
     switch (stm.tymed) {
-     case TYMED_HGLOBAL:
+     case TYMED_HGLOBAL: 
         {
           switch (fe.cfFormat) {
             case CF_TEXT:
@@ -465,22 +470,23 @@ nsresult nsClipboard::GetNativeDataOffClipboard(IDataObject * aDataObject, UINT 
 
             case CF_DIB :
               {
-                nsIClipboardImage * nativeImageWrapper = nsnull; // don't use a nsCOMPtr here
+                HGLOBAL hGlobal = stm.hGlobal;
+                BYTE  * pGlobal = (BYTE  *)::GlobalLock (hGlobal) ;
+                BITMAPV4HEADER * header = (BITMAPV4HEADER *)pGlobal;
 
-                result = nsComponentManager::CreateInstance("@mozilla.org/widget/clipboardimage;1", nsnull,
-                                                    NS_GET_IID(nsIClipboardImage),
-                                                    (void**) &nativeImageWrapper);
-
-                if (nativeImageWrapper)
-                {                                  
-                  nativeImageWrapper->SetNativeImage((void *) &stm);
-                  *aData = nativeImageWrapper; // note that we never release our ref to nativeImageWrapper. We pass it on to the owner of *aData
-                  *aLen = sizeof(nsIClipboardImage *);
+                nsImageFromClipboard converter ( header );
+                nsIImage* image;
+                converter.GetImage ( &image );   // addrefs for us, don't release
+                if ( image ) {
+                  *aData = image;
+                  *aLen = sizeof(nsIImage*);
                   result = NS_OK;
                 }
+
+                ::GlobalUnlock (hGlobal) ;
               } break;
 
-            case CF_HDROP :
+            case CF_HDROP : 
               {
                 // in the case of a file drop, multiple files are stashed within a
                 // single data object. In order to match mozilla's D&D apis, we
@@ -508,7 +514,7 @@ nsresult nsClipboard::GetNativeDataOffClipboard(IDataObject * aDataObject, UINT 
               } break;
 
             default: {
-              if ( fe.cfFormat == fileDescriptorFlavor || fe.cfFormat == fileFlavor ) {
+              if ( fe.cfFormat == fileDescriptorFlavorA || fe.cfFormat == fileDescriptorFlavorW || fe.cfFormat == fileFlavor ) {
                 NS_WARNING ( "Mozilla doesn't yet understand how to read this type of file flavor" );
               } 
               else {
@@ -633,11 +639,6 @@ nsresult nsClipboard::GetDataFromDataObject(IDataObject     * aDataObject,
           else
             continue;     // something wrong with this flavor, keep looking for other data
         }
-        else if ( strcmp(flavorStr, kJPEGImageMime) == 0 || strcmp(flavorStr, kNativeImageMime) == 0) {
-          // we have image data. We don't want to attempt any conversions here 
-          nsIClipboardImage * image = NS_REINTERPRET_CAST(nsIClipboardImage*, data);
-          genericDataWrapper = do_QueryInterface(image);       
-        }
         else {
           // we probably have some form of text. The DOM only wants LF, so convert from Win32 line 
           // endings to DOM line endings.
@@ -651,8 +652,6 @@ nsresult nsClipboard::GetDataFromDataObject(IDataObject     * aDataObject,
         NS_ASSERTION ( genericDataWrapper, "About to put null data into the transferable" );
         aTransferable->SetTransferData(flavorStr, genericDataWrapper, dataLen);
 
-        // don't free data if it is an image object
-        if (strcmp(flavorStr, kJPEGImageMime) && strcmp(flavorStr, kNativeImageMime))
         nsMemory::Free ( NS_REINTERPRET_CAST(char*, data) );        
         res = NS_OK;
         
@@ -747,37 +746,34 @@ nsClipboard :: FindURLFromLocalFile ( IDataObject* inDataObject, UINT inIndex, v
   nsresult loadResult = GetNativeDataOffClipboard(inDataObject, inIndex, GetFormat(kFileMime), outData, outDataLen);
   if ( NS_SUCCEEDED(loadResult) && *outData ) {
     // we have a file path in |data|. Is it an internet shortcut or a normal file?
-    char* filepath = NS_REINTERPRET_CAST(char*, *outData);
-    if ( IsInternetShortcut(filepath) ) {
-      char* buffer = nsnull;
+    const char* filepath = NS_REINTERPRET_CAST(char*, *outData);
+    nsCOMPtr<nsILocalFile> file;
+    nsresult rv = NS_NewNativeLocalFile(nsDependentCString(filepath), PR_TRUE, getter_AddRefs(file));
+    if (NS_FAILED(rv))
+      return dataFound;
 
-      ResolveShortcut ( filepath, &buffer );     
-      if ( buffer ) {
+    if ( IsInternetShortcut(filepath) ) {
+      nsCAutoString url;
+      ResolveShortcut( file, url );
+      if ( !url.IsEmpty() ) {
         // convert it to unicode and pass it out
         nsMemory::Free(*outData);
-        nsAutoString urlUnicode;
-        urlUnicode.AssignWithConversion( buffer );
-        *outData = ToNewUnicode(urlUnicode);
-        *outDataLen = strlen(buffer) * sizeof(PRUnichar);
-        nsMemory::Free(buffer);
+        *outData = UTF8ToNewUnicode(url);
+        *outDataLen = nsCRT::strlen(NS_STATIC_CAST(PRUnichar*, *outData)) * sizeof(PRUnichar);
 
         dataFound = PR_TRUE;
       }
     }
     else {
       // we have a normal file, use some Necko objects to get our file path
-	    nsCOMPtr<nsILocalFile> file;
-        if ( NS_SUCCEEDED(NS_NewNativeLocalFile(nsDependentCString(filepath), PR_TRUE, getter_AddRefs(file))) ) {
-        nsCAutoString urlSpec;
-        NS_GetURLSpecFromFile(file, urlSpec);
+      nsCAutoString urlSpec;
+      NS_GetURLSpecFromFile(file, urlSpec);
 
-          // convert it to unicode and pass it out
-          nsMemory::Free(*outData);
-          *outData = ToNewUnicode(NS_ConvertUTF8toUCS2(urlSpec));
-          *outDataLen = strlen(urlSpec.get()) * sizeof(PRUnichar);
-          dataFound = PR_TRUE;
-        
-      }
+      // convert it to unicode and pass it out
+      nsMemory::Free(*outData);
+      *outData = UTF8ToNewUnicode(urlSpec);
+      *outDataLen = nsCRT::strlen(NS_STATIC_CAST(PRUnichar*, *outData)) * sizeof(PRUnichar);
+      dataFound = PR_TRUE;
     } // else regular file
   }
 
@@ -788,48 +784,20 @@ nsClipboard :: FindURLFromLocalFile ( IDataObject* inDataObject, UINT inIndex, v
 //
 // ResolveShortcut
 //
-// Use some Win32 mumbo-jumbo to read in the shortcut file and parse out the URL
-// in references
-//
 void
-nsClipboard :: ResolveShortcut ( const char* inFileName, char** outURL )
+nsClipboard :: ResolveShortcut ( nsILocalFile* aFile, nsACString& outURL )
 {
-// IUniformResourceLocator isn't supported by VC5 (bless its little heart)
-#if _MSC_VER >= 1200
-  HRESULT result;
+  nsCOMPtr<nsIFileProtocolHandler> fph;
+  nsresult rv = NS_GetFileProtocolHandler(getter_AddRefs(fph));
+  if (NS_FAILED(rv))
+    return;
 
-  IUniformResourceLocator* urlLink = nsnull;
-  result = ::CoCreateInstance ( CLSID_InternetShortcut, NULL, CLSCTX_INPROC_SERVER,
-                                IID_IUniformResourceLocator, (void**)&urlLink );
-  if ( SUCCEEDED(result) && urlLink ) {
-    IPersistFile* urlFile = nsnull;
-    result = urlLink->QueryInterface (IID_IPersistFile, (void**)&urlFile );
-    if ( SUCCEEDED(result) && urlFile ) {
-      WORD wideFileName[MAX_PATH];
-      ::MultiByteToWideChar ( CP_ACP, 0, inFileName, -1, wideFileName, MAX_PATH );
+  nsCOMPtr<nsIURI> uri;
+  rv = fph->ReadURLFile(aFile, getter_AddRefs(uri));
+  if (NS_FAILED(rv))
+    return;
 
-      result = urlFile->Load(wideFileName, STGM_READ);
-      if (SUCCEEDED(result) ) {
-        LPSTR lpTemp = nsnull;
-
-        result = urlLink->GetURL(&lpTemp);
-        if ( SUCCEEDED(result) && lpTemp ) {
-          *outURL = PL_strdup (lpTemp);
-
-          // free the string that GetURL alloc'd
-          IMalloc* pMalloc;
-          result = SHGetMalloc(&pMalloc);
-          if ( SUCCEEDED(result) ) {
-            pMalloc->Free(lpTemp);
-            pMalloc->Release();
-          }
-        }
-      }
-      urlFile->Release();
-    }
-    urlLink->Release();
-  }
-#endif
+  uri->GetSpec(outURL);
 } // ResolveShortcut
 
 
@@ -843,6 +811,7 @@ nsClipboard :: IsInternetShortcut ( const char* inFileName )
 {
   if ( strstr(inFileName, ".URL") || strstr(inFileName, ".url") )
     return PR_TRUE;
+  
   return PR_FALSE;
 } // IsInternetShortcut
 
@@ -926,76 +895,5 @@ NS_IMETHODIMP nsClipboard::HasDataMatchingFlavors(nsISupportsArray *aFlavorList,
     }
   }
 
-  return NS_OK;
-}
-
-
-nsClipboardImage::nsClipboardImage()
-{
-  memset(&mStgMedium, 0, sizeof(STGMEDIUM));
-}
-
-nsClipboardImage :: ~nsClipboardImage()
-{
-  if(mStgMedium.hGlobal)
-    ReleaseStgMedium(&mStgMedium);
-}
-
-NS_IMPL_ISUPPORTS1(nsClipboardImage, nsIClipboardImage)
-
-static HGLOBAL CopyGlobalMemory(HGLOBAL hSource)
-{
-  if (hSource == NULL)
-    return NULL;
-
-  DWORD nSize = (DWORD)::GlobalSize(hSource);
-  HGLOBAL hDest = ::GlobalAlloc(GMEM_SHARE | GMEM_MOVEABLE, nSize);
-  if (hDest == NULL)
-    return NULL;
-
-  // copy the bits
-  LPVOID lpSource = ::GlobalLock(hSource);
-  LPVOID lpDest = ::GlobalLock(hDest);
-  memcpy(lpDest, lpSource, nSize);
-  ::GlobalUnlock(hDest);
-  ::GlobalUnlock(hSource);
-
-  return hDest;
-}
-
-NS_IMETHODIMP nsClipboardImage::SetNativeImage(void * aNativeImageData)
-{
-  STGMEDIUM * stg = (STGMEDIUM *)aNativeImageData;
-
-  HGLOBAL hDest = CopyGlobalMemory(stg->hGlobal);
-  if (hDest == NULL)
-    return NS_ERROR_OUT_OF_MEMORY;
-
-  if(mStgMedium.hGlobal)
-    ReleaseStgMedium(&mStgMedium);
-  mStgMedium = *stg;
-  mStgMedium.hGlobal = hDest;
-  return NS_OK;
-}
-
-NS_IMETHODIMP nsClipboardImage::GetNativeImage(void * aNativeImageData)
-{
-  // the caller should be passing in a STGMEDIUM object which we can copy into
-  HGLOBAL hDest = CopyGlobalMemory(mStgMedium.hGlobal);
-  if (hDest == NULL)
-    return NS_ERROR_OUT_OF_MEMORY;
-
-  STGMEDIUM * stg = (STGMEDIUM *)aNativeImageData;
-
-  *stg = mStgMedium;
-  stg->hGlobal = hDest;
-  return NS_OK;
-}
-
-NS_IMETHODIMP nsClipboardImage::ReleaseNativeImage(void * aNativeImageData)
-{
-  STGMEDIUM * stg = (STGMEDIUM *) aNativeImageData;
-  if (stg)
-    ReleaseStgMedium(stg);
   return NS_OK;
 }

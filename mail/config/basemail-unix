@@ -31,6 +31,7 @@ chrome/icons/default/addressbookWindow.xpm
 chrome/icons/default/messengerWindow.xpm
 chrome/icons/default/msgcomposeWindow.xpm
 
+bin/extensions/{972ce4c6-7e08-4474-a285-3208198ce6fd}/install.rdf
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Mail Extensions (smime, etc.)
@@ -38,6 +39,7 @@ chrome/icons/default/msgcomposeWindow.xpm
 components/offlineStartup.js
 components/mdn-service.js
 components/libsmimestb.so
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Chrome Files
@@ -48,6 +50,8 @@ chrome/en-US-mail.jar
 ;;this maybe incorrect but we use win because of 
 ;;a static installed-chrome.txt
 chrome/en-unix.jar
+;;chrome/en-unix.jar
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Default Profile Settings
@@ -57,11 +61,9 @@ chrome/en-unix.jar
 defaults/pref/*
 greprefs/*
 defaults/messenger/mailViews.dat
+defaults/messenger/SpamAssassin.sfd
 defaults/profile/localstore.rdf
 defaults/profile/mimeTypes.rdf
-defaults/profile/extensions/Extensions.rdf
-defaults/profile/extensions/installed-extensions.txt
-defaults/profile/extensions/{972ce4c6-7e08-4474-a285-3208198ce6fd}/install.rdf
 defaults/profile/US/localstore.rdf
 defaults/profile/US/mimeTypes.rdf
 defaults/isp/US/movemail.rdf
@@ -75,6 +77,7 @@ defaults/isp/movemail.rdf
 components/libmozldap.so
 components/mozldap.xpt
 components/nsLDAPPrefsService.js
+components/nsAbLDAPAttributeMap.js
 libldap50.so
 libprldap50.so
 
@@ -133,6 +136,7 @@ libmozjs.so
 ; XPCOM:
 ; 
 libxpcom.so 
+libxpcom_core.so 
 libxpistub.so
 libxpcom_compat.so
 components/xpcom_base.xpt
@@ -157,6 +161,7 @@ libgtksuperwin.so
 libgtkxtbin.so 
 libgtkembedmoz.so 
 libxlibrgb.so
+libgfxpsshar.so
 components/libgfx_gtk.so
 components/libgfxps.so
 components/libgfxxprint.so
@@ -168,6 +173,7 @@ components/gfx.xpt
 ; layout
 components/libgklayout.so               
 components/layout_base.xpt              
+components/layout_printing.xpt              
 components/layout_xul.xpt               
 components/layout_xul_tree.xpt               
 components/content_base.xpt
@@ -184,6 +190,7 @@ components/xuldoc.xpt
 ;;res/dtd/xhtml11.dtd
 components/libgklayout.so                   
 components/layout_base.xpt              
+components/layout_printing.xpt              
 components/layout_xul.xpt
 components/layout_xul_tree.xpt               
 components/content_base.xpt
@@ -209,7 +216,7 @@ components/caps.xpt
 
 components/libnsappshell.so
 components/appshell.xpt 
-
+components/appstartup.xpt
 
 ; cookies
 ;;components/libcookie.so                   
@@ -234,7 +241,7 @@ components/jar.xpt
 components/pref.xpt                     
 components/libpref.so
 
-; profile             
+; profile
 components/profile.xpt
 components/libprofileimport.so
 components/libprofilemigration.so
@@ -272,7 +279,6 @@ components/dom_loadsave.xpt
 
 ; "javascript:" URLs
 components/libjsd.so
-components/jsurl.xpt
 
 ; editor / composer for HTML compose
 components/libeditor.so                   
@@ -295,7 +301,6 @@ components/necko_about.xpt
 components/necko_data.xpt               
 components/necko_dns.xpt                
 components/necko_http.xpt               
-components/necko_jar.xpt                
 components/necko_res.xpt                
 components/necko_strconv.xpt
 components/necko_viewsource.xpt
@@ -357,6 +362,7 @@ components/nsCloseAllWindows.js
 components/libxremoteservice.so
 components/libxremote_client.so
 components/xremoteservice.xpt
+components/xulapp.xpt
 components/libfileview.so
 
 ; plugins
@@ -386,12 +392,12 @@ res/ua.css
 res/html.css
 res/quirk.css
 res/forms.css
-res/platform-forms.css
 res/charsetData.properties
 res/charsetalias.properties
 res/langGroups.properties
 res/language.properties
 ;res/wincharset.properties
+res/builtin/*
 res/entityTables/*
 
 ; editor resource files
@@ -442,11 +448,11 @@ components/filepicker.xpt
 ;;res/viewsource.css
 ;;res/ua.css
 ;;res/forms.css
-;;res/platform-forms.css
 ;;res/arrow.gif
 ;;res/arrowd.gif
 ;;res/loading-image.gif
 ;;res/broken-image.gif
+;;res/builtin/*
 ;;res/entityTables/html40Special.properties
 ;;res/entityTables/htmlEntityVersion.properties
 ;;res/entityTables/html40Latin1.properties

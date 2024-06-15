@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -24,16 +24,16 @@
  *   Sergei Dolgov <sergei_d@fi.tartu.ee>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
  * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -84,16 +84,14 @@ static NS_DEFINE_IID(kIWidgetIID,       NS_IWIDGET_IID);
 static nsIRollupListener * gRollupListener           = nsnull;
 static nsIWidget         * gRollupWidget             = nsnull;
 static PRBool              gRollupConsumeRollupEvent = PR_FALSE;
-// Preserve Mozilla's shortcut for closing 
-static PRBool              gGotQuitShortcut          = PR_FALSE;
 // Tracking last activated BWindow
 static BWindow           * gLastActiveWindow = NULL;
 
 // BCursor objects can't be created until they are used.  Some mozilla utilities, 
 // such as regxpcom, do not create a BApplication object, and therefor fail to run.,
 // since a BCursor requires a vaild BApplication (see Bug#129964).  But, we still want
-// to cache them for performance.  Currently, there are 18 cursors available;
-static nsVoidArray		gCursorArray(18);
+// to cache them for performance.  Currently, there are 17 cursors available;
+static nsVoidArray		gCursorArray(17);
 // Used in contrain position.  Specifies how much of a window must remain on screen
 #define kWindowPositionSlop 20
 // BeOS does not provide this information, so we must hard-code it
@@ -987,18 +985,6 @@ nsresult nsWindow::Move(PRInt32 aX, PRInt32 aY)
 
 	if(mView)
 	{
-		// Popup window should be placed relative to its parent window.
-		if (mWindowType == eWindowType_popup && mBorderlessParent) 
-		{
-			BWindow *parentwindow = mBorderlessParent->Window();
-			if (parentwindow && parentwindow->Lock()) 
-			{
-				BPoint p = mBorderlessParent->ConvertToScreen(BPoint(aX,aY));
-				aX = (nscoord)p.x;
-				aY = (nscoord)p.y;
-				parentwindow->Unlock();
-			}
-		}
 		if(mView->LockLooper())
 			mustunlock = true;
 
@@ -1320,23 +1306,16 @@ NS_METHOD nsWindow::SetCursor(nsCursor aCursor)
 			gCursorArray.InsertElementAt((void*) new BCursor(cursorLowerLeft),4);
 			gCursorArray.InsertElementAt((void*) new BCursor(cursorUpperLeft),5);
 			gCursorArray.InsertElementAt((void*) new BCursor(cursorLowerRight),6);
-			gCursorArray.InsertElementAt((void*) new BCursor(cursorTop),7);
-			gCursorArray.InsertElementAt((void*) new BCursor(cursorBottom),8);
-			gCursorArray.InsertElementAt((void*) new BCursor(cursorLeft),9);
-			gCursorArray.InsertElementAt((void*) new BCursor(cursorRight),10);
-			gCursorArray.InsertElementAt((void*) new BCursor(cursorCrosshair),11);
-			gCursorArray.InsertElementAt((void*) new BCursor(cursorHelp),12);
-			gCursorArray.InsertElementAt((void*) new BCursor(cursorGrab),13);
-			gCursorArray.InsertElementAt((void*) new BCursor(cursorGrabbing),14);
-			gCursorArray.InsertElementAt((void*) new BCursor(cursorCopy),15);
-			gCursorArray.InsertElementAt((void*) new BCursor(cursorAlias),16);
-			gCursorArray.InsertElementAt((void*) new BCursor(cursorWatch2),17);
-			gCursorArray.InsertElementAt((void*) new BCursor(cursorCell),18);
-			gCursorArray.InsertElementAt((void*) new BCursor(cursorCountUp),19);
-			gCursorArray.InsertElementAt((void*) new BCursor(cursorCountDown),20);
-			gCursorArray.InsertElementAt((void*) new BCursor(cursorCountUpDown),21);
-			gCursorArray.InsertElementAt((void*) new BCursor(cursorZoomIn),22);
-			gCursorArray.InsertElementAt((void*) new BCursor(cursorZoomOut),23);
+			gCursorArray.InsertElementAt((void*) new BCursor(cursorCrosshair),7);
+			gCursorArray.InsertElementAt((void*) new BCursor(cursorHelp),8);
+			gCursorArray.InsertElementAt((void*) new BCursor(cursorGrab),9);
+			gCursorArray.InsertElementAt((void*) new BCursor(cursorGrabbing),10);
+			gCursorArray.InsertElementAt((void*) new BCursor(cursorCopy),11);
+			gCursorArray.InsertElementAt((void*) new BCursor(cursorAlias),12);
+			gCursorArray.InsertElementAt((void*) new BCursor(cursorWatch2),13);
+			gCursorArray.InsertElementAt((void*) new BCursor(cursorCell),14);
+			gCursorArray.InsertElementAt((void*) new BCursor(cursorZoomIn),15);
+			gCursorArray.InsertElementAt((void*) new BCursor(cursorZoomOut),16);
 		}
 
 		switch (aCursor) 
@@ -1355,103 +1334,116 @@ NS_METHOD nsWindow::SetCursor(nsCursor aCursor)
 				newCursor = (BCursor *)gCursorArray.SafeElementAt(0);
 				break;
 	
-			case eCursor_sizeWE:
-				newCursor = (BCursor *)gCursorArray.SafeElementAt(1);
-				break;
-	
-			case eCursor_sizeNS:
+			case eCursor_n_resize:
+			case eCursor_s_resize:
 				newCursor = (BCursor *)gCursorArray.SafeElementAt(2);
 				break;
 	
-			case eCursor_sizeNW:
+			case eCursor_w_resize:
+			case eCursor_e_resize:
+				newCursor = (BCursor *)gCursorArray.SafeElementAt(1);
+				break;
+	
+			case eCursor_nw_resize:
 				newCursor = (BCursor *)gCursorArray.SafeElementAt(3);
 				break;
 	
-			case eCursor_sizeSE:
+			case eCursor_se_resize:
 				newCursor = (BCursor *)gCursorArray.SafeElementAt(4);
 				break;
 	
-			case eCursor_sizeNE:
+			case eCursor_ne_resize:
 				newCursor = (BCursor *)gCursorArray.SafeElementAt(5);
 				break;
 	
-			case eCursor_sizeSW:
+			case eCursor_sw_resize:
 				newCursor = (BCursor *)gCursorArray.SafeElementAt(6);
 				break;
 	
-			case eCursor_arrow_north:
-			case eCursor_arrow_north_plus:
+			case eCursor_crosshair:
 				newCursor = (BCursor *)gCursorArray.SafeElementAt(7);
 				break;
 	
-			case eCursor_arrow_south:
-			case eCursor_arrow_south_plus:
+			case eCursor_help:
 				newCursor = (BCursor *)gCursorArray.SafeElementAt(8);
 				break;
 	
-			case eCursor_arrow_east:
-			case eCursor_arrow_east_plus:
-				newCursor = (BCursor *)gCursorArray.SafeElementAt(9);
-				break;
-	
-			case eCursor_arrow_west:
-			case eCursor_arrow_west_plus:
-				newCursor = (BCursor *)gCursorArray.SafeElementAt(10);
-				break;
-	
-			case eCursor_crosshair:
+			case eCursor_copy:
 				newCursor = (BCursor *)gCursorArray.SafeElementAt(11);
 				break;
 	
-			case eCursor_help:
-				newCursor = (BCursor *)gCursorArray.SafeElementAt(12);
-				break;
-	
-			case eCursor_copy:
-				newCursor = (BCursor *)gCursorArray.SafeElementAt(15);
-				break;
-	
 			case eCursor_alias:
-				newCursor = (BCursor *)gCursorArray.SafeElementAt(16);
+				newCursor = (BCursor *)gCursorArray.SafeElementAt(12);
 				break;
 
 			case eCursor_context_menu:
+				// XXX: No suitable cursor, needs implementing
 				break;
 				
 			case eCursor_cell:
-				newCursor = (BCursor *)gCursorArray.SafeElementAt(18);
+				newCursor = (BCursor *)gCursorArray.SafeElementAt(14);
 				break;
 
 			case eCursor_grab:
-				newCursor = (BCursor *)gCursorArray.SafeElementAt(13);
+				newCursor = (BCursor *)gCursorArray.SafeElementAt(9);
 				break;
 	
 			case eCursor_grabbing:
-				newCursor = (BCursor *)gCursorArray.SafeElementAt(14);
+				newCursor = (BCursor *)gCursorArray.SafeElementAt(10);
 				break;
 	
 			case eCursor_spinning:
-				newCursor = (BCursor *)gCursorArray.SafeElementAt(17);
+				newCursor = (BCursor *)gCursorArray.SafeElementAt(13);
 				break;
 	
-			case eCursor_count_up:
-				newCursor = (BCursor *)gCursorArray.SafeElementAt(19);
-				break;
-
-			case eCursor_count_down:
-				newCursor = (BCursor *)gCursorArray.SafeElementAt(20);
-				break;
-
-			case eCursor_count_up_down:
-				newCursor = (BCursor *)gCursorArray.SafeElementAt(21);
-				break;
-
 			case eCursor_zoom_in:
-				newCursor = (BCursor *)gCursorArray.SafeElementAt(22);
+				newCursor = (BCursor *)gCursorArray.SafeElementAt(15);
 				break;
 
 			case eCursor_zoom_out:
-				newCursor = (BCursor *)gCursorArray.SafeElementAt(23);
+				newCursor = (BCursor *)gCursorArray.SafeElementAt(16);
+				break;
+
+			case eCursor_not_allowed:
+			case eCursor_no_drop:
+				// XXX: No suitable cursor, needs implementing
+				break;
+
+			case eCursor_col_resize:
+				// XXX not 100% appropriate perhaps
+				newCursor = (BCursor *)gCursorArray.SafeElementAt(1);
+				break;
+
+			case eCursor_row_resize:
+				// XXX not 100% appropriate perhaps
+				newCursor = (BCursor *)gCursorArray.SafeElementAt(2);
+				break;
+
+			case eCursor_vertical_text:
+				// XXX not 100% appropriate perhaps
+				newCursor = B_CURSOR_I_BEAM;
+				break;
+
+			case eCursor_all_scroll:
+				// XXX: No suitable cursor, needs implementing
+				break;
+
+			case eCursor_nesw_resize:
+				// XXX not 100% appropriate perhaps
+				newCursor = (BCursor *)gCursorArray.SafeElementAt(1);
+				break;
+
+			case eCursor_nwse_resize:
+				// XXX not 100% appropriate perhaps
+				newCursor = (BCursor *)gCursorArray.SafeElementAt(1);
+				break;
+
+			case eCursor_ns_resize:
+				newCursor = (BCursor *)gCursorArray.SafeElementAt(2);
+				break;
+
+			case eCursor_ew_resize:
+				newCursor = (BCursor *)gCursorArray.SafeElementAt(1);
 				break;
 
 			default:
@@ -1732,11 +1724,6 @@ bool nsWindow::CallMethod(MethodInfo *info)
 
 	case nsWindow::CLOSEWINDOW :
 		NS_ASSERTION(info->nArgs == 0, "Wrong number of arguments to CallMethod");
-		if (gGotQuitShortcut == PR_TRUE)
-		{
-			gGotQuitShortcut = PR_FALSE;
-			return false;
-		}
 		if (eWindowType_popup != mWindowType && eWindowType_child != mWindowType)
 			DealWithPopups(CLOSEWINDOW,nsPoint(0,0));
 		DispatchStandardEvent(NS_DESTROY);
@@ -1802,10 +1789,10 @@ bool nsWindow::CallMethod(MethodInfo *info)
 			BPoint cursor(0,0);
 			uint32 buttons;
 			if(mView && mView->LockLooper())
-				{
-					mView->GetMouse(&cursor, &buttons, false);
-					mView->UnlockLooper();
-				}
+			{
+				mView->GetMouse(&cursor, &buttons, false);
+				mView->UnlockLooper();
+			}
 			else
 				return false;
 			NS_ASSERTION(info->nArgs == 1, "Wrong number of arguments to CallMethod");
@@ -2161,23 +2148,19 @@ PRBool nsWindow::OnKeyDown(PRUint32 aEventType, const char *bytes,
                            int32 numBytes, PRUint32 mod, PRUint32 bekeycode, int32 rawcode)
 {
 	PRUint32 aTranslatedKeyCode;
-	PRBool result = PR_FALSE;
+	PRBool noDefault = PR_FALSE;
 
 	mIsShiftDown   = (mod & B_SHIFT_KEY) ? PR_TRUE : PR_FALSE;
 	mIsControlDown = (mod & B_CONTROL_KEY) ? PR_TRUE : PR_FALSE;
 	mIsAltDown     = ((mod & B_COMMAND_KEY) && !(mod & B_RIGHT_OPTION_KEY))? PR_TRUE : PR_FALSE;
 	mIsMetaDown    = (mod & B_LEFT_OPTION_KEY) ? PR_TRUE : PR_FALSE;	
 	bool IsNumLocked = ((mod & B_NUM_LOCK) != 0);
-	if(B_COMMAND_KEY && (rawcode == 'w' || rawcode == 'W'))
-		gGotQuitShortcut = PR_TRUE;
-	else
-		gGotQuitShortcut = PR_FALSE;
 
 	aTranslatedKeyCode = TranslateBeOSKeyCode(bekeycode, IsNumLocked);
 
 	if (numBytes <= 1)
 	{
-		result = DispatchKeyEvent(NS_KEY_DOWN, 0, aTranslatedKeyCode);
+		noDefault  = DispatchKeyEvent(NS_KEY_DOWN, 0, aTranslatedKeyCode);
 	} else {
 		//   non ASCII chars
 	}
@@ -2193,13 +2176,13 @@ PRBool nsWindow::OnKeyDown(PRUint32 aEventType, const char *bytes,
 		aTranslatedKeyCode = 0;
 	} else {
 		if (numBytes == 0) // deal with unmapped key
-			return result;
+			return noDefault;
 
 		switch((unsigned char)bytes[0])
 		{
 		case 0xc8://System Request
 		case 0xca://Break
-			return result;// do not send 'KEY_PRESS' message
+			return noDefault;// do not send 'KEY_PRESS' message
 
 		case B_INSERT:
 		case B_ESCAPE:
@@ -2244,9 +2227,9 @@ PRBool nsWindow::OnKeyDown(PRUint32 aEventType, const char *bytes,
 		}
 	}
 
-	PRBool result2 = DispatchKeyEvent(NS_KEY_PRESS, uniChar, aTranslatedKeyCode);
-
-	return result && result2;
+	// If prevent default set for onkeydown, do the same for onkeypress
+	PRUint32 extraFlags = (noDefault ? NS_EVENT_FLAG_NO_DEFAULT : 0);
+	return DispatchKeyEvent(NS_KEY_PRESS, uniChar, aTranslatedKeyCode, extraFlags) && noDefault;
 }
 
 //-------------------------------------------------------------------------
@@ -2279,7 +2262,7 @@ PRBool nsWindow::OnKeyUp(PRUint32 aEventType, const char *bytes,
 //-------------------------------------------------------------------------
 
 PRBool nsWindow::DispatchKeyEvent(PRUint32 aEventType, PRUint32 aCharCode,
-                                  PRUint32 aKeyCode)
+                                  PRUint32 aKeyCode, PRUint32 aFlags)
 {
 	nsKeyEvent event(PR_TRUE, aEventType, this);
 	nsPoint point;
@@ -2289,6 +2272,7 @@ PRBool nsWindow::DispatchKeyEvent(PRUint32 aEventType, PRUint32 aCharCode,
 
 	InitEvent(event, &point); // this add ref's event.widget
 
+	event.flags |= aFlags;
 	event.charCode = aCharCode;
 	event.keyCode  = aKeyCode;
 
@@ -2395,7 +2379,7 @@ PRBool nsWindow::OnPaint(nsRect &r)
 			static NS_DEFINE_IID(kRenderingContextCID, NS_RENDERING_CONTEXT_CID);
 			static NS_DEFINE_IID(kRenderingContextIID, NS_IRENDERING_CONTEXT_IID);
 
-			if (NS_OK == nsComponentManager::CreateInstance(kRenderingContextCID, nsnull, kRenderingContextIID, (void **)&event.renderingContext))
+			if (NS_SUCCEEDED(CallCreateInstance(kRenderingContextCID, &event.renderingContext)))
 			{
 				event.renderingContext->Init(mContext, this);
 				result = DispatchWindowEvent(&event);
@@ -2457,7 +2441,7 @@ PRBool nsWindow::DispatchMouseEvent(PRUint32 aEventType, nsPoint aPoint, PRUint3
 	PRBool result = PR_FALSE;
 	if(nsnull != mEventCallback || nsnull != mMouseListener)
 	{
-		nsMouseEvent event(PR_TRUE, aEventType, this);
+		nsMouseEvent event(PR_TRUE, aEventType, this, nsMouseEvent::eReal);
 		InitEvent (event, &aPoint);
 		event.isShift   = mod & B_SHIFT_KEY;
 		event.isControl = mod & B_CONTROL_KEY;
@@ -2526,7 +2510,7 @@ PRBool nsWindow::OnScroll()
 	return PR_FALSE;
 }
 
-NS_METHOD nsWindow::SetTitle(const nsString& aTitle)
+NS_METHOD nsWindow::SetTitle(const nsAString& aTitle)
 {
 	const char *text = ToNewUTF8String(aTitle);
 	if(text && mView->LockLooper())
@@ -2634,8 +2618,11 @@ void nsWindowBeOS::DispatchMessage(BMessage *msg, BHandler *handler)
 			if (view)
 				view->KeyDown(bytes.String(), bytes.Length());
 		}
+		if(strcmp(bytes.String(),"w") && strcmp(bytes.String(),"W"))
+			BWindow::DispatchMessage(msg, handler);
 	}
-	BWindow::DispatchMessage(msg, handler);
+	else
+		BWindow::DispatchMessage(msg, handler);
 }
 
 //This method serves single purpose here - allows Mozilla to save current window position,

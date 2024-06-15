@@ -25,8 +25,8 @@
  * DEALINGS IN THE SOFTWARE.
  *
  * Contributor(s):
- *  Doug Turner <dougt@netscape.com> 
- *  Adam Lock <adamlock@netscape.com>
+ *   Doug Turner <dougt@netscape.com>
+ *   Adam Lock <adamlock@netscape.com>
  *
  * ***** END LICENSE BLOCK ***** */
 

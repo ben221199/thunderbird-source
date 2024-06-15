@@ -60,7 +60,7 @@
 #include "nsString.h"
 #include "nsIAtom.h"
 #include "nsParserCIID.h"
-#include "nsIServiceManagerUtils.h"
+#include "nsServiceManagerUtils.h"
 #include "nsUnicharUtils.h"
 #include "nsIDOMElement.h"
 #include "nsCRT.h"
@@ -70,7 +70,6 @@
 
 static NS_DEFINE_CID(kCContentIteratorCID, NS_CONTENTITERATOR_CID);
 static NS_DEFINE_CID(kCPreContentIteratorCID, NS_PRECONTENTITERATOR_CID);
-static NS_DEFINE_CID(kParserServiceCID, NS_PARSERSERVICE_CID);
 static NS_DEFINE_IID(kRangeCID, NS_RANGE_CID);
 
 // -----------------------------------------------------------------------
@@ -802,7 +801,7 @@ PRBool nsFind::IsBlockNode(nsIContent* aContent)
     return PR_TRUE;
 
   if (!mParserService) {
-    mParserService = do_GetService(kParserServiceCID);
+    mParserService = do_GetService(NS_PARSERSERVICE_CONTRACTID);
     if (!mParserService)
       return PR_FALSE;
   }
@@ -999,6 +998,7 @@ nsFind::Find(const PRUnichar *aPatText, nsIDOMRange* aSearchRange,
   aEndPoint->GetEndContainer(getter_AddRefs(endNode));
   aEndPoint->GetEndOffset(&endOffset);
 
+  PRUnichar prevChar = 0;
   while (1)
   {
 #ifdef DEBUG_FIND
@@ -1056,8 +1056,8 @@ nsFind::Find(const PRUnichar *aPatText, nsIDOMRange* aSearchRange,
         return NS_OK;
       }
 
-      nsresult rv = tc->GetText(&frag);
-      if (NS_FAILED(rv)) continue;
+      frag = tc->Text();
+
       fragLen = frag->GetLength();
 
       // Set our starting point in this node.
@@ -1177,9 +1177,21 @@ nsFind::Find(const PRUnichar *aPatText, nsIDOMRange* aSearchRange,
     else if (!inWhitespace && !mCaseSensitive && IsUpperCase(c))
       c = ToLowerCase(c);
 
+    // a '\n' between CJ characters is ignored
+    if (pindex != (mFindBackward ? patLen : 0) && c != patc && !inWhitespace) {
+      if (c == '\n' && t2b && IS_CJ_CHAR(prevChar)) {
+        PRInt32 nindex = findex + incr;
+        if (mFindBackward ? (nindex >= 0) : (nindex < fragLen)) {
+          if (IS_CJ_CHAR(t2b[nindex]))
+            continue;
+        }
+      }
+    }
+
     // Compare
     if ((c == patc) || (inWhitespace && IsSpace(c)))
     {
+      prevChar = c;
 #ifdef DEBUG_FIND
       if (inWhitespace)
         printf("YES (whitespace)(%d of %d)\n", pindex, patLen);

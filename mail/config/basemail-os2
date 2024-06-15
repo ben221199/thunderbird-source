@@ -1,5 +1,5 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-; Base Thunderbird Package File for Win32
+; Base Thunderbird Package File for OS/2
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 [thunderbird]
@@ -33,12 +33,6 @@ chrome\icons\default\msgcomposeWindow.ico
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Mail Extensions (smime, etc.)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
-
-
-
-
 components\offlineStartup.js
 
 components\mdn-service.js
@@ -65,8 +59,6 @@ greprefs\*
 defaults\messenger\mailViews.dat
 defaults\profile\localstore.rdf
 defaults\profile\mimeTypes.rdf
-defaults\profile\extensions\*
-defaults\profile\extensions\{972ce4c6-7e08-4474-a285-3208198ce6fd}\install.rdf
 defaults\profile\US\localstore.rdf
 defaults\profile\US\mimeTypes.rdf
 
@@ -78,6 +70,7 @@ defaults\profile\US\mimeTypes.rdf
 components\mozldap.dll
 components\mozldap.xpt
 components\nsLDAPPrefsService.js
+components\nsAbLDAPAttributeMap.js
 ldap50.dll
 prldap50.dll
 
@@ -125,10 +118,10 @@ plds4.dll
 ; Javascript:
 mozjs.dll   
 components\jsd.dll  
-components\jsurl.xpt
 
 ; XPCOM:
 xpcom.dll
+xpcomcor.dll
 xpcomct.dll
 xpistub.dll
 xpicleanup.exe
@@ -156,6 +149,7 @@ components\gfx.xpt
 components\gklayout.dll                   
 components\gkparser.dll                 
 components\layout_base.xpt              
+components\layout_printing.xpt              
 components\layout_xul.xpt               
 components\content_base.xpt
 components\htmlparser.xpt
@@ -176,7 +170,6 @@ components\imglib2.xpt
 ; accessibility (out of process API support)
 components\access.dll              
 components\accessibility.xpt                 
-
 
 ; caps (JavaScript security)
 components\caps.dll                     
@@ -206,7 +199,7 @@ components\jar.xpt
 components\pref.xpt                     
 components\pref.dll
 
-; profile               
+; profile
 components\profile.xpt
 components\profilemigration.dll
 components\toolkitprofile.xpt
@@ -257,7 +250,6 @@ components\necko.xpt
 components\necko_data.xpt               
 components\necko_dns.xpt                
 components\necko_http.xpt               
-components\necko_jar.xpt                
 components\necko_res.xpt                
 components\necko_strconv.xpt
 components\necko_file.xpt
@@ -284,7 +276,6 @@ nssckbi.dll
 regxpcom.exe
 components\appcomps.dll
 components\autocomplete.xpt
-
 components\jsdservice.xpt
 components\find.xpt
 components\chardet.xpt
@@ -306,21 +297,19 @@ components\wlltvwrs.dll
 components\helperAppDlg.xpt
 components\progressDlg.xpt
 components\dom_xpath.xpt
-
 components\lwbrk.xpt
 components\nsCloseAllWindows.js
-
 
 res\ua.css
 res\html.css
 res\quirk.css
 res\forms.css
-res\platform-forms.css
 res\charsetData.properties
 res\charsetalias.properties
 res\langGroups.properties
 res\language.properties
 res\os2charset.properties
+res\builtin\*
 res\entityTables\*
 
 ; editor resource files
@@ -344,20 +333,3 @@ res\table-remove-column.gif
 res\table-remove-row-active.gif
 res\table-remove-row-hover.gif
 res\table-remove-row.gif
-
-; extensions
-components\nsExtensionManager.js
-components\nsBackgroundUpdateService.js
-components\extensions.xpt
-components\update.xpt
-
-
-
-
-
-
-
-
-
-
-

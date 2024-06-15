@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -24,16 +24,16 @@
  *   Dean Tessman <dean_tessman@hotmail.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
  * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -82,6 +82,7 @@ class nsIURI;
 #define NS_RECONVERSION_EVENT             15
 #define NS_MOUSE_SCROLL_EVENT             16
 #define NS_SCROLLPORT_EVENT               18
+#define NS_MUTATION_EVENT                 19 // |nsMutationEvent| in content
 #define NS_ACCESSIBLE_EVENT               20
 #define NS_FORM_EVENT                     21
 #define NS_FOCUS_EVENT                    22
@@ -89,10 +90,9 @@ class nsIURI;
 #define NS_APPCOMMAND_EVENT               24
 #define NS_POPUPBLOCKED_EVENT             25
 #define NS_BEFORE_PAGE_UNLOAD_EVENT       26
+#define NS_UI_EVENT                       27
+#define NS_QUERYCARETRECT_EVENT           28
 
-// These flags are sort of a mess. They're sort of shared between event
-// listener flags and event flags, but only some of them. You've been
-// warned!
 #define NS_EVENT_FLAG_NONE                0x0000
 #define NS_EVENT_FLAG_INIT                0x0001
 #define NS_EVENT_FLAG_BUBBLE              0x0002
@@ -105,9 +105,7 @@ class nsIURI;
 #define NS_EVENT_FLAG_NO_CONTENT_DISPATCH 0x0100
 #define NS_EVENT_FLAG_SYSTEM_EVENT        0x0200
 #define NS_EVENT_FLAG_STOP_DISPATCH_IMMEDIATELY 0x0400 // @see nsIDOM3Event::stopImmediatePropagation()
-#define NS_EVENT_FLAG_DISPATCHING         0x0800
-
-#define NS_PRIV_EVENT_UNTRUSTED_PERMITTED 0x8000
+#define NS_PRIV_EVENT_UNTRUSTED_PERMITTED 0x0800
 
 #define NS_EVENT_CAPTURE_MASK             (~(NS_EVENT_FLAG_INIT | NS_EVENT_FLAG_BUBBLE | NS_EVENT_FLAG_NO_CONTENT_DISPATCH))
 #define NS_EVENT_BUBBLE_MASK              (~(NS_EVENT_FLAG_INIT | NS_EVENT_FLAG_CAPTURE | NS_EVENT_FLAG_NO_CONTENT_DISPATCH))
@@ -237,6 +235,7 @@ class nsIURI;
 #define NS_IMAGE_ERROR                  (NS_STREAM_EVENT_START + 4)
 #define NS_SCRIPT_LOAD                  (NS_STREAM_EVENT_START + 5)
 #define NS_BEFORE_PAGE_UNLOAD           (NS_STREAM_EVENT_START + 6)
+#define NS_PAGE_RESTORE                 (NS_STREAM_EVENT_START + 7)
  
 #define NS_FORM_EVENT_START             1200
 #define NS_FORM_SUBMIT                  (NS_FORM_EVENT_START)
@@ -313,6 +312,17 @@ class nsIURI;
 // text events
 #define NS_TEXT_START                 2400
 #define NS_TEXT_TEXT                  (NS_TEXT_START)
+
+// UI events
+#define NS_UI_EVENT_START          2500
+// this is not to be confused with NS_ACTIVATE!
+#define NS_UI_ACTIVATE             (NS_UI_EVENT_START)
+#define NS_UI_FOCUSIN              (NS_UI_EVENT_START + 1)
+#define NS_UI_FOCUSOUT             (NS_UI_EVENT_START + 2)
+
+// query caret rect events
+#define NS_QUERYCARETRECT_START    2600
+#define NS_QUERYCARETRECT          (NS_QUERYCARETRECT_START)
 
 /**
  * Return status for event processors, nsEventStatus, is defined in
@@ -597,9 +607,10 @@ class nsMouseEvent : public nsInputEvent
 public:
   enum reasonType { eReal, eSynthesized };
 
-  nsMouseEvent(PRBool isTrusted, PRUint32 msg, nsIWidget *w)
+  nsMouseEvent(PRBool isTrusted, PRUint32 msg, nsIWidget *w,
+               reasonType aReason)
     : nsInputEvent(isTrusted, msg, w, NS_MOUSE_EVENT),
-      clickCount(0), acceptActivation(PR_FALSE)
+      clickCount(0), acceptActivation(PR_FALSE), reason(aReason)
   {
     if (msg == NS_MOUSE_MOVE) {
       flags |= NS_EVENT_FLAG_CANT_CANCEL;
@@ -610,7 +621,8 @@ public:
   PRUint32        clickCount;          
   /// Special return code for MOUSE_ACTIVATE to signal
   /// if the target accepts activation (1), or denies it (0)
-  PRBool          acceptActivation;           
+  PRPackedBool    acceptActivation;           
+  reasonType      reason : 8;
 };
 
 /**
@@ -746,6 +758,28 @@ public:
   nsReconversionEventReply  theReply;
 };
 
+struct nsQueryCaretRectEventReply
+{
+  nsQueryCaretRectEventReply()
+    : mRectIsValid(PR_FALSE)
+  {
+  }
+
+  PRBool mRectIsValid;
+  nsRect mCaretRect;
+};
+
+class nsQueryCaretRectEvent : public nsInputEvent
+{
+public:
+  nsQueryCaretRectEvent(PRBool isTrusted, PRUint32 msg, nsIWidget *w)
+    : nsInputEvent(isTrusted, msg, w, NS_QUERYCARETRECT_EVENT)
+  {
+  }
+
+  nsQueryCaretRectEventReply theReply;
+};
+
 /**
  * MenuItem event
  * 
@@ -836,6 +870,21 @@ public:
 };
 
 /**
+ * DOM UIEvent
+ */
+class nsUIEvent : public nsEvent
+{
+public:
+  nsUIEvent(PRBool isTrusted, PRUint32 msg, PRInt32 d)
+    : nsEvent(isTrusted, msg, NS_UI_EVENT),
+      detail(d)
+  {
+  }
+
+  PRInt32 detail;
+};
+
+/**
  * Event status for D&D Event
  */
 enum nsDragDropEventStatus {  
@@ -888,6 +937,7 @@ enum nsDragDropEventStatus {
         ((evnt)->message == NS_COMPOSITION_START) ||  \
         ((evnt)->message == NS_COMPOSITION_END) || \
         ((evnt)->message == NS_RECONVERSION_QUERY) || \
+        ((evnt)->message == NS_QUERYCARETRECT) || \
         ((evnt)->message == NS_COMPOSITION_QUERY))
 
 #define NS_IS_FOCUS_EVENT(evnt) \
@@ -900,19 +950,7 @@ enum nsDragDropEventStatus {
 #define NS_IS_TRUSTED_EVENT(event) \
   (((event)->internalAppFlags & NS_APP_EVENT_FLAG_TRUSTED) != 0)
 
-// Mark an event as being dispatching.
-#define NS_MARK_EVENT_DISPATCH_STARTED(event) \
-  (event)->flags |= NS_EVENT_FLAG_DISPATCHING;
 
-#define NS_IS_EVENT_IN_DISPATCH(event) \
-  (((event)->flags & NS_EVENT_FLAG_DISPATCHING) != 0)
-
-// Mark an event as being done dispatching.
-#define NS_MARK_EVENT_DISPATCH_DONE(event) \
-  NS_ASSERTION(NS_IS_EVENT_IN_DISPATCH(event), \
-               "Event never got marked for dispatch!"); \
-  (event)->flags &= ~NS_EVENT_FLAG_DISPATCHING; \
-  (event)->flags |= NS_EVENT_FLAG_STOP_DISPATCH_IMMEDIATELY;
 
 /*
  * Virtual key bindings for keyboard events.

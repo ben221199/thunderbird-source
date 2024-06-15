@@ -73,15 +73,19 @@ protected:
    * ImageURIChanged is called by subclasses when the appropriate
    * attributes (eg 'src' for <img> tags) change.  The string passed
    * in is the new uri string; this consolidates the code for getting
-   * the charset and any other incidentals into this superclass.
+   * the charset, constructing URI objects, and any other incidentals
+   * into this superclass.   
    *
    * Note that this is different from the ImageURIChanged(AString)
-   * declared in nsIImageLoadingContent.idl -- that takes an
-   * nsAString, this takes an nsACString.
+   * declared in nsIImageLoadingContent.idl -- because it allows
+   * control over whether loading is to be forced.
    *
    * @param aNewURI the URI spec to be loaded (may be a relative URI)
+   * @param aForce If true, make sure to load the URI.  If false, only
+   *        load if the URI is different from the currently loaded URI.
    */
-  nsresult ImageURIChanged(const nsACString& aNewURI);
+  nsresult ImageURIChanged(const nsAString& aNewURI,
+                           PRBool aForce);
 
 private:
   /**
@@ -108,15 +112,18 @@ private:
 
   /**
    * CancelImageRequests can be called when we want to cancel the
-   * image requests.  The "current" request will be canceled only if
-   * it has not progressed far enough to know the image size yet unless
-   * aEvenIfSizeAvailable is true.
+   * image requests, generally due to our src changing and us wanting
+   * to start a new load.  The "current" request will be canceled only
+   * if it has not progressed far enough to know the image size yet
+   * unless aEvenIfSizeAvailable is true.
    *
    * @param aReason the reason the requests are being canceled
    * @param aEvenIfSizeAvailable cancels the current load even if its size is
    *                             available
+   * @param aNewImageStatus the nsIContentPolicy status of the new image load
    */
-  void CancelImageRequests(nsresult aReason, PRBool aEvenIfSizeAvailable);
+  void CancelImageRequests(nsresult aReason, PRBool aEvenIfSizeAvailable,
+                           PRInt16 aNewImageStatus);
 
   /**
    * helper to get the document for this content (from the nodeinfo
@@ -137,7 +144,7 @@ private:
    * @param aDocument the document we belong to
    * @return the URI we want to be loading
    */
-  nsresult StringToURI(const nsACString& aSpec, nsIDocument* aDocument,
+  nsresult StringToURI(const nsAString& aSpec, nsIDocument* aDocument,
                        nsIURI** aURI);
 
   /**
@@ -151,6 +158,7 @@ private:
 protected:
   nsCOMPtr<imgIRequest> mCurrentRequest;
   nsCOMPtr<imgIRequest> mPendingRequest;
+  nsCOMPtr<nsIURI>      mCurrentURI;
 
 private:
   /**
@@ -163,9 +171,8 @@ private:
    */
   ImageObserver mObserverList;
 
+  PRInt16 mImageBlockingStatus;
   PRPackedBool mLoadingEnabled;
-  PRPackedBool mImageIsBlocked;
-  PRPackedBool mHaveHadObserver;
 };
 
 #endif // nsImageLoadingContent_h__

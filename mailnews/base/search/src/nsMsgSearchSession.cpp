@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 2000
  * the Initial Developer. All Rights Reserved.
@@ -22,16 +22,16 @@
  * Contributor(s):
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -51,7 +51,7 @@
 #include "nsMsgFolderFlags.h"
 #include "nsMsgLocalSearch.h"
 
-NS_IMPL_ISUPPORTS4(nsMsgSearchSession, nsIMsgSearchSession, nsIUrlListener, nsIFolderListener, nsISupportsWeakReference)
+NS_IMPL_ISUPPORTS3(nsMsgSearchSession, nsIMsgSearchSession, nsIUrlListener, nsISupportsWeakReference)
 
 nsMsgSearchSession::nsMsgSearchSession()
 {
@@ -69,9 +69,10 @@ nsMsgSearchSession::nsMsgSearchSession()
 
 nsMsgSearchSession::~nsMsgSearchSession()
 {
-	DestroyResultList ();
-	DestroyScopeList ();
-	DestroyTermList ();
+  InterruptSearch();
+  DestroyResultList ();
+  DestroyScopeList ();
+  DestroyTermList ();
 
   PR_Free (m_pSearchParam);
 }
@@ -718,101 +719,6 @@ nsMsgSearchSession::EnableFolderNotifications(PRBool aEnable)
     if (folder)  //enable msg count notifications
       folder->EnableNotifications(nsIMsgFolder::allMessageCountNotifications, aEnable, PR_FALSE);
   }
-}
-
-NS_IMETHODIMP
-nsMsgSearchSession::AddFolderListener(nsIFolderListener *listener)
-{
-    return m_folderListenerList.AppendObject(listener) ? NS_OK : NS_ERROR_FAILURE;
-}
-
-NS_IMETHODIMP
-nsMsgSearchSession::RemoveFolderListener(nsIFolderListener *listener)
-{
-    m_folderListenerList.RemoveObject(listener);
-
-    return NS_OK;
-}
-
-// nsIFolderListener methods.
-NS_IMETHODIMP 
-nsMsgSearchSession::OnItemEvent(nsIMsgFolder *aFolder,
-                                nsIAtom *aEvent)
-{
-	PRInt32 count = m_folderListenerList.Count();
-
-	for(PRInt32 i = 0; i < count; i++)
-	{
-		nsIFolderListener* listener = m_folderListenerList[i];
-		if(listener)
-			listener->OnItemEvent(aFolder, aEvent);
-	}
-	
-	return NS_OK;
-}
-
-NS_IMETHODIMP 
-nsMsgSearchSession::OnItemAdded(nsISupports *parentItem, 
-                                nsISupports *item, 
-                                const char* viewString)
-{
-    return NS_OK;
-}
-
-NS_IMETHODIMP 
-nsMsgSearchSession::OnItemRemoved(nsISupports *parentItem, 
-                                nsISupports *item, 
-                                const char* viewString)
-{
-    return NS_OK;
-}
-
-NS_IMETHODIMP
-nsMsgSearchSession::OnItemPropertyChanged(nsISupports *item,
-                                        nsIAtom *property,
-                                        const char* oldValue,
-                                        const char* newValue)
-{
-    return NS_OK;
-
-}
-
-NS_IMETHODIMP
-nsMsgSearchSession::OnItemIntPropertyChanged(nsISupports *item,
-                                            nsIAtom *property,
-                                            PRInt32 oldValue,
-                                            PRInt32 newValue)
-{
-    return NS_OK;
-}
-
-NS_IMETHODIMP
-nsMsgSearchSession::OnItemBoolPropertyChanged(nsISupports *item,
-                                            nsIAtom *property,
-                                            PRBool oldValue,
-                                            PRBool newValue)
-{
-    return NS_OK;
-}
-
-NS_IMETHODIMP
-nsMsgSearchSession::OnItemUnicharPropertyChanged(nsISupports *item,
-                                                nsIAtom *property,
-                                                const PRUnichar* oldValue,
-                                                const PRUnichar* newValue)
-{
-    return NS_OK;
-
-}
-
-
-NS_IMETHODIMP
-nsMsgSearchSession::OnItemPropertyFlagChanged(nsISupports *item,
-                                            nsIAtom *property,
-                                            PRUint32 oldValue,
-                                            PRUint32 newValue)
-{
-    return NS_OK;
 }
 
 //this method is used for adding new hdrs to quick search view

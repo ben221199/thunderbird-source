@@ -52,6 +52,7 @@
 #ifdef XP_WIN32
 #include <windows.h>
 #include <stdlib.h>
+#include <mbstring.h>
 #elif defined(XP_OS2)
 #define INCL_DOS
 #include <os2.h>
@@ -131,13 +132,14 @@ GRE_GetCurrentProcessDirectory(char* buffer)
     *buffer = '\0';
 
 #ifdef XP_WIN
-    if ( ::GetModuleFileName(0, buffer, MAXPATHLEN) ) {
-        // chop of the executable name by finding the rightmost backslash
-        char* lastSlash = PL_strrchr(buffer, '\\');
-        if (lastSlash) {
-            *(lastSlash) = '\0';
-            return PR_TRUE;
-        }
+    DWORD bufLength = ::GetModuleFileName(0, buffer, MAXPATHLEN);
+    if (bufLength == 0 || bufLength == MAXPATHLEN)
+        return PR_FALSE;
+    // chop of the executable name by finding the rightmost backslash
+    unsigned char* lastSlash = _mbsrchr((unsigned char*) buffer, '\\');
+    if (lastSlash) {
+        *(lastSlash) = '\0';
+        return PR_TRUE;
     }
 
 #elif defined(XP_MACOSX)
@@ -302,6 +304,9 @@ GRE_GetGREPath()
 #elif XP_WIN32
     if (!_fullpath(sGRELocation, env, MAXPATHLEN))
       strcpy(sGRELocation, env);
+#else
+    // hope for the best
+    strcpy(sGRELocation, env);
 #endif
     // xxxbsmedberg: it would help that other platforms had a "make absolute" function
     return sGRELocation;
@@ -356,7 +361,7 @@ GRE_GetGREPath()
   //    i.e. we're compatible with GRE 1.2 and we're trying to find it's install
   //    location.
   //
-  // Please see http://www.mozilla.org/projects/embedding/GE.html for
+  // Please see http://www.mozilla.org/projects/embedding/GRE.html for
   // more info.
   //
   strcpy(szKey, GRE_WIN_REG_LOC GRE_BUILD_ID);

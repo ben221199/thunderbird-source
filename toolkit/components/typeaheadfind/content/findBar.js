@@ -40,6 +40,10 @@ const FIND_NORMAL = 0;
 const FIND_TYPEAHEAD = 1;
 const FIND_LINKS = 2;
 
+const CHAR_CODE_SPACE = " ".charCodeAt(0);
+const CHAR_CODE_SLASH = "/".charCodeAt(0);
+const CHAR_CODE_APOSTROPHE = "'".charCodeAt(0);
+
 // Global find variables
 var gFindMode = FIND_NORMAL;
 var gQuickFindTimeout = null;
@@ -88,7 +92,7 @@ function initFindBar()
   var prefService = Components.classes["@mozilla.org/preferences-service;1"]
                               .getService(Components.interfaces.nsIPrefBranch);
 
-  var pbi = prefService.QueryInterface(Components.interfaces.nsIPrefBranchInternal);
+  var pbi = prefService.QueryInterface(Components.interfaces.nsIPrefBranch2);
 
   gQuickFindTimeoutLength = prefService.getIntPref("accessibility.typeaheadfind.timeout");
   gFlashFindBar = prefService.getIntPref("accessibility.typeaheadfind.flashBar");
@@ -104,7 +108,7 @@ function uninitFindBar()
    var prefService = Components.classes["@mozilla.org/preferences-service;1"]
                                .getService(Components.interfaces.nsIPrefBranch);
 
-   var pbi = prefService.QueryInterface(Components.interfaces.nsIPrefBranchInternal);
+   var pbi = prefService.QueryInterface(Components.interfaces.nsIPrefBranch2);
    pbi.removeObserver(gTypeAheadFind.useTAFPref, gTypeAheadFind);
    pbi.removeObserver(gTypeAheadFind.searchLinksPref, gTypeAheadFind);
 
@@ -243,9 +247,10 @@ function highlight(range, node)
 
 function getSelectionControllerForFindToolbar(ds)
 {
-  var display = ds.QueryInterface(Components.interfaces.nsIInterfaceRequestor).getInterface(Components.interfaces.nsISelectionDisplay);
-  if (!display)
-    return null;
+  try {
+    var display = ds.QueryInterface(Components.interfaces.nsIInterfaceRequestor).getInterface(Components.interfaces.nsISelectionDisplay);
+  }
+  catch (e) { return null; }
   return display.QueryInterface(Components.interfaces.nsISelectionController);
 }
 
@@ -260,7 +265,13 @@ function toggleCaseSensitivity(aCaseSensitive)
   
 function changeSelectionColor(aAttention)
 {
-  var ds = getBrowser().docShell;
+  try {
+    var ds = getBrowser().docShell;
+  } catch(e) {
+    // If we throw here, the browser we were in is already destroyed.
+    // See bug 273200.
+    return;
+  }
   var dsEnum = ds.getDocShellEnumerator(Components.interfaces.nsIDocShellTreeItem.typeContent,
                                         Components.interfaces.nsIDocShell.ENUMERATE_FORWARDS);
   while (dsEnum.hasMoreElements()) {
@@ -311,6 +322,12 @@ function selectFindBar()
 }
 
 function closeFindBar()
+{
+  // ensure the dom is ready...
+  setTimeout(delayedCloseFindBar, 0);
+}
+
+function delayedCloseFindBar()
 {
   var findField = document.getElementById("find-field");
   var ww = Components.classes["@mozilla.org/embedcomp/window-watcher;1"]
@@ -375,7 +392,7 @@ function onBrowserKeyPress(evt)
   
   var findField = document.getElementById("find-field");
   if (gFindMode != FIND_NORMAL && gQuickFindTimeout) {    
-    if (evt.keyCode == 8) { // Backspace
+    if (evt.keyCode == KeyEvent.DOM_VK_BACK_SPACE) {
       if (findField.value) {
         findField.value = findField.value.substr(0, findField.value.length - 1);
         gIsBack = true;   
@@ -390,12 +407,12 @@ function onBrowserKeyPress(evt)
         
       find(findField.value);
     }
-    else if (evt.keyCode == 27) { // Escape
+    else if (evt.keyCode == KeyEvent.DOM_VK_ESCAPE) {
       closeFindBar();
       evt.preventDefault();
     }
     else if (evt.charCode) {
-      if (evt.charCode == 32) // Space
+      if (evt.charCode == CHAR_CODE_SPACE)
         evt.preventDefault();
         
       findField.value += String.fromCharCode(evt.charCode);
@@ -404,12 +421,17 @@ function onBrowserKeyPress(evt)
     return;
   }
   
-  if (evt.charCode == 39 /* ' */ || evt.charCode == 47 /* / */ || (gUseTypeAheadFind && evt.charCode && evt.charCode != 32)) {   
-    gFindMode = (evt.charCode == 39 || (gTypeAheadLinksOnly && evt.charCode != 47)) ? FIND_LINKS : FIND_TYPEAHEAD;
+  if (evt.charCode == CHAR_CODE_APOSTROPHE || evt.charCode == CHAR_CODE_SLASH ||
+      (gUseTypeAheadFind && evt.charCode && evt.charCode != CHAR_CODE_SPACE)) {
+    gFindMode = (evt.charCode == CHAR_CODE_APOSTROPHE ||
+                 (gTypeAheadLinksOnly && evt.charCode != CHAR_CODE_SLASH))
+                ? FIND_LINKS : FIND_TYPEAHEAD;
     toggleLinkFocus(true);
     if (openFindBar()) {      
       setFindCloseTimeout();      
-      if (gUseTypeAheadFind && evt.charCode != 39 && evt.charCode != 47) {
+      if (gUseTypeAheadFind &&
+          evt.charCode != CHAR_CODE_APOSTROPHE &&
+          evt.charCode != CHAR_CODE_SLASH) {
         gTypeAheadFindBuffer += String.fromCharCode(evt.charCode);        
         findField.value = gTypeAheadFindBuffer;
         find(findField.value);
@@ -420,6 +442,7 @@ function onBrowserKeyPress(evt)
     }
     else {
       if (gFindMode == FIND_NORMAL) {
+        // XXXldb This code appears unreachable.
         selectFindBar();      
         focusFindBar();
       }
@@ -439,7 +462,7 @@ function toggleLinkFocus(aFocusLinks)
 
 function onBrowserKeyUp(evt)
 {
-  if (evt.keyCode == 8)
+  if (evt.keyCode == KeyEvent.DOM_VK_BACK_SPACE)
     gIsBack = false;
 }
 
@@ -449,12 +472,7 @@ function onFindBarKeyPress(evt)
     var findString = document.getElementById("find-field");
     if (!findString.value)
       return;
-      
-    if (evt.ctrlKey) {
-      document.getElementById("highlight").click();
-      return;
-    }
-    
+
     if (evt.shiftKey)
       findPrevious();
     else

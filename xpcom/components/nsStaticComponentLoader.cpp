@@ -1,24 +1,53 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "MPL"); you may not use this file except in
- * compliance with the MPL.  You may obtain a copy of the MPL at
+ * ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
+ *
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
  * http://www.mozilla.org/MPL/
  *
- * Software distributed under the MPL is distributed on an "AS IS" basis,
- * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the MPL
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
  * for the specific language governing rights and limitations under the
- * MPL.
+ * License.
  *
- * The Initial Developer of this code under the MPL is Netscape
- * Communications Corporation.  Portions created by Netscape are
- * Copyright (C) 2000 Netscape Communications Corporation.  All Rights
- * Reserved.
- */
+ * The Original Code is mozilla.org Code.
+ *
+ * The Initial Developer of the Original Code is
+ * Netscape Communications Corporation.
+ * Portions created by the Initial Developer are Copyright (C) 2000
+ * the Initial Developer. All Rights Reserved.
+ *
+ * Contributor(s):
+ *
+ * Alternatively, the contents of this file may be used under the terms of
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK ***** */
 
 #include "nsStaticComponent.h"
 #include "nsIComponentLoader.h"
+#include "nsVoidArray.h"
 #include "pldhash.h"
 #include NEW_H
+#include "prlog.h"
+
+#ifdef PR_LOGGING
+static PRLogModuleInfo *sLog = PR_NewLogModule("StaticComponentLoader");
+#endif
+#define LOG(args) PR_LOG(sLog, PR_LOG_DEBUG, args)
+
+extern const char staticComponentType[];
 
 struct StaticModuleInfo : public PLDHashEntryHdr {
     nsStaticModuleInfo  info;
@@ -35,6 +64,10 @@ public:
         mAutoRegistered(PR_FALSE), mLoadedInfo(PR_FALSE) {
 	}
 
+    static NS_HIDDEN_(PLDHashOperator) PR_CALLBACK
+    info_RegisterSelf(PLDHashTable *table, PLDHashEntryHdr *hdr,
+                      PRUint32 number, void *arg);
+
 private:
     ~nsStaticComponentLoader() {
         if (mInfoHash.ops)
@@ -50,6 +83,7 @@ protected:
     nsCOMPtr<nsIComponentManager> mComponentMgr;
     PLDHashTable                  mInfoHash;
     static PLDHashTableOps        sInfoHashOps;
+    nsVoidArray                   mDeferredComponents;
 };
 
 PR_STATIC_CALLBACK(void)
@@ -77,7 +111,9 @@ info_InitEntry(PLDHashTable *table, PLDHashEntryHdr *entry, const void *key)
 
 NS_IMPL_THREADSAFE_ISUPPORTS1(nsStaticComponentLoader, nsIComponentLoader)
 
+#ifndef MOZ_ENABLE_LIBXUL
 NS_COM NSGetStaticModuleInfoFunc NSGetStaticModuleInfo;
+#endif
 
 nsresult
 nsStaticComponentLoader::GetModuleInfo()
@@ -134,9 +170,7 @@ nsStaticComponentLoader::GetInfoFor(const char *aLocation,
     if (!info->module) {
         rv = info->info.getModule(mComponentMgr, nsnull,
                              getter_AddRefs(info->module));
-#ifdef DEBUG
-        fprintf(stderr, "nSCL: GetInfoFor(\"%s\"): %lx\n", aLocation, rv);
-#endif
+        LOG(("nSCL: GetInfoFor(\"%s\"): %lx\n", aLocation, rv));
         if (NS_FAILED(rv))
             return rv;
     }
@@ -157,30 +191,30 @@ nsStaticComponentLoader::Init(nsIComponentManager *mgr, nsISupports *aReg)
     return NS_OK;
 }
 
-PR_STATIC_CALLBACK(PLDHashOperator)
-info_RegisterSelf(PLDHashTable *table, PLDHashEntryHdr *hdr,
-                  PRUint32 number, void *arg)
+PLDHashOperator PR_CALLBACK
+nsStaticComponentLoader::info_RegisterSelf(PLDHashTable *table,
+                                           PLDHashEntryHdr *hdr,
+                                           PRUint32 number, void *arg)
 {
-    nsIComponentManager *mgr = NS_STATIC_CAST(nsIComponentManager *, arg);
+    nsStaticComponentLoader *loader = NS_STATIC_CAST(nsStaticComponentLoader *,
+                                                     arg);
+    nsIComponentManager *mgr = loader->mComponentMgr;
     StaticModuleInfo *info = NS_STATIC_CAST(StaticModuleInfo *, hdr);
     
     nsresult rv;
     if (!info->module) {
         rv = info->info.getModule(mgr, nsnull, getter_AddRefs(info->module));
-#ifdef DEBUG
-        fprintf(stderr, "nSCL: getModule(\"%s\"): %lx\n", info->info.name, rv);
-#endif
+        LOG(("nSCL: getModule(\"%s\"): %lx\n", info->info.name, rv));
         if (NS_FAILED(rv))
             return PL_DHASH_NEXT; // oh well.
     }
 
     rv = info->module->RegisterSelf(mgr, nsnull, info->info.name,
                                     staticComponentType);
-#ifdef DEBUG
-    fprintf(stderr, "nSCL: autoreg of \"%s\": %lx\n", info->info.name, rv);
-#endif
+    LOG(("nSCL: autoreg of \"%s\": %lx\n", info->info.name, rv));
 
-    // XXX handle deferred registration
+    if (rv == NS_ERROR_FACTORY_REGISTER_AGAIN)
+        loader->mDeferredComponents.AppendElement(info);
 
     return PL_DHASH_NEXT;
 }
@@ -200,7 +234,7 @@ nsStaticComponentLoader::AutoRegisterComponents(PRInt32 when, nsIFile *dir)
     if (NS_FAILED(rv = GetModuleInfo()))
         return rv;
 
-    PL_DHashTableEnumerate(&mInfoHash, info_RegisterSelf, mComponentMgr.get());
+    PL_DHashTableEnumerate(&mInfoHash, info_RegisterSelf, this);
 
     mAutoRegistered = PR_TRUE;
     return NS_OK;
@@ -225,9 +259,24 @@ nsStaticComponentLoader::AutoRegisterComponent(PRInt32 when, nsIFile *component,
 
 NS_IMETHODIMP
 nsStaticComponentLoader::RegisterDeferredComponents(PRInt32 when,
-                                                    PRBool *retval)
+                                                    PRBool *aRegistered)
 {
-    *retval = PR_FALSE;
+    *aRegistered = PR_FALSE;
+    if (!mDeferredComponents.Count())
+        return NS_OK;
+
+    for (int i = mDeferredComponents.Count() - 1; i >= 0; i--) {
+        StaticModuleInfo *info = NS_STATIC_CAST(StaticModuleInfo *,
+                                                mDeferredComponents[i]);
+        nsresult rv = info->module->RegisterSelf(mComponentMgr, nsnull,
+                                                 info->info.name,
+                                                 staticComponentType);
+        if (rv != NS_ERROR_FACTORY_REGISTER_AGAIN) {
+            if (NS_SUCCEEDED(rv))
+                *aRegistered = PR_TRUE;
+            mDeferredComponents.RemoveElementAt(i);
+        }
+    }
     return NS_OK;
 }
 

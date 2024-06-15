@@ -1,24 +1,40 @@
-/*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
+/* ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
+ *
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
  * http://www.mozilla.org/MPL/
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See the
- * License for the specific language governing rights and limitations
- * under the License.
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+ * for the specific language governing rights and limitations under the
+ * License.
  *
  * The Original Code is the Mozilla OS/2 libraries.
  *
- * The Initial Developer of the Original Code is John Fairhurst,
- * <john_fairhurst@iname.com>.  Portions created by John Fairhurst are
- * Copyright (C) 1999 John Fairhurst. All Rights Reserved.
+ * The Initial Developer of the Original Code is
+ * John Fairhurst, <john_fairhurst@iname.com>.
+ * Portions created by the Initial Developer are Copyright (C) 1999
+ * the Initial Developer. All Rights Reserved.
  *
- * Contributor(s): 
+ * Contributor(s):
  *   Pierre Phaneuf <pp@ludusdesign.com>
+ *   Peter Weilbacher <mozilla@weilbacher.org>
  *
- */
+ * Alternatively, the contents of this file may be used under the terms of
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK ***** */
 
 #include <stdlib.h>
 #include "nsDeviceContextSpecOS2.h"
@@ -26,10 +42,13 @@
 #include "nsReadableUtils.h"
 #include "nsISupportsArray.h"
 
+#include "nsIPref.h"
 #include "prenv.h" /* for PR_GetEnv */
 
+#include "nsPrintfCString.h"
 #include "nsIServiceManager.h"
 #include "nsUnicharUtils.h"
+#include "nsStringFwd.h"
 
 #include "nsOS2Uni.h"
 
@@ -59,14 +78,14 @@ protected:
 
   static GlobalPrinters mGlobalPrinters;
   static nsStringArray* mGlobalPrinterList;
-  static int            mGlobalNumPrinters;
+  static ULONG          mGlobalNumPrinters;
 
 };
 //---------------
 // static members
 GlobalPrinters GlobalPrinters::mGlobalPrinters;
 nsStringArray* GlobalPrinters::mGlobalPrinterList = nsnull;
-int            GlobalPrinters::mGlobalNumPrinters = 0;
+ULONG          GlobalPrinters::mGlobalNumPrinters = 0;
 //---------------
 
 /** -------------------------------------------------------
@@ -93,7 +112,7 @@ static NS_DEFINE_IID(kIDeviceContextSpecIID, NS_IDEVICE_CONTEXT_SPEC_IID);
 static NS_DEFINE_IID(kIDeviceContextSpecXPIID, NS_IDEVICE_CONTEXT_SPEC_XP_IID);
 #endif
 
-void SetupDevModeFromSettings(int printer, nsIPrintSettings* aPrintSettings)
+void SetupDevModeFromSettings(ULONG printer, nsIPrintSettings* aPrintSettings)
 {
   if (aPrintSettings) {
     int bufferSize = 3 * sizeof(DJP_ITEM);
@@ -134,15 +153,15 @@ void SetupDevModeFromSettings(int printer, nsIPrintSettings* aPrintSettings)
     pDJP->ulValue = 0;
 
     LONG driverSize = nsDeviceContextSpecOS2::PrnDlg.GetPrintDriverSize(printer);
-    LONG rc = GreEscape (hdc, DEVESC_SETJOBPROPERTIES, bufferSize, pDJP_Buffer, 
-                         &driverSize, PBYTE(nsDeviceContextSpecOS2::PrnDlg.GetPrintDriver(printer)));
+    GreEscape (hdc, DEVESC_SETJOBPROPERTIES, bufferSize, pDJP_Buffer, 
+               &driverSize, PBYTE(nsDeviceContextSpecOS2::PrnDlg.GetPrintDriver(printer)));
 
     delete [] pDJP_Buffer;
     DevCloseDC(hdc);
   }
 }
 
-nsresult nsDeviceContextSpecOS2::SetPrintSettingsFromDevMode(nsIPrintSettings* aPrintSettings, int printer)
+nsresult nsDeviceContextSpecOS2::SetPrintSettingsFromDevMode(nsIPrintSettings* aPrintSettings, ULONG printer)
 {
   if (aPrintSettings == nsnull)
     return NS_ERROR_FAILURE;
@@ -309,9 +328,9 @@ NS_IMETHODIMP nsDeviceContextSpecOS2::Init(nsIPrintSettings* aPS, PRBool aIsPrin
       return rv;
 
     const nsAFlatString& printerUCS2 = NS_ConvertUTF8toUCS2(mPrData.printer);
-    int numPrinters = GlobalPrinters::GetInstance()->GetNumPrinters();
+    ULONG numPrinters = GlobalPrinters::GetInstance()->GetNumPrinters();
     if (numPrinters) {
-       for(int i = 0; (i < numPrinters) && !mQueue; i++) {
+       for(ULONG i = 0; (i < numPrinters) && !mQueue; i++) {
           if ((GlobalPrinters::GetInstance()->GetStringAt(i)->Equals(printerUCS2, nsCaseInsensitiveStringComparator()))) {
              SetupDevModeFromSettings(i, aPS);
              mQueue = PrnDlg.SetPrinterQueue(i);
@@ -405,7 +424,7 @@ NS_IMETHODIMP nsPrinterEnumeratorOS2::EnumeratePrinters(PRUint32* aCount, PRUnic
     return rv;
   }
 
-  PRInt32 numPrinters = GlobalPrinters::GetInstance()->GetNumPrinters();
+  ULONG numPrinters = GlobalPrinters::GetInstance()->GetNumPrinters();
 
   PRUnichar** array = (PRUnichar**) nsMemory::Alloc(numPrinters * sizeof(PRUnichar*));
   if (!array && numPrinters > 0) {
@@ -413,13 +432,13 @@ NS_IMETHODIMP nsPrinterEnumeratorOS2::EnumeratePrinters(PRUint32* aCount, PRUnic
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
-  int count = 0;
+  ULONG count = 0;
   while( count < numPrinters )
   {
     PRUnichar *str = ToNewUnicode(*GlobalPrinters::GetInstance()->GetStringAt(count));
 
     if (!str) {
-      for (int i = count - 1; i >= 0; i--) 
+      for (ULONG i = 0 ; i < count ; i++)
         nsMemory::Free(array[i]);
       
       nsMemory::Free(array);
@@ -456,8 +475,8 @@ NS_IMETHODIMP nsPrinterEnumeratorOS2::InitPrintSettingsFromPrinter(const PRUnich
   if (NS_FAILED(GlobalPrinters::GetInstance()->InitializeGlobalPrinters())) 
     return NS_ERROR_FAILURE;
 
-  PRInt32 numPrinters = GlobalPrinters::GetInstance()->GetNumPrinters();
-  for(int i = 0; i < numPrinters; i++) {
+  ULONG numPrinters = GlobalPrinters::GetInstance()->GetNumPrinters();
+  for(ULONG i = 0; i < numPrinters; i++) {
     if ((GlobalPrinters::GetInstance()->GetStringAt(i)->Equals(aPrinterName, nsCaseInsensitiveStringComparator()))) 
       nsDeviceContextSpecOS2::SetPrintSettingsFromDevMode(aPrintSettings, i);
   }
@@ -475,9 +494,8 @@ NS_IMETHODIMP nsPrinterEnumeratorOS2::DisplayPropertiesDlg(const PRUnichar *aPri
     return rv;
   }
 
-  PRInt32 numPrinters = GlobalPrinters::GetInstance()->GetNumPrinters();
-
-  for(int i = 0; i < numPrinters; i++) {
+  ULONG numPrinters = GlobalPrinters::GetInstance()->GetNumPrinters();
+  for(ULONG i = 0; i < numPrinters; i++) {
     if ((GlobalPrinters::GetInstance()->GetStringAt(i)->Equals(aPrinter, nsCaseInsensitiveStringComparator()))) {
        SetupDevModeFromSettings(i, aPrintSettings);
        if ( nsDeviceContextSpecOS2::PrnDlg.ShowProperties(i) ) {
@@ -505,19 +523,35 @@ nsresult GlobalPrinters::InitializeGlobalPrinters ()
   if (!mGlobalPrinterList) 
      return NS_ERROR_OUT_OF_MEMORY;
 
-  int defaultPrinter = nsDeviceContextSpecOS2::PrnDlg.GetDefaultPrinter();
-  for (int i = 0; i < mGlobalNumPrinters; i++) {
+  nsresult rv;
+  nsCOMPtr<nsIPref> pPrefs = do_GetService(NS_PREF_CONTRACTID, &rv);
+  BOOL prefFailed = NS_FAILED(rv); // don't return on failure, optional feature
+
+  ULONG defaultPrinter = nsDeviceContextSpecOS2::PrnDlg.GetDefaultPrinter();
+  for (ULONG i = 0; i < mGlobalNumPrinters; i++) {
     nsXPIDLCString printer;
     nsDeviceContextSpecOS2::PrnDlg.GetPrinter(i, getter_Copies(printer));
 
     nsAutoChar16Buffer printerName;
     PRInt32 printerNameLength;
-    nsresult rv = MultiByteToWideChar(0, printer, strlen(printer),
-                                      printerName, printerNameLength);
+    rv = MultiByteToWideChar(0, printer, strlen(printer),
+                             printerName, printerNameLength);
     if (defaultPrinter == i) {
        mGlobalPrinterList->InsertStringAt(nsDependentString(printerName.get()), 0);
     } else {
        mGlobalPrinterList->AppendString(nsDependentString(printerName.get()));
+    }
+    // store printer description in prefs for the print dialog
+    if (!prefFailed) {
+       nsCAutoString printerDescription;
+       printerDescription = nsCAutoString(nsDeviceContextSpecOS2::PrnDlg.GetPrintDriver(i)->szDeviceName);
+       printerDescription += " (";
+       printerDescription += nsCAutoString(nsDeviceContextSpecOS2::PrnDlg.GetDriverType(i));
+       printerDescription += ")";
+       pPrefs->SetCharPref(nsPrintfCString(256,
+                                           "print.printer_%s.printer_description",
+                                           printer.get()).get(),
+                           printerDescription.get());
     }
   } 
   return NS_OK;
@@ -534,7 +568,7 @@ void GlobalPrinters::GetDefaultPrinterName(PRUnichar*& aDefaultPrinterName)
   if (GetNumPrinters() == 0)
      return;
 
-  int defaultPrinter = nsDeviceContextSpecOS2::PrnDlg.GetDefaultPrinter();
+  ULONG defaultPrinter = nsDeviceContextSpecOS2::PrnDlg.GetDefaultPrinter();
   nsXPIDLCString printer;
   nsDeviceContextSpecOS2::PrnDlg.GetPrinter(defaultPrinter, getter_Copies(printer));
 
@@ -679,7 +713,7 @@ PRINTDLG::PRINTDLG ()
 
 PRINTDLG::~PRINTDLG ()
 {
-  for (int cnt = 0 ; cnt < mQueueCount ; cnt++)
+  for (ULONG cnt = 0 ; cnt < mQueueCount ; cnt++)
     delete mPQBuf [cnt];
 }
 
@@ -723,14 +757,14 @@ void PRINTDLG::RefreshPrintQueue()
        tmpBuf[cnt] = new PRTQUEUE (&pPQI3Buf[cnt]); 
   }
 
-  for (int i=0; i < newQueueCount; i++) {
+  for (ULONG i=0; i < newQueueCount; i++) {
     if (mPQBuf[i] != 0)
       delete(mPQBuf[i]);
     mPQBuf[i] = tmpBuf[i];
   }
 
   if (mQueueCount > newQueueCount)
-    for (int i = newQueueCount; i < mQueueCount; i++)
+    for (ULONG i = newQueueCount; i < mQueueCount; i++)
        if (mPQBuf[i] != 0)
          delete(mPQBuf[i]);
 
@@ -738,9 +772,9 @@ void PRINTDLG::RefreshPrintQueue()
   free (pPQI3Buf);
 }
 
-int PRINTDLG::GetIndex (int numPrinter)
+ULONG PRINTDLG::GetIndex (ULONG numPrinter)
 {
-   int index;
+   ULONG index;
    
    if (numPrinter == 0)
       index = mDefaultQueue;
@@ -752,17 +786,17 @@ int PRINTDLG::GetIndex (int numPrinter)
    return index;
 }
 
-int PRINTDLG::GetNumPrinters ()
+ULONG PRINTDLG::GetNumPrinters ()
 {
    return mQueueCount;
 }
 
-int PRINTDLG::GetDefaultPrinter ()
+ULONG PRINTDLG::GetDefaultPrinter ()
 {
    return mDefaultQueue;
 }
 
-void PRINTDLG::GetPrinter (int numPrinter, char** printerName)
+void PRINTDLG::GetPrinter (ULONG numPrinter, char** printerName)
 {
    if (numPrinter > mQueueCount)
       return;
@@ -774,7 +808,7 @@ void PRINTDLG::GetPrinter (int numPrinter, char** printerName)
    *printerName = ToNewCString(pName);
 }
 
-PRTQUEUE* PRINTDLG::SetPrinterQueue (int numPrinter)
+PRTQUEUE* PRINTDLG::SetPrinterQueue (ULONG numPrinter)
 {
    PRTQUEUE *pPQ = NULL;
 
@@ -786,12 +820,12 @@ PRTQUEUE* PRINTDLG::SetPrinterQueue (int numPrinter)
    return new PRTQUEUE (*pPQ);
 }
 
-LONG PRINTDLG::GetPrintDriverSize (int printer)
+LONG PRINTDLG::GetPrintDriverSize (ULONG printer)
 {
    return mPQBuf[GetIndex(printer)]->PQI3().pDriverData->cb;
 }
 
-PDRIVDATA PRINTDLG::GetPrintDriver (int printer)
+PDRIVDATA PRINTDLG::GetPrintDriver (ULONG printer)
 {
    if (printer > mQueueCount)
       return NULL;
@@ -799,10 +833,10 @@ PDRIVDATA PRINTDLG::GetPrintDriver (int printer)
    return mPQBuf[GetIndex(printer)]->PQI3().pDriverData;
 }
 
-HDC PRINTDLG::GetDCHandle (int numPrinter)
+HDC PRINTDLG::GetDCHandle (ULONG numPrinter)
 {
     HDC hdc = 0;
-    int index = GetIndex(numPrinter);
+    ULONG index = GetIndex(numPrinter);
     DEVOPENSTRUC dop;
 
     dop.pszLogAddress      = 0; 
@@ -819,19 +853,19 @@ HDC PRINTDLG::GetDCHandle (int numPrinter)
     return hdc;
 }
 
-char* PRINTDLG::GetDriverType (int printer)
+char* PRINTDLG::GetDriverType (ULONG printer)
 {
   return (char *)mPQBuf[GetIndex(printer)]->DriverName ();
 }
 
-BOOL PRINTDLG::ShowProperties (int index)
+BOOL PRINTDLG::ShowProperties (ULONG index)
 {
     BOOL          rc = FALSE;
-    ULONG         devrc = FALSE;
+    LONG          devrc = FALSE;
     PDRIVDATA     pOldDrivData;
     PDRIVDATA     pNewDrivData = NULL;
     LONG          buflen;
-    int           Ind = GetIndex(index);
+    ULONG         Ind = GetIndex(index);
 
 /* check size of buffer required for job properties */
     buflen = DevPostDeviceModes( 0 /*hab*/,
@@ -904,25 +938,25 @@ HDC PrnOpenDC( PRTQUEUE *pInfo, PSZ pszApplicationName, int copies, int destinat
       dcType = OD_DIRECT;
    } 
 
-    dop.pszLogAddress      = pszLogAddress; 
-    dop.pszDriverName      = (char*)pInfo->DriverName ();
-    dop.pdriv              = pInfo->PQI3 ().pDriverData;
-    dop.pszDataType        = pszDataType; 
-    dop.pszComment         = pszApplicationName;
-    dop.pszQueueProcName   = pInfo->PQI3 ().pszPrProc;     
-    dop.pszQueueProcParams = 0;
-    dop.pszSpoolerParams   = 0;     
-    dop.pszNetworkParams   = 0;     
+   dop.pszLogAddress      = pszLogAddress; 
+   dop.pszDriverName      = (char*)pInfo->DriverName ();
+   dop.pdriv              = pInfo->PQI3 ().pDriverData;
+   dop.pszDataType        = pszDataType; 
+   dop.pszComment         = pszApplicationName;
+   dop.pszQueueProcName   = pInfo->PQI3 ().pszPrProc;     
+   dop.pszQueueProcParams = 0;
+   dop.pszSpoolerParams   = 0;     
+   dop.pszNetworkParams   = 0;     
 
-    hdc = ::DevOpenDC( 0, dcType, "*", 9, (PDEVOPENDATA) &dop, NULLHANDLE);
+   hdc = ::DevOpenDC( 0, dcType, "*", 9, (PDEVOPENDATA) &dop, NULLHANDLE);
 
-if (hdc == 0)
-{
-  ULONG ErrorCode = ERRORIDERROR (::WinGetLastError (0));
 #ifdef DEBUG
-  printf ("!ERROR! - Can't open DC for printer %04X\a\n", ErrorCode);
+   if (hdc == 0)
+   {
+      ULONG ErrorCode = ERRORIDERROR (::WinGetLastError (0));
+      printf ("!ERROR! - Can't open DC for printer %04lX\a\n", ErrorCode);
+   }   
 #endif
-}   
 
    return hdc;
 }

@@ -13,6 +13,11 @@
 #
 # The Original Code is News and Blogs Account Settings. 
 #
+# The Initial Developer of the Original Code is
+# The Mozilla Foundation.
+# Portions created by the Initial Developer are Copyright (C) 2004
+# the Initial Developer. All Rights Reserved.
+#
 # Contributor(s):
 #   Scott MacGregor <mscott@mozilla.org>
 #
@@ -79,6 +84,12 @@
               id="useQuickMode"
               label="&useQuickMode.label;"
               accesskey="&useQuickMode.accesskey;"/>
+
+    <checkbox wsm_persist="true" id="server.emptyTrashOnExit"
+              label="&emptyTrashOnExit.label;"
+              accesskey="&emptyTrashOnExit.accesskey;"
+              prefattribute="value"
+              prefstring="mail.server.%serverkey%.empty_trash_on_exit"/>
 
     <separator class="thin"/>
 

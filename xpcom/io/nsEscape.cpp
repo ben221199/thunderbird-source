@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -22,16 +22,16 @@
  * Contributor(s):
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
  
@@ -45,7 +45,7 @@
 const int netCharType[256] =
 /*	Bit 0		xalpha		-- the alphas
 **	Bit 1		xpalpha		-- as xalpha but 
-**                             converts spaces to plus and plus to %20
+**                             converts spaces to plus and plus to %2B
 **	Bit 3 ...	path		-- as xalphas but doesn't escape '/'
 */
     /*   0 1 2 3 4 5 6 7 8 9 A B C D E F */
@@ -205,7 +205,8 @@ NS_COM PRInt32 nsUnescapeCount(char * str)
 NS_COM char *
 nsEscapeHTML(const char * string)
 {
-  char *rv = (char *) nsMemory::Alloc(strlen(string)*6 + 1); /* The +1 is for the trailing null! */
+	/* XXX Hardcoded max entity len. The +1 is for the trailing null. */
+	char *rv = (char *) nsMemory::Alloc(strlen(string) * 6 + 1);
 	char *ptr = rv;
 
 	if(rv)
@@ -243,6 +244,14 @@ nsEscapeHTML(const char * string)
 				*ptr++ = 't';
 				*ptr++ = ';';
 			  }			
+			else if (*string == '\'')
+			  {
+				*ptr++ = '&';
+				*ptr++ = '#';
+				*ptr++ = '3';
+				*ptr++ = '9';
+				*ptr++ = ';';
+			  }
 			else
 			  {
 				*ptr++ = *string;
@@ -262,7 +271,9 @@ nsEscapeHTML2(const PRUnichar *aSourceBuffer, PRInt32 aSourceBufferLen)
     aSourceBufferLen = nsCRT::strlen(aSourceBuffer); // ...then I will
   }
 
-  PRUnichar *resultBuffer = (PRUnichar *)nsMemory::Alloc(aSourceBufferLen*6*sizeof(PRUnichar) + sizeof(PRUnichar('\0')));
+  /* XXX Hardcoded max entity len. */
+  PRUnichar *resultBuffer = (PRUnichar *)nsMemory::Alloc(aSourceBufferLen *
+                            6 * sizeof(PRUnichar) + sizeof(PRUnichar('\0')));
   PRUnichar *ptr = resultBuffer;
 
   if (resultBuffer) {
@@ -291,6 +302,12 @@ nsEscapeHTML2(const PRUnichar *aSourceBuffer, PRInt32 aSourceBufferLen)
         *ptr++ = 'u';
         *ptr++ = 'o';
         *ptr++ = 't';
+        *ptr++ = ';';
+      } else if (aSourceBuffer[i] == '\'') {
+        *ptr++ = '&';
+        *ptr++ = '#';
+        *ptr++ = '3';
+        *ptr++ = '9';
         *ptr++ = ';';
       } else {
         *ptr++ = aSourceBuffer[i];
@@ -435,6 +452,7 @@ NS_COM PRBool NS_UnescapeURL(const char *str, PRInt32 len, PRInt16 flags, nsACSt
         len = strlen(str);
 
     PRBool ignoreNonAscii = (flags & esc_OnlyASCII);
+    PRBool ignoreAscii = (flags & esc_OnlyNonASCII);
     PRBool writing = (flags & esc_AlwaysCopy);
     PRBool skipControl = (flags & esc_SkipControl); 
 
@@ -448,7 +466,8 @@ NS_COM PRBool NS_UnescapeURL(const char *str, PRInt32 len, PRInt16 flags, nsACSt
         if (*p == HEX_ESCAPE && i < len-2) {
             unsigned char *p1 = ((unsigned char *) p) + 1;
             unsigned char *p2 = ((unsigned char *) p) + 2;
-            if (ISHEX(*p1) && ISHEX(*p2) && !(ignoreNonAscii && *p1 >= '8') &&
+            if (ISHEX(*p1) && ISHEX(*p2) && 
+                ((*p1 < '8' && !ignoreAscii) || (*p1 >= '8' && !ignoreNonAscii)) &&
                 !(skipControl && 
                   (*p1 < '2' || (*p1 == '7' && (*p2 == 'f' || *p2 == 'F'))))) {
                 //printf("- p1=%c p2=%c\n", *p1, *p2);

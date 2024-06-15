@@ -83,7 +83,7 @@ function searchOnLoad()
   // initialize a flag for phonetic name search
   var prefService = Components.classes["@mozilla.org/preferences-service;1"]
                               .getService(Components.interfaces.nsIPrefService);
-  var prefBranch = prefService.getBranch(null).QueryInterface(Components.interfaces.nsIPrefBranchInternal);
+  var prefBranch = prefService.getBranch(null).QueryInterface(Components.interfaces.nsIPrefBranch2);
   gSearchPhoneticName =
         prefBranch.getComplexValue("mail.addr_book.show_phonetic_fields", 
                                    Components.interfaces.nsIPrefLocalizedString).data;
@@ -95,7 +95,7 @@ function searchOnLoad()
   abList = document.getElementById("abPopup");
   gAbResultsTree = document.getElementById("abResultsTree");
 
-  onMore(null);
+  onMore(null, 0);
 }
 
 function searchOnUnload()
@@ -136,22 +136,7 @@ function SelectDirectory(aURI)
   // set popup with address book names
   var abPopup = document.getElementById('abPopup');
   if ( abPopup )
-  {
-    var menupopup = document.getElementById('abPopup-menupopup');
-
-    if ( selectedAB && menupopup && menupopup.childNodes )
-    {
-      for ( var index = menupopup.childNodes.length - 1; index >= 0; index-- )
-      {
-        if ( menupopup.childNodes[index].getAttribute('value') == selectedAB )
-        {
-          abPopup.label = menupopup.childNodes[index].getAttribute('label');
-          abPopup.value = menupopup.childNodes[index].getAttribute('value');
-          break;
-        }
-      }
-    }
-  }
+    abPopup.value = selectedAB;
 
   setSearchScope(GetScopeForDirectoryURI(selectedAB));
 }

@@ -20,11 +20,11 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- * Original Author: Aaron Leventhal (aaronl@netscape.com)
+ *   Original Author: Aaron Leventhal (aaronl@netscape.com)
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
@@ -90,7 +90,9 @@ NS_IMETHODIMP nsOuterDocAccessible::GetRole(PRUint32 *_retval)
 
 NS_IMETHODIMP nsOuterDocAccessible::GetState(PRUint32 *aState)
 {
-  return nsAccessible::GetState(aState);
+  nsAccessible::GetState(aState);
+  *aState &= ~STATE_FOCUSABLE;
+  return NS_OK;
 }
 
 NS_IMETHODIMP nsOuterDocAccessible::GetBounds(PRInt32 *x, PRInt32 *y, 
@@ -101,7 +103,10 @@ NS_IMETHODIMP nsOuterDocAccessible::GetBounds(PRInt32 *x, PRInt32 *y,
 
 NS_IMETHODIMP nsOuterDocAccessible::Init()
 {
-  nsresult rv = nsAccessibleWrap::Init(); 
+  nsresult rv = nsAccessibleWrap::Init();
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
   
   // We're in the accessibility cache now
   // In these variable names, "outer" relates to the nsOuterDocAccessible

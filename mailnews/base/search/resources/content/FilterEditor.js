@@ -1,11 +1,11 @@
 /* -*- Mode: Java; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,29 +14,33 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- * Alec Flett <alecf@netscape.com>
- * Håkan Waara <hwaara@chello.se>
- * Seth Spitzer <sspitzer@netscape.com>
+ *   Alec Flett <alecf@netscape.com>
+ *   Håkan Waara <hwaara@chello.se>
+ *   Seth Spitzer <sspitzer@netscape.com>
+ *   Mark Banner <mark@standard8.demon.co.uk>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
+
+
+var gPromptService = GetPromptService();
 
 // the actual filter that we're editing
 var gFilter;
@@ -44,6 +48,7 @@ var gFilter;
 var gFilterList;
 var gFilterNameElement;
 var gActionTargetElement;
+var gActionTargetMoveElement;
 var gActionTargetCopyElement;
 var gActionValueDeck;
 var gActionPriority;
@@ -70,7 +75,7 @@ var gFilterActionList;
 
 var nsMsgFilterAction = Components.interfaces.nsMsgFilterAction;
 
-var gFilterEditorMsgWindow=null;
+var gFilterEditorMsgWindow = null;
      
 function filterEditorOnLoad()
 {
@@ -83,14 +88,16 @@ function filterEditorOnLoad()
     if ("arguments" in window && window.arguments[0]) {
         var args = window.arguments[0];
 
+        if ("filterList" in args) {
+          gFilterList = args.filterList;
+        }
+
         if ("filter" in args) {
           // editing a filter
           gFilter = window.arguments[0].filter;
           initializeDialog(gFilter);
         } 
         else {
-          gFilterList = args.filterList;
-          
           if (gFilterList)
               setSearchScope(getScopeFromFilterList(gFilterList));
 
@@ -122,7 +129,7 @@ function filterEditorOnLoad()
           }
           else{
             // fake the first more button press
-            onMore(null);
+            onMore(null, 0);
           }
         }
     }
@@ -163,23 +170,6 @@ function onEnterInSearchTerm()
 
 function onAccept()
 {
-    if (duplicateFilterNameExists(gFilterNameElement.value))
-    {
-        var promptService = Components.classes["@mozilla.org/embedcomp/prompt-service;1"].getService();
-        promptService = promptService.QueryInterface(Components.interfaces.nsIPromptService);
-
-        if (promptService)
-        {
-            promptService.alert(window,
-                gFilterBundle.getString("cannotHaveDuplicateFilterTitle"),
-                gFilterBundle.getString("cannotHaveDuplicateFilterMessage")
-            );
-        }
-
-        return false;
-    }
-
-
     if (!saveFilter()) return false;
 
     // parent should refresh filter list..
@@ -191,9 +181,9 @@ function onAccept()
 
 // the folderListener object
 var gFolderListener = {
-    OnItemAdded: function(parentItem, item, view) {},
+    OnItemAdded: function(parentItem, item) {},
 
-    OnItemRemoved: function(parentItem, item, view){},
+    OnItemRemoved: function(parentItem, item){},
 
     OnItemPropertyChanged: function(item, property, oldValue, newValue) {},
 
@@ -220,17 +210,12 @@ var gFolderListener = {
 
 function duplicateFilterNameExists(filterName)
 {
-    var args = window.arguments[0];
-    var filterList;
-    if ("filterList" in args)
-      filterList = args.filterList;
-    if (filterList)
-      for (var i = 0; i < filterList.filterCount; i++)
-     {
-       if (filterName == filterList.getFilterAt(i).filterName)
-         return true;
-     }
-    return false;   
+  if (gFilterList)
+    for (var i = 0; i < gFilterList.filterCount; i++) {
+      if (filterName == gFilterList.getFilterAt(i).filterName)
+        return true;
+    }
+  return false;   
 }
 
 function getScopeFromFilterList(filterList)
@@ -254,7 +239,11 @@ function setLabelAttributes(labelID, menuItemID)
 
     try
     {
-        color = gPrefBranch.getCharPref("mailnews.labels.color." + labelID);
+        if (labelID)
+          color = gPrefBranch.getCharPref("mailnews.labels.color." + labelID);
+        else
+          color = "none";
+
         prefString = gPrefBranch.getComplexValue("mailnews.labels.description." + labelID,
                                            Components.interfaces.nsIPrefLocalizedString);
     }
@@ -273,7 +262,7 @@ function setLabelAttributes(labelID, menuItemID)
 function initializeFilterWidgets()
 {
     gFilterNameElement = document.getElementById("filterName");
-    gActionTargetElement = document.getElementById("actionTargetFolder");
+    gActionTargetMoveElement = document.getElementById("actionTargetFolder");
     gActionTargetCopyElement = document.getElementById("actionTargetFolder2");
     gActionValueDeck = document.getElementById("actionValueDeck");
     gActionPriority = document.getElementById("actionValuePriority");
@@ -282,7 +271,6 @@ function initializeFilterWidgets()
     gMoveToFolderCheckbox = document.getElementById("moveToFolder");
     gCopyToFolderCheckbox = document.getElementById("copyToFolder");
     gChangePriorityCheckbox = document.getElementById("changePriority");
-    gChangeJunkScoreCheckbox = document.getElementById("setJunkScore");
     gLabelCheckbox = document.getElementById("label");
     gJunkScoreCheckbox = document.getElementById("setJunkScore");
     gMarkReadCheckbox = document.getElementById("markRead");
@@ -310,7 +298,7 @@ function initializeDialog(filter)
         gMoveToFolderCheckbox.checked = true;
         var target = filterAction.targetFolderUri;
         if (target) 
-          SetFolderPicker(target, gActionTargetElement.id);
+          SetFolderPicker(target, gActionTargetMoveElement.id);
       }
       else if (filterAction.type == nsMsgFilterAction.CopyToFolder)
       {
@@ -324,11 +312,10 @@ function initializeDialog(filter)
       {
         gChangePriorityCheckbox.checked = true;
         // initialize priority
-        var selectedPriority = gActionPriority.getElementsByAttribute("value", filterAction.priority);
+        var selectedPriority = gActionPriority.getElementsByAttribute("value", filterAction.priority).item(0);
 
-        if (selectedPriority && selectedPriority.length > 0) 
+        if (selectedPriority) 
         {
-          selectedPriority = selectedPriority[0];
           gActionPriority.selectedItem = selectedPriority;
         }
       }
@@ -336,22 +323,20 @@ function initializeDialog(filter)
       {
         gLabelCheckbox.checked = true;
         // initialize label
-        var selectedLabel = gActionLabel.getElementsByAttribute("value", filterAction.label);
-        if (selectedLabel && selectedLabel.length > 0) 
+        var selectedLabel = gActionLabel.getElementsByAttribute("value", filterAction.label).item(0);
+        if (selectedLabel) 
         {
-          selectedLabel = selectedLabel[0];
           gActionLabel.selectedItem = selectedLabel;
         }
       }
       else if (filterAction.type == nsMsgFilterAction.JunkScore) 
       {
-        gChangeJunkScoreCheckbox.checked = true;
+        gJunkScoreCheckbox.checked = true;
         // initialize junk score
-        var selectedJunkScore = gActionJunkScore.getElementsByAttribute("value", filterAction.junkScore);
+        var selectedJunkScore = gActionJunkScore.getElementsByAttribute("value", filterAction.junkScore).item(0);
 
-        if (selectedJunkScore && selectedJunkScore.length > 0) 
+        if (selectedJunkScore) 
         {
-          selectedJunkScore = selectedJunkScore[0];
           gActionJunkScore.selectedItem = selectedJunkScore;
         }
       }
@@ -376,18 +361,15 @@ function initializeDialog(filter)
     var scope = getScope(filter);
     setSearchScope(scope);
     initializeSearchRows(scope, filter.searchTerms);
-    if (filter.searchTerms.Count() > 1)
-      gSearchLessButton.removeAttribute("disabled", "false");
-
+    if (filter.searchTerms.Count() == 1)
+      document.getElementById("less0").setAttribute("disabled", "true");
 }
 
 function InitMessageLabel()
 {
     /* this code gets the label strings and changes the menu labels */
     var lastLabel = 5;
-    // start with 1 because there is no None label (id 0) as an filtering
-    // option to filter to.
-    for (var i = 1; i <= lastLabel; i++)
+    for (var i = 0; i <= lastLabel; i++)
     {
         setLabelAttributes(i, "labelMenuItem" + i);
     }
@@ -407,16 +389,62 @@ function InitMessageLabel()
 function saveFilter() 
 {
   var isNewFilter;
-  var str;
   var filterAction; 
+  var targetUri;
 
   var filterName= gFilterNameElement.value;
   if (!filterName || filterName == "") 
   {
-    str = gFilterBundle.getString("mustEnterName");
-    window.alert(str);
+    if (gPromptService)
+      gPromptService.alert(window, null,
+                           gFilterBundle.getString("mustEnterName"));
     gFilterNameElement.focus();
     return false;
+  }
+
+  // If we think have a duplicate, then we need to check that if we
+  // have an original filter name (i.e. we are editing a filter), then
+  // we must check that the original is not the current as that is what
+  // the duplicateFilterNameExists function will have picked up.
+  if ((!gFilter || gFilter.filterName != filterName) &&
+      duplicateFilterNameExists(filterName)) {
+    if (gPromptService)
+      gPromptService.alert(window,
+                           gFilterBundle.getString("cannotHaveDuplicateFilterTitle"),
+                           gFilterBundle.getString("cannotHaveDuplicateFilterMessage")
+                           );
+    return false;
+  }
+
+  if (!(gMoveToFolderCheckbox.checked ||
+        gChangePriorityCheckbox.checked ||
+        gLabelCheckbox.checked ||
+        gJunkScoreCheckbox.checked ||
+        gMarkReadCheckbox.checked ||
+        gMarkFlaggedCheckbox.checked ||
+        gDeleteCheckbox.checked ||
+        gWatchCheckbox.checked ||
+        gKillCheckbox.checked ||
+        gDeleteFromServerCheckbox.checked ||
+        gFetchBodyFromServerCheckbox.checked))
+  {
+    if (gPromptService)
+      gPromptService.alert(window, null,
+                           gFilterBundle.getString("mustSelectAction"));
+    return false;
+  }
+
+  if (gMoveToFolderCheckbox.checked)
+  {
+    if (gActionTargetMoveElement)
+      targetUri = gActionTargetMoveElement.getAttribute("uri");
+    if (!targetUri || targetUri == "") 
+    {
+      if (gPromptService)
+        gPromptService.alert(window, null,
+                             gFilterBundle.getString("mustSelectFolder"));
+      return false;
+    }
   }
 
   if (gCopyToFolderCheckbox.checked)
@@ -434,13 +462,13 @@ function saveFilter()
 
   if (!gFilter) 
   {
-    gFilter = gFilterList.createFilter(gFilterNameElement.value);
+    gFilter = gFilterList.createFilter(filterName);
     isNewFilter = true;
     gFilter.enabled=true;
   } 
   else 
   {
-    gFilter.filterName = gFilterNameElement.value;
+    gFilter.filterName = filterName;
     //Prefilter is treated as a new filter.
     if (gPreFillName) 
     {
@@ -456,15 +484,6 @@ function saveFilter()
 
   if (gMoveToFolderCheckbox.checked)
   {
-    if (gActionTargetElement)
-      targetUri = gActionTargetElement.getAttribute("uri");
-    if (!targetUri || targetUri == "") 
-    {
-      str = gFilterBundle.getString("mustSelectFolder");
-      window.alert(str);
-      return false;
-    }
-      
     filterAction = gFilter.createAction();
     filterAction.type = nsMsgFilterAction.MoveToFolder;
     filterAction.targetFolderUri = targetUri;
@@ -490,13 +509,6 @@ function saveFilter()
     
   if (gChangePriorityCheckbox.checked)  
   {
-    if (!gActionPriority.selectedItem) 
-    {
-      str = gFilterBundle.getString("mustSelectPriority");
-      window.alert(str);
-      return false;
-    }
-
     filterAction = gFilter.createAction();
     filterAction.type = nsMsgFilterAction.ChangePriority;
     filterAction.priority = gActionPriority.selectedItem.getAttribute("value");
@@ -505,13 +517,6 @@ function saveFilter()
 
   if (gLabelCheckbox.checked) 
   {
-    if (!gActionLabel.selectedItem) 
-    {
-      str = gFilterBundle.getString("mustSelectLabel");
-      window.alert(str);
-      return false;
-    }
-
     filterAction = gFilter.createAction();
     filterAction.type = nsMsgFilterAction.Label;
     filterAction.label = gActionLabel.selectedItem.getAttribute("value");
@@ -573,17 +578,6 @@ function saveFilter()
     filterAction = gFilter.createAction();
     filterAction.type = nsMsgFilterAction.FetchBodyFromPop3Server;
     gFilter.appendAction(filterAction);
-  }
-
-  if (gFilter.actionList.Count() <= 0)
-  {
-    str = gFilterBundle.getString("mustSelectAction");
-    window.alert(str);
-
-    // reset gFilter so that filter is still saved next time around
-    // see bug #186217
-    gFilter = null;
-    return false;
   }
 
   if (getScope(gFilter) == Components.interfaces.nsMsgSearchScope.newsFilter)
@@ -684,12 +678,14 @@ function showLabelColorFor(menuitem)
 function GetFirstSelectedMsgFolder()
 {
     var selectedFolder = gActionTargetElement.getAttribute("uri");
+    if (!selectedFolder)
+      return null;
 
     var msgFolder = GetMsgFolderFromUri(selectedFolder, true);
     return msgFolder;
 }
 
-function SearchNewFolderOkCallback(name,uri,targetid)
+function SearchNewFolderOkCallback(name, uri)
 {
   var msgFolder = GetMsgFolderFromUri(uri, true);
   var imapFolder = null;
@@ -725,7 +721,7 @@ function SearchNewFolderOkCallback(name,uri,targetid)
   if (!imapFolder)
   {
     var curFolder = uri+"/"+encodeURIComponent(name);
-    SetFolderPicker(curFolder, targetid);
+    SetFolderPicker(curFolder, gActionTargetElement.id);
   }
 }
 
@@ -764,4 +760,15 @@ function SetBusyCursor(window, enable)
 function doHelpButton()
 {
   openHelp("mail-filters");
+}
+
+function GetPromptService()
+{
+  try {
+    return Components.classes["@mozilla.org/embedcomp/prompt-service;1"]
+                     .getService(Components.interfaces.nsIPromptService);
+  }
+  catch (e) {
+    return null;
+  }
 }

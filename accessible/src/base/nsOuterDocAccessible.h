@@ -20,11 +20,11 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- * Original Author: Aaron Leventhal (aaronl@netscape.com)
+ *   Original Author: Aaron Leventhal (aaronl@netscape.com)
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
@@ -52,8 +52,7 @@ class nsOuterDocAccessible : public nsAccessibleWrap
     nsOuterDocAccessible(nsIDOMNode* aNode, 
                          nsIWeakReference* aShell);
 
-    NS_IMETHOD GetChildCount(PRInt32 *_retval);
-
+    NS_IMETHOD GetChildCount(PRInt32 *aAccChildCount);
     NS_IMETHOD GetName(nsAString& aName);
     NS_IMETHOD GetValue(nsAString& Value);
     NS_IMETHOD GetRole(PRUint32 *aRole);

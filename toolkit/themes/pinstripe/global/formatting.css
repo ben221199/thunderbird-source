@@ -224,13 +224,11 @@
 
 #commonDialog > hbox > vbox > description, #commonDialog > hbox > vbox > vbox > description {
 	font: menu;
-    line-height: 16px;
+	font-weight: bold !important;
+        line-height: 16px;
 	margin-bottom: 6px;
 }
 
-#commonDialog .dialogTitle {
-  font-weight: bold !important;
-}
 
 /* class for text with a 'link' appearance */
   .text-link
@@ -242,7 +240,7 @@
   .text-link:focus
     {
       color                 : red;
-      -moz-outline: 1px dotted invert;
+      outline: 1px dotted invert;
     }
 
   .text-link:hover

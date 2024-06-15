@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -22,16 +22,16 @@
  * Contributor(s):
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -103,6 +103,8 @@
 #include "nsTraceRefcnt.h"
 #include "nsTimelineService.h"
 
+#include "nsHashPropertyBag.h"
+
 #include "nsVariant.h"
 
 #ifdef GC_LEAK_DETECTOR
@@ -111,6 +113,12 @@
 #include "nsRecyclingAllocator.h"
 
 #include "SpecialSystemDirectory.h"
+
+#if defined(XP_WIN) && !defined(WINCE)
+#include "nsWindowsRegKey.h"
+#endif
+
+#include <locale.h>
 
 // Registry Factory creation function defined in nsRegistry.cpp
 // We hook into this function locally to create and register the registry
@@ -172,7 +180,8 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsSupportsVoidImpl)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsSupportsInterfacePointerImpl)
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsArray)
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsConsoleService)
+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsConsoleService, Init)
+NS_DECL_CLASSINFO(nsConsoleService)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsAtomService)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsExceptionService)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsTimerImpl)
@@ -188,6 +197,8 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsRecyclingAllocatorImpl)
 #ifdef MOZ_TIMELINE
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsTimelineService)
 #endif
+
+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsHashPropertyBag, Init)
 
 static NS_METHOD
 nsXPTIInterfaceInfoManagerGetSingleton(nsISupports* outer,
@@ -282,12 +293,6 @@ nsComponentManagerImpl* nsComponentManagerImpl::gComponentManager = NULL;
 nsIProperties     *gDirectoryService = NULL;
 PRBool gXPCOMShuttingDown = PR_FALSE;
 
-// If XPCOM is unloaded, we need a way to ensure that all statics have been 
-// reinitalized when reloading.  Here we create a boolean which is initialized
-// to true.  During shutdown, this boolean with set to false.  When we startup,
-// this boolean will be checked and if the value is not true, startup will fail.
-static PRBool gXPCOMHasGlobalsBeenInitalized = PR_TRUE;
-
 // For each class that wishes to support nsIClassInfo, add a line like this
 // NS_DECL_CLASSINFO(nsMyClass)
 
@@ -298,6 +303,11 @@ static PRBool gXPCOMHasGlobalsBeenInitalized = PR_TRUE;
  { NS_##NAME##_CLASSNAME, NS_##NAME##_CID, NS_##NAME##_CONTRACTID, Ctor,       \
    NULL, NULL, NULL, NS_CI_INTERFACE_GETTER_NAME(Class), NULL,                 \
    &NS_CLASSINFO_NAME(Class) }
+
+#define COMPONENT_CI_FLAGS(NAME, Ctor, Class, Flags)                           \
+ { NS_##NAME##_CLASSNAME, NS_##NAME##_CID, NS_##NAME##_CONTRACTID, Ctor,       \
+   NULL, NULL, NULL, NS_CI_INTERFACE_GETTER_NAME(Class), NULL,                 \
+   &NS_CLASSINFO_NAME(Class), Flags }
 
 static const nsModuleComponentInfo components[] = {
     COMPONENT(MEMORY, nsMemoryImpl::Create),
@@ -319,7 +329,9 @@ static const nsModuleComponentInfo components[] = {
 
     COMPONENT(SUPPORTSARRAY, nsSupportsArray::Create),
     COMPONENT(ARRAY, nsArrayConstructor),
-    COMPONENT(CONSOLESERVICE, nsConsoleServiceConstructor),
+    COMPONENT_CI_FLAGS(CONSOLESERVICE, nsConsoleServiceConstructor,
+                       nsConsoleService,
+                       nsIClassInfo::THREADSAFE | nsIClassInfo::SINGLETON),
     COMPONENT(EXCEPTIONSERVICE, nsExceptionServiceConstructor),
     COMPONENT(ATOMSERVICE, nsAtomServiceConstructor),
 #ifdef MOZ_TIMELINE
@@ -374,26 +386,18 @@ static const nsModuleComponentInfo components[] = {
     COMPONENT(INTERFACEINFOMANAGER_SERVICE, nsXPTIInterfaceInfoManagerGetSingleton),
 
     COMPONENT(RECYCLINGALLOCATOR, nsRecyclingAllocatorImplConstructor),
+
+#define NS_HASH_PROPERTY_BAG_CLASSNAME "Hashtable Property Bag"
+    COMPONENT(HASH_PROPERTY_BAG, nsHashPropertyBagConstructor),
+
+#if defined(XP_WIN) && !defined(WINCE)
+    COMPONENT(WINDOWSREGKEY, nsWindowsRegKeyConstructor),
+#endif
 };
 
 #undef COMPONENT
 
 const int components_length = sizeof(components) / sizeof(components[0]);
-
-// gMemory will be freed during shutdown.
-static nsIMemory* gMemory = nsnull;
-nsresult NS_COM NS_GetMemoryManager(nsIMemory* *result)
-{
-    nsresult rv = NS_OK;
-    if (!gMemory)
-    {
-        rv = nsMemoryImpl::Create(nsnull,
-                                  NS_GET_IID(nsIMemory),
-                                  (void**)&gMemory);
-    }
-    NS_IF_ADDREF(*result = gMemory);
-    return rv;
-}
 
 // gDebug will be freed during shutdown.
 static nsIDebug* gDebug = nsnull;
@@ -442,10 +446,6 @@ nsresult NS_COM NS_InitXPCOM2(nsIServiceManager* *result,
                               nsIFile* binDirectory,
                               nsIDirectoryServiceProvider* appFileLocationProvider)
 {
-
-    if (!gXPCOMHasGlobalsBeenInitalized)
-        return NS_ERROR_NOT_INITIALIZED;
-
     nsresult rv = NS_OK;
 
      // We are not shutting down
@@ -459,9 +459,20 @@ nsresult NS_COM NS_InitXPCOM2(nsIServiceManager* *result,
     rv = nsIThread::SetMainThread();
     if (NS_FAILED(rv)) return rv;
 
+    // Set up the timer globals/timer thread
+    rv = nsTimerImpl::Startup();
+    NS_ENSURE_SUCCESS(rv, rv);
+
     // Startup the memory manager
     rv = nsMemoryImpl::Startup();
     if (NS_FAILED(rv)) return rv;
+
+#ifndef WINCE
+    // If the locale hasn't already been setup by our embedder,
+    // get us out of the "C" locale and into the system 
+    if (strcmp(setlocale(LC_ALL, NULL), "C") == 0)
+        setlocale(LC_ALL, "");
+#endif
 
 #if defined(XP_UNIX) || defined(XP_OS2)
     NS_StartupNativeCharsetUtils();
@@ -793,7 +804,6 @@ nsresult NS_COM NS_ShutdownXPCOM(nsIServiceManager* servMgr)
     if (nsComponentManagerImpl::gComponentManager) {
         nsComponentManagerImpl::gComponentManager->FreeServices();
     }
-    nsServiceManager::ShutdownGlobalServiceManager(nsnull);
 
     if (currentQ) {
         currentQ->ProcessPendingEvents();
@@ -848,7 +858,6 @@ nsresult NS_COM NS_ShutdownXPCOM(nsIServiceManager* servMgr)
 
     EmptyEnumeratorImpl::Shutdown();
     nsMemoryImpl::Shutdown();
-    NS_IF_RELEASE(gMemory);
 
     nsThread::Shutdown();
     NS_PurgeAtomTable();
@@ -866,68 +875,5 @@ nsresult NS_COM NS_ShutdownXPCOM(nsIServiceManager* servMgr)
     NS_ShutdownLeakDetector();
 #endif
 
-    gXPCOMHasGlobalsBeenInitalized = PR_FALSE;
     return NS_OK;
-}
-
-#define GET_FUNC(_tag, _decl, _name)                        \
-  functions->_tag = (_decl) PR_FindSymbol(xpcomLib, _name); \
-  if (!functions->_tag) goto end
-
-nsresult NS_COM PR_CALLBACK
-NS_GetFrozenFunctions(XPCOMFunctions *functions, const char* libraryPath)
-{
-    if (!functions)
-        return NS_ERROR_OUT_OF_MEMORY;
-
-    if (functions->version != XPCOM_GLUE_VERSION)
-        return NS_ERROR_FAILURE;
-
-    PRLibrary *xpcomLib = PR_LoadLibrary(libraryPath);
-    if (!xpcomLib)
-        return NS_ERROR_FAILURE;
-
-    nsresult rv = NS_ERROR_FAILURE;
-
-    GET_FUNC(init,                  InitFunc,                       "NS_InitXPCOM2");
-    GET_FUNC(shutdown,              ShutdownFunc,                   "NS_ShutdownXPCOM");
-    GET_FUNC(getServiceManager,     GetServiceManagerFunc,          "NS_GetServiceManager");
-    GET_FUNC(getComponentManager,   GetComponentManagerFunc,        "NS_GetComponentManager");
-    GET_FUNC(getComponentRegistrar, GetComponentRegistrarFunc,      "NS_GetComponentRegistrar");
-    GET_FUNC(getMemoryManager,      GetMemoryManagerFunc,           "NS_GetMemoryManager");
-    GET_FUNC(newLocalFile,          NewLocalFileFunc,               "NS_NewLocalFile");
-    GET_FUNC(newNativeLocalFile,    NewNativeLocalFileFunc,         "NS_NewNativeLocalFile");
-    GET_FUNC(registerExitRoutine,   RegisterXPCOMExitRoutineFunc,   "NS_RegisterXPCOMExitRoutine");
-    GET_FUNC(unregisterExitRoutine, UnregisterXPCOMExitRoutineFunc, "NS_UnregisterXPCOMExitRoutine");
-
-    // these functions were added post 1.4 (need to check size of |functions|)
-    if (functions->size > offsetof(XPCOMFunctions, getTraceRefcnt)) {
-        GET_FUNC(getDebug,          GetDebugFunc,                   "NS_GetDebug");
-        GET_FUNC(getTraceRefcnt,    GetTraceRefcntFunc,             "NS_GetTraceRefcnt");
-    }
-
-    // these functions were added post 1.6 (need to check size of |functions|)
-    if (functions->size > offsetof(XPCOMFunctions, cstringCloneData)) {
-        GET_FUNC(stringContainerInit,    StringContainerInitFunc,        "NS_StringContainerInit");
-        GET_FUNC(stringContainerFinish,  StringContainerFinishFunc,      "NS_StringContainerFinish");
-        GET_FUNC(stringGetData,          StringGetDataFunc,              "NS_StringGetData");
-        GET_FUNC(stringSetData,          StringSetDataFunc,              "NS_StringSetData");
-        GET_FUNC(stringSetDataRange,     StringSetDataRangeFunc,         "NS_StringSetDataRange");
-        GET_FUNC(stringCopy,             StringCopyFunc,                 "NS_StringCopy");
-        GET_FUNC(cstringContainerInit,   CStringContainerInitFunc,       "NS_CStringContainerInit");
-        GET_FUNC(cstringContainerFinish, CStringContainerFinishFunc,     "NS_CStringContainerFinish");
-        GET_FUNC(cstringGetData,         CStringGetDataFunc,             "NS_CStringGetData");
-        GET_FUNC(cstringSetData,         CStringSetDataFunc,             "NS_CStringSetData");
-        GET_FUNC(cstringSetDataRange,    CStringSetDataRangeFunc,        "NS_CStringSetDataRange");
-        GET_FUNC(cstringCopy,            CStringCopyFunc,                "NS_CStringCopy");
-        GET_FUNC(cstringToUTF16,         CStringToUTF16,                 "NS_CStringToUTF16");
-        GET_FUNC(utf16ToCString,         UTF16ToCString,                 "NS_UTF16ToCString");
-        GET_FUNC(stringCloneData,        StringCloneDataFunc,            "NS_StringCloneData");
-        GET_FUNC(cstringCloneData,       CStringCloneDataFunc,           "NS_CStringCloneData");
-    }
-
-    rv = NS_OK;
-end:
-    PR_UnloadLibrary(xpcomLib); // the library is refcnt'ed above by the caller.
-    return rv;
 }

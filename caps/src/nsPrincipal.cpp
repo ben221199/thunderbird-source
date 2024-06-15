@@ -21,7 +21,6 @@
  *
  * Contributor(s):
  *   Christopher A. Aillon <christopher@aillon.com>
- *   Giorgio Maone <g.maone@informaction.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -61,17 +60,10 @@ PRInt32 nsPrincipal::sCapabilitiesOrdinal = 0;
 const char nsPrincipal::sInvalid[] = "Invalid";
 
 
-NS_INTERFACE_MAP_BEGIN(nsPrincipal)
-  NS_INTERFACE_MAP_ENTRY(nsIPrincipal)
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISerializable, nsIPrincipal)
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIPrincipal)
-  NS_INTERFACE_MAP_ENTRY(nsISubsumingPrincipal)
-  NS_INTERFACE_MAP_ENTRY(nsIPrincipalObsolete)
-  NS_IMPL_QUERY_CLASSINFO(nsPrincipal)
-NS_INTERFACE_MAP_END
-
-NS_IMPL_CI_INTERFACE_GETTER3(nsPrincipal,
-                             nsISubsumingPrincipal,
+NS_IMPL_QUERY_INTERFACE2_CI(nsPrincipal,
+                            nsIPrincipal,
+                            nsISerializable)
+NS_IMPL_CI_INTERFACE_GETTER2(nsPrincipal,
                              nsIPrincipal,
                              nsISerializable)
 
@@ -148,7 +140,6 @@ deleteElement(void* aElement, void *aData)
 nsPrincipal::~nsPrincipal(void)
 {
   mAnnotations.EnumerateForwards(deleteElement, nsnull);
-  SetSecurityPolicy(nsnull); 
 }
 
 NS_IMETHODIMP
@@ -205,25 +196,14 @@ nsPrincipal::GetOrigin(char **aOrigin)
 NS_IMETHODIMP
 nsPrincipal::GetSecurityPolicy(void** aSecurityPolicy)
 {
-  if (mSecurityPolicy && mSecurityPolicy->IsInvalid()) 
-    SetSecurityPolicy(nsnull);
-  
-  *aSecurityPolicy = (void *) mSecurityPolicy;
+  *aSecurityPolicy = mSecurityPolicy;
   return NS_OK;
 }
 
 NS_IMETHODIMP
 nsPrincipal::SetSecurityPolicy(void* aSecurityPolicy)
 {
-  DomainPolicy *newPolicy = NS_REINTERPRET_CAST(
-                              DomainPolicy *, aSecurityPolicy);
-  if (newPolicy)
-    newPolicy->Hold();
- 
-  if (mSecurityPolicy)
-    mSecurityPolicy->Drop();
-  
-  mSecurityPolicy = newPolicy;
+  mSecurityPolicy = aSecurityPolicy;
   return NS_OK;
 }
 
@@ -267,11 +247,6 @@ nsPrincipal::Equals(nsIPrincipal *aOther, PRBool *aResult)
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsPrincipal::Subsumes(nsIPrincipal *aOther, PRBool *aResult)
-{
-  return Equals(aOther, aResult);
-}
 
 NS_IMETHODIMP
 nsPrincipal::CanEnableCapability(const char *capability, PRInt16 *result)
@@ -583,7 +558,7 @@ nsPrincipal::SetDomain(nsIURI* aDomain)
 {
   mDomain = aDomain;
   // Domain has changed, forget cached security policy
-  SetSecurityPolicy(nsnull);
+  mSecurityPolicy = nsnull;
 
   return NS_OK;
 }
@@ -875,46 +850,5 @@ nsPrincipal::Write(nsIObjectOutputStream* aStream)
     return rv;
   }
 
-  return NS_OK;
-}
-
-// nsIPrincipalObsolete interface
-
-NS_IMETHODIMP
-nsPrincipal::ToString(char **aResult)
-{
-  if (mCert)
-    return nsPrincipal::GetCertificateID(aResult);
-
-  return nsPrincipal::GetOrigin(aResult);
-}
-
-NS_IMETHODIMP
-nsPrincipal::ToUserVisibleString(char **aResult)
-{
-  if (mCert)
-    return nsPrincipal::GetCommonName(aResult);
-
-  return nsPrincipal::GetOrigin(aResult);
-}
-
-NS_IMETHODIMP
-nsPrincipal::Equals(nsIPrincipalObsolete *aOther, PRBool *aResult)
-{
-  nsCOMPtr<nsIPrincipal> princ = do_QueryInterface(aOther);
-  return nsPrincipal::Equals(princ, aResult);
-}
-
-NS_IMETHODIMP
-nsPrincipal::HashValue(PRUint32 *aResult)
-{
-  return nsPrincipal::GetHashValue(aResult);
-}
-
-NS_IMETHODIMP
-nsPrincipal::GetJSPrincipals(JSPrincipals **aResult)
-{
-  *aResult = &mJSPrincipals;
-  JSPRINCIPALS_HOLD(nsnull, *aResult);
   return NS_OK;
 }

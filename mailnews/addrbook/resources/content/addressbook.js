@@ -40,7 +40,6 @@
 
 var cvPrefs = 0;
 var addressbook = 0;
-var gAddressBookBundle;
 var gSearchTimer = null;
 var gStatusText = null;
 var gQueryURIFormat = null;
@@ -84,7 +83,9 @@ var gAddressBookAbListener = {
 
 function OnUnloadAddressBook()
 {  
-  var addrbookSession = Components.classes["@mozilla.org/addressbook/services/session;1"].getService().QueryInterface(Components.interfaces.nsIAddrBookSession);
+  var addrbookSession =
+        Components.classes["@mozilla.org/addressbook/services/session;1"]
+                  .getService(Components.interfaces.nsIAddrBookSession);
   addrbookSession.removeAddressBookListener(gAddressBookAbListener);
 
   RemovePrefObservers();
@@ -119,7 +120,7 @@ function AddPrefObservers()
 {
   var prefService = Components.classes["@mozilla.org/preferences-service;1"]
                               .getService(Components.interfaces.nsIPrefService);
-  var prefBranch = prefService.getBranch(null).QueryInterface(Components.interfaces.nsIPrefBranchInternal);
+  var prefBranch = prefService.getBranch(null).QueryInterface(Components.interfaces.nsIPrefBranch2);
   prefBranch.addObserver(kPrefMailAddrBookLastNameFirst, gMailAddrBookLastNameFirstObserver, false);
 }
 
@@ -127,13 +128,12 @@ function RemovePrefObservers()
 {
   var prefService = Components.classes["@mozilla.org/preferences-service;1"]
                               .getService(Components.interfaces.nsIPrefService);
-  var prefBranch = prefService.getBranch(null).QueryInterface(Components.interfaces.nsIPrefBranchInternal);
+  var prefBranch = prefService.getBranch(null).QueryInterface(Components.interfaces.nsIPrefBranch2);
   prefBranch.removeObserver(kPrefMailAddrBookLastNameFirst, gMailAddrBookLastNameFirstObserver);
 }
 
 function OnLoadAddressBook()
 {
-  gAddressBookBundle = document.getElementById("bundle_addressBook");
   gSearchInput = document.getElementById("searchInput");
 
   verifyAccounts(null); 	// this will do migration, if we need to.
@@ -146,8 +146,8 @@ function OnLoadAddressBook()
 
   //This migrates the LDAPServer Preferences from 4.x to mozilla format.
   try {
-      gLDAPPrefsService = Components.classes["@mozilla.org/ldapprefs-service;1"].getService();       
-      gLDAPPrefsService = gLDAPPrefsService.QueryInterface( Components.interfaces.nsILDAPPrefsService);                  
+    Components.classes["@mozilla.org/ldapprefs-service;1"]
+              .getService(Components.interfaces.nsILDAPPrefsService);
   } catch (ex) {dump ("ERROR: Cannot get the LDAP service\n" + ex + "\n");}
 
   GetCurrentPrefs();
@@ -168,7 +168,9 @@ function OnLoadAddressBook()
 
   // add a listener, so we can switch directories if
   // the current directory is deleted
-  var addrbookSession = Components.classes["@mozilla.org/addressbook/services/session;1"].getService().QueryInterface(Components.interfaces.nsIAddrBookSession);
+  var addrbookSession =
+        Components.classes["@mozilla.org/addressbook/services/session;1"]
+                  .getService(Components.interfaces.nsIAddrBookSession);
   // this listener only cares when a directory is removed
   addrbookSession.addAddressBookListener(gAddressBookAbListener, Components.interfaces.nsIAbListener.directoryRemoved);
 
@@ -452,7 +454,7 @@ function AbPrintPreviewCard()
 
 function CreatePrintCardUrl(card)
 {
-  var url = "data:text/xml;base64," + card.convertToBase64EncodedXML();
+  var url = "data:application/xml;base64," + card.convertToBase64EncodedXML();
   return url;
 }
 
@@ -504,7 +506,7 @@ function AbExport()
     if (!selectedABURI) return;
     
     var directory = GetDirectoryFromURI(selectedABURI);
-    addressbook.exportAddressBook(directory);
+    addressbook.exportAddressBook(window, directory);
   }
   catch (ex) {
     var promptService = Components.classes["@mozilla.org/embedcomp/prompt-service;1"].getService(Components.interfaces.nsIPromptService);
@@ -542,7 +544,7 @@ function AbDeleteDirectory()
 
   var promptService = Components.classes["@mozilla.org/embedcomp/prompt-service;1"].getService(Components.interfaces.nsIPromptService);
  
-  var parentRow = GetParentRow(dirTree, dirTree.currentIndex);
+  var parentRow = dirTree.view.getParentIndex(dirTree.currentIndex);
   var parentId = (parentRow == -1) ? "moz-abdirectory://" : dirTree.builderView.getResourceAtIndex(parentRow).Value;
   var parentDir = GetDirectoryFromURI(parentId);
   parentArray.AppendElement(parentDir);
@@ -601,8 +603,15 @@ function onAdvancedAbSearch()
   var selectedABURI = GetSelectedDirectory();
   if (!selectedABURI) return;
 
-  window.openDialog("chrome://messenger/content/ABSearchDialog.xul", "", 
-                    "chrome,resizable,status,centerscreen,dialog=no", {directory: selectedABURI} );
+  var windowManager = Components.classes['@mozilla.org/appshell/window-mediator;1'].
+                                 getService(Components.interfaces.nsIWindowMediator);
+  var existingSearchWindow = windowManager.getMostRecentWindow("mailnews:absearch");
+  if (existingSearchWindow)
+    existingSearchWindow.focus();
+  else
+    window.openDialog("chrome://messenger/content/ABSearchDialog.xul", "", 
+                      "chrome,resizable,status,centerscreen,dialog=no", 
+                      {directory: selectedABURI});
 }
 
 function onEnterInSearchBar()
@@ -616,9 +625,6 @@ function onEnterInSearchBar()
   var searchURI = GetSelectedDirectory();
   if (!searchURI) return;
 
-  var sortColumn = gAbView.sortColumn;
-  var sortDirection = gAbView.sortDirection;
-
   /*
    XXX todo, handle the case where the LDAP url
    already has a query, like 
@@ -630,7 +636,7 @@ function onEnterInSearchBar()
     searchURI += gQueryURIFormat.replace(/@V/g, encodeURIComponent(gSearchInput.value));
   }
 
-  SetAbView(searchURI, gSearchInput.value != "", sortColumn, sortDirection);
+  SetAbView(searchURI, gSearchInput.value != "");
   
   // XXX todo 
   // this works for synchronous searches of local addressbooks, 

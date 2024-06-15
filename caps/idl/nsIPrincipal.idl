@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -23,18 +23,17 @@
  *   Mitchell Stoltz <mstoltz@netscape.com>
  *   Christopher A. Aillon <christopher@aillon.com>
  *
- *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -52,7 +51,7 @@ interface nsIURI;
 [ptr] native JSContext(JSContext);
 [ptr] native JSPrincipals(JSPrincipals);
 
-[uuid(0575ea96-4561-4dc6-a818-3c4c97c2430d)]
+[uuid(ff9313d0-25e1-11d2-8160-006008119d7a)]
 interface nsIPrincipal : nsISerializable
 {
     /**
@@ -152,28 +151,4 @@ interface nsIPrincipal : nsISerializable
      * Throws if there is no certificate associated with this principal.
      */
     attribute string commonName;
-};
-
-[uuid(a67c4736-9a95-4ce1-9ffc-3f88c0913a34)]
-interface nsISubsumingPrincipal : nsIPrincipal
-{
-    /**
-     * Returns whether the other principal is equal to or weaker than this
-     * principal.  Principals are equal if they are the same object, they
-     * have the same origin, or they have the same certificate ID.
-     *
-     * Thus a principal subsumes itself if it is equal to itself.
-     *
-     * The system principal subsumes itself and all other principals except
-     * the non-principal.
-     *
-     * The non-principal is not equal to itself or any other principal, and
-     * therefore does not subsume itself.
-     *
-     * Both codebase and certificate principals are subsumed by the system
-     * principal, but no codebase or certificate principal yet subsumes any
-     * other codebase or certificate principal.  This may change in a future
-     * release; note that nsIPrincipal is unfrozen, not slated to be frozen.
-     */
-    boolean subsumes(in nsIPrincipal other);
 };

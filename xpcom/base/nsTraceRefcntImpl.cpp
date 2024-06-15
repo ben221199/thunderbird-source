@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is Mozilla Communicator client code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -23,16 +23,16 @@
  *   L. David Baron <dbaron@dbaron.org>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -50,6 +50,19 @@
 
 #if defined(_WIN32)
 #include <windows.h>
+#elif defined(linux) && defined(__GLIBC__) && (defined(__i386) || defined(PPC))
+#include <setjmp.h>
+
+//
+// On glibc 2.1, the Dl_info api defined in <dlfcn.h> is only exposed
+// if __USE_GNU is defined.  I suppose its some kind of standards
+// adherence thing.
+//
+#if (__GLIBC_MINOR__ >= 1) && !defined(__USE_GNU)
+#define __USE_GNU
+#endif
+
+#include <dlfcn.h>
 #endif
 
 #ifdef HAVE_LIBDL
@@ -82,6 +95,10 @@ NS_MeanAndStdDev(double n, double sumOfValues, double sumOfSquaredValues,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+#ifdef WINCE
+#undef NS_BUILD_REFCNT_LOGGING
+#endif
 
 #ifdef NS_BUILD_REFCNT_LOGGING
 #include "plhash.h"
@@ -471,7 +488,7 @@ static PRIntn PR_CALLBACK DumpSerialNumbers(PLHashEntry* aHashEntry, PRIntn aInd
 
 #endif /* NS_BUILD_REFCNT_LOGGING */
 
-NS_COM nsresult
+nsresult
 nsTraceRefcntImpl::DumpStatistics(StatisticsType type, FILE* out)
 {
   nsresult rv = NS_OK;
@@ -548,7 +565,7 @@ done:
   return rv;
 }
 
-NS_COM void
+void
 nsTraceRefcntImpl::ResetStatistics()
 {
 #ifdef NS_BUILD_REFCNT_LOGGING
@@ -835,9 +852,9 @@ static void InitTraceLog(void)
 
 #endif
 
-#if defined(_WIN32) && defined(_M_IX86) // WIN32 x86 stack walking code
+#if defined(_WIN32) && defined(_M_IX86) && !defined(WINCE) // WIN32 x86 stack walking code
 #include "nsStackFrameWin.h"
-NS_COM void
+void
 nsTraceRefcntImpl::WalkTheStack(FILE* aStream)
 {
   DumpStackToFile(aStream);
@@ -845,9 +862,9 @@ nsTraceRefcntImpl::WalkTheStack(FILE* aStream)
 
 // WIN32 x86 stack walking code
 // i386 or PPC Linux stackwalking code or Solaris
-#elif (defined(linux) && defined(__GNUC__) && (defined(__i386) || defined(PPC))) || (defined(__sun) && (defined(__sparc) || defined(sparc) || defined(__i386) || defined(i386)))
+#elif (defined(linux) && defined(__GLIBC__) && (defined(__i386) || defined(PPC))) || (defined(__sun) && (defined(__sparc) || defined(sparc) || defined(__i386) || defined(i386)))
 #include "nsStackFrameUnix.h"
-NS_COM void
+void
 nsTraceRefcntImpl::WalkTheStack(FILE* aStream)
 {
   DumpStackToFile(aStream);
@@ -947,7 +964,7 @@ nsTraceRefcntImpl::WalkTheStack(FILE* aStream)
 
 #else // unsupported platform.
 
-NS_COM void
+void
 nsTraceRefcntImpl::WalkTheStack(FILE* aStream)
 {
 	fprintf(aStream, "write me, dammit!\n");

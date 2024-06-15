@@ -42,7 +42,9 @@ VPATH		= @srcdir@
 
 include $(DEPTH)/config/autoconf.mk
 
-AB_CD = $(MOZ_UI_LOCALE)
+MOZILLA_INTERNAL_API = 1
+
+AB_CD = $(MOZ_UI_LOCALE) 
 
 DEFINES += -DTHUNDERBIRD_ICO=\"$(DIST)/branding/thunderbird.ico\" -DAB_CD=$(AB_CD)
 
@@ -59,12 +61,10 @@ PROGRAM = thunderbird-bin$(BIN_SUFFIX)
 endif
 
 REQUIRES = \
-	string \
 	xpcom \
-	xulapp \
-	xpinstall \
-        appshell \
 	$(NULL)
+
+LOCAL_INCLUDES = -I$(topsrcdir)/toolkit/xre
 
 CPPSRCS = nsMailApp.cpp
 
@@ -77,7 +77,7 @@ TK_LIBS := -framework Cocoa $(TK_LIBS)
 endif
 
 LIBS = \
-  	$(STATIC_COMPONENTS_LINKER_PATH) \
+	$(STATIC_COMPONENTS_LINKER_PATH) \
 	$(DIST)/lib/$(LIB_PREFIX)xulapp_s.$(LIB_SUFFIX) \
 	$(MOZ_JS_LIBS) \
 	$(TK_LIBS) \
@@ -89,6 +89,10 @@ LIBS = \
 # Add explicit X11 dependency when building against X11 toolkits
 ifneq (,$(filter gtk gtk2 xlib,$(MOZ_WIDGET_TOOLKIT)))
 LIBS += $(XLDFLAGS) $(XLIBS)
+endif
+
+ifdef MOZ_JPROF
+LIBS += -ljprof
 endif
 
 ifndef MOZ_WINCONSOLE
@@ -146,10 +150,7 @@ include $(topsrcdir)/config/static-rules.mk
 endif
 
 APP_VERSION = $(shell cat $(srcdir)/../config/version.txt)
-DEFINES += -DAPP_VERSION=\"$(APP_VERSION)\"
-
-BUILD_ID = $(shell cat $(DEPTH)/config/build_number)
-DEFINES += -DBUILD_ID=\"$(BUILD_ID)\"
+DEFINES += -DAPP_VERSION="$(APP_VERSION)"
 
 ifneq (,$(filter mac cocoa,$(MOZ_WIDGET_TOOLKIT)))
 ifdef BUILD_STATIC_LIBS
@@ -281,13 +282,13 @@ endif
 libs:: $(PROGRAM)
 	mkdir -p $(DIST)/$(APP_NAME).app/Contents/MacOS
 	rsync -a --exclude CVS --exclude "*.in" $(srcdir)/macbuild/Contents $(DIST)/$(APP_NAME).app
-	sed -e "s/APP_VERSION/$(APP_VERSION)/" $(srcdir)/macbuild/Contents/Info.plist.in > 	$(DIST)/$(APP_NAME).app/Contents/Info.plist
+	sed -e "s/APP_VERSION/$(APP_VERSION)/" $(srcdir)/macbuild/Contents/Info.plist.in > $(DIST)/$(APP_NAME).app/Contents/Info.plist
 	rsync -a $(DIST)/bin/ $(DIST)/$(APP_NAME).app/Contents/MacOS
 	rm -f $(DIST)/$(APP_NAME).app/Contents/MacOS/$(PROGRAM)
 	rsync -aL $(PROGRAM) $(DIST)/$(APP_NAME).app/Contents/MacOS
 	mkdir -p $(DIST)/$(APP_NAME).app/Contents/Plug-Ins
 	cp -R $(DIST)/package/PrintPDE.plugin $(DIST)/$(APP_NAME).app/Contents/Plug-Ins/
-	cp -RL $(DIST)/branding/thunderbird.icns 	$(DIST)/$(APP_NAME).app/Contents/Resources/thunderbird.icns
+	cp -RL $(DIST)/branding/thunderbird.icns $(DIST)/$(APP_NAME).app/Contents/Resources/thunderbird.icns
 	cp -RL $(srcdir)/macbuild/mail-biff-badge.png 	$(DIST)/$(APP_NAME).app/Contents/Resources/mail-biff-badge.png
 	echo -n APPLMOZM > $(DIST)/$(APP_NAME).app/Contents/PkgInfo
 #       remove CVS dirs from packaged app
@@ -297,14 +298,11 @@ clean clobber::
 	rm -rf $(DIST)/$(APP_NAME).app
 endif
 
-README_FILE = $(srcdir)/README.txt
-
 libs::
-	$(INSTALL) $(README_FILE) $(DIST)/bin
 	$(INSTALL) $(topsrcdir)/mail/LICENSE.txt $(DIST)/bin
 
 libs:: $(srcdir)/profile/prefs.js
 	$(INSTALL) $^ $(DIST)/bin/defaults/profile
 
 install:: $(srcdir)/profile/prefs.js
-	$(SYSINSTALL) $(IFLAGS1) $^ $(destdir)$(bindir)/defaults/profile
+	$(SYSINSTALL) $(IFLAGS1) $^  $(DESTDIR)$(mozappdir)/defaults/profile

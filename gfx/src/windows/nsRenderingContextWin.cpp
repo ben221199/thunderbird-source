@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -22,18 +22,17 @@
  * Contributor(s):
  *   Roger B. Sidje <rbs@maths.uq.edu.au>
  *
- *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -120,7 +119,7 @@ public:
 GraphicsState :: GraphicsState()
 {
   mNext = nsnull;
-  mMatrix.SetToIdentity();  
+  mMatrix.SetToIdentity();
   mLocalClip.x = mLocalClip.y = mLocalClip.width = mLocalClip.height = 0;
   mClipRegion = NULL;
   mColor = NS_RGB(0, 0, 0);
@@ -163,6 +162,7 @@ GraphicsState :: ~GraphicsState()
   mDottedPen = NULL;
 }
 
+// gIsWIN95 includes Win98 and WinME too
 #define NOT_SETUP 0x33
 static PRBool gIsWIN95 = NOT_SETUP;
 
@@ -183,7 +183,7 @@ nsRenderingContextWin :: nsRenderingContextWin()
     OSVERSIONINFO os;
     os.dwOSVersionInfoSize = sizeof(os);
     ::GetVersionEx(&os);
-    // XXX This may need tweaking for win98
+    // gIsWIN95 must be true for Win98 and WinME too
     if (VER_PLATFORM_WIN32_NT == os.dwPlatformId) {
       gIsWIN95 = PR_FALSE;
     }
@@ -195,6 +195,7 @@ nsRenderingContextWin :: nsRenderingContextWin()
         // Windows 95 or earlier: assume it's not Bidi
         gBidiInfo = DONT_INIT;
       }
+#ifndef WINCE
       else if (os.dwMajorVersion >= 4) {
         // Windows 98 or later
         UINT cp = ::GetACP();
@@ -205,6 +206,7 @@ nsRenderingContextWin :: nsRenderingContextWin()
           gBidiInfo = GCP_REORDER;
         }
       }
+#endif
     }
   }
 
@@ -245,8 +247,7 @@ nsRenderingContextWin :: ~nsRenderingContextWin()
 
   //destroy the initial GraphicsState
 
-  PRBool clipState;
-  PopState(clipState);
+  PopState();
 
   //cleanup the DC so that we can just destroy objects
   //in the graphics state without worrying that we are
@@ -401,7 +402,7 @@ nsRenderingContextWin :: Init(nsIDeviceContext* aContext,
 
 NS_IMETHODIMP
 nsRenderingContextWin :: Init(nsIDeviceContext* aContext,
-                              nsDrawingSurface aSurface)
+                              nsIDrawingSurface* aSurface)
 {
   NS_PRECONDITION(PR_FALSE == mInitialized, "double init");
 
@@ -434,15 +435,19 @@ nsresult nsRenderingContextWin :: SetupDC(HDC aOldDC, HDC aNewDC)
   ::SetTextColor(aNewDC, PALETTERGB_COLORREF(mColor));
   mCurrTextColor = mCurrentColor;
   ::SetBkMode(aNewDC, TRANSPARENT);
+#ifndef WINCE
   ::SetPolyFillMode(aNewDC, WINDING);
+#endif
   // Temporary fix for bug 135226 until we do better decode-time
   // dithering and paletized storage of images.
   nsPaletteInfo palInfo;
   mContext->GetPaletteInfo(palInfo);
+#ifndef WINCE
   if (palInfo.isPaletteDevice)
     ::SetStretchBltMode(aNewDC, HALFTONE);
   else
     ::SetStretchBltMode(aNewDC, COLORONCOLOR);                                  
+#endif
 
   ::SetTextAlign(aNewDC, TA_BASELINE);
 
@@ -534,7 +539,9 @@ NS_IMETHODIMP nsRenderingContextWin :: LockDrawingSurface(PRInt32 aX, PRInt32 aY
     if(palInfo.isPaletteDevice && palInfo.palette){
       ::SelectPalette(mDC,(HPALETTE)palInfo.palette,PR_TRUE);
       ::RealizePalette(mDC);
+#ifndef WINCE
       ::UpdateColors(mDC);                                                      
+#endif
     }
   }
 
@@ -550,7 +557,7 @@ NS_IMETHODIMP nsRenderingContextWin :: UnlockDrawingSurface(void)
   mSurface->Unlock();
   mSurface->GetDC(&mDC);
 
-  PopState(clipstate);
+  PopState();
 
   mSurface->IsReleaseDCDestructive(&clipstate);
 
@@ -560,8 +567,10 @@ NS_IMETHODIMP nsRenderingContextWin :: UnlockDrawingSurface(void)
     mCurrTextColor = mCurrentColor;
 
     ::SetBkMode(mDC, TRANSPARENT);
+#ifndef WINCE
     ::SetPolyFillMode(mDC, WINDING);
     ::SetStretchBltMode(mDC, COLORONCOLOR);
+#endif
 
     mOrigSolidBrush = (HBRUSH)::SelectObject(mDC, mCurrBrush);
     mOrigFont = (HFONT)::SelectObject(mDC, mCurrFont);
@@ -572,7 +581,7 @@ NS_IMETHODIMP nsRenderingContextWin :: UnlockDrawingSurface(void)
 }
 
 NS_IMETHODIMP
-nsRenderingContextWin :: SelectOffScreenDrawingSurface(nsDrawingSurface aSurface)
+nsRenderingContextWin :: SelectOffScreenDrawingSurface(nsIDrawingSurface* aSurface)
 {
   nsresult  rv;
 
@@ -619,7 +628,7 @@ nsRenderingContextWin :: SelectOffScreenDrawingSurface(nsDrawingSurface aSurface
 }
 
 NS_IMETHODIMP
-nsRenderingContextWin :: GetDrawingSurface(nsDrawingSurface *aSurface)
+nsRenderingContextWin :: GetDrawingSurface(nsIDrawingSurface* *aSurface)
 {
   *aSurface = mSurface;
   return NS_OK;
@@ -630,7 +639,9 @@ nsRenderingContextWin :: GetHints(PRUint32& aResult)
 {
   PRUint32 result = 0;
   
+#ifndef WINCE
   result |= NS_RENDERING_HINT_FAST_MEASURE;
+#endif
 
   if (gIsWIN95)
     result |= NS_RENDERING_HINT_FAST_8BIT_TEXT;
@@ -638,10 +649,12 @@ nsRenderingContextWin :: GetHints(PRUint32& aResult)
   if (NOT_SETUP == gBidiInfo) {
     InitBidiInfo();
   }
+#ifndef WINCE
   if (GCP_REORDER == (gBidiInfo & GCP_REORDER) )
     result |= NS_RENDERING_HINT_BIDI_REORDERING;
   if (GCP_GLYPHSHAPE == (gBidiInfo & GCP_GLYPHSHAPE) )
     result |= NS_RENDERING_HINT_ARABIC_SHAPING;
+#endif
   
   aResult = result;
 
@@ -708,10 +721,8 @@ NS_IMETHODIMP nsRenderingContextWin :: PushState(void)
   return NS_OK;
 }
 
-NS_IMETHODIMP nsRenderingContextWin :: PopState(PRBool &aClipEmpty)
+NS_IMETHODIMP nsRenderingContextWin :: PopState(void)
 {
-  PRBool  retval = PR_FALSE;
-
   if (nsnull == mStates)
   {
     NS_ASSERTION(!(nsnull == mStates), "state underflow");
@@ -741,12 +752,7 @@ NS_IMETHODIMP nsRenderingContextWin :: PopState(PRBool &aClipEmpty)
           pstate = pstate->mNext;
 
         if (nsnull != pstate)
-        {
-          int cliptype = ::SelectClipRgn(mDC, pstate->mClipRegion);
-
-          if (cliptype == NULLREGION)
-            retval = PR_TRUE;
-        }
+          ::SelectClipRgn(mDC, pstate->mClipRegion);
       }
 
       oldstate->mFlags &= ~FLAGS_ALL;
@@ -766,8 +772,6 @@ NS_IMETHODIMP nsRenderingContextWin :: PopState(PRBool &aClipEmpty)
       mTranMatrix = nsnull;
   }
 
-  aClipEmpty = retval;
-
   return NS_OK;
 }
 
@@ -777,10 +781,9 @@ NS_IMETHODIMP nsRenderingContextWin :: IsVisibleRect(const nsRect& aRect, PRBool
   return NS_OK;
 }
 
-NS_IMETHODIMP nsRenderingContextWin :: SetClipRect(const nsRect& aRect, nsClipCombine aCombine, PRBool &aClipEmpty)
+NS_IMETHODIMP nsRenderingContextWin :: SetClipRect(const nsRect& aRect, nsClipCombine aCombine)
 {
   nsRect  trect = aRect;
-  int     cliptype;
 
   mStates->mLocalClip = aRect;
 
@@ -798,10 +801,10 @@ NS_IMETHODIMP nsRenderingContextWin :: SetClipRect(const nsRect& aRect, nsClipCo
   {
     PushClipState();
 
-    cliptype = ::IntersectClipRect(mDC, nr.left,
-                                   nr.top,
-                                   nr.right,
-                                   nr.bottom);
+    ::IntersectClipRect(mDC, nr.left,
+                        nr.top,
+                        nr.right,
+                        nr.bottom);
   }
   else if (aCombine == nsClipCombine_kUnion)
   {
@@ -812,17 +815,17 @@ NS_IMETHODIMP nsRenderingContextWin :: SetClipRect(const nsRect& aRect, nsClipCo
                                     nr.right,
                                     nr.bottom);
 
-    cliptype = ::ExtSelectClipRgn(mDC, tregion, RGN_OR);
+    ::ExtSelectClipRgn(mDC, tregion, RGN_OR);
     ::DeleteObject(tregion);
   }
   else if (aCombine == nsClipCombine_kSubtract)
   {
     PushClipState();
 
-    cliptype = ::ExcludeClipRect(mDC, nr.left,
-                                 nr.top,
-                                 nr.right,
-                                 nr.bottom);
+    ::ExcludeClipRect(mDC, nr.left,
+                      nr.top,
+                      nr.right,
+                      nr.bottom);
   }
   else if (aCombine == nsClipCombine_kReplace)
   {
@@ -832,16 +835,11 @@ NS_IMETHODIMP nsRenderingContextWin :: SetClipRect(const nsRect& aRect, nsClipCo
                                     nr.top,
                                     nr.right,
                                     nr.bottom);
-    cliptype = ::SelectClipRgn(mDC, tregion);
+    ::SelectClipRgn(mDC, tregion);
     ::DeleteObject(tregion);
   }
   else
     NS_ASSERTION(PR_FALSE, "illegal clip combination");
-
-  if (cliptype == NULLREGION)
-    aClipEmpty = PR_TRUE;
-  else
-    aClipEmpty = PR_FALSE;
 
   return NS_OK;
 }
@@ -859,10 +857,10 @@ NS_IMETHODIMP nsRenderingContextWin :: GetClipRect(nsRect &aRect, PRBool &aClipV
   return NS_OK;
 }
 
-NS_IMETHODIMP nsRenderingContextWin :: SetClipRegion(const nsIRegion& aRegion, nsClipCombine aCombine, PRBool &aClipEmpty)
+NS_IMETHODIMP nsRenderingContextWin :: SetClipRegion(const nsIRegion& aRegion, nsClipCombine aCombine)
 {
   HRGN        hrgn;
-  int         cmode, cliptype;
+  int         cmode;
 
   aRegion.GetNativeRegion((void *&)hrgn);
 
@@ -890,15 +888,10 @@ NS_IMETHODIMP nsRenderingContextWin :: SetClipRegion(const nsIRegion& aRegion, n
   {
     mStates->mFlags &= ~FLAG_LOCAL_CLIP_VALID;
     PushClipState();
-    cliptype = ::ExtSelectClipRgn(mDC, hrgn, cmode);
+    ::ExtSelectClipRgn(mDC, hrgn, cmode);
   }
   else
     return PR_FALSE;
-
-  if (cliptype == NULLREGION)
-    aClipEmpty = PR_TRUE;
-  else
-    aClipEmpty = PR_FALSE;
 
   return NS_OK;
 }
@@ -1028,7 +1021,7 @@ NS_IMETHODIMP nsRenderingContextWin :: GetCurrentTransform(nsTransform2D *&aTran
   return NS_OK;
 }
 
-NS_IMETHODIMP nsRenderingContextWin :: CreateDrawingSurface(const nsRect& aBounds, PRUint32 aSurfFlags, nsDrawingSurface &aSurface)
+NS_IMETHODIMP nsRenderingContextWin :: CreateDrawingSurface(const nsRect& aBounds, PRUint32 aSurfFlags, nsIDrawingSurface* &aSurface)
 {
   nsDrawingSurfaceWin *surf = new nsDrawingSurfaceWin();
 
@@ -1039,12 +1032,12 @@ NS_IMETHODIMP nsRenderingContextWin :: CreateDrawingSurface(const nsRect& aBound
     surf->Init(mMainDC, aBounds.width, aBounds.height, aSurfFlags);
   }
 
-  aSurface = (nsDrawingSurface)surf;
+  aSurface = surf;
 
   return NS_OK;
 }
 
-NS_IMETHODIMP nsRenderingContextWin :: DestroyDrawingSurface(nsDrawingSurface aDS)
+NS_IMETHODIMP nsRenderingContextWin :: DestroyDrawingSurface(nsIDrawingSurface* aDS)
 {
   nsDrawingSurfaceWin *surf = (nsDrawingSurfaceWin *)aDS;
 
@@ -1095,39 +1088,6 @@ NS_IMETHODIMP nsRenderingContextWin :: DrawLine(nscoord aX0, nscoord aY0, nscoor
 
   return NS_OK;
 }
-
-  /** ---------------------------------------------------
-   *  See documentation in nsIRenderingContextImpl.h
-   *	@update 5/01/00 dwc
-   */
-NS_IMETHODIMP nsRenderingContextWin :: DrawStdLine(nscoord aX0, nscoord aY0, nscoord aX1, nscoord aY1)
-{
-
-  if (nsLineStyle_kNone == mCurrLineStyle)
-    return NS_OK;
-
-  SetupPen();
-
-  if (nsLineStyle_kDotted == mCurrLineStyle)
-  {
-    lineddastruct dda_struct;
-
-    dda_struct.nDottedPixel = 1;
-    dda_struct.dc = mDC;
-    dda_struct.crColor = mColor;
-
-    LineDDA((int)(aX0),(int)(aY0),(int)(aX1),(int)(aY1),(LINEDDAPROC) LineDDAFunc,(long)&dda_struct);
-  }
-  else
-  {
-    ::MoveToEx(mDC, (int)(aX0), (int)(aY0), NULL);
-    ::LineTo(mDC, (int)(aX1), (int)(aY1));
-  }
-
-  return NS_OK;
-
-}
-
 
 
 NS_IMETHODIMP nsRenderingContextWin :: DrawPolyline(const nsPoint aPoints[], PRInt32 aNumPoints)
@@ -1326,40 +1286,6 @@ NS_IMETHODIMP nsRenderingContextWin :: FillPolygon(const nsPoint aPoints[], PRIn
 }
 
 
-NS_IMETHODIMP nsRenderingContextWin :: FillStdPolygon(const nsPoint aPoints[], PRInt32 aNumPoints)
-{
-  // First transform nsPoint's into POINT's;
-  POINT pts[20];
-  POINT* pp0 = pts;
-
-  if (aNumPoints > 20)
-    pp0 = new POINT[aNumPoints];
-
-  POINT* pp = pp0;
-  const nsPoint* np = &aPoints[0];
-
-	for (PRInt32 i = 0; i < aNumPoints; i++, pp++, np++){
-		pp->x = np->x;
-		pp->y = np->y;
-	}
-
-  // Fill the polygon
-  SetupSolidBrush();
-
-  if (NULL == mNullPen)
-    mNullPen = ::CreatePen(PS_NULL, 0, 0);
-
-  HPEN oldPen = (HPEN)::SelectObject(mDC, mNullPen);
-  ::Polygon(mDC, pp0, int(aNumPoints));
-  ::SelectObject(mDC, oldPen);
-
-  // Release temporary storage if necessary
-  if (pp0 != pts)
-    delete [] pp0;
-
-  return NS_OK;
-}
-
 NS_IMETHODIMP nsRenderingContextWin :: DrawEllipse(const nsRect& aRect)
 {
   return DrawEllipse(aRect.x, aRect.y, aRect.width, aRect.height);
@@ -1435,7 +1361,9 @@ NS_IMETHODIMP nsRenderingContextWin :: DrawArc(nscoord aX, nscoord aY, nscoord a
   ey = (PRInt32)(cy - distance * sin(anglerad));
 
   // this just makes it consitent, on windows 95 arc will always draw CC, nt this sets direction
+#ifndef WINCE
   ::SetArcDirection(mDC, AD_COUNTERCLOCKWISE);
+#endif
 
   ::Arc(mDC, aX, aY, aX + aWidth, aY + aHeight, sx, sy, ex, ey); 
 
@@ -1476,11 +1404,19 @@ NS_IMETHODIMP nsRenderingContextWin :: FillArc(nscoord aX, nscoord aY, nscoord a
 
   // this just makes it consistent, on windows 95 arc will always draw CC,
   // on NT this sets direction
+#ifndef WINCE
   ::SetArcDirection(mDC, AD_COUNTERCLOCKWISE);
-
+#endif
   ::Pie(mDC, aX, aY, aX + aWidth, aY + aHeight, sx, sy, ex, ey); 
 
   return NS_OK;
+}
+
+// This must be called to clamp string lengths to 8K for Win95/98/ME.
+inline void CheckLength(PRUint32 *aLength)
+{
+  if (gIsWIN95 && *aLength > 8192)
+    *aLength = 8192;
 }
 
 NS_IMETHODIMP nsRenderingContextWin :: GetWidth(char ch, nscoord& aWidth)
@@ -1516,6 +1452,7 @@ NS_IMETHODIMP nsRenderingContextWin :: GetWidth(const char* aString,
       return mFontMetrics->GetSpaceWidth(aWidth);
     }
 
+    CheckLength(&aLength);
     SetupFontAndColor();
     nscoord pxWidth = mCurrFontWin->GetWidth(mDC, aString, aLength);
     aWidth = NSToCoordRound(float(pxWidth) * mP2T);
@@ -1562,6 +1499,7 @@ NS_IMETHODIMP nsRenderingContextWin :: GetWidth(const PRUnichar *aString,
 {
   if (!mFontMetrics) return NS_ERROR_FAILURE;
 
+  CheckLength(&aLength);
   SetupFontAndColor();
 
   nsFontMetricsWin* metrics = (nsFontMetricsWin*)mFontMetrics;
@@ -1595,6 +1533,7 @@ nsRenderingContextWin::GetTextDimensions(const char*       aString,
 
   if (nsnull != mFontMetrics) {
     // Setup the font and foreground color
+    CheckLength((PRUint32*)&aLength);
     SetupFontAndColor();
 
     // If we need to back up this state represents the last place we could
@@ -1995,6 +1934,7 @@ nsRenderingContextWin::GetTextDimensions(const PRUnichar*  aString,
 {
   if (!mFontMetrics) return NS_ERROR_FAILURE;
 
+  CheckLength((PRUint32*)&aLength);
   SetupFontAndColor();
 
   nsFontMetricsWin* metrics = (nsFontMetricsWin*)mFontMetrics;
@@ -2199,6 +2139,7 @@ nsRenderingContextWin::GetTextDimensions(const PRUnichar*  aString,
   aDimensions.Clear();
   if (!mFontMetrics) return NS_ERROR_FAILURE;
 
+  CheckLength(&aLength);
   SetupFontAndColor();
 
   nsFontMetricsWin* metrics = (nsFontMetricsWin*)mFontMetrics;
@@ -2228,6 +2169,7 @@ NS_IMETHODIMP nsRenderingContextWin :: DrawString(const char *aString, PRUint32 
   PRInt32 x = aX;
   PRInt32 y = aY;
 
+  CheckLength(&aLength);
   SetupFontAndColor();
 
   INT dxMem[500];
@@ -2324,6 +2266,7 @@ NS_IMETHODIMP nsRenderingContextWin :: DrawString(const PRUnichar *aString, PRUi
 {
   if (!mFontMetrics) return NS_ERROR_FAILURE;
 
+  CheckLength(&aLength);
   SetupFontAndColor();
 
   nsFontMetricsWin* metrics = (nsFontMetricsWin*)mFontMetrics;
@@ -2369,6 +2312,7 @@ nsRenderingContextWin::GetBoundingMetrics(const char*        aString,
   aBoundingMetrics.Clear();
   if (!mFontMetrics) return NS_ERROR_FAILURE;
 
+  CheckLength(&aLength);
   SetupFontAndColor();
   nsresult rv = mCurrFontWin->GetBoundingMetrics(mDC, aString, aLength, aBoundingMetrics);
 
@@ -2430,6 +2374,7 @@ nsRenderingContextWin::GetBoundingMetrics(const PRUnichar*   aString,
   aBoundingMetrics.Clear();
   if (!mFontMetrics) return NS_ERROR_FAILURE;
 
+  CheckLength(&aLength);
   SetupFontAndColor();
 
   nsFontMetricsWin* metrics = (nsFontMetricsWin*)mFontMetrics;
@@ -2458,7 +2403,7 @@ nsRenderingContextWin::GetBoundingMetrics(const PRUnichar*   aString,
 }
 #endif // MOZ_MATHML
 
-NS_IMETHODIMP nsRenderingContextWin :: CopyOffScreenBits(nsDrawingSurface aSrcSurf,
+NS_IMETHODIMP nsRenderingContextWin :: CopyOffScreenBits(nsIDrawingSurface* aSrcSurf,
                                                          PRInt32 aSrcX, PRInt32 aSrcY,
                                                          const nsRect &aDestBounds,
                                                          PRUint32 aCopyFlags)
@@ -2510,7 +2455,9 @@ NS_IMETHODIMP nsRenderingContextWin :: CopyOffScreenBits(nsDrawingSurface aSrcSu
         // road until I can get all this figured out.. and completed correctly.
         // Opened bug #153367 to take care of this palette issue.
         //::RealizePalette(destdc);
+#ifndef WINCE
         ::UpdateColors(mDC);                                                      
+#endif
       }
 
       if (aCopyFlags & NS_COPYBITS_XFORM_SOURCE_VALUES)
@@ -2750,7 +2697,14 @@ HPEN nsRenderingContextWin :: SetupDottedPen(void)
 {
   if ((mCurrentColor != mCurrPenColor) || (NULL == mCurrPen) || (mCurrPen != mStates->mDottedPen))
   {
-    HPEN  tpen = ::CreatePen(PS_DOT, 0, PALETTERGB_COLORREF(mColor));
+    HPEN  tpen = ::CreatePen(
+#ifndef WINCE
+                             PS_DOT, 
+#else
+                             PS_DASH,
+#endif
+                             0, PALETTERGB_COLORREF(mColor));
+
 
     ::SelectObject(mDC, tpen);
 
@@ -2823,7 +2777,7 @@ void nsRenderingContextWin :: PushClipState(void)
   }
 }
 
-NS_IMETHODIMP nsRenderingContextWin :: CreateDrawingSurface(HDC aDC, nsDrawingSurface &aSurface)
+NS_IMETHODIMP nsRenderingContextWin :: CreateDrawingSurface(HDC aDC, nsIDrawingSurface* &aSurface)
 {
   nsDrawingSurfaceWin *surf = new nsDrawingSurfaceWin();
 
@@ -2833,7 +2787,7 @@ NS_IMETHODIMP nsRenderingContextWin :: CreateDrawingSurface(HDC aDC, nsDrawingSu
     surf->Init(aDC);
   }
 
-  aSurface = (nsDrawingSurface)surf;
+  aSurface = surf;
 
   return NS_OK;
 }
@@ -2841,7 +2795,7 @@ NS_IMETHODIMP nsRenderingContextWin :: CreateDrawingSurface(HDC aDC, nsDrawingSu
 /**
  * ConditionRect is used to fix a coordinate overflow problem under WIN95/WIN98.
  * Some operations fail for rectangles whose coordinates have very large
- * absolute values.  Since these values are off the screen, they can be
+ * absolute values.  Since these values are (hopefully) off the screen, they can be
  * truncated to reasonable ones.
  *
  * @param aSrcRect input rectangle
@@ -2854,14 +2808,17 @@ NS_IMETHODIMP nsRenderingContextWin :: CreateDrawingSurface(HDC aDC, nsDrawingSu
 void 
 nsRenderingContextWin::ConditionRect(nsRect& aSrcRect, RECT& aDestRect)
 {
-   // XXX: TODO find the exact values for the and bottom limits. These limits were determined by
-   // printing out the RECT coordinates and noticing when they failed. There must be an offical
-   // document that describes what the coordinate limits are for calls
-   // such as ::FillRect and ::IntersectClipRect under WIN95 which fail when large negative and
-   // position values are passed.
+  // There is no limit in NT class Windows versions (this includes W2K and XP)
+  if (!gIsWIN95)
+  {
+    aDestRect.top = aSrcRect.y;
+    aDestRect.bottom = aSrcRect.y + aSrcRect.height;
+    aDestRect.left = aSrcRect.x;
+    aDestRect.right = aSrcRect.x + aSrcRect.width;
+    return;
+  }
 
-   // The following is for WIN95. If range of legal values for the rectangles passed for 
-   // clipping and drawing is smaller on WIN95 than under WINNT.                              
+  // The following is for WIN95, WIN98 and WINME
   const nscoord kBottomRightLimit = 16384;
   const nscoord kTopLeftLimit = -8192;
 
@@ -2870,22 +2827,22 @@ nsRenderingContextWin::ConditionRect(nsRect& aSrcRect, RECT& aDestRect)
                       : aSrcRect.y;
   aDestRect.bottom = ((aSrcRect.y + aSrcRect.height) > kBottomRightLimit)
                       ? kBottomRightLimit
-                      : (aSrcRect.y+aSrcRect.height);
+                      : (aSrcRect.y + aSrcRect.height);
   aDestRect.left = (aSrcRect.x < kTopLeftLimit)
                       ? kTopLeftLimit
                       : aSrcRect.x;
   aDestRect.right = ((aSrcRect.x + aSrcRect.width) > kBottomRightLimit)
                       ? kBottomRightLimit
-                      : (aSrcRect.x+aSrcRect.width);
+                      : (aSrcRect.x + aSrcRect.width);
 }
 
 
 NS_IMETHODIMP 
-nsRenderingContextWin::GetBackbuffer(const nsRect &aRequestedSize, const nsRect &aMaxSize, nsDrawingSurface &aBackbuffer)
+nsRenderingContextWin::GetBackbuffer(const nsRect &aRequestedSize, const nsRect &aMaxSize, PRBool aForBlending, nsIDrawingSurface* &aBackbuffer)
 {
   // Do not cache the backbuffer. On WIN32 it is faster to get allocate
   // the backbuffer as needed. @see bug 95952
-  return AllocateBackbuffer(aRequestedSize, aMaxSize, aBackbuffer, PR_FALSE);
+  return AllocateBackbuffer(aRequestedSize, aMaxSize, aBackbuffer, PR_FALSE, aForBlending ? NS_CREATEDRAWINGSURFACE_FOR_PIXEL_ACCESS : 0);
 }
  
 NS_IMETHODIMP 
@@ -2903,6 +2860,7 @@ nsRenderingContextWin::ReleaseBackbuffer(void) {
 NS_IMETHODIMP
 nsRenderingContextWin::SetRightToLeftText(PRBool aIsRTL)
 {
+#ifndef WINCE
   // Only call SetTextAlign if the new value is different from the
   // current value
   if (aIsRTL != mRightToLeftText) {
@@ -2917,6 +2875,7 @@ nsRenderingContextWin::SetRightToLeftText(PRBool aIsRTL)
   }
 
   mRightToLeftText = aIsRTL;
+#endif
   return NS_OK;
 }
 
@@ -2927,6 +2886,7 @@ nsRenderingContextWin::SetRightToLeftText(PRBool aIsRTL)
 void
 nsRenderingContextWin::InitBidiInfo()
 {
+#ifndef WINCE
   if (NOT_SETUP == gBidiInfo) {
     gBidiInfo = DONT_INIT;
 
@@ -2969,6 +2929,7 @@ nsRenderingContextWin::InitBidiInfo()
       }
     }
   }
+#endif //WINCE
 }
 
 

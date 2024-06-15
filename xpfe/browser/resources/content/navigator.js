@@ -1,11 +1,11 @@
 /* -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -25,20 +25,20 @@
  *   Dean Tessman <dean_tessman@hotmail.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
-const XREMOTESERVICE_CONTRACTID = "@mozilla.org/browser/xremoteservice;1";
+const REMOTESERVICE_CONTRACTID = "@mozilla.org/toolkit/remote-service;1";
 const XUL_NAMESPACE = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 var gURLBar = null;
 var gProxyButton = null;
@@ -212,7 +212,7 @@ const gPopupPrefListener =
 function addPrefListener(observer)
 {
   try {
-    var pbi = pref.QueryInterface(Components.interfaces.nsIPrefBranchInternal);
+    var pbi = pref.QueryInterface(Components.interfaces.nsIPrefBranch2);
     pbi.addObserver(observer.domain, observer, false);
   } catch(ex) {
     dump("Failed to observe prefs: " + ex + "\n");
@@ -222,7 +222,7 @@ function addPrefListener(observer)
 function removePrefListener(observer)
 {
   try {
-    var pbi = pref.QueryInterface(Components.interfaces.nsIPrefBranchInternal);
+    var pbi = pref.QueryInterface(Components.interfaces.nsIPrefBranch2);
     pbi.removeObserver(observer.domain, observer);
   } catch(ex) {
     dump("Failed to remove pref observer: " + ex + "\n");
@@ -251,7 +251,7 @@ function removePopupPermListener(observer)
 function loadEventHandlers(event)
 {
   // Filter out events that are not about the document load we are interested in
-  if (event.originalTarget == _content.document) {
+  if (event.originalTarget == content.document) {
     UpdateBookmarksLastVisitedDate(event);
     UpdateInternetSearchResults(event);
     checkForDirectoryListing();
@@ -265,19 +265,22 @@ function loadEventHandlers(event)
  **/
 function getContentAreaFrameCount()
 {
-  var saveFrameItem = document.getElementById("savepage");
+  var saveFrameItem = document.getElementById("saveframe");
   if (!content || !content.frames.length || !isContentFrame(document.commandDispatcher.focusedWindow))
     saveFrameItem.setAttribute("hidden", "true");
-  else
+  else {
+    var autoDownload = pref.getBoolPref("browser.download.autoDownload");
+    goSetMenuValue("saveframe", autoDownload ? "valueSave" : "valueSaveAs");
     saveFrameItem.removeAttribute("hidden");
+  }
 }
 
 // When a content area frame is focused, update the focused frame URL
 function contentAreaFrameFocus()
 {
-  var focusedWindow = document.commandDispatcher.focusedWindow;
-  if (isContentFrame(focusedWindow)) {
-    gFocusedURL = Components.lookupMethod(focusedWindow, 'location').call(focusedWindow).href;
+  var focusedWindow = new XPCNativeWrapper(document.commandDispatcher.focusedWindow, "top", "document", "location");
+  if (focusedWindow.top == window.content) {
+    gFocusedURL = focusedWindow.location.href;
     gFocusedDocument = focusedWindow.document;
   }
 }
@@ -308,7 +311,7 @@ function UpdateBookmarksLastVisitedDate(event)
       gBookmarksService = Components.classes["@mozilla.org/browser/bookmarks-service;1"]
                                     .getService(Components.interfaces.nsIBookmarksService);
 
-    gBookmarksService.updateLastVisitedDate(url, _content.document.characterSet);
+    gBookmarksService.updateLastVisitedDate(url, content.document.characterSet);
   }
 }
 
@@ -427,6 +430,60 @@ const gTabOpenObserver = {
   }
 };
 
+const nsIBrowserDOMWindow = Components.interfaces.nsIBrowserDOMWindow;
+const nsIInterfaceRequestor = Components.interfaces.nsIInterfaceRequestor;
+
+function nsBrowserAccess() {
+}
+
+nsBrowserAccess.prototype = {
+  openURI: function openURI(aURI, aOpener, aWhere, aContext) {
+    if (aWhere == nsIBrowserDOMWindow.OPEN_DEFAULTWINDOW)
+      if (aContext == nsIBrowserDOMWindow.OPEN_EXTERNAL)
+        aWhere = pref.getIntPref("browser.link.open_external");
+      else
+        aWhere = pref.getIntPref("browser.link.open_newwindow");
+    var uri = aURI ? aURI.spec : "about:blank";
+    var referrer = aOpener ? aOpener.QueryInterface(nsIInterfaceRequestor)
+                                    .getInterface(nsIWebNavigation)
+                                    .currentURI : null;
+    switch (aWhere) {
+      case nsIBrowserDOMWindow.OPEN_NEWWINDOW:
+        return window.openDialog(getBrowserURL(), "_blank", "all,dialog=no",
+                                 uri, null, referrer);
+      case nsIBrowserDOMWindow.OPEN_NEWTAB:
+        var newTab = gBrowser.addTab("about:blank");
+        if (!pref.getBoolPref("browser.tabs.loadDivertedInBackground"))
+          gBrowser.selectedTab = newTab;
+        var browser = gBrowser.getBrowserForTab(newTab);
+        try {
+          browser.loadURI(uri, referrer);
+        } catch (e) {}
+        return browser.contentWindow;
+      default:
+        if (!aOpener) {
+          loadURI(uri);
+          return content;
+        }
+        aOpener = new XPCNativeWrapper(aOpener, "top").top;
+        try {
+          aOpener.QueryInterface(nsIInterfaceRequestor)
+                 .getInterface(nsIWebNavigation)
+                 .loadURI(uri, nsIWebNavigation.LOAD_FLAGS_NONE,
+                          referrer, null, null);
+        } catch (e) {}
+        return aOpener;
+    }
+  },
+  isTabContentWindow: function isTabContentWindow(aWindow) {
+    var browsers = gBrowser.browsers;
+    for (var i = 0; browsers.item(i); i++)
+      if (browsers[i].contentWindow == aWindow)
+        return true;
+    return false;
+  }
+}
+
 function Startup()
 {
   // init globals
@@ -516,14 +573,7 @@ function Startup()
 
   //initConsoleListener();
 
-  // XXXjag work-around for bug 113076
-  // there's another bug where we throw an exception when getting
-  // sessionHistory if it is null, which I'm exploiting here to
-  // detect the situation described in bug 113076.
-  // The same problem caused bug 139522, also worked around below.
-  try {
-    getBrowser().sessionHistory;
-  } catch (e) {
+  if (!getBrowser().sessionHistory) {
     /* Session history might not be available,
        so we wrap access to it in a try block */
     try {
@@ -599,9 +649,14 @@ function Startup()
     if (/^\s*$/.test(uriToLoad))
       uriToLoad = "about:blank";
 
+    var browser = getBrowser();
+    browser.popupDomain = null;
+    browser.popupUrls = [];
+    browser.popupFeatures = [];
+
     if (uriToLoad != "about:blank") {
       gURLBar.value = uriToLoad;
-      getBrowser().userTypedValue = uriToLoad;
+      browser.userTypedValue = uriToLoad;
       if ("arguments" in window && window.arguments.length >= 3) {
         loadURI(uriToLoad, window.arguments[2]);
       } else {
@@ -631,17 +686,20 @@ function Startup()
     if ("arguments" in window && uriToLoad == "about:blank" && !navBar.hidden && window.locationbar.visible)
       setTimeout(WindowFocusTimerCallback, 0, gURLBar);
     else
-      setTimeout(WindowFocusTimerCallback, 0, _content);
+      setTimeout(WindowFocusTimerCallback, 0, content);
 
     // Perform default browser checking (after window opens).
     setTimeout( checkForDefaultBrowser, 0 );
 
+    // hook up browser access support
+    window.browserDOMWindow = new nsBrowserAccess();
+
     // hook up remote support
-    if (XREMOTESERVICE_CONTRACTID in Components.classes) {
-      var remoteService;
-      remoteService = Components.classes[XREMOTESERVICE_CONTRACTID]
-                                .getService(Components.interfaces.nsIXRemoteService);
-      remoteService.addBrowserInstance(window);
+    if (REMOTESERVICE_CONTRACTID in Components.classes) {
+      var remoteService =
+        Components.classes[REMOTESERVICE_CONTRACTID]
+                  .getService(Components.interfaces.nsIRemoteService);
+      remoteService.registerWindow(window);
 
       var observerService = Components.classes["@mozilla.org/observer-service;1"]
         .getService(Components.interfaces.nsIObserverService);
@@ -659,6 +717,14 @@ function Startup()
   // does clicking on the urlbar select its contents?
   gClickSelectsAll = pref.getBoolPref("browser.urlbar.clickSelectsAll");
   gClickAtEndSelects = pref.getBoolPref("browser.urlbar.clickAtEndSelects");
+
+  // BiDi UI
+  gShowBiDi = isBidiEnabled();
+  if (gShowBiDi) {
+    document.getElementById("documentDirection-swap").hidden = false;
+    document.getElementById("textfieldDirection-separator").hidden = false;
+    document.getElementById("textfieldDirection-swap").hidden = false;
+  }
 
   // now load bookmarks after a delay
   setTimeout(LoadBookmarksCallback, 0);
@@ -719,16 +785,14 @@ function BrowserFlushBookmarksAndHistory()
 function Shutdown()
 {
   // remove remote support
-  if (XREMOTESERVICE_CONTRACTID in Components.classes) {
-    var remoteService;
-    remoteService = Components.classes[XREMOTESERVICE_CONTRACTID]
-                              .getService(Components.interfaces.nsIXRemoteService);
-    remoteService.removeBrowserInstance(window);
-
+  if (REMOTESERVICE_CONTRACTID in Components.classes) {
     var observerService = Components.classes["@mozilla.org/observer-service;1"]
       .getService(Components.interfaces.nsIObserverService);
     observerService.removeObserver(gTabOpenObserver, "open-new-tab-request", false);
   }
+
+  // shut down browser access support
+  window.browserDOMWindow = null;
 
   try {
     getBrowser().removeProgressListener(window.XULBrowserWindow);
@@ -829,7 +893,14 @@ function BrowserHandleBackspace()
   }
   
   if (!typeAhead || !typeAhead.backOneChar()) {
-    BrowserBack();
+    switch (pref.getIntPref("browser.backspace_action")) {
+    case 0:
+      BrowserBack();
+      break;
+    case 1:
+      goDoCommand("cmd_scrollPageUp");
+      break;
+    }
   }
 }
 
@@ -897,19 +968,38 @@ function BrowserReloadSkipCache()
   return BrowserReloadWithFlags(reloadFlags);
 }
 
-function BrowserHome()
+function BrowserHome(aEvent)
 {
+  var tab;
   var homePage = getHomePage();
-  if (homePage.length == 1) {
-    loadURI(homePage[0]);
-  } else {
-    var URIs = [];
-    for (var i in homePage)
-      URIs.push({URI: homePage[i]});
+  var target = aEvent ? BookmarksUtils.getBrowserTargetFromEvent(aEvent) : "current";
 
-    var tab = gBrowser.loadGroup(URIs);
-    if (!pref.getBoolPref("browser.tabs.loadInBackground"))
-      gBrowser.selectedTab = tab;
+  if (homePage.length == 1) {
+    switch (target) {
+    case "current":
+      loadURI(homePage[0]);
+      break;
+    case "tab":
+      tab = gBrowser.addTab(homePage[0]);
+      if (!BookmarksUtils.shouldLoadTabInBackground(aEvent))
+        gBrowser.selectedTab = tab;
+      break;
+    case "window":
+      openDialog(getBrowserURL(), "_blank", "chrome,all,dialog=no", homePage[0]);
+    }
+  } else {
+    if (target == "window")
+      openDialog(getBrowserURL(), "_blank", "chrome,all,dialog=no", homePage.join("\n"));
+    else {
+      var URIs = [];
+      for (var i in homePage)
+        URIs.push({URI: homePage[i]});
+
+      tab = gBrowser.loadGroup(URIs);
+      
+      if (!BookmarksUtils.shouldLoadTabInBackground(aEvent))
+        gBrowser.selectedTab = tab;
+    }
   }
 }
 
@@ -996,7 +1086,7 @@ function QualifySearchTerm()
   return "";
 }
 
-function OpenSearch(tabName, forceDialogFlag, searchStr, newWindowFlag)
+function OpenSearch(tabName, searchStr, newWindowFlag)
 {
   //This function needs to be split up someday.
 
@@ -1031,55 +1121,32 @@ function OpenSearch(tabName, forceDialogFlag, searchStr, newWindowFlag)
     if (forceAsURL) {
        BrowserLoadURL()
     } else {
-      var searchMode = 0;
-      try {
-        searchMode = pref.getIntPref("browser.search.powermode");
-      } catch(ex) {
-      }
+      if (searchStr) {
+        var escapedSearchStr = encodeURIComponent(searchStr);
+        defaultSearchURL += escapedSearchStr;
+        var searchDS = Components.classes["@mozilla.org/rdf/datasource;1?name=internetsearch"]
+                                 .getService(Components.interfaces.nsIInternetSearchService);
 
-      if (forceDialogFlag || searchMode == 1) {
-        // Use a single search dialog
-        var windowManager = Components.classes["@mozilla.org/appshell/window-mediator;1"]
-                                      .getService(Components.interfaces.nsIWindowMediator);
-
-        var searchWindow = windowManager.getMostRecentWindow("search:window");
-        if (!searchWindow) {
-          openDialog("chrome://communicator/content/search/search.xul", "SearchWindow", "dialog=no,close,chrome,resizable", tabName, searchStr);
-        } else {
-          // Already had one, focus it and load the page
-          searchWindow.focus();
-
-          if ("loadPage" in searchWindow)
-            searchWindow.loadPage(tabName, searchStr);
-        }
-      } else {
-        if (searchStr) {
-          var escapedSearchStr = encodeURIComponent(searchStr);
-          defaultSearchURL += escapedSearchStr;
-          var searchDS = Components.classes["@mozilla.org/rdf/datasource;1?name=internetsearch"]
-                                   .getService(Components.interfaces.nsIInternetSearchService);
-
-          searchDS.RememberLastSearchText(escapedSearchStr);
-          try {
-            var searchEngineURI = pref.getCharPref("browser.search.defaultengine");
-            if (searchEngineURI) {          
-              var searchURL = getSearchUrl("actionButton");
-              if (searchURL) {
-                defaultSearchURL = searchURL + escapedSearchStr; 
-              } else {
-                searchURL = searchDS.GetInternetSearchURL(searchEngineURI, escapedSearchStr, 0, 0, {value:0});
-                if (searchURL)
-                  defaultSearchURL = searchURL;
-              }
+        searchDS.RememberLastSearchText(escapedSearchStr);
+        try {
+          var searchEngineURI = pref.getCharPref("browser.search.defaultengine");
+          if (searchEngineURI) {          
+            var searchURL = getSearchUrl("actionButton");
+            if (searchURL) {
+              defaultSearchURL = searchURL + escapedSearchStr; 
+            } else {
+              searchURL = searchDS.GetInternetSearchURL(searchEngineURI, escapedSearchStr, 0, 0, {value:0});
+              if (searchURL)
+                defaultSearchURL = searchURL;
             }
-          } catch (ex) {
           }
-
-          if (!newWindowFlag)
-            loadURI(defaultSearchURL);
-          else
-            window.open(defaultSearchURL, "_blank");
+        } catch (ex) {
         }
+
+        if (!newWindowFlag)
+          loadURI(defaultSearchURL);
+        else
+          window.open(defaultSearchURL, "_blank");
       }
     }
   }
@@ -1091,9 +1158,57 @@ function OpenSearch(tabName, forceDialogFlag, searchStr, newWindowFlag)
 
 function RevealSearchPanel()
 {
-  var searchPanel = document.getElementById("urn:sidebar:panel:search");
-  if (searchPanel)
-    SidebarSelectPanel(searchPanel, true, true); // lives in sidebarOverlay.js
+  // first lets check if the search panel will be shown at all
+  // by checking the sidebar datasource to see if there is an entry
+  // for the search panel, and if it is excluded for navigator or not
+  
+  var searchPanelExists = false;
+  
+  if (document.getElementById("urn:sidebar:panel:search")) {
+    var myPanel = document.getElementById("urn:sidebar:panel:search");
+    var panel = sidebarObj.panels.get_panel_from_header_node(myPanel);
+
+    searchPanelExists = !panel.is_excluded();
+  } else if (sidebarObj.never_built) {
+
+    try{
+      var datasource = RDF.GetDataSourceBlocking(sidebarObj.datasource_uri);
+      var aboutValue = RDF.GetResource("urn:sidebar:panel:search");
+
+      // check if the panel is even in the list by checking for its content
+      var contentProp = RDF.GetResource("http://home.netscape.com/NC-rdf#content");
+      var content = datasource.GetTarget(aboutValue, contentProp, true);
+     
+      if (content instanceof Components.interfaces.nsIRDFLiteral){
+        // the search panel entry exists, now check if it is excluded
+        // for navigator
+        var excludeProp = RDF.GetResource("http://home.netscape.com/NC-rdf#exclude");
+        var exclude = datasource.GetTarget(aboutValue, excludeProp, true);
+
+        if (exclude instanceof Components.interfaces.nsIRDFLiteral) {
+          searchPanelExists = (exclude.Value.indexOf("navigator:browser") < 0);
+        } else {
+          // panel exists and no exclude set
+          searchPanelExists = true;
+        }
+      }
+    } catch(e){
+      searchPanelExists = false;
+    }
+  }
+
+  if (searchPanelExists) {
+    // make sure the sidebar is open, else SidebarSelectPanel() will fail
+    if (sidebar_is_hidden())
+      SidebarShowHide();
+  
+    if (sidebar_is_collapsed())
+      SidebarExpandCollapse();
+
+    var searchPanel = document.getElementById("urn:sidebar:panel:search");
+    if (searchPanel)
+      SidebarSelectPanel(searchPanel, true, true); // lives in sidebarOverlay.js      
+  }
 }
 
 function isSearchPanelOpen()
@@ -1230,7 +1345,7 @@ function selectFileToOpen(label, prefRoot)
     pref.setIntPref(filterIndexPref, fp.filterIndex);
     pref.setComplexValue(lastDirPref,
                          Components.interfaces.nsILocalFile,
-                         fp.file.parent.nsILocalFile);
+                         fp.file.parent);
     fileURL = fp.fileURL;
   }
 
@@ -1252,7 +1367,7 @@ function BrowserEditBookmarks()
 function updateCloseItems()
 {
   var browser = getBrowser();
-  if (browser.getStripVisibility()) {
+  if (browser && browser.getStripVisibility()) {
     document.getElementById('menu_close').setAttribute('label', gNavigatorBundle.getString('tabs.closeTab'));
     document.getElementById('menu_closeWindow').hidden = false;
     document.getElementById('menu_closeOtherTabs').hidden = false;
@@ -1327,6 +1442,10 @@ function loadURI(uri, referrer)
 function BrowserLoadURL(aTriggeringEvent)
 {
   var url = gURLBar.value;
+
+  // Remove leading and trailing spaces first
+  url = url.replace(/^\s+/, '').replace(/\s+$/, '');
+
   if (url.match(/^view-source:/)) {
     BrowserViewSourceOfURL(url.replace(/^view-source:/, ""), null, null);
   } else {
@@ -1437,12 +1556,12 @@ function getShortcutOrURI(url)
         var cmd = url.substr(0, aOffset);
         var text = url.substr(aOffset+1);
         shortcutURL = gBookmarksService.resolveKeyword(cmd);
+        // Bug 123006 : %s replace and URI escape, %S replace with raw value
         if (shortcutURL && text) {
-          aOffset = shortcutURL.indexOf("%s");
-          if (aOffset >= 0)
-            shortcutURL = shortcutURL.substr(0, aOffset) + text + shortcutURL.substr(aOffset+2);
-          else
-            shortcutURL = null;
+          shortcutURL = /%[sS]/.test(shortcutURL) ?
+              shortcutURL.replace(/%s/g, encodeURIComponent(text))
+                         .replace(/%S/g, text) :
+              null;
         }
       }
     }
@@ -1489,18 +1608,6 @@ function readFromClipboard()
   return url;
 }
 
-function OpenMessenger()
-{
-  open("chrome://messenger/content/messenger.xul", "_blank",
-    "chrome,extrachrome,menubar,resizable,status,toolbar");
-}
-
-function OpenAddressbook()
-{
-  open("chrome://messenger/content/addressbook/addressbook.xul", "_blank",
-    "chrome,extrachrome,menubar,resizable,status,toolbar");
-}
-
 function BrowserViewSourceOfDocument(aDocument)
 {
   var docCharset;
@@ -1516,12 +1623,12 @@ function BrowserViewSourceOfDocument(aDocument)
       var ifRequestor;
 
       // Get the DOMWindow for the requested document.  If the DOMWindow
-      // cannot be found, then just use the _content window...
+      // cannot be found, then just use the content window...
       //
       // XXX:  This is a bit of a hack...
       win = aDocument.defaultView;
       if (win == window) {
-        win = _content;
+        win = content;
       }
       ifRequestor = win.QueryInterface(Components.interfaces.nsIInterfaceRequestor);
 
@@ -1573,18 +1680,33 @@ function hiddenWindowStartup()
 
   // Disable menus which are not appropriate
   var disabledItems = ['cmd_close', 'Browser:SendPage', 'Browser:EditPage',
-                       'cmd_printSetup', /*'Browser:PrintPreview',*/
+                       'Browser:SavePage', 'cmd_printSetup', /*'Browser:PrintPreview',*/
                        'Browser:Print', 'canGoBack', 'canGoForward',
                        'Browser:Home', 'Browser:AddBookmark',
                        'Browser:AddBookmarkAs', 'Browser:AddGroupmarkAs',
                        'cmd_undo', 'cmd_redo', 'cmd_cut', 'cmd_copy',
                        'cmd_paste', 'cmd_delete', 'cmd_selectAll',
-                       'menu_textZoom'];
+                       'menu_textZoom', 'cmd_minimizeWindow', 'cmd_zoomWindow'];
+  var broadcaster;
+
   for (var id in disabledItems) {
-    var broadcaster = document.getElementById(disabledItems[id]);
+    broadcaster = document.getElementById(disabledItems[id]);
     if (broadcaster)
       broadcaster.setAttribute("disabled", "true");
   }
+
+  // also hide the window list separator
+  var separator = document.getElementById("sep-window-list");
+  if (separator)
+    separator.setAttribute("hidden", "true");
+
+  // Get the preferences service
+  var prefService = Components.classes["@mozilla.org/preferences-service;1"]
+                              .getService(Components.interfaces.nsIPrefService);
+  pref = prefService.getBranch(null);
+
+  // init global strings bundle
+  gNavigatorBundle = document.getElementById("bundle_navigator");
 
   // now load bookmarks after a delay
   setTimeout(hiddenWindowLoadBookmarksCallback, 0);
@@ -1636,7 +1758,7 @@ function traceDocument()
 {
   // keep the chrome document out of the dump.
   leakDetector.markObject(document, true);
-  leakDetector.traceObject(_content, leakDetector.verbose);
+  leakDetector.traceObject(content, leakDetector.verbose);
   leakDetector.markObject(document, false);
 }
 
@@ -1729,9 +1851,9 @@ function postURLToNativeWidget()
 
 function checkForDirectoryListing()
 {
-  if ( "HTTPIndex" in _content &&
-       _content.HTTPIndex instanceof Components.interfaces.nsIHTTPIndex ) {
-    _content.defaultCharacterset = getMarkupDocumentViewer().defaultCharacterSet;
+  if ( "HTTPIndex" in content &&
+       content.HTTPIndex instanceof Components.interfaces.nsIHTTPIndex ) {
+    content.defaultCharacterset = getMarkupDocumentViewer().defaultCharacterSet;
   }
 }
 
@@ -1767,7 +1889,7 @@ function stylesheetFillPopup(menuPopup)
   while (itemPersistentOnly.nextSibling)
     menuPopup.removeChild(itemPersistentOnly.nextSibling);
 
-  var styleSheets = getAllStyleSheets(window._content);
+  var styleSheets = getAllStyleSheets(window.content);
   var currentStyleSheets = [];
   var styleDisabled = getMarkupDocumentViewer().authorStyleDisabled;
   var altStyleSelected = false;
@@ -1799,7 +1921,7 @@ function stylesheetFillPopup(menuPopup)
   }
   menuPopup.firstChild.setAttribute("checked", styleDisabled);
   itemPersistentOnly.setAttribute("checked", !altStyleSelected && !styleDisabled);
-  itemPersistentOnly.hidden = (window._content.document.preferredStylesheetSet) ? true : false;
+  itemPersistentOnly.hidden = (window.content.document.preferredStylesheetSet) ? true : false;
 }
 
 function stylesheetInFrame(frame, title) {
@@ -1846,7 +1968,7 @@ function applyTheme(themeName)
     return;
 
   var chromeRegistry = Components.classes["@mozilla.org/chrome/chrome-registry;1"]
-    .getService(Components.interfaces.nsIXULChromeRegistry);
+    .getService(Components.interfaces.nsIChromeRegistrySea);
 
   var oldTheme = false;
   try {
@@ -1891,10 +2013,10 @@ function applyTheme(themeName)
  pref.setComplexValue("general.skins.selectedSkin", Components.interfaces.nsISupportsString, str);
  
  // shut down quicklaunch so the next launch will have the new skin
- var appShell = Components.classes['@mozilla.org/appshell/appShellService;1'].getService();
- appShell = appShell.QueryInterface(Components.interfaces.nsIAppShellService);
+ var appStartup = Components.classes["@mozilla.org/toolkit/app-startup;1"]
+   .getService(Components.interfaces.nsIAppStartup);
  try {
-   appShell.nativeAppSupport.isServerMode = false;
+   appStartup.nativeAppSupport.isServerMode = false;
  }
  catch(ex) {
  }
@@ -2005,7 +2127,7 @@ function handleURLBarRevert()
 
 function handleURLBarCommand(aUserAction, aTriggeringEvent)
 {
-  try { 
+  try {
     addToUrlbarHistory();
   } catch (ex) {
     // Things may go wrong when adding url to session history,
@@ -2177,7 +2299,7 @@ function onPopupWindow(aEvent) {
       }
     }
     if (showDialog) {
-      window.openDialog("chrome://communicator/content/aboutPopups.xul", "",
+      window.openDialog("chrome://communicator/content/permissions/aboutPopups.xul", "",
                         "chrome,centerscreen,dependent", true);
       pref.setBoolPref("privacy.popups.first_popup", false);
     }
@@ -2219,6 +2341,23 @@ function onPopupBlocked(aEvent) {
         var popupIcon = document.getElementById("popupIcon");
         popupIcon.hidden = false;
       }
+      // Check for duplicates, remove the old occurence of this url,
+      // to update the features, and put it at the end of the list.
+      for (var i = 0; i < browser.popupUrls.length; ++i) {
+        if (browser.popupUrls[i].equals(aEvent.popupWindowURI)) {
+          browser.popupUrls.splice(i, 1);
+          browser.popupFeatures.splice(i, 1);
+          break;
+        }
+      }
+      // Limit the length of the menu to some reasonable size.
+      // We only add one item every time, so no need for more complex stuff.
+      if (browser.popupUrls.length >= 100) {
+        browser.popupUrls.shift();
+        browser.popupFeatures.shift();
+      }
+      browser.popupUrls.push(aEvent.popupWindowURI);
+      browser.popupFeatures.push(aEvent.popupWindowFeatures);
     }
   }
 }
@@ -2240,8 +2379,42 @@ function StatusbarViewPopupManager() {
   catch(ex) { }
   
   // open whitelist with site prefilled to unblock
-  window.openDialog("chrome://communicator/content/popupManager.xul", "",
+  window.openDialog("chrome://communicator/content/permissions/permissionsManager.xul", "",
                       "chrome,resizable=yes", hostPort);
+}
+
+function popupBlockerMenuShowing(event) {
+  var separator = document.getElementById("popupMenuSeparator");
+
+  if (separator)
+    separator.hidden = !createShowPopupsMenu(event.target);
+}
+
+function createShowPopupsMenu(parent) {
+  while (parent.lastChild && parent.lastChild.hasAttribute("uri"))
+    parent.removeChild(parent.lastChild);
+
+  var browser = getBrowser().selectedBrowser;      
+
+  if  (browser.popupUrls.length == 0)
+    return false;
+
+  for (var i = 0; i < browser.popupUrls.length; i++) {
+    var menuitem = document.createElement("menuitem");
+    menuitem.setAttribute("label", gNavigatorBundle.getFormattedString('popupMenuShow', [browser.popupUrls[i].spec]));
+    menuitem.setAttribute("uri", browser.popupUrls[i].spec);
+    menuitem.setAttribute("features", browser.popupFeatures[i]);
+    parent.appendChild(menuitem);
+  }
+
+  return true;
+}
+
+function popupBlockerMenuCommand(target) {
+  var uri = target.getAttribute("uri");
+  if (uri) {
+    window.content.open(uri, "", target.getAttribute("features"));
+  }
 }
 
 function toHistory()
@@ -2253,7 +2426,7 @@ function checkTheme()
 {
   var theSkinKids = document.getElementById("theme");
   var chromeRegistry = Components.classes["@mozilla.org/chrome/chrome-registry;1"]
-    .getService(Components.interfaces.nsIXULChromeRegistry);
+    .getService(Components.interfaces.nsIChromeRegistrySea);
   for (var i = 0; i < theSkinKids.childNodes.length; ++i) {
     var child = theSkinKids.childNodes[i];
     var id=child.getAttribute("id");
@@ -2291,9 +2464,9 @@ function maybeInitPopupContext()
       // return our opener's URI
       const IOS = Components.classes["@mozilla.org/network/io-service;1"]
                   .getService(CI.nsIIOService);
-      var spec = Components.lookupMethod(window.content.opener, "location")
-                 .call();
-      return IOS.newURI(spec, null, null);
+      var opener = new XPCNativeWrapper(window.content, "opener").opener;
+      var location = new XPCNativeWrapper(opener, "location").location;
+      return IOS.newURI(location.href, null, null);
     }
   } catch(e) {
   }
@@ -2419,28 +2592,39 @@ function updateFileUploadItem()
     item.setAttribute('disabled', 'true');
 }
 
-// Do a security check for drag n' drop. Make sure the source document
-// can load the dragged link.
-function DragDropSecurityCheck(aEvent, aDragSession, aUrl)
+function isBidiEnabled()
 {
-  var sourceDoc = aDragSession.sourceDocument;
+  var rv = false;
 
-  if (sourceDoc) {
-    var sourceURI = sourceDoc.documentURI;
+  var systemLocale;
+  try {
+    var localeService = Components.classes["@mozilla.org/intl/nslocaleservice;1"]
+                                 .getService(Components.interfaces.nsILocaleService);
+    systemLocale = localeService.getSystemLocale().getCategory("NSILOCALE_CTYPE");
+    rv = /^(he|ar|syr|fa|ur)-/.test(systemLocale);
+  } catch (e) {}
 
-    const nsIScriptSecurityManager =
-      Components.interfaces.nsIScriptSecurityManager;
-    var secMan = Components.classes["@mozilla.org/scriptsecuritymanager;1"]
-      .getService(nsIScriptSecurityManager);
-
+  if (!rv) {
+    // check the overriding pref
     try {
-      secMan.checkLoadURIStr(sourceURI, aUrl,
-                             nsIScriptSecurityManager.STANDARD);
-    } catch (e) {
-      // Stop even propagation right here.
-      aEvent.stopPropagation();
-
-      throw "Drop of " + aUrl + " denied.";
+      rv = pref.getBoolPref("bidi.browser.ui");
     }
+    catch (e) {}
   }
+
+  return rv;
+}
+
+function SwitchDocumentDirection(aWindow)
+{
+  aWindow.document.dir = (aWindow.document.dir == "ltr" ? "rtl" : "ltr");
+
+  for (var run = 0; run < aWindow.frames.length; run++)
+    SwitchDocumentDirection(aWindow.frames[run]);
+}
+
+function updateSavePageItems()
+{
+  var autoDownload = pref.getBoolPref("browser.download.autoDownload");
+  goSetMenuValue("savepage", autoDownload ? "valueSave" : "valueSaveAs");
 }

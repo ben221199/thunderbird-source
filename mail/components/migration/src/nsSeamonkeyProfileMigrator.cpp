@@ -119,7 +119,7 @@ void nsSeamonkeyProfileMigrator::CopyNextFolder()
     fileTransactionEntry* fileTransaction = (fileTransactionEntry*) mFileCopyTransactions->SafeElementAt(mFileCopyTransactionIndex++);
     if (fileTransaction) // copy the file
     {
-      fileTransaction->srcFile->CopyTo(fileTransaction->destFile, nsString());
+      fileTransaction->srcFile->CopyTo(fileTransaction->destFile, EmptyString());
 
       // add to our current progress
       PRInt64 fileSize;
@@ -362,21 +362,25 @@ nsSeamonkeyProfileMigrator::FillProfileDataFromSeamonkeyRegistry()
   nsCOMPtr<nsILocalFile> seamonkeyRegistry;
 #ifdef XP_WIN
   fileLocator->Get(NS_WIN_APPDATA_DIR, NS_GET_IID(nsILocalFile), getter_AddRefs(seamonkeyRegistry));
+  NS_ENSURE_TRUE(seamonkeyRegistry, NS_ERROR_FAILURE);
 
   seamonkeyRegistry->Append(NS_LITERAL_STRING("Mozilla"));
   seamonkeyRegistry->Append(NS_LITERAL_STRING("registry.dat"));
 #elif defined(XP_MACOSX)
   fileLocator->Get(NS_MAC_USER_LIB_DIR, NS_GET_IID(nsILocalFile), getter_AddRefs(seamonkeyRegistry));
+  NS_ENSURE_TRUE(seamonkeyRegistry, NS_ERROR_FAILURE);
   
   seamonkeyRegistry->Append(NS_LITERAL_STRING("Mozilla"));
   seamonkeyRegistry->Append(NS_LITERAL_STRING("Application Registry"));
 #elif defined(XP_UNIX)
   fileLocator->Get(NS_UNIX_HOME_DIR, NS_GET_IID(nsILocalFile), getter_AddRefs(seamonkeyRegistry));
+  NS_ENSURE_TRUE(seamonkeyRegistry, NS_ERROR_FAILURE);
   
   seamonkeyRegistry->Append(NS_LITERAL_STRING(".mozilla"));
   seamonkeyRegistry->Append(NS_LITERAL_STRING("appreg"));
 #elif defined(XP_OS2)
   fileLocator->Get(NS_OS2_HOME_DIR, NS_GET_IID(nsILocalFile), getter_AddRefs(seamonkeyRegistry));
+  NS_ENSURE_TRUE(seamonkeyRegistry, NS_ERROR_FAILURE);
   
   seamonkeyRegistry->Append(NS_LITERAL_STRING("Mozilla"));
   seamonkeyRegistry->Append(NS_LITERAL_STRING("registry.dat"));
@@ -418,7 +422,6 @@ nsSeamonkeyProfileMigrator::PrefTransform gTransforms[] = {
   MAKESAMETYPEPREFTRANSFORM("mail.biff.play_sound.type",                Int),
   MAKESAMETYPEPREFTRANSFORM("mail.biff.play_sound.url",                 String),
   MAKESAMETYPEPREFTRANSFORM("mail.biff.show_alert",                     Bool),
-  MAKESAMETYPEPREFTRANSFORM("signon.rememberSignons",                   Bool),
   MAKESAMETYPEPREFTRANSFORM("network.proxy.type",                       Int),
   MAKESAMETYPEPREFTRANSFORM("network.proxy.http",                       String),
   MAKESAMETYPEPREFTRANSFORM("network.proxy.http_port",                  Int),

@@ -25,8 +25,8 @@
  * DEALINGS IN THE SOFTWARE.
  *
  * Contributor(s):
- *  Doug Turner <dougt@netscape.com> 
- *  Adam Lock <adamlock@netscape.com>
+ *   Doug Turner <dougt@netscape.com>
+ *   Adam Lock <adamlock@netscape.com>
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -45,20 +45,16 @@
 
 // Mozilla header files
 #include "nsEmbedAPI.h"
-#include "nsWeakReference.h"
 #include "nsIClipboardCommands.h"
 #include "nsXPIDLString.h"
 #include "nsIWebBrowserPersist.h"
 #include "nsIWebBrowserFocus.h"
 #include "nsIWindowWatcher.h"
-#include "nsIProfile.h"
 #include "nsIObserverService.h"
 #include "nsIObserver.h"
-#include "nsIProfileChangeStatus.h"
 #include "nsIURI.h"
 #include "plstr.h"
 #include "nsIInterfaceRequestor.h"
-#include "nsCRT.h"
 
 #include "nsDirectoryService.h"
 #include "nsDirectoryServiceDefs.h"

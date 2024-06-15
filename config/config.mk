@@ -1,23 +1,39 @@
 #
-# The contents of this file are subject to the Netscape Public
-# License Version 1.1 (the "License"); you may not use this file
-# except in compliance with the License. You may obtain a copy of
-# the License at http://www.mozilla.org/NPL/
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 1.1/GPL 2.0/LGPL 2.1
 #
-# Software distributed under the License is distributed on an "AS
-# IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
-# implied. See the License for the specific language governing
-# rights and limitations under the License.
+# The contents of this file are subject to the Mozilla Public License Version
+# 1.1 (the "License"); you may not use this file except in compliance with
+# the License. You may obtain a copy of the License at
+# http://www.mozilla.org/MPL/
+#
+# Software distributed under the License is distributed on an "AS IS" basis,
+# WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+# for the specific language governing rights and limitations under the
+# License.
 #
 # The Original Code is mozilla.org code.
 #
-# The Initial Developer of the Original Code is Netscape
-# Communications Corporation.  Portions created by Netscape are
-# Copyright (C) 1998 Netscape Communications Corporation. All
-# Rights Reserved.
+# The Initial Developer of the Original Code is
+# Netscape Communications Corporation.
+# Portions created by the Initial Developer are Copyright (C) 1998
+# the Initial Developer. All Rights Reserved.
 #
-# Contributor(s): 
+# Contributor(s):
 #
+# Alternatively, the contents of this file may be used under the terms of
+# either of the GNU General Public License Version 2 or later (the "GPL"),
+# or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+# in which case the provisions of the GPL or the LGPL are applicable instead
+# of those above. If you wish to allow use of your version of this file only
+# under the terms of either the GPL or the LGPL, and not to allow others to
+# use your version of this file under the terms of the MPL, indicate your
+# decision by deleting the provisions above and replace them with the notice
+# and other provisions required by the GPL or the LGPL. If you do not delete
+# the provisions above, a recipient may use your version of this file under
+# the terms of any one of the MPL, the GPL or the LGPL.
+#
+# ***** END LICENSE BLOCK *****
 
 #
 # config.mk
@@ -44,6 +60,13 @@ endif
 endif
 
 GRE_DIST	= $(DIST)/gre
+
+# FINAL_TARGET specifies the location into which we copy end-user-shipped
+# build products (typelibs, components, chrome).
+#
+# It will usually be the well-loved $(DIST)/bin, today, but can also be an
+# XPI-contents staging directory for ambitious and right-thinking extensions.
+FINAL_TARGET = $(if $(XPI_NAME),$(DIST)/xpi-stage/$(XPI_NAME),$(DIST)/bin)
 
 #
 # The VERSION_NUMBER is suffixed onto the end of the DLLs we ship.
@@ -176,7 +199,7 @@ NSS_LIBS	= \
 	-lsoftokn3 \
 	$(NULL)
 
-ifneq (,$(filter OS2 WINNT, $(OS_ARCH)))
+ifneq (,$(filter OS2 WINNT WINCE, $(OS_ARCH)))
 ifndef GNU_CC
 NSS_LIBS	= \
 	$(DIST)/lib/$(LIB_PREFIX)crmf.$(LIB_SUFFIX) \
@@ -301,16 +324,21 @@ OS_LDFLAGS += /PDB:NONE
 endif
 endif
 
+ifdef MOZ_QUANTIFY
 # /FIXED:NO is needed for Quantify to work, but it increases the size
 # of executables, so only use it if building for Quantify.
-ifdef MOZ_QUANTIFY
 WIN32_EXE_LDFLAGS=/FIXED:NO
+
+# We need /OPT:NOICF to prevent identical methods from being merged together.
+# Otherwise, Quantify doesn't know which method was actually called when it's
+# showing you the profile.
+OS_LDFLAGS += /OPT:NOICF
 endif
 
 # if MOZ_COVERAGE is set, we handle pdb files slightly differently
 ifdef MOZ_COVERAGE
 MOZ_OPTIMIZE_FLAGS=-Zi -O1 -UDEBUG -DNDEBUG
-OS_LDFLAGS = /DEBUG /DEBUGTYPE:CV /PDB:NONE /OPT:REF /OPT:nowin98
+OS_LDFLAGS = /DEBUG /PDB:NONE /OPT:REF /OPT:nowin98
 _ORDERFILE := $(wildcard $(srcdir)/win32.order)
 ifneq (,$(_ORDERFILE))
 OS_LDFLAGS += /ORDER:@$(srcdir)/win32.order
@@ -324,7 +352,7 @@ endif
 #
 ifdef NS_TRACE_MALLOC
 MOZ_OPTIMIZE_FLAGS=-Zi -Od -UDEBUG -DNDEBUG
-OS_LDFLAGS = /DEBUG /DEBUGTYPE:CV /PDB:NONE /OPT:REF /OPT:nowin98
+OS_LDFLAGS = /DEBUG /PDB:NONE /OPT:REF /OPT:nowin98
 endif
 # NS_TRACE_MALLOC
 
@@ -340,96 +368,6 @@ ifeq ($(MOZ_REORDER),1)
   OS_CFLAGS += -ffunction-sections
   OS_CXXFLAGS += -ffunction-sections
 endif
-
-#
-# List known meta modules and their dependent libs
-#
-_ALL_META_COMPONENTS=mail crypto
-
-MOZ_META_COMPONENTS_mail = \
-	IMAP_factory \
-	mime_services \
-	nsMsgNewsModule  \
-	nsImportServiceModule \
-	nsAbModule \
-	nsTextImportModule \
-	nsVCardModule \
-	nsMsgDBModule \
-	nsMsgMdnModule \
-	nsMsgMailViewModule \
-	nsBayesianFilterModule \
-	$(NULL)
-
-MOZ_META_COMPONENTS_mail_comps = \
-	msgimap \
-	mime \
-	msgnews \
-	import \
-	addrbook \
-	impText \
-	vcard \
-	msgdb \
-	msgmdn \
-	mailview \
-  offline-startup \
-	bayesflt \
-	$(NULL)
-
-MOZ_META_COMPONENTS_mail_libs = mimecthglue_s
-ifdef USE_SHORT_LIBNAME
-MOZ_META_COMPONENTS_mail_libs += msgbsutl
-else
-MOZ_META_COMPONENTS_mail_libs += msgbaseutil
-endif
-
-ifeq ($(OS_ARCH),WINNT)
-MOZ_META_COMPONENTS_mail += \
-	nsMsgBaseModule \
-	nsEudoraImportModule \
-	nsOEImport \
-	nsOutlookImport \
-	msgMapiModule \
-	$(NULL)
-MOZ_META_COMPONENTS_mail_comps += \
-	msgbase \
-	impEudra \
-	importOE \
-	impOutlk \
-	msgMapi \
-	$(NULL)
-else
-MOZ_META_COMPONENTS_mail += nsMsgBaseModule
-MOZ_META_COMPONENTS_mail_comps += mailnews
-endif
-
-MOZ_META_COMPONENTS_mail += \
-	nsMimeEmitterModule \
-	nsMsgComposeModule \
-	local_mail_services \
-	nsComm4xMailImportModule \
-	$(NULL)
-
-ifdef USE_SHORT_LIBNAME
-MOZ_META_COMPONENTS_mail_comps += emitter msgcompo msglocal
-ifeq ($(OS_ARCH),WINNT)
-MOZ_META_COMPONENTS_mail_comps += impComm4xMail
-else
-MOZ_META_COMPONENTS_mail_comps += imp4Mail
-endif
-else
-MOZ_META_COMPONENTS_mail_comps += mimeemitter msgcompose localmail impComm4xMail
-endif
-
-ifdef MOZ_PSM
-MOZ_META_COMPONENTS_mail += nsMsgSMIMEModule
-MOZ_META_COMPONENTS_mail_comps += msgsmime
-else
-MOZ_META_COMPONENTS_mail +=  nsSMIMEModule
-MOZ_META_COMPONENTS_mail_comps += smimestb
-endif
-
-MOZ_META_COMPONENTS_crypto = BOOT PKI NSS
-MOZ_META_COMPONENTS_crypto_comps = pipboot pippki pipnss
 
 # If we're applying MOZ_PROFILE_GENERATE to a non-static build, then we
 # need to create a static build _with_ PIC.  This allows us to generate
@@ -459,7 +397,7 @@ endif
 # the module is built static.
 
 ifdef IS_COMPONENT
-ifneq (,$(MOZ_STATIC_COMPONENT_LIBS)$(findstring $(LIBRARY_NAME), $(MOZ_STATIC_COMPONENTS)))
+ifneq (,$(MOZ_STATIC_COMPONENT_LIBS))
 ifdef MODULE_NAME
 DEFINES += -DXPCOM_TRANSLATE_NSGM_ENTRY_POINT=1
 FORCE_STATIC_LIB=1
@@ -468,25 +406,22 @@ endif
 endif
 
 # Determine if module being compiled is destined 
-# to be merged into a meta module in the future
+# to be merged into libxul
 
-ifneq (, $(findstring $(META_COMPONENT), $(MOZ_META_COMPONENTS)))
+ifdef MOZ_ENABLE_LIBXUL
+ifdef LIBXUL_LIBRARY
 ifdef IS_COMPONENT
 ifdef MODULE_NAME
 DEFINES += -DXPCOM_TRANSLATE_NSGM_ENTRY_POINT=1
+else
+$(error Component makefile doesn't specify MODULE_NAME.)
 endif
 endif
 EXPORT_LIBRARY=
 FORCE_STATIC_LIB=1
 _ENABLE_PIC=1
+SHORT_LIBNAME=
 endif
-
-#
-# Force PIC if we're generating the mozcomps meta module
-#
-
-ifneq (,$(findstring mozcomps, $(MOZ_META_COMPONENTS)))
-_ENABLE_PIC=1
 endif
 
 ifdef STATIC_BUILD_PIC
@@ -532,19 +467,45 @@ ifdef MOZ_PROFILE_USE
 DSO_PIC_CFLAGS += $(PROFILE_USE_CFLAGS)
 endif
 
+# Does the makefile specifies the internal XPCOM API linkage?
+ifneq (,$(MOZILLA_INTERNAL_API)$(LIBXUL_LIBRARY))
+DEFINES += -DMOZILLA_INTERNAL_API
+endif
+
+# Force XPCOM/widget/gfx methods to be _declspec(dllexport) when we're
+# building libxul libraries
+ifdef MOZ_ENABLE_LIBXUL
+ifdef LIBXUL_LIBRARY
+DEFINES += \
+		-D_IMPL_NS_COM \
+		-DEXPORT_XPT_API \
+		-DEXPORT_XPTC_API \
+		-DEXPORT_XPTI_API \
+		-D_IMPL_NS_COM_OBSOLETE \
+		-D_IMPL_NS_GFX \
+		-D_IMPL_NS_WIDGET \
+		-DIMPL_XULAPI \
+		-DIMPL_NS_NET \
+		$(NULL)
+
+ifndef MOZ_NATIVE_ZLIB
+DEFINES += -DZLIB_INTERNAL
+endif
+endif
+endif
 
 # Force _all_ exported methods to be |_declspec(dllexport)| when we're
 # building them into the executable.
-ifeq ($(OS_ARCH),WINNT)
-ifdef MOZ_STATIC_COMPONENT_LIBS
-DEFINES	+= \
-	-D_IMPL_NS_GFX \
-	-D_IMPL_NS_MSG_BASE \
-	-D_IMPL_NS_WIDGET \
-	$(NULL)
-endif
-endif
 
+ifeq (,$(filter-out WINNT WINCE, $(OS_ARCH)))
+ifdef MOZ_STATIC_COMPONENT_LIBS
+DEFINES += \
+        -D_IMPL_NS_GFX \
+        -D_IMPL_NS_MSG_BASE \
+        -D_IMPL_NS_WIDGET \
+        $(NULL)
+endif
+endif
 
 #
 # Personal makefile customizations go in these optional make include files.
@@ -567,16 +528,25 @@ XPIDL_COMPILE 	= $(CYGWIN_WRAPPER) $(DIST)/bin/xpidl$(BIN_SUFFIX)
 XPIDL_LINK	= $(CYGWIN_WRAPPER) $(DIST)/bin/xpt_link$(BIN_SUFFIX)
 endif
 
+ifeq (,$(filter-out WINCE,$(OS_ARCH)))
+XPIDL_COMPILE 	= $(CYGWIN_WRAPPER) $(topsrcdir)/../tools/xpidl.exe
+XPIDL_LINK	    = $(CYGWIN_WRAPPER) $(topsrcdir)/../tools/xpt_link.exe
+endif
+
 REQ_INCLUDES	= $(foreach d,$(REQUIRES),-I$(DIST)/include/$d)
 
 INCLUDES	= $(LOCAL_INCLUDES) $(REQ_INCLUDES) -I$(PUBLIC) -I$(DIST)/include $(OS_INCLUDES)
+
+ifndef MOZILLA_INTERNAL_API
+INCLUDES	+= -I$(DIST)/sdk/include
+endif
 
 CFLAGS		= $(OS_CFLAGS)
 CXXFLAGS	= $(OS_CXXFLAGS)
 LDFLAGS		= $(OS_LDFLAGS)
 
 # Allow each module to override the *default* optimization settings
-# by setting MODULE_OPTIMIZE_FLAGS iff the developer has not given
+# by setting MODULE_OPTIMIZE_FLAGS if the developer has not given
 # arguments to --enable-optimize
 ifdef MOZ_OPTIMIZE
 ifeq (1,$(MOZ_OPTIMIZE))
@@ -625,20 +595,19 @@ ifeq ($(OS_ARCH)_$(GNU_CC),WINNT_)
 #//
 #//------------------------------------------------------------------------
 ifdef USE_STATIC_LIBS
-RTL_FLAGS=-MT          # Statically linked multithreaded RTL
-ifneq (,$(MOZ_DEBUG)$(NS_TRACE_MALLOC))
-RTL_FLAGS=-MTd         # Statically linked multithreaded MSVC4.0 debug RTL
-endif # MOZ_DEBUG || NS_TRACE_MALLOC
-
-else # !USE_STATIC_LIBS
-
-ifdef USE_NON_MT_LIBS
+ifeq (,$(filter-out 1200 1300 1310,$(_MSC_VER)))
 RTL_FLAGS=-ML          # Statically linked non-multithreaded LIBC RTL
 ifneq (,$(MOZ_DEBUG)$(NS_TRACE_MALLOC))
 RTL_FLAGS=-MLd         # Statically linked non-multithreaded LIBC debug RTL
 endif # MOZ_DEBUG || NS_TRACE_MALLOC
+else
+RTL_FLAGS=-MT          # Statically linked multithreaded RTL
+ifneq (,$(MOZ_DEBUG)$(NS_TRACE_MALLOC))
+RTL_FLAGS=-MTd         # Statically linked multithreaded MSVC4.0 debug RTL
+endif # MOZ_DEBUG || NS_TRACE_MALLOC
+endif # _MSC_VER
 
-else # ! USE_NON_MT_LIBS
+else # !USE_STATIC_LIBS
 
 RTL_FLAGS=-MD          # Dynamically linked, multithreaded RTL
 ifneq (,$(MOZ_DEBUG)$(NS_TRACE_MALLOC))
@@ -646,13 +615,12 @@ ifndef MOZ_NO_DEBUG_RTL
 RTL_FLAGS=-MDd         # Dynamically linked, multithreaded MSVC4.0 debug RTL
 endif 
 endif # MOZ_DEBUG || NS_TRACE_MALLOC
-endif # USE_NON_MT_LIBS
 endif # USE_STATIC_LIBS
 endif # WINNT && !GNU_CC
 
 
-COMPILE_CFLAGS	= $(DEFINES) $(INCLUDES) $(XCFLAGS) $(PROFILER_CFLAGS) $(DSO_CFLAGS) $(DSO_PIC_CFLAGS) $(CFLAGS) $(RTL_FLAGS) $(OS_COMPILE_CFLAGS)
-COMPILE_CXXFLAGS = $(DEFINES) $(INCLUDES) $(XCFLAGS) $(PROFILER_CFLAGS) $(DSO_CFLAGS) $(DSO_PIC_CFLAGS)  $(CXXFLAGS) $(RTL_FLAGS) $(OS_COMPILE_CXXFLAGS)
+COMPILE_CFLAGS	= $(VISIBILITY_FLAGS) $(DEFINES) $(INCLUDES) $(XCFLAGS) $(PROFILER_CFLAGS) $(DSO_CFLAGS) $(DSO_PIC_CFLAGS) $(CFLAGS) $(RTL_FLAGS) $(OS_COMPILE_CFLAGS)
+COMPILE_CXXFLAGS = $(VISIBILITY_FLAGS) $(DEFINES) $(INCLUDES) $(XCFLAGS) $(PROFILER_CFLAGS) $(DSO_CFLAGS) $(DSO_PIC_CFLAGS)  $(CXXFLAGS) $(RTL_FLAGS) $(OS_COMPILE_CXXFLAGS)
 
 #
 # Name of the binary code directories
@@ -665,7 +633,9 @@ COMPILE_CXXFLAGS = $(DEFINES) $(INCLUDES) $(XCFLAGS) $(PROFILER_CFLAGS) $(DSO_CF
 
 ifneq ($(MOZ_OS2_TOOLS),VACPP)
 ifneq (WINNT_,$(OS_ARCH)_$(GNU_CC))
+ifneq (,$(filter-out WINCE,$(OS_ARCH)))
 LIBS_DIR	= -L$(DIST)/bin -L$(DIST)/lib
+endif
 endif
 endif
 
@@ -684,10 +654,9 @@ SDK_BIN_DIR = $(DIST)/sdk/bin
 
 DEPENDENCIES	= .md
 
-MOZ_COMPONENT_LIBS=$(MOZ_COMPONENT_XPCOM_LIBS) $(MOZ_COMPONENT_NSPR_LIBS)
+MOZ_COMPONENT_LIBS=$(XPCOM_LIBS) $(MOZ_COMPONENT_NSPR_LIBS)
 
 ifdef GC_LEAK_DETECTOR
-MOZ_COMPONENT_XPCOM_LIBS += -lboehm
 XPCOM_LIBS += -lboehm
 endif
 
@@ -720,12 +689,17 @@ endif
 PBBUILD=NEXT_ROOT= $(PBBUILD_BIN)
 endif
 
+
+ifeq (,$(filter-out WINCE,$(OS_ARCH)))
+MKDEPEND	= mkdepend.exe
+else
 ifdef MOZ_NATIVE_MAKEDEPEND
 MKDEPEND_DIR	=
 MKDEPEND	= $(CYGWIN_WRAPPER) $(MOZ_NATIVE_MAKEDEPEND)
 else
 MKDEPEND_DIR	= $(CONFIG_TOOLS)/mkdepend
 MKDEPEND	= $(CYGWIN_WRAPPER) $(MKDEPEND_DIR)/mkdepend$(BIN_SUFFIX)
+endif
 endif
 
 # Set link flags according to whether we want a console.
@@ -832,6 +806,11 @@ endif
 endif
 endif # WINNT
 
+ifeq (,$(filter-out WINCE,$(OS_ARCH)))
+NSINSTALL	= $(CYGWIN_WRAPPER) nsinstall
+INSTALL     = $(CYGWIN_WRAPPER) nsinstall 
+endif
+
 # Use nsinstall in copy mode to install files on the system
 SYSINSTALL	= $(NSINSTALL) -t
 
@@ -840,3 +819,24 @@ ifneq (,$(CYGDRIVE_MOUNT))
 export CYGDRIVE_MOUNT
 endif
 endif
+
+#
+# Localization build automation
+#
+
+# Because you might wish to "make locales AB_CD=ab-CD", we don't hardcode
+# MOZ_UI_LOCALE directly, but use an intermediate variable that can be
+# overridden by the command line. (Besides, AB_CD is prettier).
+AB_CD = $(MOZ_UI_LOCALE)
+
+EXPAND_LOCALE_SRCDIR = $(if $(filter en-US,$(AB_CD)),$(topsrcdir)/$(1)/en-US,$(topsrcdir)/../l10n/$(AB_CD)/$(subst /locales,,$(1)))
+
+ifdef relativesrcdir
+LOCALE_SRCDIR = $(call EXPAND_LOCALE_SRCDIR,$(relativesrcdir))
+endif
+
+#
+# Add BUILD_ID to set of DEFINES
+#
+BUILD_ID := $(shell cat $(DEPTH)/config/build_number)
+DEFINES += -DBUILD_ID=$(BUILD_ID)

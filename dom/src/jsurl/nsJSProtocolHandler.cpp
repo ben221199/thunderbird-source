@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -22,18 +22,17 @@
  * Contributor(s):
  *   Pierre Phaneuf <pp@ludusdesign.com>
  *
- *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 #include "nsCOMPtr.h"
@@ -117,34 +116,6 @@ nsresult nsJSThunk::Init(nsIURI* uri)
     return NS_OK;
 }
 
-static void
-GetInterfaceFromChannel(nsIChannel* aChannel,
-                        const nsIID &aIID,
-                        void **aResult)
-{
-    NS_PRECONDITION(aChannel, "Must have a channel");
-    NS_PRECONDITION(aResult, "Null out param");
-    *aResult = nsnull;
-
-    // Get an interface requestor from the channel callbacks.
-    nsCOMPtr<nsIInterfaceRequestor> callbacks;
-    aChannel->GetNotificationCallbacks(getter_AddRefs(callbacks));
-    if (callbacks) {
-        callbacks->GetInterface(aIID, aResult);
-    }
-    if (!*aResult) {
-        // Try the loadgroup
-        nsCOMPtr<nsILoadGroup> loadGroup;
-        aChannel->GetLoadGroup(getter_AddRefs(loadGroup));
-        if (loadGroup) {
-            loadGroup->GetNotificationCallbacks(getter_AddRefs(callbacks));
-            if (callbacks) {
-                callbacks->GetInterface(aIID, aResult);
-            }
-        }
-    }
-}
-
 nsresult nsJSThunk::EvaluateScript(nsIChannel *aChannel)
 {
     nsresult rv;
@@ -158,8 +129,7 @@ nsresult nsJSThunk::EvaluateScript(nsIChannel *aChannel)
 
     // The the global object owner from the channel
     nsCOMPtr<nsIScriptGlobalObjectOwner> globalOwner;
-    GetInterfaceFromChannel(aChannel, NS_GET_IID(nsIScriptGlobalObjectOwner),
-                            getter_AddRefs(globalOwner));
+    NS_QueryNotificationCallbacks(aChannel, globalOwner);
     NS_ASSERTION(globalOwner, 
                  "Unable to get an nsIScriptGlobalObjectOwner from the "
                  "channel!");
@@ -168,13 +138,12 @@ nsresult nsJSThunk::EvaluateScript(nsIChannel *aChannel)
     }
 
     // So far so good: get the script context from its owner.
-    nsCOMPtr<nsIScriptGlobalObject> global;
-    rv = globalOwner->GetScriptGlobalObject(getter_AddRefs(global));
+    nsIScriptGlobalObject* global = globalOwner->GetScriptGlobalObject();
 
-    NS_ASSERTION(NS_SUCCEEDED(rv) && global,
+    NS_ASSERTION(global,
                  "Unable to get an nsIScriptGlobalObject from the "
                  "ScriptGlobalObjectOwner!");
-    if (NS_FAILED(rv) || !global) {
+    if (!global) {
         return NS_ERROR_FAILURE;
     }
 
@@ -203,7 +172,7 @@ nsresult nsJSThunk::EvaluateScript(nsIChannel *aChannel)
         return NS_ERROR_FAILURE;
     }
 
-    nsIScriptContext *scriptContext = global->GetContext();
+    nsCOMPtr<nsIScriptContext> scriptContext = global->GetContext();
     if (!scriptContext)
         return NS_ERROR_FAILURE;
 
@@ -282,7 +251,7 @@ nsresult nsJSThunk::EvaluateScript(nsIChannel *aChannel)
                                        url.get(),      // url
                                        1,              // line no
                                        nsnull,
-                                       result,
+                                       &result,
                                        &bIsUndefined);
 
     if (NS_FAILED(rv)) {
@@ -374,8 +343,7 @@ nsresult nsJSChannel::StopAll()
 {
     nsresult rv = NS_ERROR_UNEXPECTED;
     nsCOMPtr<nsIWebNavigation> webNav;
-    GetInterfaceFromChannel(mStreamChannel, NS_GET_IID(nsIWebNavigation),
-                            getter_AddRefs(webNav));
+    NS_QueryNotificationCallbacks(mStreamChannel, webNav);
 
     NS_ASSERTION(webNav, "Can't get nsIWebNavigation from channel!");
     if (webNav) {
@@ -402,8 +370,7 @@ nsresult nsJSChannel::Init(nsIURI *aURI)
     // If the resultant script evaluation actually does return a value, we
     // treat it as html.
     rv = NS_NewInputStreamChannel(getter_AddRefs(channel), aURI, mIOThunk,
-                                  NS_LITERAL_CSTRING("text/html"),
-                                  EmptyCString());
+                                  NS_LITERAL_CSTRING("text/html"));
     if (NS_FAILED(rv)) return rv;
 
     rv = mIOThunk->Init(aURI);
@@ -518,6 +485,14 @@ nsJSChannel::InternalOpen(PRBool aIsAsync, nsIStreamListener *aListener,
 {
     nsCOMPtr<nsILoadGroup> loadGroup;
 
+    // Temporarily set the LOAD_BACKGROUND flag to suppress load group observer
+    // notifications (and hence nsIWebProgressListener notifications) from
+    // being dispatched.  This is required since we suppress LOAD_DOCUMENT_URI,
+    // which means that the DocLoader would not generate document start and
+    // stop notifications (see bug 257875).
+    PRUint32 oldLoadFlags = mLoadFlags;
+    mLoadFlags |= LOAD_BACKGROUND;
+
     // Add the javascript channel to its loadgroup so that we know if
     // network loads were canceled or not...
     mStreamChannel->GetLoadGroup(getter_AddRefs(loadGroup));
@@ -536,6 +511,9 @@ nsJSChannel::InternalOpen(PRBool aIsAsync, nsIStreamListener *aListener,
     if (loadGroup) {
         loadGroup->RemoveRequest(this, aContext, rv);
     }
+
+    // Reset load flags to their original value...
+    mLoadFlags = oldLoadFlags;
 
     // We're no longer active, it's now up to the stream channel to do
     // the loading, if needed.
@@ -556,8 +534,7 @@ nsJSChannel::InternalOpen(PRBool aIsAsync, nsIStreamListener *aListener,
             // ok. If so, stop all pending network loads.
 
             nsCOMPtr<nsIDocShell> docShell;
-            GetInterfaceFromChannel(mStreamChannel, NS_GET_IID(nsIDocShell),
-                                    getter_AddRefs(docShell));
+            NS_QueryNotificationCallbacks(mStreamChannel, docShell);
             if (docShell) {
                 nsCOMPtr<nsIContentViewer> cv;
                 docShell->GetContentViewer(getter_AddRefs(cv));
@@ -799,9 +776,7 @@ nsJSProtocolHandler::NewURI(const nsACString &aSpec,
     // CreateInstance.
 
     nsIURI* url;
-    rv = nsComponentManager::CreateInstance(kSimpleURICID, nsnull,
-                                            NS_GET_IID(nsIURI),
-                                            (void**)&url);
+    rv = CallCreateInstance(kSimpleURICID, &url);
 
     if (NS_FAILED(rv))
         return rv;

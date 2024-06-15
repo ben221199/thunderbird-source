@@ -1,25 +1,42 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
  *
- * The contents of this file are subject to the Mozilla Public
- * License Version 1.1 (the "License"); you may not use this file
- * except in compliance with the License. You may obtain a copy of
- * the License at http://www.mozilla.org/MPL/
- * 
- * Software distributed under the License is distributed on an "AS
- * IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
- * implied. See the License for the specific language governing
- * rights and limitations under the License.
- * 
- * The Original Code is nsCacheService.cpp, released February 10, 2001.
- * 
- * The Initial Developer of the Original Code is Netscape Communications
- * Corporation.  Portions created by Netscape are
- * Copyright (C) 2001 Netscape Communications Corporation.  All
- * Rights Reserved.
- * 
- * Contributor(s): 
- *    Gordon Sheridan, 10-February-2001
- */
+ * ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
+ *
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
+ *
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+ * for the specific language governing rights and limitations under the
+ * License.
+ *
+ * The Original Code is nsCacheService.cpp, released
+ * February 10, 2001.
+ *
+ * The Initial Developer of the Original Code is
+ * Netscape Communications Corporation.
+ * Portions created by the Initial Developer are Copyright (C) 2001
+ * the Initial Developer. All Rights Reserved.
+ *
+ * Contributor(s):
+ *   Gordon Sheridan, 10-February-2001
+ *
+ * Alternatively, the contents of this file may be used under the terms of
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
+ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK ***** */
 
 #include "necko-config.h"
 
@@ -29,21 +46,27 @@
 #include "nsCacheEntry.h"
 #include "nsCacheEntryDescriptor.h"
 #include "nsCacheDevice.h"
-#include "nsDiskCacheDevice.h"
 #include "nsMemoryCacheDevice.h"
 #include "nsICacheVisitor.h"
 #include "nsCRT.h"
+
+#ifdef NECKO_DISK_CACHE_SQL
+#include "nsDiskCacheDeviceSQL.h"
+#else
+#include "nsDiskCacheDevice.h"
+#endif
 
 #include "nsAutoLock.h"
 #include "nsIEventQueue.h"
 #include "nsIObserverService.h"
 #include "nsIPrefService.h"
 #include "nsIPrefBranch.h"
-#include "nsIPrefBranchInternal.h"
+#include "nsIPrefBranch2.h"
 #include "nsILocalFile.h"
 #include "nsDirectoryServiceDefs.h"
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsVoidArray.h"
+#include "nsDeleteDir.h"
 
 
 
@@ -133,7 +156,7 @@ nsCacheProfilePrefObserver::Install()
     
     
     // install preferences observer
-    nsCOMPtr<nsIPrefBranchInternal> branch = do_GetService(NS_PREFSERVICE_CONTRACTID);
+    nsCOMPtr<nsIPrefBranch2> branch = do_GetService(NS_PREFSERVICE_CONTRACTID);
     if (!branch) return NS_ERROR_FAILURE;
 
     char * prefList[] = { 
@@ -178,7 +201,6 @@ nsCacheProfilePrefObserver::Remove()
     // remove Observer Service observers
     nsCOMPtr<nsIObserverService> observerService = do_GetService("@mozilla.org/observer-service;1", &rv);
     if (NS_FAILED(rv)) return rv;
-    NS_ENSURE_ARG(observerService);
 
     rv = observerService->RemoveObserver(this, "profile-before-change");
     if (NS_FAILED(rv)) rv2 = rv;
@@ -191,7 +213,7 @@ nsCacheProfilePrefObserver::Remove()
 
 
     // remove Pref Service observers
-    nsCOMPtr<nsIPrefBranchInternal> prefInternal = do_GetService(NS_PREFSERVICE_CONTRACTID);
+    nsCOMPtr<nsIPrefBranch2> prefInternal = do_GetService(NS_PREFSERVICE_CONTRACTID);
 
     // remove Disk cache pref observers
     rv  = prefInternal->RemoveObserver(DISK_CACHE_ENABLE_PREF, this);
@@ -321,15 +343,34 @@ nsCacheProfilePrefObserver::ReadPrefs(nsIPrefBranch* branch)
                                     getter_AddRefs(directory));
         if (NS_FAILED(rv)) {
             // try to get the profile directory (there may not be a profile yet)
-            rv = NS_GetSpecialDirectory(NS_APP_USER_PROFILE_50_DIR,
-                                        getter_AddRefs(directory));
+            nsCOMPtr<nsIFile> profDir;
+            NS_GetSpecialDirectory(NS_APP_USER_PROFILE_50_DIR,
+                                   getter_AddRefs(profDir));
+            NS_GetSpecialDirectory(NS_APP_USER_PROFILE_LOCAL_50_DIR,
+                                   getter_AddRefs(directory));
+            if (!directory)
+                directory = profDir;
+            else if (profDir) {
+                PRBool same;
+                if (NS_SUCCEEDED(profDir->Equals(directory, &same)) && !same) {
+                    // We no longer store the cache directory in the main
+                    // profile directory, so we should cleanup the old one.
+                    rv = profDir->AppendNative(NS_LITERAL_CSTRING("Cache"));
+                    if (NS_SUCCEEDED(rv)) {
+                        PRBool exists;
+                        if (NS_SUCCEEDED(profDir->Exists(&exists)) && exists)
+                            DeleteDir(profDir, PR_FALSE);
+                    }
+                }
+            }
+        }
 #if DEBUG
-        } else if (NS_FAILED(rv)) {
+        if (!directory) {
             // use current process directory during development
             rv = NS_GetSpecialDirectory(NS_XPCOM_CURRENT_PROCESS_DIR,
                                         getter_AddRefs(directory));
-#endif
         }
+#endif
         if (directory)
             mDiskCacheParentDirectory = do_QueryInterface(directory, &rv);
     }
@@ -410,11 +451,9 @@ nsCacheService::~nsCacheService()
 }
 
 
-NS_IMETHODIMP
+nsresult
 nsCacheService::Init()
 {
-    nsresult  rv;
-
     NS_ASSERTION(!mInitialized, "nsCacheService already initialized.");
     if (mInitialized)
         return NS_ERROR_ALREADY_INITIALIZED;
@@ -425,7 +464,7 @@ nsCacheService::Init()
     CACHE_LOG_INIT();
 
     // initialize hashtable for active cache entries
-    rv = mActiveEntries.Init();
+    nsresult rv = mActiveEntries.Init();
     if (NS_FAILED(rv)) return rv;
     
     // get references to services we'll be using frequently
@@ -453,7 +492,7 @@ nsCacheService::Init()
 }
 
 
-NS_IMETHODIMP
+void
 nsCacheService::Shutdown()
 {
     nsAutoLock  lock(mCacheServiceLock);
@@ -484,7 +523,6 @@ nsCacheService::Shutdown()
 #endif
 #endif
     }
-    return NS_OK;
 }
 
 
@@ -542,7 +580,7 @@ nsresult
 nsCacheService::EvictEntriesForClient(const char *          clientID,
                                       nsCacheStoragePolicy  storagePolicy)
 {
-    if (this == nsnull) return NS_ERROR_NOT_AVAILABLE;
+    if (this == nsnull) return NS_ERROR_NOT_AVAILABLE; // XXX eh?
     nsAutoLock lock(mCacheServiceLock);
     nsresult rv = NS_OK;
 
@@ -706,7 +744,7 @@ nsCacheService::CreateMemoryDevice()
 
 nsresult
 nsCacheService::CreateRequest(nsCacheSession *   session,
-                              const char *       clientKey,
+                              const nsACString & clientKey,
                               nsCacheAccessMode  accessRequested,
                               PRBool             blockingMode,
                               nsICacheListener * listener,
@@ -717,7 +755,7 @@ nsCacheService::CreateRequest(nsCacheSession *   session,
     nsCString * key = new nsCString(*session->ClientID());
     if (!key)
         return NS_ERROR_OUT_OF_MEMORY;
-    key->Append(":");
+    key->Append(':');
     key->Append(clientKey);
 
     if (mMaxKeyLength < key->Length()) mMaxKeyLength = key->Length();
@@ -829,7 +867,7 @@ nsCacheService::ProcessRequest(nsCacheRequest *           request,
 
 nsresult
 nsCacheService::OpenCacheEntry(nsCacheSession *           session,
-                               const char *               key,
+                               const nsACString &         key,
                                nsCacheAccessMode          accessRequested,
                                PRBool                     blockingMode,
                                nsICacheListener *         listener,

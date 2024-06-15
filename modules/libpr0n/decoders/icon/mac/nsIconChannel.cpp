@@ -1,25 +1,42 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 4 -*-
  *
- * The contents of this file are subject to the Mozilla Public
- * License Version 1.1 (the "License"); you may not use this file
- * except in compliance with the License. You may obtain a copy of
- * the License at http://www.mozilla.org/MPL/
+ * ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * Software distributed under the License is distributed on an "AS
- * IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
- * implied. See the License for the specific language governing
- * rights and limitations under the License.
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
+ *
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+ * for the specific language governing rights and limitations under the
+ * License.
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is Brian Ryner.
- * Portions created by Brian Ryner are Copyright (C) 2000 Brian Ryner.
- * All Rights Reserved.
+ * The Initial Developer of the Original Code is
+ * Brian Ryner.
+ * Portions created by the Initial Developer are Copyright (C) 2000
+ * the Initial Developer. All Rights Reserved.
  *
- * Contributor(s): 
+ * Contributor(s):
  *   Scott MacGregor          <mscott@netscape.com>
  *   Robert John Churchill    <rjc@netscape.com>
- */
+ *
+ * Alternatively, the contents of this file may be used under the terms of
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
+ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK ***** */
 
 
 #include "nsIconChannel.h"
@@ -298,6 +315,7 @@ NS_IMETHODIMP nsIconChannel::AsyncOpen(nsIStreamListener *aListener, nsISupports
     // sigh; REALLY low-mem, bail
     if (iconH)      ::DisposeHandle(iconH);
     if (iconMaskH)  ::DisposeHandle(iconMaskH);
+    if (fileExists) ::ReleaseIconRef(icnRef);
     return(NS_ERROR_OUT_OF_MEMORY);
   }
 
@@ -332,8 +350,8 @@ NS_IMETHODIMP nsIconChannel::AsyncOpen(nsIStreamListener *aListener, nsISupports
     nsCOMPtr<nsIMIMEInfo> mimeInfo;
     if (mimeService && (!contentType.IsEmpty() || !fileExtension.IsEmpty()))
     {
-      mimeService->GetFromTypeAndExtension(contentType.get(),
-                                           fileExtension.get(),
+      mimeService->GetFromTypeAndExtension(contentType,
+                                           fileExtension,
                                            getter_AddRefs(mimeInfo));
     }
 
@@ -517,7 +535,7 @@ NS_IMETHODIMP nsIconChannel::SetLoadFlags(PRUint32 aLoadAttributes)
 
 NS_IMETHODIMP nsIconChannel::GetContentType(nsACString &aContentType) 
 {
-  aContentType = NS_LITERAL_CSTRING("image/icon");
+  aContentType.AssignLiteral("image/icon");
   return NS_OK;
 }
 
@@ -531,7 +549,7 @@ nsIconChannel::SetContentType(const nsACString &aContentType)
 
 NS_IMETHODIMP nsIconChannel::GetContentCharset(nsACString &aContentCharset) 
 {
-  aContentCharset = NS_LITERAL_CSTRING("image/icon");
+  aContentCharset.AssignLiteral("image/icon");
   return NS_OK;
 }
 

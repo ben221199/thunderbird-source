@@ -24,6 +24,7 @@
  * Contributor(s):
  *   John Bandhauer <jband@netscape.com> (original author)
  *   Pierre Phaneuf <pp@ludusdesign.com>
+ *   Nate Nielsen <nielsen@memberwebs.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -42,6 +43,7 @@
 /* High level class and public functions implementation. */
 
 #include "xpcprivate.h"
+#include "XPCNativeWrapper.h"
 
 NS_IMPL_THREADSAFE_ISUPPORTS2(nsXPConnect,nsIXPConnect,nsISupportsWeakReference)
 
@@ -75,9 +77,7 @@ nsXPConnect::nsXPConnect()
         dont_AddRef(XPTI_GetInterfaceInfoManager());
     CallQueryInterface(iim, &mInterfaceInfoManager);
 
-    nsServiceManager::GetService(XPC_CONTEXT_STACK_CONTRACTID,
-                                 NS_GET_IID(nsIThreadJSContextStack),
-                                 (nsISupports **)&mContextStack);
+    CallGetService(XPC_CONTEXT_STACK_CONTRACTID, &mContextStack);
 
 #ifdef XPC_TOOLS_SUPPORT
   {
@@ -151,8 +151,6 @@ nsXPConnect::~nsXPConnect()
 
     gSelf = nsnull;
     gOnceAliveNowDead = JS_TRUE;
-
-    XPC_WN_JSOps_Shutdown();
 }
 
 // static
@@ -449,6 +447,10 @@ nsXPConnect::InitClasses(JSContext * aJSContext, JSObject * aGlobalJSObj)
     // Initialize any properties IDispatch needs on the global object
     XPCIDispatchExtension::Initialize(ccx, aGlobalJSObj);
 #endif
+
+    if (!XPCNativeWrapper::AttachNewConstructorObject(ccx, aGlobalJSObj))
+        return UnexpectedFailure(NS_ERROR_FAILURE);
+
     return NS_OK;
 }
 
@@ -466,12 +468,12 @@ static JSClass xpcTempGlobalClass = {
     JSCLASS_NO_OPTIONAL_MEMBERS
 };
 
-/* nsIXPConnectJSObjectHolder initClassesWithNewWrappedGlobal (in JSContextPtr aJSContext, in nsISupports aCOMObj, in nsIIDRef aIID, in PRBool aCallJS_InitStandardClasses); */
+/* nsIXPConnectJSObjectHolder initClassesWithNewWrappedGlobal (in JSContextPtr aJSContext, in nsISupports aCOMObj, in nsIIDRef aIID, in PRUint32 aFlags); */
 NS_IMETHODIMP
 nsXPConnect::InitClassesWithNewWrappedGlobal(JSContext * aJSContext,
                                              nsISupports *aCOMObj,
                                              const nsIID & aIID,
-                                             PRBool aCallJS_InitStandardClasses,
+                                             PRUint32 aFlags,
                                              nsIXPConnectJSObjectHolder **_retval)
 {
     NS_ASSERTION(aJSContext, "bad param");
@@ -493,6 +495,9 @@ nsXPConnect::InitClassesWithNewWrappedGlobal(JSContext * aJSContext,
        !JS_SetPrototype(aJSContext, tempGlobal, nsnull))
         return UnexpectedFailure(NS_ERROR_FAILURE);
 
+    if(aFlags & nsIXPConnect::FLAG_SYSTEM_GLOBAL_OBJECT)
+        JS_FlagSystemObject(aJSContext, tempGlobal);
+
     if(NS_FAILED(InitClasses(aJSContext, tempGlobal)))
         return UnexpectedFailure(NS_ERROR_FAILURE);
 
@@ -505,6 +510,9 @@ nsXPConnect::InitClassesWithNewWrappedGlobal(JSContext * aJSContext,
     if(NS_FAILED(holder->GetJSObject(&globalJSObj)) || !globalJSObj)
         return UnexpectedFailure(NS_ERROR_FAILURE);
 
+    if(aFlags & nsIXPConnect::FLAG_SYSTEM_GLOBAL_OBJECT)
+        NS_ASSERTION(JS_IsSystemObject(aJSContext, globalJSObj), "huh?!");
+
     // voodoo to fixup scoping and parenting...
 
     JS_SetParent(aJSContext, globalJSObj, nsnull);
@@ -513,7 +521,7 @@ nsXPConnect::InitClassesWithNewWrappedGlobal(JSContext * aJSContext,
     if(!oldGlobal || oldGlobal == tempGlobal)
         JS_SetGlobalObject(aJSContext, globalJSObj);
 
-    if(aCallJS_InitStandardClasses &&
+    if((aFlags & nsIXPConnect::INIT_JS_STANDARD_CLASSES) &&
        !JS_InitStandardClasses(aJSContext, globalJSObj))
         return UnexpectedFailure(NS_ERROR_FAILURE);
 
@@ -539,6 +547,9 @@ nsXPConnect::InitClassesWithNewWrappedGlobal(JSContext * aJSContext,
     }
 
     if(!nsXPCComponents::AttachNewComponentsObject(ccx, scope, globalJSObj))
+        return UnexpectedFailure(NS_ERROR_FAILURE);
+
+    if (!XPCNativeWrapper::AttachNewConstructorObject(ccx, globalJSObj))
         return UnexpectedFailure(NS_ERROR_FAILURE);
 
     NS_ADDREF(*_retval = holder);
@@ -1214,6 +1225,70 @@ nsXPConnect::DebugDumpEvalInJSStackFrame(PRUint32 aFrameNumber, const char *aSou
     return NS_OK;
 }
 
+/* JSVal variantToJS (in JSContextPtr ctx, in JSObjectPtr scope, in nsIVariant value); */
+NS_IMETHODIMP 
+nsXPConnect::VariantToJS(JSContext* ctx, JSObject* scope, nsIVariant* value, jsval* _retval)
+{
+    NS_PRECONDITION(ctx, "bad param");
+    NS_PRECONDITION(scope, "bad param");
+    NS_PRECONDITION(value, "bad param");
+    NS_PRECONDITION(_retval, "bad param");
+
+    XPCCallContext ccx(NATIVE_CALLER, ctx);
+    if(!ccx.IsValid())
+        return NS_ERROR_FAILURE;
+
+    nsresult rv = NS_OK;
+    if(!XPCVariant::VariantDataToJS(ccx, value, scope, &rv, _retval))
+    {
+        if(NS_FAILED(rv)) 
+            return rv;
+
+        return NS_ERROR_FAILURE;
+    }
+
+    return NS_OK;
+}
+
+/* nsIVariant JSToVariant (in JSContextPtr ctx, in JSVal value); */
+NS_IMETHODIMP 
+nsXPConnect::JSToVariant(JSContext* ctx, jsval value, nsIVariant** _retval)
+{
+    NS_PRECONDITION(ctx, "bad param");
+    NS_PRECONDITION(value, "bad param");
+    NS_PRECONDITION(_retval, "bad param");
+
+    XPCCallContext ccx(NATIVE_CALLER, ctx);
+    if(!ccx.IsValid())
+        return NS_ERROR_FAILURE;
+
+    *_retval = XPCVariant::newVariant(ccx, value);
+    if(!(*_retval)) 
+        return NS_ERROR_FAILURE;
+
+    return NS_OK;
+}
+
+/* void flagSystemFilenamePrefix (in string filenamePrefix); */
+NS_IMETHODIMP 
+nsXPConnect::FlagSystemFilenamePrefix(const char *aFilenamePrefix)
+{
+    NS_PRECONDITION(aFilenamePrefix, "bad param");
+
+    nsIJSRuntimeService* rtsvc = nsXPConnect::GetJSRuntimeService();
+    if(!rtsvc)
+        return NS_ERROR_NOT_INITIALIZED;
+
+    JSRuntime* rt;
+    nsresult rv = rtsvc->GetRuntime(&rt);
+    if(NS_FAILED(rv))
+        return rv;
+
+    if(!JS_FlagScriptFilenamePrefix(rt, aFilenamePrefix, JSFILENAME_SYSTEM))
+        return NS_ERROR_OUT_OF_MEMORY;
+    return NS_OK;
+}
+
 #ifdef DEBUG
 /* These are here to be callable from a debugger */
 JS_BEGIN_EXTERN_C
@@ -1240,6 +1315,42 @@ void DumpJSEval(PRUint32 frameno, const char* text)
 void DumpJSObject(JSObject* obj)
 {
     xpc_DumpJSObject(obj);
+}
+
+void DumpJSValue(jsval val)
+{
+    printf("Dumping 0x%lx. Value tag is %lu.\n", val, JSVAL_TAG(val));
+    if(JSVAL_IS_NULL(val)) {
+        printf("Value is null\n");
+    }
+    else if(JSVAL_IS_OBJECT(val)) {
+        printf("Value is an object\n");
+        JSObject* obj = JSVAL_TO_OBJECT(val);
+        DumpJSObject(obj);
+    }
+    else if(JSVAL_IS_NUMBER(val)) {
+        printf("Value is a number: ");
+        if(JSVAL_IS_INT(val))
+          printf("Integer %i\n", JSVAL_TO_INT(val));
+        else if(JSVAL_IS_DOUBLE(val))
+          printf("Floating-point value %f\n", *JSVAL_TO_DOUBLE(val));
+    }
+    else if(JSVAL_IS_STRING(val)) {
+        printf("Value is a string: ");
+        JSString* string = JSVAL_TO_STRING(val);
+        char* bytes = JS_GetStringBytes(string);
+        printf("<%s>\n", bytes);
+    }
+    else if(JSVAL_IS_BOOLEAN(val)) {
+        printf("Value is boolean: ");
+        printf(JSVAL_TO_BOOLEAN(val) ? "true" : "false");
+    }
+    else if(JSVAL_IS_VOID(val)) {
+        printf("Value is undefined\n");
+    }
+    else {
+        printf("No idea what this value is.\n");
+    }
 }
 JS_END_EXTERN_C
 #endif

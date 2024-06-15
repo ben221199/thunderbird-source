@@ -3,8 +3,6 @@
 <!ENTITY titleSeparator.label " - ">
 
 <!-- File Menu -->
-<!ENTITY newMessage.label "New Message">
-<!ENTITY newMessage.accesskey "N">
 <!ENTITY newFolderCmd.label "Folder...">
 <!ENTITY newFolderCmd.accesskey "F">
 <!ENTITY newVirtualFolderCmd.label "Saved Search...">
@@ -384,7 +382,7 @@
 
 <!-- Tools Menu -->
 <!ENTITY tasksMenu.label "Tools">
-<!ENTITY tasksMenu.accesskey "T"> 
+<!ENTITY tasksMenu.accesskey "T">
 <!ENTITY extensions.label             "Extensions">
 <!ENTITY extensions.tooltip           "Show and Manage installed Extensions">
 <!ENTITY extensions.accesskey         "E">
@@ -593,13 +591,17 @@
 <!ENTITY contextAddAllToAddressBook.accesskey "A">
 
 <!-- Junk Bar -->
-<!ENTITY junkBarMessage.label "&brandShortName; thinks this message is junk mail">
+<!ENTITY junkBarMessage.label "&brandShortName; thinks this message is junk.">
 <!ENTITY notJunkButton.label "This is Not Junk">
 <!ENTITY junkInfoButton.label "?">
 
 <!-- Remote Content Bar -->
-<!ENTITY remoteContenMessage.label "To protect your privacy, &brandShortName; has blocked remote images in this message." >
+<!ENTITY remoteContentMessage.label "To protect your privacy, &brandShortName; has blocked remote images in this message.">
 <!ENTITY loadRemoteContentButton.label "Show Images">
+
+<!-- Phshing bar Bar -->
+<!ENTITY phishingBarMessage.label "&brandShortName; thinks this message might be an email scam.">
+<!ENTITY removePhishingBarButton.label "Not a Scam">
 
 <!-- Search Bar -->
 <!ENTITY quickSearchCmd.key "k">

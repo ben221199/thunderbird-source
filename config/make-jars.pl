@@ -1,10 +1,17 @@
 #!/perl
 
-# make-jars [-f] [-v] [-l] [-x] [-d <chromeDir>] [-s <srcdir>] [-t <topsrcdir>] [-z zipprog] [-o operating-system] < <jar.mn>
+# make-jars [-f] [-v] [-l] [-x] [-d <chromeDir>] [-s <srcdir>] [-t <topsrcdir>] [-c <localedir>] [-z zipprog] [-o operating-system] < <jar.mn>
 
 my $cygwin_mountprefix = "";
 if ($^O eq "cygwin") {
-    $cygwin_mountprefix = `mount -p | awk '{ if (/^\\//) { print \$1; exit } }'`;
+    $cygwin_mountprefix = $ENV{CYGDRIVE_MOUNT};
+    if ($cygwin_mountprefix eq "") {
+      $cygwin_mountprefix = `mount -p | awk '{ if (/^\\//) { print \$1; exit } }'`;
+      if ($cygwin_mountprefix eq "") {
+        print "Cannot determine cygwin mount points. Exiting.\n";
+        exit(1);
+      }
+    }
     chomp($cygwin_mountprefix);
     # Remove extra ^M caused by using dos-mode line-endings
     chop $cygwin_mountprefix if (substr($cygwin_mountprefix, -1, 1) eq "\r");
@@ -24,6 +31,7 @@ use Time::localtime;
 use File::Copy;
 use File::Path;
 use File::Spec;
+use File::Basename;
 use IO::File;
 use Config;
 require mozLock;
@@ -41,7 +49,7 @@ foreach my $arg (@ARGV) {
 }
 my $defines = join(' ', @ARGV[ $ddindex .. $#ARGV ]);
 
-getopts("d:s:t:f:avlD:o:p:xz:");
+getopts("d:s:t:c:f:avlD:o:p:xz:");
 
 my $baseFilesDir = ".";
 if (defined($::opt_s)) {
@@ -51,6 +59,11 @@ if (defined($::opt_s)) {
 my $topSrcDir;
 if (defined($::opt_t)) {
     $topSrcDir = $::opt_t;
+}
+
+my $localeDir;
+if (defined($::opt_c)) {
+    $localeDir = $::opt_c;
 }
 
 my $maxCmdline = 4000;
@@ -282,6 +295,50 @@ sub _moz_abs2rel
     return File::Spec->abs2rel($target, $linkname);
 }
 
+sub UniqIt
+{
+    my $manifest = shift;
+
+    return if (scalar(@_) == 0); # no entries, don't bother
+
+    my %lines = map { $_ => 1 } @_;
+
+    my $lockfile = "$manifest.lck";
+    print "+++ updating chrome $manifest\n";
+
+    my $dir = dirname($manifest);
+    mkpath($dir, 0, 0755);
+
+    mozLock($lockfile) if (!$nofilelocks);
+    if (-f $manifest) {
+        unless (open(FILE, "<$manifest")) {
+            mozUnlock($lockfile) if (!$nofilelocks);
+            die "error: can't open $manifest: $!";
+        };
+
+        # Read through the file: if the lines already exist, no need to write
+        # them again.
+        while (defined($_ = <FILE>)) {
+            chomp;
+            delete $lines{$_};
+        }
+	close(FILE);
+    }
+
+    unless (open(FILE, ">>$manifest")) {
+        mozUnlock($lockfile) if (!$nofilelocks);
+        die "error: can't open $manifest: $!";
+    };
+
+    print FILE map("$_\n", keys(%lines));
+    close(FILE) or my $err = 1;
+    mozUnlock($lockfile) if (!$nofilelocks);
+
+    if ($err) {
+        die "error: can't close $manifest: $!";
+    }
+}
+
 sub RegIt
 {
     my ($chromeDir, $jarFileName, $chromeType, $pkgName) = @_;\
@@ -295,58 +352,7 @@ sub RegIt
         $line = "$chromeType,install,url,jar:resource:/chrome/$jarFileName.jar!/$chromeType/$pkgName/";
     }
     my $installedChromeFile = "$chromeDir/installed-chrome.txt";
-    my $lockfile = "$installedChromeFile.lck";
-    mozLock($lockfile) if (!$nofilelocks);
-    my $err = 0;
-    if (open(FILE, "<$installedChromeFile")) {
-        while (<FILE>) {
-            chomp;
-            if ($_ =~ $line) {
-                # line already appears in installed-chrome.txt file
-                # just update the mod date
-                close(FILE) or $err = 1; 
-                if ($err) {
-                    mozUnlock($lockfile) if (!$nofilelocks);
-                    die "error: can't close $installedChromeFile: $!";
-                }
-                my $now = time;
-                utime($now, $now, $installedChromeFile) or $err = 1;
-                mozUnlock($lockfile) if (!$nofilelocks);
-                if ($err) {
-                    die "couldn't touch $installedChromeFile";
-                }
-                print "+++ updating chrome $installedChromeFile\n+++\t$line\n";
-                return;
-            }
-        }
-        close(FILE) or $err = 1;
-        if ($err) {
-            mozUnlock($lockfile) if (!$nofilelocks);
-            die "error: can't close $installedChromeFile: $!";
-        }
-    }
-    mozUnlock($lockfile) if (!$nofilelocks);
-    
-    my $dir = $installedChromeFile;
-    if ("$dir" =~ /([\w\d.\-\\\/\+]+)[\\\/]([\w\d.\-]+)/) {
-        $dir = $1;
-    }
-    mkpath($dir, 0, 0755);
-    
-    mozLock($lockfile) if (!$nofilelocks);
-    $err = 0;
-    open(FILE, ">>$installedChromeFile") or $err = 1;
-    if ($err) {
-        mozUnlock($lockfile) if (!$nofilelocks);
-        die "can't open $installedChromeFile: $!";
-    }
-    print FILE "$line\n";
-    close(FILE) or $err = 1;
-    mozUnlock($lockfile) if (!$nofilelocks);
-    if ($err) {
-        die "error: can't close $installedChromeFile: $!";
-    }
-    print "+++ adding chrome $installedChromeFile\n+++\t$line\n";
+    UniqIt($installedChromeFile, $line);
 }
 
 sub EnsureFileInDir
@@ -360,7 +366,11 @@ sub EnsureFileInDir
     if (defined($src)) {
         if ($src =~ m|^/|) {
             # "absolute" patch from topSrcDir
+            defined($topSrcDir) || die("Command-line option -t <topsrcdir> missing.");
             $src = $topSrcDir.$srcFile;
+        } elsif ($srcFile =~ s|^\%|/|) {
+            defined($localeDir) || die("Command-line option -c <localedir> missing.");
+            $src = $localeDir.$srcFile;
         } elsif (! -e $src ) {
             $src = "$srcPath/$srcFile";
         }
@@ -476,9 +486,11 @@ start:
         my $args = "";
         my $overrides = "";
         my $cwd = cwd();
+        my @manifestLines;
+
         print "+++ making chrome $cwd  => $chromeDir/$jarfile.jar\n";
         while (defined($_ = shift @gLines)) {
-            if (/^\s+([\w\d.\-\_\\\/\+]+)\s*(\([\w\d.\-\_\\\/]+\))?$\s*/) {
+            if (/^\s+([\w\d.\-\_\\\/\+]+)\s*(\(\%?[\w\d.\-\_\\\/]+\))?$\s*/) {
                 my $dest = $1;
                 my $srcPath = defined($2) ? substr($2, 1, -1) : $2;
                 EnsureFileInDir("$chromeDir/$jarfile", $baseFilesDir, $dest, $srcPath, 0, 0);
@@ -490,7 +502,7 @@ start:
                     my $pkg_name = $2;
                     RegIt($chromeDir, $jarfile, $chrome_type, $pkg_name);
                 }
-            } elsif (/^\+\s+([\w\d.\-\_\\\/\+]+)\s*(\([\w\d.\-\_\\\/]+\))?$\s*/) {
+            } elsif (/^\+\s+([\w\d.\-\_\\\/\+]+)\s*(\(\%?[\w\d.\-\_\\\/]+\))?$\s*/) {
                 my $dest = $1;
                 my $srcPath = defined($2) ? substr($2, 1, -1) : $2;
                 EnsureFileInDir("$chromeDir/$jarfile", $baseFilesDir, $dest, $srcPath, 1, 0);
@@ -501,7 +513,7 @@ start:
                     my $pkg_name = $2;
                     RegIt($chromeDir, $jarfile, $chrome_type, $pkg_name);
                 }
-            } elsif (/^\*\+?\s+([\w\d.\-\_\\\/\+]+)\s*(\([\w\d.\-\_\\\/]+\))?$\s*/) {
+            } elsif (/^\*\+?\s+([\w\d.\-\_\\\/\+]+)\s*(\(\%?[\w\d.\-\_\\\/]+\))?$\s*/) {
                 # preprocessed (always override)
                 my $dest = $1;
                 my $srcPath = defined($2) ? substr($2, 1, -1) : $2;
@@ -513,14 +525,26 @@ start:
                     my $pkg_name = $2;
                     RegIt($chromeDir, $jarfile, $chrome_type, $pkg_name);
                 }
+            } elsif (/^\%\s+(.*)$/) {
+                my $path = $1;
+
+                if ($fileformat eq "flat" || $fileformat eq "symlink") {
+                    $path =~ s|\%|$jarfile/$0|;
+                } else {
+                    $path =~ s|\%|jar:$jarfile.jar!/$1|;
+                }
+
+                push @manifestLines, $path;
             } elsif (/^\s*$/) {
                 # end with blank line
                 last;
             } else {
+                UniqIt("$chromeDir/$jarfile.manifest", @manifestLines);
                 JarIt($chromeDir, $jarfile, $args, $overrides);
                 goto start;
             }
         }
+        UniqIt("$chromeDir/$jarfile.manifest", @manifestLines);
         JarIt($chromeDir, $jarfile, $args, $overrides);
 
     } elsif (/^\s*\#.*$/) {

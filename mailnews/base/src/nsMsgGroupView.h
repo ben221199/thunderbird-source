@@ -14,6 +14,11 @@
  *
  * The Original Code is mozilla.org code.
  *
+ * The Initial Developer of the Original Code is
+ * David Bienvenu.
+ * Portions created by the Initial Developer are Copyright (C) 2004
+ * the Initial Developer. All Rights Reserved.
+ *
  * Contributor(s):
  *   David Bienvenu <bienvenu@nventure.com>
  *
@@ -53,9 +58,9 @@ public:
                                       PRUint32 aNewFlags, nsIDBChangeListener *aInstigator);
 
   NS_IMETHOD LoadMessageByViewIndex(nsMsgViewIndex aViewIndex);
-  NS_IMETHOD GetCellProperties(PRInt32 aRow, const PRUnichar *aColID, nsISupportsArray *aProperties);
+  NS_IMETHOD GetCellProperties(PRInt32 aRow, nsITreeColumn *aCol, nsISupportsArray *aProperties);
   NS_IMETHOD GetRowProperties(PRInt32 aRow, nsISupportsArray *aProperties);
-  NS_IMETHOD GetCellText(PRInt32 aRow, const PRUnichar *aColID, nsAString& aValue);
+  NS_IMETHOD GetCellText(PRInt32 aRow, nsITreeColumn* aCol, nsAString& aValue);
 
 protected:
   nsMsgGroupThread *AddHdrToThread(nsIMsgDBHdr *msgHdr, PRBool *pNewThread);

@@ -45,7 +45,6 @@
 #include "nsIContent.h"
 
 class nsIScrollbarMediator;
-class StControlProcSingleton5;
 
 
 //
@@ -89,6 +88,7 @@ private:
 
   nsIContent*       mContent;          // the content node that affects the scrollbar's value
   nsIScrollbarMediator* mMediator;     // for scrolling with outliners
+  nsISupports*      mScrollbar;        // for calling into the mediator
   
   PRUint32          mMaxValue;
   PRUint32          mVisibleImageSize;

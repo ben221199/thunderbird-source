@@ -52,7 +52,7 @@
       <children/>
       <xul:hbox class="quick-search-textbox textbox-input-box" flex="1">
         <html:input class="textbox-input" flex="1" anonid="input" allowevents="true"
-                    xbl:inherits="onfocus,onblur,value,type,maxlength,disabled,size,readonly,tabindex,accesskey"/>        
+                    xbl:inherits="onfocus,onblur,value,type,maxlength,disabled,size,readonly,tabindex,accesskey"/>
       </xul:hbox>
       <xul:toolbarbutton id="quick-search-clearbutton" xbl:inherits="" disabled="true" class="quick-search-clearbutton" onclick="onClearSearch(); return false;"/>
     </content>
@@ -86,7 +86,7 @@
          this.clearButtonHidden = true;
         ]]></body>
       </method>
-    </implementation> 
+    </implementation>
 
     <handlers>
       <handler event="input">
@@ -129,8 +129,7 @@
     <resources>
       <stylesheet src="chrome://messenger/skin/searchBox.css"/>
     </resources>
-    <content xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul" 
-                 xmlns:xbl="http://www.mozilla.org/xbl" popup="_child">
+    <content popup="_child">
       <children/>
       <xul:stack flex="1">
         <xul:hbox align="center">

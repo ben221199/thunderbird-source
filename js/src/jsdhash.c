@@ -91,7 +91,7 @@ JS_DHashGetKeyStub(JSDHashTable *table, JSDHashEntryHdr *entry)
 JS_PUBLIC_API(JSDHashNumber)
 JS_DHashVoidPtrKeyStub(JSDHashTable *table, const void *key)
 {
-    return (JSDHashNumber)key >> 2;
+    return (JSDHashNumber)(unsigned long)key >> 2;
 }
 
 JS_PUBLIC_API(JSBool)
@@ -348,7 +348,7 @@ JS_DHashTableFinish(JSDHashTable *table)
     table->ops->freeTable(table, table->entryStore);
 }
 
-static JSDHashEntryHdr *
+static JSDHashEntryHdr * JS_DHASH_FASTCALL
 SearchTable(JSDHashTable *table, const void *key, JSDHashNumber keyHash,
             JSDHashOperator op)
 {
@@ -478,7 +478,7 @@ ChangeTable(JSDHashTable *table, int deltaLog2)
     return JS_TRUE;
 }
 
-JS_PUBLIC_API(JSDHashEntryHdr *)
+JS_PUBLIC_API(JSDHashEntryHdr *) JS_DHASH_FASTCALL
 JS_DHashTableOperate(JSDHashTable *table, const void *key, JSDHashOperator op)
 {
     JSDHashNumber keyHash;

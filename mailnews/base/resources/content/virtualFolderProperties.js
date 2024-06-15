@@ -14,6 +14,10 @@
  *
  * The Original Code is the virtual folder properties dialog
  *
+ * The Initial Developer of the Original Code is
+ * David Bienvenu.
+ * Portions created by the Initial Developer are Copyright (C) 2004
+ * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
  *  David Bienvenu <bienvenu@nventure.com> 
@@ -104,10 +108,11 @@ function setupSearchRows(aSearchTerms)
   {
     // load the search terms for the folder
     initializeSearchRows(nsMsgSearchScope.offlineMail, aSearchTerms);
-    gSearchLessButton.removeAttribute("disabled", "false");
+    if (aSearchTerms.Count() == 1)
+      document.getElementById("less0").setAttribute("disabled", "true");
   }
   else
-    onMore(null);
+    onMore(null, 0);
 }
 
 function updateOnlineSearchState()
@@ -145,9 +150,7 @@ function InitDialogWithVirtualFolder(aVirtualFolderURI)
   
   gSearchFolderURIs = dbFolderInfo.getCharPtrProperty("searchFolderUri");
   var searchTermString = dbFolderInfo.getCharPtrProperty("searchStr");
-  var searchOnline = {};
-  dbFolderInfo.getBooleanProperty("searchOnline", searchOnline, false);
-  document.getElementById('searchOnline').checked = searchOnline.value;
+  document.getElementById('searchOnline').checked = dbFolderInfo.getBooleanProperty("searchOnline", false);
   
   // work around to get our search term string converted into a real array of search terms
   var filterService = Components.classes["@mozilla.org/messenger/services/filters;1"].getService(Components.interfaces.nsIMsgFilterService);

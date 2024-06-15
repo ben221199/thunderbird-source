@@ -36,6 +36,10 @@ bin/defaults/profile/search.rdf
 bin/defaults/profile/mimeTypes.rdf
 bin/defaults/messenger/mailViews.dat
 bin/defaults/isp/movemail.rdf
+bin/defaults/messenger/Habeas.sfd
+bin/defaults/messenger/SpamAssassin.sfd
+bin/defaults/messenger/SpamCatcher.sfd
+bin/defaults/messenger/SpamPal.sfd
 
 [xpcom]
 bin/libmozjs.so
@@ -44,6 +48,7 @@ bin/libplc4.so
 bin/libplds4.so
 bin/cpu/sparcv8plus/libnspr_flt4.so
 bin/libxpcom.so
+bin/libxpcom_core.so
 bin/libxpistub.so
 bin/components/libxpinstall.so
 bin/components/libjar50.so
@@ -76,7 +81,6 @@ bin/components/directory.xpt
 bin/components/downloadmanager.xpt
 bin/components/history.xpt
 bin/components/related.xpt
-bin/components/urlbarhistory.xpt
 bin/components/search.xpt
 bin/components/autocomplete.xpt   
 bin/components/appshell.xpt
@@ -111,6 +115,7 @@ bin/components/content_html.xpt
 bin/components/content_htmldoc.xpt
 bin/components/content_xmldoc.xpt
 bin/components/content_xslt.xpt
+bin/components/content_xtf.xpt
 bin/components/txmgr.xpt
 bin/components/webBrowser_core.xpt
 bin/components/locale.xpt
@@ -127,7 +132,6 @@ bin/components/necko_data.xpt
 bin/components/necko_dns.xpt
 bin/components/necko_ftp.xpt
 bin/components/necko_http.xpt
-bin/components/necko_jar.xpt
 bin/components/necko_res.xpt
 bin/components/necko_socket.xpt
 bin/components/nsFilePicker.js
@@ -157,8 +161,8 @@ bin/components/xpcom_io.xpt
 bin/components/xpconnect.xpt
 bin/components/chrome.xpt
 bin/components/docshell.xpt
-bin/components/jsurl.xpt
 bin/components/layout_base.xpt
+bin/components/layout_printing.xpt
 bin/components/layout_xul.xpt
 bin/components/layout_xul_tree.xpt
 bin/components/xuldoc.xpt
@@ -188,6 +192,8 @@ bin/components/filepicker.xpt
 bin/components/mozldap.xpt
 bin/components/typeaheadfind.xpt
 bin/components/nsCloseAllWindows.js
+bin/components/extensions.xpt
+bin/components/nsExtensionManager.js
 bin/chrome/help.jar
 bin/chrome/toolkit.jar
 bin/chrome/comm.jar
@@ -200,6 +206,9 @@ bin/chrome/chromelist.txt
 ; webservices
 bin/components/libwebsrvcs.so
 bin/components/websrvcs.xpt
+
+; Roaming
+bin/chrome/sroaming.jar
 
 ;-bin/chrome/comm/content/editor/EditorInitPage.html
 ;-bin/chrome/comm/content/editor/content/EditorInitPagePlain.html
@@ -233,7 +242,6 @@ bin/res/ua.css
 bin/res/html.css
 bin/res/quirk.css
 bin/res/forms.css
-bin/res/platform-forms.css
 bin/res/EditorOverride.css
 bin/res/grabber.gif
 bin/res/table-add-column-after-active.gif
@@ -262,8 +270,8 @@ bin/res/rdf/loading.gif
 bin/res/html/*
 bin/res/fonts/*
 bin/res/dtd/*
-;debug menus reference samples dir - remove for actual releases:
-bin/res/samples/*
+bin/res/builtin/htmlBindings.xml
+bin/res/builtin/platformHTMLBindings.xml
 
 ; p3p
 bin/components/p3p.xpt

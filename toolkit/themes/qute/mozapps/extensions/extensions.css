@@ -2,16 +2,6 @@
   background-color: ThreeDFace;
 }
 
-/*
-#extensionsView[state="extensions"] {
-  background-image: url("chrome://mozapps/skin/extensions/viewWatermarkExtensions.png");
-}
-
-#extensionsView[state="themes"] {
-  background-image: url("chrome://mozapps/skin/extensions/viewWatermarkThemes.png");
-}
-*/
-
 /* Extension Manager Command Bar */
 #commandBar {
   padding: 0px 10px 5px 10px;
@@ -77,7 +67,7 @@
 }
 
 #installButton .button-icon,
-#uninstallButton .button-icon,
+#uninstallButton .button-icon, 
 #updateButton .button-icon,
 #optionsButton .button-icon,
 #useThemeButton .button-icon {
@@ -97,26 +87,7 @@
 }
 
 #getMore:focus {
-  -moz-outline: 1px dotted invert ! important;
-}
-
-/* Extension Buttons (Iconic buttons in each extension item) */
-.extension-button {
-  width: 16px;
-  height: 16px;
-  margin: 1px;
-}
-
-.extension-button[anonid="options-button"] {
-  background-image: url("chrome://mozapps/skin/extensions/extensionOptions.png");
-}
-
-.extension-button[anonid="about-button"] {
-  background-image: url("chrome://mozapps/skin/extensions/extensionAbout.png");
-}
-
-.extension-button[anonid="homepage-button"] {
-  background-image: url("chrome://mozapps/skin/extensions/extensionHome.png");
+  outline: 1px dotted invert ! important;
 }
 
 /* Extension List Items */

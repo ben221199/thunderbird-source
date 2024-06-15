@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is Mozilla Communicator client code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -22,18 +22,17 @@
  * Contributor(s):
  *   Pierre Phaneuf <pp@ludusdesign.com>
  *
- *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 #include "nsIDOMHTMLOptionElement.h"
@@ -42,11 +41,10 @@
 #include "nsIDOMHTMLOptGroupElement.h"
 #include "nsIDOMHTMLFormElement.h"
 #include "nsIDOMEventReceiver.h"
-#include "nsIHTMLContent.h"
 #include "nsGenericHTMLElement.h"
 #include "nsHTMLAtoms.h"
 #include "nsStyleConsts.h"
-#include "nsIPresContext.h"
+#include "nsPresContext.h"
 #include "nsIFormControl.h"
 #include "nsIForm.h"
 #include "nsIDOMText.h"
@@ -68,7 +66,6 @@
 #include "nsCOMPtr.h"
 #include "nsLayoutAtoms.h"
 #include "nsIEventStateManager.h"
-#include "nsXULAtoms.h"
 #include "nsIDOMDocument.h"
 
 /**
@@ -81,7 +78,7 @@ class nsHTMLOptionElement : public nsGenericHTMLElement,
                             public nsIOptionElement
 {
 public:
-  nsHTMLOptionElement();
+  nsHTMLOptionElement(nsINodeInfo *aNodeInfo);
   virtual ~nsHTMLOptionElement();
 
   // nsISupports
@@ -106,9 +103,8 @@ public:
   NS_IMETHOD Initialize(JSContext* aContext, JSObject *aObj, 
                         PRUint32 argc, jsval *argv);
 
-  NS_IMETHOD GetAttributeChangeHint(const nsIAtom* aAttribute,
-                                    PRInt32 aModType,
-                                    nsChangeHint& aHint) const;
+  virtual nsChangeHint GetAttributeChangeHint(const nsIAtom* aAttribute,
+                                              PRInt32 aModType) const;
 
   // nsIOptionElement
   NS_IMETHOD SetSelectedInternal(PRBool aValue, PRBool aNotify);
@@ -123,11 +119,8 @@ public:
                            nsIAtom* aPrefix, const nsAString& aValue,
                            PRBool aNotify);
   virtual nsresult InsertChildAt(nsIContent* aKid, PRUint32 aIndex,
-                                 PRBool aNotify, PRBool aDeepSetDocument);
-  virtual nsresult ReplaceChildAt(nsIContent* aKid, PRUint32 aIndex,
-                                  PRBool aNotify, PRBool aDeepSetDocument);
-  virtual nsresult AppendChildTo(nsIContent* aKid, PRBool aNotify,
-                                 PRBool aDeepSetDocument);
+                                 PRBool aNotify);
+  virtual nsresult AppendChildTo(nsIContent* aKid, PRBool aNotify);
   virtual nsresult RemoveChildAt(PRUint32 aIndex, PRBool aNotify);
 
 protected:
@@ -154,12 +147,9 @@ protected:
   PRPackedBool mIsSelected;
 };
 
-nsresult
-NS_NewHTMLOptionElement(nsIHTMLContent** aInstancePtrResult,
-                        nsINodeInfo *aNodeInfo, PRBool aFromParser)
+nsGenericHTMLElement*
+NS_NewHTMLOptionElement(nsINodeInfo *aNodeInfo, PRBool aFromParser)
 {
-  NS_ENSURE_ARG_POINTER(aInstancePtrResult);
-
   /*
    * nsHTMLOptionElement's will be created without a nsINodeInfo passed in
    * if someone says "var opt = new Option();" in JavaScript, in a case like
@@ -170,40 +160,20 @@ NS_NewHTMLOptionElement(nsIHTMLContent** aInstancePtrResult,
   if (!nodeInfo) {
     nsCOMPtr<nsIDocument> doc =
       do_QueryInterface(nsContentUtils::GetDocumentFromCaller());
-    NS_ENSURE_TRUE(doc, NS_ERROR_UNEXPECTED);
+    NS_ENSURE_TRUE(doc, nsnull);
 
-    nsINodeInfoManager *nodeInfoManager = doc->GetNodeInfoManager();
-    NS_ENSURE_TRUE(nodeInfoManager, NS_ERROR_UNEXPECTED);
-
-    rv = nodeInfoManager->GetNodeInfo(nsHTMLAtoms::option, nsnull,
-                                      kNameSpaceID_None,
-                                      getter_AddRefs(nodeInfo));
-    NS_ENSURE_SUCCESS(rv, rv);
+    rv = doc->NodeInfoManager()->GetNodeInfo(nsHTMLAtoms::option, nsnull,
+                                             kNameSpaceID_None,
+                                             getter_AddRefs(nodeInfo));
+    NS_ENSURE_SUCCESS(rv, nsnull);
   }
 
-  nsIHTMLContent* it = new nsHTMLOptionElement();
-
-  if (!it) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
-
-  rv = NS_STATIC_CAST(nsGenericElement *, it)->Init(nodeInfo);
-
-  if (NS_FAILED(rv)) {
-    delete it;
-
-    return rv;
-  }
-
-  *aInstancePtrResult = NS_STATIC_CAST(nsIHTMLContent *, it);
-  NS_ADDREF(*aInstancePtrResult);
-
-  return NS_OK;
+  return new nsHTMLOptionElement(nodeInfo);
 }
 
-
-nsHTMLOptionElement::nsHTMLOptionElement()
-  : mIsInitialized(PR_FALSE),
+nsHTMLOptionElement::nsHTMLOptionElement(nsINodeInfo *aNodeInfo)
+  : nsGenericHTMLElement(aNodeInfo),
+    mIsInitialized(PR_FALSE),
     mIsSelected(PR_FALSE)
 {
 }
@@ -229,33 +199,8 @@ NS_HTML_CONTENT_INTERFACE_MAP_BEGIN(nsHTMLOptionElement, nsGenericHTMLElement)
 NS_HTML_CONTENT_INTERFACE_MAP_END
 
 
-nsresult
-nsHTMLOptionElement::CloneNode(PRBool aDeep, nsIDOMNode** aReturn)
-{
-  NS_ENSURE_ARG_POINTER(aReturn);
-  *aReturn = nsnull;
+NS_IMPL_DOM_CLONENODE(nsHTMLOptionElement)
 
-  nsHTMLOptionElement* it = new nsHTMLOptionElement();
-
-  if (!it) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
-
-  nsCOMPtr<nsIDOMNode> kungFuDeathGrip(it);
-
-  nsresult rv = NS_STATIC_CAST(nsGenericElement *, it)->Init(mNodeInfo);
-
-  if (NS_FAILED(rv))
-    return rv;
-
-  CopyInnerTo(it, aDeep);
-
-  *aReturn = NS_STATIC_CAST(nsIDOMNode *, it);
-
-  NS_ADDREF(*aReturn);
-
-  return NS_OK;
-}
 
 NS_IMETHODIMP
 nsHTMLOptionElement::GetForm(nsIDOMHTMLFormElement** aForm)
@@ -281,9 +226,12 @@ nsHTMLOptionElement::SetSelectedInternal(PRBool aValue, PRBool aNotify)
   mIsInitialized = PR_TRUE;
   mIsSelected = aValue;
 
-  if (aNotify && mDocument) {
-    mozAutoDocUpdate(mDocument, UPDATE_CONTENT_STATE, aNotify);
-    mDocument->ContentStatesChanged(this, nsnull, NS_EVENT_STATE_CHECKED);
+  if (aNotify) {
+    nsIDocument* document = GetCurrentDoc();
+    if (document) {
+      mozAutoDocUpdate(document, UPDATE_CONTENT_STATE, aNotify);
+      document->ContentStatesChanged(this, nsnull, NS_EVENT_STATE_CHECKED);
+    }
   }
 
   return NS_OK;
@@ -400,19 +348,18 @@ nsHTMLOptionElement::GetIndex(PRInt32* aIndex)
   return NS_OK;
 }
 
-NS_IMETHODIMP
+nsChangeHint
 nsHTMLOptionElement::GetAttributeChangeHint(const nsIAtom* aAttribute,
-                                            PRInt32 aModType,
-                                            nsChangeHint& aHint) const
+                                            PRInt32 aModType) const
 {
-  nsresult rv =
-    nsGenericHTMLElement::GetAttributeChangeHint(aAttribute, aModType, aHint);
+  nsChangeHint retval =
+      nsGenericHTMLElement::GetAttributeChangeHint(aAttribute, aModType);
 
   if (aAttribute == nsHTMLAtoms::label ||
       aAttribute == nsHTMLAtoms::text) {
-    NS_UpdateHint(aHint, NS_STYLE_HINT_REFLOW);
+    NS_UpdateHint(retval, NS_STYLE_HINT_REFLOW);
   }
-  return rv;
+  return retval;
 }
 
 NS_IMETHODIMP
@@ -474,10 +421,9 @@ nsHTMLOptionElement::SetText(const nsAString& aText)
     rv = NS_NewTextNode(getter_AddRefs(text));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = text->SetText(aText, PR_TRUE);
-    NS_ENSURE_SUCCESS(rv, rv);
+    text->SetText(aText, PR_TRUE);
 
-    rv = AppendChildTo(text, PR_TRUE, PR_FALSE);
+    rv = AppendChildTo(text, PR_TRUE);
   }
 
   return rv;
@@ -524,29 +470,17 @@ nsHTMLOptionElement::SetAttr(PRInt32 aNameSpaceID, nsIAtom* aName,
 //
 nsresult
 nsHTMLOptionElement::InsertChildAt(nsIContent* aKid, PRUint32 aIndex,
-                                   PRBool aNotify, PRBool aDeepSetDocument)
+                                   PRBool aNotify)
 {
-  nsresult rv = nsGenericHTMLElement::InsertChildAt(aKid, aIndex, aNotify,
-                                                    aDeepSetDocument);
+  nsresult rv = nsGenericHTMLElement::InsertChildAt(aKid, aIndex, aNotify);
   NotifyTextChanged();
   return rv;
 }
 
 nsresult
-nsHTMLOptionElement::ReplaceChildAt(nsIContent* aKid, PRUint32 aIndex,
-               PRBool aNotify, PRBool aDeepSetDocument)
+nsHTMLOptionElement::AppendChildTo(nsIContent* aKid, PRBool aNotify)
 {
-  nsresult rv = nsGenericHTMLElement::ReplaceChildAt(aKid, aIndex, aNotify,
-                                                     aDeepSetDocument);
-  NotifyTextChanged();
-  return rv;
-}
-
-nsresult
-nsHTMLOptionElement::AppendChildTo(nsIContent* aKid, PRBool aNotify, PRBool aDeepSetDocument)
-{
-  nsresult rv = nsGenericHTMLElement::AppendChildTo(aKid, aNotify,
-                                                    aDeepSetDocument);
+  nsresult rv = nsGenericHTMLElement::AppendChildTo(aKid, aNotify);
   NotifyTextChanged();
   return rv;
 }
@@ -566,7 +500,12 @@ nsHTMLOptionElement::RemoveChildAt(PRUint32 aIndex, PRBool aNotify)
 nsIFormControlFrame *
 nsHTMLOptionElement::GetSelectFrame() const
 {
-  if (!GetParent() || !mDocument) {
+  if (!GetParent()) {
+    return nsnull;
+  }
+
+  nsIDocument* currentDoc = GetCurrentDoc();
+  if (!currentDoc) {
     return nsnull;
   }
 
@@ -580,7 +519,7 @@ nsHTMLOptionElement::GetSelectFrame() const
     return nsnull;
   }
 
-  return GetFormControlFrameFor(selectContent, mDocument, PR_FALSE);
+  return GetFormControlFrameFor(selectContent, currentDoc, PR_FALSE);
 }
 
 // Get the select content element that contains this option
@@ -617,17 +556,12 @@ nsHTMLOptionElement::Initialize(JSContext* aContext,
         return result;
       }
 
-      result =
-        textContent->SetText(NS_REINTERPRET_CAST(const PRUnichar*,
-                                                 JS_GetStringChars(jsstr)),
-                             JS_GetStringLength(jsstr),
-                             PR_FALSE);
-
-      if (NS_FAILED(result)) {
-        return result;
-      }
+      textContent->SetText(NS_REINTERPRET_CAST(const PRUnichar*,
+                                               JS_GetStringChars(jsstr)),
+                           JS_GetStringLength(jsstr),
+                           PR_FALSE);
       
-      result = AppendChildTo(textContent, PR_FALSE, PR_FALSE);
+      result = AppendChildTo(textContent, PR_FALSE);
       if (NS_FAILED(result)) {
         return result;
       }

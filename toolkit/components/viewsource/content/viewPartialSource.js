@@ -1,5 +1,5 @@
 # -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
-# **** BEGIN LICENSE BLOCK ****
+# ***** BEGIN LICENSE BLOCK *****
 # Version: MPL 1.1/GPL 2.0/LGPL 2.1
 #
 # The contents of this file are subject to the Mozilla Public License Version
@@ -14,7 +14,8 @@
 #
 # The Original Code is mozilla.org view-source front-end.
 #
-# The Initial Developer of the Original Code is mozilla.org.
+# The Initial Developer of the Original Code is
+# mozilla.org.
 # Portions created by the Initial Developer are Copyright (C) 2002
 # the Initial Developer. All Rights Reserved.
 #
@@ -35,7 +36,7 @@
 # the provisions above, a recipient may use your version of this file under
 # the terms of any one of the MPL, the GPL or the LGPL.
 #
-# **** END LICENSE BLOCK ****
+# ***** END LICENSE BLOCK *****
 
 var gDebug = 0;
 var gLineCount = 0;
@@ -76,12 +77,6 @@ function onLoadViewPartialSource()
   }
   
   initFindBar();
-
-  // disable menu items that don't work since the selection is munged and
-  // the editor doesn't work for MathML
-  document.getElementById('cmd_savePage').setAttribute('disabled', 'true');
-  // we don't support external editors
-  //document.getElementById('cmd_editPage').setAttribute('disabled', 'true');
 
   if (window.arguments[3] == 'selection')
     viewPartialSourceForSelection(window.arguments[2]);

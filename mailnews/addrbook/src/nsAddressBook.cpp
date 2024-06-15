@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -24,16 +24,16 @@
  *   Pierre Phaneuf <pp@ludusdesign.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -60,8 +60,6 @@
 #include "nsRDFResource.h"
 #include "nsIRDFService.h"
 #include "nsIServiceManager.h"
-#include "nsAppShellCIDs.h"
-#include "nsIAppShellService.h"
 #include "nsIDOMWindowInternal.h"
 #include "nsIContentViewer.h"
 #include "nsIDocShell.h"
@@ -69,15 +67,15 @@
 #include "nsReadableUtils.h"
 #include "nsICategoryManager.h"
 #include "nsIAbUpgrader.h"
-#include "nsSpecialSystemDirectory.h"
 #include "nsIFilePicker.h"
-#include "nsIPref.h"
 #include "nsIPrefService.h"
 #include "nsIPrefBranch.h"
+#include "nsIPrefLocalizedString.h"
 #include "nsVoidArray.h"
 #include "nsIAbCard.h"
 #include "nsIAbMDBCard.h"
 #include "plbase64.h"
+#include "nsIWindowWatcher.h"
 
 #include "nsEscape.h"
 #include "nsVCard.h"
@@ -85,8 +83,15 @@
 #include "nsISupportsPrimitives.h"
 #include "nsIInterfaceRequestor.h"
 #include "nsIInterfaceRequestorUtils.h"
-#include "nsNetCID.h"
-#include "nsIIOService.h"
+#include "nsIDocShell.h"
+#include "nsAutoPtr.h"
+#include "nsIMsgVCardService.h"
+
+#include "nsCRT.h"
+
+#ifdef MOZ_XUL_APP
+#include "nsICommandLine.h"
+#endif
 
 // according to RFC 2849
 // SEP = (CR LF / LF)
@@ -176,7 +181,11 @@ nsAddressBook::~nsAddressBook()
 
 NS_IMPL_THREADSAFE_ADDREF(nsAddressBook)
 NS_IMPL_THREADSAFE_RELEASE(nsAddressBook)
-NS_IMPL_QUERY_INTERFACE3(nsAddressBook, nsIAddressBook, nsICmdLineHandler, nsIContentHandler)
+NS_IMPL_QUERY_INTERFACE4(nsAddressBook,
+                         nsIAddressBook,
+                         ICOMMANDLINEHANDLER,
+                         nsIContentHandler,
+                         nsIStreamLoaderObserver)
 
 //
 // nsIAddressBook
@@ -272,8 +281,8 @@ NS_IMETHODIMP nsAddressBook::GetAbDatabaseFromURI(const char *aURI, nsIAddrDatab
     do_GetService(NS_ADDRBOOKSESSION_CONTRACTID, &rv);
   NS_ENSURE_SUCCESS(rv,rv);
 
-  nsFileSpec* dbPath;
-  rv = abSession->GetUserProfileDirectory(&dbPath);
+  nsCOMPtr<nsILocalFile> dbPath;
+  rv = abSession->GetUserProfileDirectory(getter_AddRefs(dbPath));
   NS_ENSURE_SUCCESS(rv,rv);
 
  /* directory URIs are of the form
@@ -290,17 +299,18 @@ NS_IMETHODIMP nsAddressBook::GetAbDatabaseFromURI(const char *aURI, nsIAddrDatab
   PRInt32 pos = file.Find("/");
   if (pos != kNotFound)
     file.Truncate(pos);
-  (*dbPath) += file.get();
+  rv = dbPath->AppendNative(file);
+  NS_ENSURE_SUCCESS(rv,rv);
   
   nsCOMPtr<nsIAddrDatabase> addrDBFactory = 
     do_GetService(NS_ADDRDATABASE_CONTRACTID, &rv);
   NS_ENSURE_SUCCESS(rv,rv);
 
-  rv = addrDBFactory->Open(dbPath, PR_TRUE /* create */, aDB, PR_TRUE);
-  delete dbPath;
-  NS_ENSURE_SUCCESS(rv,rv);
+  /* Don't create otherwise we end up re-opening a deleted address book */
+  /* bug 66410 */
+  rv = addrDBFactory->Open(dbPath, PR_FALSE /* no create */, PR_TRUE, aDB);
   
-  return NS_OK;
+  return rv;
 }
 
 nsresult nsAddressBook::GetAbDatabaseFromFile(char* pDbFile, nsIAddrDatabase **db)
@@ -309,22 +319,24 @@ nsresult nsAddressBook::GetAbDatabaseFromFile(char* pDbFile, nsIAddrDatabase **d
     nsCOMPtr<nsIAddrDatabase> database;
     if (pDbFile)
     {
-        nsFileSpec* dbPath = nsnull;
+        nsCOMPtr<nsILocalFile> dbPath;
 
         nsCOMPtr<nsIAddrBookSession> abSession = 
                  do_GetService(NS_ADDRBOOKSESSION_CONTRACTID, &rv); 
         if(NS_SUCCEEDED(rv))
-            abSession->GetUserProfileDirectory(&dbPath);
+        {
+          rv = abSession->GetUserProfileDirectory(getter_AddRefs(dbPath));
+          NS_ENSURE_SUCCESS(rv, rv);
+        }
         
         nsCAutoString file(pDbFile);
-        (*dbPath) += file.get();
+        rv = dbPath->AppendNative(file);
+        NS_ENSURE_SUCCESS(rv,rv);
 
         nsCOMPtr<nsIAddrDatabase> addrDBFactory = 
                  do_GetService(NS_ADDRDATABASE_CONTRACTID, &rv);
         if (NS_SUCCEEDED(rv) && addrDBFactory)
-            rv = addrDBFactory->Open(dbPath, PR_TRUE, getter_AddRefs(database), PR_TRUE);
-
-      delete dbPath;
+            rv = addrDBFactory->Open(dbPath, PR_TRUE, PR_TRUE, getter_AddRefs(database));
 
         if (NS_SUCCEEDED(rv) && database)
         {
@@ -465,26 +477,27 @@ nsresult AddressBookParser::ParseFile()
     // to do: we should use only one "return rv;" at the very end, instead of this
     //  multi return structure
     nsresult rv = NS_OK;
-    nsFileSpec* dbPath = nsnull;
-    char* fileName = PR_smprintf("%s.mab", leafName);
+    nsCOMPtr<nsILocalFile> dbPath;
+    nsCAutoString fileName(leafName);
+    fileName.Append(NS_LITERAL_CSTRING(".mab"));
 
     nsCOMPtr<nsIAddrBookSession> abSession = 
              do_GetService(NS_ADDRBOOKSESSION_CONTRACTID, &rv); 
     if(NS_SUCCEEDED(rv))
-        abSession->GetUserProfileDirectory(&dbPath);
+      rv = abSession->GetUserProfileDirectory(getter_AddRefs(dbPath));
     
     /* create address book database  */
-    if (dbPath)
+    if(NS_SUCCEEDED(rv))
     {
-        (*dbPath) += fileName;
+        dbPath->AppendNative(fileName);
+        NS_ENSURE_SUCCESS(rv, rv);
+
         nsCOMPtr<nsIAddrDatabase> addrDBFactory = 
                  do_GetService(NS_ADDRDATABASE_CONTRACTID, &rv);
         if (NS_SUCCEEDED(rv) && addrDBFactory)
-            rv = addrDBFactory->Open(dbPath, PR_TRUE, getter_AddRefs(mDatabase), PR_TRUE);
+            rv = addrDBFactory->Open(dbPath, PR_TRUE, PR_TRUE, getter_AddRefs(mDatabase));
     }
     NS_ENSURE_SUCCESS(rv, rv);
-
-    delete dbPath;
 
     nsCOMPtr<nsIRDFService> rdfService = do_GetService (NS_RDF_CONTRACTID "/rdf-service;1", &rv);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -496,31 +509,32 @@ nsresult AddressBookParser::ParseFile()
         return NS_ERROR_NULL_POINTER;
 
     // Get Pretty name from prefs.
-    nsCOMPtr<nsIPref> pPref(do_GetService(NS_PREF_CONTRACTID, &rv)); 
-    if (NS_FAILED(rv) || !pPref) 
+    nsCOMPtr<nsIPrefBranch> pPref(do_GetService(NS_PREFSERVICE_CONTRACTID, &rv));
+    if (NS_FAILED(rv)) 
         return nsnull;
 
     nsXPIDLString dirName;
-    if (strcmp(fileName, kPersonalAddressbook) == 0)
-        rv = pPref->GetLocalizedUnicharPref("ldap_2.servers.pab.description", getter_Copies(dirName));
+    nsCOMPtr<nsIPrefLocalizedString> locString;
+    nsCAutoString prefName;
+    if (strcmp(fileName.get(), kPersonalAddressbook) == 0)
+        prefName.AssignLiteral("ldap_2.servers.pab.description");
     else
-    {
-      nsCAutoString prefName;
-      prefName = NS_LITERAL_CSTRING("ldap_2.servers.") + nsDependentCString(leafName) + NS_LITERAL_CSTRING(".description");
-      rv = pPref->GetLocalizedUnicharPref(prefName.get(), getter_Copies(dirName));
-    }
+        prefName = NS_LITERAL_CSTRING("ldap_2.servers.") + nsDependentCString(leafName) + NS_LITERAL_CSTRING(".description");
+
+    rv = pPref->GetComplexValue(prefName.get(), NS_GET_IID(nsIPrefLocalizedString), getter_AddRefs(locString));
+
+    if (NS_SUCCEEDED(rv))
+       rv = locString->ToString(getter_Copies(dirName));
 
     // If a name is found then use it, otherwise use the filename as last resort.
     if (NS_FAILED(rv) || dirName.IsEmpty())
-      dirName = NS_ConvertASCIItoUCS2(leafName);
+      dirName.AssignASCII(leafName);
     parentDir->CreateDirectoryByURI(dirName, mDbUri, mMigrating);
         
     rv = ParseLDIFFile();
 
     if (leafName)
         nsCRT::free(leafName);
-    if (fileName)
-        PR_smprintf_free(fileName);
 
     return rv;
 }
@@ -579,7 +593,7 @@ nsresult AddressBookParser::str_parse_line(
     }
 
     /* trim any space between type and : */
-    for ( p = s - 1; p > line && nsString::IsSpace( *p ); p-- ) {
+    for ( p = s - 1; p > line && nsCRT::IsAsciiSpace( *p ); p-- ) {
         *p = '\0';
     }
     *s++ = '\0';
@@ -1332,11 +1346,11 @@ enum ADDRESSBOOK_EXPORT_FILE_TYPE
  TAB_EXPORT_TYPE = 2
 };
 
-NS_IMETHODIMP nsAddressBook::ExportAddressBook(nsIDOMWindowInternal *aParentWin, nsIAbDirectory *aDirectory)
+NS_IMETHODIMP nsAddressBook::ExportAddressBook(nsIDOMWindow *aParentWin, nsIAbDirectory *aDirectory)
 {
   NS_ENSURE_ARG_POINTER(aParentWin);
-  nsresult rv;
 
+  nsresult rv;
   nsCOMPtr<nsIFilePicker> filePicker = do_CreateInstance("@mozilla.org/filepicker;1", &rv);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1345,23 +1359,12 @@ NS_IMETHODIMP nsAddressBook::ExportAddressBook(nsIDOMWindowInternal *aParentWin,
   nsCOMPtr<nsIStringBundle> bundle;
   rv = bundleService->CreateBundle("chrome://messenger/locale/addressbook/addressBook.properties", getter_AddRefs(bundle));
   NS_ENSURE_SUCCESS(rv, rv);
-
-  nsCOMPtr<nsIScriptGlobalObject> globalObj = do_QueryInterface(aParentWin, &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsCOMPtr<nsIDocShell> docShell = globalObj->GetDocShell();
-  if (!docShell)
-    return NS_ERROR_NULL_POINTER;
-
-  nsCOMPtr<nsIDOMWindow> parentWindow = do_GetInterface(docShell);
-  if (!parentWindow)
-    return NS_NOINTERFACE;
-
+ 
   nsXPIDLString title;
   rv = bundle->GetStringFromName(NS_LITERAL_STRING("ExportAddressBookTitle").get(), getter_Copies(title));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  rv = filePicker->Init(parentWindow, title, nsIFilePicker::modeSave);
+  rv = filePicker->Init(aParentWin, title, nsIFilePicker::modeSave);
   NS_ENSURE_SUCCESS(rv, rv);
  
   nsXPIDLString filterString;
@@ -1422,7 +1425,7 @@ NS_IMETHODIMP nsAddressBook::ExportAddressBook(nsIDOMWindowInternal *aParentWin,
        (fileName.RFind(LDIF_FILE_EXTENSION2, PR_TRUE, -1, sizeof(LDIF_FILE_EXTENSION2)-1) == kNotFound)) {
 
        // Add the extenstion and build a new localFile.
-       fileName.Append(NS_LITERAL_STRING(LDIF_FILE_EXTENSION2));
+       fileName.AppendLiteral(LDIF_FILE_EXTENSION2);
        localFile->SetLeafName(fileName);
     }
       rv = ExportDirectoryToLDIF(aDirectory, localFile);
@@ -1433,7 +1436,7 @@ NS_IMETHODIMP nsAddressBook::ExportAddressBook(nsIDOMWindowInternal *aParentWin,
       if (fileName.RFind(CSV_FILE_EXTENSION, PR_TRUE, -1, sizeof(CSV_FILE_EXTENSION)-1) == kNotFound) {
 
        // Add the extenstion and build a new localFile.
-       fileName.Append(NS_LITERAL_STRING(CSV_FILE_EXTENSION));
+       fileName.AppendLiteral(CSV_FILE_EXTENSION);
        localFile->SetLeafName(fileName);
     }
       rv = ExportDirectoryToDelimitedText(aDirectory, CSV_DELIM, CSV_DELIM_LEN, localFile);
@@ -1445,7 +1448,7 @@ NS_IMETHODIMP nsAddressBook::ExportAddressBook(nsIDOMWindowInternal *aParentWin,
           (fileName.RFind(TAB_FILE_EXTENSION, PR_TRUE, -1, sizeof(TAB_FILE_EXTENSION)-1) == kNotFound) ) {
 
        // Add the extenstion and build a new localFile.
-       fileName.Append(NS_LITERAL_STRING(TXT_FILE_EXTENSION));
+       fileName.AppendLiteral(TXT_FILE_EXTENSION);
        localFile->SetLeafName(fileName);
   }
       rv = ExportDirectoryToDelimitedText(aDirectory, TAB_DELIM, TAB_DELIM_LEN, localFile);
@@ -1555,7 +1558,7 @@ nsAddressBook::ExportDirectoryToDelimitedText(nsIAbDirectory *aDirectory, const 
               if (needsQuotes)
               {
                 newValue.Insert(NS_LITERAL_STRING("\""), 0);
-                newValue.Append(NS_LITERAL_STRING("\""));
+                newValue.AppendLiteral("\"");
               }
 
               // For notes, make sure CR/LF is converted to spaces 
@@ -1695,9 +1698,9 @@ nsAddressBook::ExportDirectoryToLDIF(nsIAbDirectory *aDirectory, nsILocalFile *a
  
               if (!PL_strcmp(EXPORT_ATTRIBUTES_TABLE[i].abColName, kPreferMailFormatColumn)) {
                 if (value.Equals(NS_LITERAL_STRING("html").get()))
-                  value = NS_LITERAL_STRING("true");
+                  value.AssignLiteral("true");
                 else if (value.Equals(NS_LITERAL_STRING("plaintext").get()))
-                  value = NS_LITERAL_STRING("false");
+                  value.AssignLiteral("false");
                 else
                   value.Truncate(); // unknown.
               }
@@ -1834,7 +1837,7 @@ nsresult nsAddressBook::AppendDNForCard(const char *aProperty, nsIAbCard *aCard,
   if (!displayName.IsEmpty()) {
     cnStr += NS_LITERAL_STRING("cn=") + displayName;
     if (!email.IsEmpty()) {
-      cnStr += NS_LITERAL_STRING(",");
+      cnStr.AppendLiteral(",");
     }
   }
 
@@ -1891,7 +1894,8 @@ nsresult nsAddressBook::AppendProperty(const char *aProperty, const PRUnichar *a
  
   // if the string is not safe "as is", base64 encode it
   if (IsSafeLDIFString(aValue)) {
-    aResult += NS_LITERAL_CSTRING(": ") + NS_LossyConvertUCS2toASCII(aValue);
+    aResult.AppendLiteral(": ");
+    LossyAppendUTF16toASCII(aValue, aResult);
   }
   else {
     char *base64Str = PL_Base64Encode(NS_ConvertUCS2toUTF8(aValue).get(), 0, nsnull);
@@ -2005,8 +2009,9 @@ static void convertFromVObject(VObject *vObj, nsIAbCard *aCard)
     return;
 }
 
-NS_IMETHODIMP nsAddressBook::HandleContent(const char * aContentType, const char * aCommand,
-                                           nsISupports * aWindowContext, nsIRequest *request)
+NS_IMETHODIMP nsAddressBook::HandleContent(const char * aContentType,
+                                           nsIInterfaceRequestor * aWindowContext,
+                                           nsIRequest *request)
 {
   NS_ENSURE_ARG_POINTER(request);
   
@@ -2079,22 +2084,49 @@ NS_IMETHODIMP nsAddressBook::HandleContent(const char * aContentType, const char
     rv = channel->GetURI(getter_AddRefs(uri));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    // create a stream listener to handle the v-card data
-    nsCOMPtr<nsIStreamListener> strListener = do_CreateInstance(NS_MSGVCARDSTREAMLISTENER_CONTRACTID, &rv);
-    NS_ENSURE_SUCCESS(rv, NS_ERROR_WONT_HANDLE_CONTENT); // no registered v-card handler so just return that we won't handle the content
-
-    // create a new channel and run the url again
-    nsCOMPtr<nsIIOService> netService(do_GetService(NS_IOSERVICE_CONTRACTID, &rv));
+    // create a stream loader to handle the v-card data
+    nsCOMPtr<nsIStreamLoader> streamLoader;
+    rv = NS_NewStreamLoader(getter_AddRefs(streamLoader), uri, this, aWindowContext);
     NS_ENSURE_SUCCESS(rv, rv);
-
-    rv = netService->NewChannelFromURI(uri, getter_AddRefs(channel));
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    rv = channel->AsyncOpen(strListener, aWindowContext);
 
   }
   else // The content-type was not x-application-addvcard...
     return NS_ERROR_WONT_HANDLE_CONTENT;
+
+  return rv;
+}
+
+NS_IMETHODIMP nsAddressBook::OnStreamComplete(nsIStreamLoader *aLoader, nsISupports *aContext, nsresult aStatus, PRUint32 datalen, const PRUint8 *data)
+{
+  NS_ENSURE_ARG_POINTER(aContext);
+  NS_ENSURE_SUCCESS(aStatus, aStatus); // don't process the vcard if we got a status error
+  nsresult rv = NS_OK;
+
+  // take our vCard string and open up an address book window based on it
+  nsCOMPtr<nsIMsgVCardService> vCardService = do_GetService(NS_MSGVCARDSERVICE_CONTRACTID);
+  if (vCardService)
+  {
+    nsAutoPtr<VObject> vObj(vCardService->Parse_MIME((const char *)data, datalen));
+    if (vObj)
+    {
+      PRInt32 len = 0;
+      nsAdoptingCString vCard(vCardService->WriteMemoryVObjects(0, &len, vObj, PR_FALSE));
+
+      nsCOMPtr <nsIAbCard> cardFromVCard;
+      rv = EscapedVCardToAbCard(vCard.get(), getter_AddRefs(cardFromVCard));
+      NS_ENSURE_SUCCESS(rv, rv);
+
+      nsCOMPtr<nsIDOMWindowInternal> parentWindow = do_GetInterface(aContext);
+      NS_ENSURE_TRUE(parentWindow, NS_ERROR_FAILURE);
+
+      nsCOMPtr<nsIDOMWindow> dialogWindow;
+      rv = parentWindow->OpenDialog(
+           NS_LITERAL_STRING("chrome://messenger/content/addressbook/abNewCardDialog.xul"),
+           EmptyString(),
+           NS_LITERAL_STRING("chrome,resizable=no,titlebar,modal,centerscreen"),
+           cardFromVCard, getter_AddRefs(dialogWindow));      
+    }
+  }
 
   return rv;
 }
@@ -2230,5 +2262,39 @@ NS_IMETHODIMP nsAddressBook::Convert4xVCardPrefs(const char *prefRoot, char **es
     return rv;
 }
 
+#ifdef MOZ_XUL_APP
+
+NS_IMETHODIMP
+nsAddressBook::Handle(nsICommandLine* aCmdLine)
+{
+  nsresult rv; 
+  PRBool found;
+
+  rv = aCmdLine->HandleFlag(NS_LITERAL_STRING("addressbook"), PR_FALSE, &found);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (!found)
+    return NS_OK;
+
+  nsCOMPtr<nsIWindowWatcher> wwatch (do_GetService(NS_WINDOWWATCHER_CONTRACTID));
+  NS_ENSURE_TRUE(wwatch, NS_ERROR_FAILURE);
+
+  nsCOMPtr<nsIDOMWindow> opened;
+  wwatch->OpenWindow(nsnull, "chrome://messenger/content/addressbook/addressbook.xul",
+                     "_blank", "chrome,dialog=no,all", nsnull, getter_AddRefs(opened));
+  aCmdLine->SetPreventDefault(PR_TRUE);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsAddressBook::GetHelpInfo(nsACString& aResult)
+{
+  aResult.Assign(NS_LITERAL_CSTRING("  -addressbook         Open the address book at startup.\n"));
+  return NS_OK;
+}
+
+#else // !MOZ_XUL_APP
+
 CMDLINEHANDLER_IMPL(nsAddressBook,"-addressbook","general.startup.addressbook","chrome://messenger/content/addressbook/addressbook.xul","Start with the addressbook.",NS_ADDRESSBOOKSTARTUPHANDLER_CONTRACTID,"Addressbook Startup Handler",PR_FALSE,"", PR_TRUE)
 
+#endif

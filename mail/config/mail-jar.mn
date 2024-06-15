@@ -15,9 +15,11 @@ content/messenger-region,                            msg/content/messenger-regio
 content/messenger-smime,                             msg/content/messenger-smime
 content/messenger-views,                             msg/content/messenger-views
 content/messenger/messengercompose,                  msg/content/messenger/messengercompose
+content/messenger/preferences,                       msg/content/messenger/preferences
 content/editor/images,				                       msg/content/editor/images
 content/messenger/addressbook,                       msg/content/messenger/addressbook
 content/messenger/migration,                         msg/content/messenger/migration
+content/branding,                                    msg/content/branding
 
 #################################################################################################
 # Files we need from comm.jar
@@ -43,25 +45,22 @@ content/communicator/contentAreaContextOverlay.xul,   comm/content/communicator/
 content/communicator/nsContextMenu.js,                comm/content/communicator/nsContextMenu.js
 content/communicator/printing.js,                     comm/content/communicator/printing.js
 
-# from xpfe\components jar.mn
-content/communicator/alerts,                          comm/content/communicator/alerts
-content/communicator/pref/pref-fonts.js,              comm/content/communicator/pref/pref-fonts.js
-content/communicator/pref/pref-fonts.xul,             comm/content/communicator/pref/pref-fonts.xul
-content/communicator/pref/pref.xul,                   comm/content/communicator/pref/pref.xul
-content/communicator/pref/nsPrefWindow.js,            comm/content/communicator/pref/nsPrefWindow.js
-content/communicator/pref/pref-calibrate-screen.xul,  comm/content/communicator/pref/pref-calibrate-screen.xul
-
 # dummy contextHelp.js file so we don't get a bunch of errors about this file not being found
 content/help/contextHelp.js,                          comm/content/help/contextHelp.js
 content/help/contents.rdf,                            comm/content/help/contents.rdf
 
+# from profile
+content/communicator/profile,                         comm/content/communicator/profile
+
 # from layout
 content/xbl-marquee,                                  comm/content/xbl-marquee
-content/necko,                                        comm/content/necko
 content/mozldap,                                      comm/content/mozldap
 
 # from navigator
 content/navigator-region,                             comm/content/navigator-region
+
+# from xpinstall for theme installations
+content/communicator/xpinstall,                       comm/content/communicator/xpinstall
 
 # from the password manager
 content/communicator/wallet/SignonViewer.xul,         comm/content/communicator/wallet/SignonViewer.xul
@@ -107,8 +106,8 @@ content/global/printPreviewProgress.xul,              toolkit/content/global/pri
 content/global/printPreviewProgress.js,               toolkit/content/global/printPreviewProgress.js
 content/global/printPageSetup.js,                     toolkit/content/global/printPageSetup.js
 content/global/printPageSetup.xul,                    toolkit/content/global/printPageSetup.xul
-content/global/printjoboptions.js,		                toolkit/content/global/printjoboptions.js
-content/global/printjoboptions.xul,		                toolkit/content/global/printjoboptions.xul
+content/global/printjoboptions.js,		      toolkit/content/global/printjoboptions.js
+content/global/printjoboptions.xul,		      toolkit/content/global/printjoboptions.xul
 content/global/MPL-1.1.html,                          toolkit/content/global/MPL-1.1.html
 content/global/NPL-1.1.html,                          toolkit/content/global/NPL-1.1.html
 content/global/customizeToolbar.xul,                  toolkit/content/global/customizeToolbar.xul
@@ -120,12 +119,16 @@ content/global/viewZoomOverlay.js,                    toolkit/content/global/vie
 content/global/viewSource.css,                        toolkit/content/global/viewSource.css
 content/global/viewSource.xul,                        toolkit/content/global/viewSource.xul
 content/global/viewSource.js,                         toolkit/content/global/viewSource.js
+content/global/config.xul,                            toolkit/content/global/config.xul
+content/global/config.js,                             toolkit/content/global/config.js
 content/global/findUtils.js,                          toolkit/content/global/findUtils.js
 content/global/printUtils.js,                         toolkit/content/global/printUtils.js
 content/global/editMenuOverlay.xul,                   toolkit/content/global/editMenuOverlay.xul
 content/global/editMenuOverlay.js,                    toolkit/content/global/editMenuOverlay.js
 content/global/XPCNativeWrapper.js,                   toolkit/content/global/XPCNativeWrapper.js
-content/global/platformHTMLBindings.xml,              toolkit/content/global/platformHTMLBindings.xml
+content/global/fontpackage.xul,                       toolkit/content/global/fontpackage.xul
+content/global/fontpackage.js,                        toolkit/content/global/fontpackage.js
+content/global/alerts,                                toolkit/content/global/alerts
 
 #from mozapps
 content/mozapps/downloads,                            toolkit/content/mozapps/downloads
@@ -134,6 +137,7 @@ content/mozapps/extensions,                           toolkit/content/mozapps/ex
 content/mozapps/update,                               toolkit/content/mozapps/update
 content/mozapps/shared,                               toolkit/content/mozapps/shared
 content/mozapps/xpinstall,                            toolkit/content/mozapps/xpinstall
+content/mozapps/preferences,                          toolkit/content/mozapps/preferences
 content/mozapps/contents.rdf,                         toolkit/content/mozapps/contents.rdf
 
 # from xpfe\components

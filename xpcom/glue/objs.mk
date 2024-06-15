@@ -53,6 +53,8 @@ XPCOM_GLUE_SRC_LEXPORTS =           \
 		nsMemory.h	    \
 		nsTraceRefcnt.h     \
 		nsWeakReference.h   \
+		nsComponentManagerUtils.h   \
+		nsServiceManagerUtils.h \
 		$(NULL)
 
 

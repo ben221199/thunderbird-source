@@ -1,36 +1,39 @@
-/*
- * The contents of this file are subject to the Mozilla Public
- * License Version 1.1 (the "License"); you may not use this file
- * except in compliance with the License. You may obtain a copy of
- * the License at http://www.mozilla.org/MPL/
+/* ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * Software distributed under the License is distributed on an "AS
- * IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
- * implied. See the License for the specific language governing
- * rights and limitations under the License.
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
+ *
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+ * for the specific language governing rights and limitations under the
+ * License.
  *
  * The Original Code is the Netscape security libraries.
  *
- * The Initial Developer of the Original Code is Netscape
- * Communications Corporation.	Portions created by Netscape are
- * Copyright (C) 1994-2000 Netscape Communications Corporation.	 All
- * Rights Reserved.
+ * The Initial Developer of the Original Code is
+ * Netscape Communications Corporation.
+ * Portions created by the Initial Developer are Copyright (C) 1994-2000
+ * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- *      Douglas Stebila <douglas@stebila.ca>, Sun Microsystems Laboratories
+ *   Douglas Stebila <douglas@stebila.ca>, Sun Microsystems Laboratories
  *
- * Alternatively, the contents of this file may be used under the
- * terms of the GNU General Public License Version 2 or later (the
- * "GPL"), in which case the provisions of the GPL are applicable
- * instead of those above.  If you wish to allow use of your
- * version of this file only under the terms of the GPL and not to
- * allow others to use your version of this file under the MPL,
- * indicate your decision by deleting the provisions above and
- * replace them with the notice and other provisions required by
- * the GPL.  If you do not delete the provisions above, a recipient
- * may use your version of this file under either the MPL or the
- * GPL.
- */
+ * Alternatively, the contents of this file may be used under the terms of
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
+ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK ***** */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1220,13 +1223,13 @@ bltest_rc5_init(bltestCipherInfo *cipherInfo, PRBool encrypt)
 SECStatus
 bltest_aes_init(bltestCipherInfo *cipherInfo, PRBool encrypt)
 {
-    PRIntervalTime time1, time2;
     bltestSymmKeyParams *aesp = &cipherInfo->params.sk;
     int minorMode;
     int i;
-    /* XXX */ int keylen, blocklen;
-    keylen = aesp->key.buf.len;
-    blocklen = cipherInfo->input.pBuf.len;
+    int keylen   = aesp->key.buf.len;
+    int blocklen = AES_BLOCK_SIZE; 
+    PRIntervalTime time1, time2;
+
     switch (cipherInfo->mode) {
     case bltestAES_ECB:	    minorMode = NSS_AES;	  break;
     case bltestAES_CBC:	    minorMode = NSS_AES_CBC;	  break;
@@ -2815,7 +2818,7 @@ int main(int argc, char **argv)
 
     /* Do FIPS self-test */
     if (bltest.commands[cmd_FIPS].activated) {
-	CK_RV ckrv = pk11_fipsPowerUpSelfTest();
+	CK_RV ckrv = sftk_fipsPowerUpSelfTest();
 	fprintf(stdout, "CK_RV: %ld.\n", ckrv);
 	return 0;
     }

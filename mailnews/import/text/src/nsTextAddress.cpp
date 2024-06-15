@@ -1,32 +1,54 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.0 (the "NPL"); you may not use this file except in
- * compliance with the NPL.  You may obtain a copy of the NPL at
- * http://www.mozilla.org/NPL/
+ * ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * Software distributed under the NPL is distributed on an "AS IS" basis,
- * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the NPL
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
+ *
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
  * for the specific language governing rights and limitations under the
- * NPL.
+ * License.
  *
- * The Initial Developer of this code under the NPL is Netscape
- * Communications Corporation.  Portions created by Netscape are
- * Copyright (C) 1998 Netscape Communications Corporation.  All Rights
- * Reserved.
- */
+ * The Original Code is mozilla.org Code.
+ *
+ * The Initial Developer of the Original Code is
+ * Netscape Communications Corporation.
+ * Portions created by the Initial Developer are Copyright (C) 1998
+ * the Initial Developer. All Rights Reserved.
+ *
+ * Contributor(s):
+ *
+ * Alternatively, the contents of this file may be used under the terms of
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK ***** */
 
 #include "nscore.h"
 #include "nsTextAddress.h"
 
 #include "nsIServiceManager.h"
 #include "nsIImportService.h"
-#include "nsAddrDatabase.h"
+#include "nsIAddrDatabase.h"
+#include "mdb.h"
 #include "nsAbBaseCID.h"
 #include "nsIAbCard.h"
 #include "nsReadableUtils.h"
 #include "nsIPrefService.h"
 #include "nsIPrefBranch.h"
+#include "nsNativeCharsetUtils.h"
 
 #include "TextDebugLog.h"
 
@@ -54,19 +76,6 @@ nsTextAddress::~nsTextAddress()
 {
     NS_IF_RELEASE( m_database);
     NS_IF_RELEASE( m_fieldMap);
-}
-
-
-void nsTextAddress::ConvertToUnicode( const char *pStr, nsString& str)
-{
-    if (!m_pService) {
-        m_pService = do_GetService( NS_IMPORTSERVICE_CONTRACTID);
-    }
-    if (m_pService) {
-        m_pService->SystemStringToUnicode( pStr, str);
-    }
-    else
-        str.AssignWithConversion( pStr);
 }
 
 nsresult nsTextAddress::ImportLDIF( PRBool *pAbort, const PRUnichar *pName, nsIFileSpec *pSrc, nsIAddrDatabase *pDb, nsString& errors, PRUint32 *pProgress)
@@ -153,6 +162,7 @@ nsresult nsTextAddress::ImportAddresses( PRBool *pAbort, const PRUnichar *pName,
 nsresult nsTextAddress::ReadRecord( nsIFileSpec *pSrc, char *pLine, PRInt32 bufferSz, char delim, PRInt32 *pLineLen)
 {
     PRBool        wasTruncated;
+    PRBool        isEof;
     char *        pRead;
     PRInt32        lineLen = 0;
     nsresult    rv;
@@ -167,16 +177,24 @@ nsresult nsTextAddress::ReadRecord( nsIFileSpec *pSrc, char *pLine, PRInt32 buff
         wasTruncated = PR_FALSE;
         pRead = pLine;
         pRead += lineLen;
-        rv = pSrc->ReadLine( &pRead, bufferSz - lineLen, &wasTruncated);
-        if (wasTruncated) {
+        pSrc->Eof(&isEof);
+        if (isEof)
+          // If we get an EOF here, then the line isn't complete
+          // so we must have an incorrect file.
+          rv = NS_ERROR_FAILURE;
+        else
+        {
+          rv = pSrc->ReadLine( &pRead, bufferSz - lineLen, &wasTruncated);
+          if (wasTruncated) {
             pLine[bufferSz - 1] = 0;
             IMPORT_LOG0( "Unable to read line from file, buffer too small\n");
             rv = NS_ERROR_FAILURE;
-        }
-        else if (NS_SUCCEEDED( rv)) {
+          }
+          else if (NS_SUCCEEDED( rv)) {
             lineLen = strlen( pLine);
+          }
         }
-    } while (NS_SUCCEEDED( rv) && !IsLineComplete( pLine, lineLen, delim));
+    } while (NS_SUCCEEDED( rv) && !IsLineComplete( pLine, lineLen));
 
     *pLineLen = lineLen;
     return( rv);
@@ -213,44 +231,19 @@ nsresult nsTextAddress::ReadRecordNumber( nsIFileSpec *pSrc, char *pLine, PRInt3
     Find out if the given line appears to be a complete record or
     if it needs more data because the line ends with a quoted value non-terminated
 */
-PRBool nsTextAddress::IsLineComplete( const char *pLine, PRInt32 len, char delim)
+PRBool nsTextAddress::IsLineComplete( const char *pLine, PRInt32 len)
 {
-    char    tab = 9;
-    if (delim == tab)
-        tab = 0;
-
     PRBool    quoted = PR_FALSE;
-    PRBool    wasDelim = PR_FALSE;
 
     while (len) {
-        // always skip white space?
-        while (len && ((*pLine == ' ') || (*pLine == tab))) {
-            pLine++;
-            len--;
-        }
-        if (len && wasDelim && (*pLine == '"')) {
-            quoted = PR_TRUE;
-            wasDelim = PR_FALSE;
-            pLine++;
-            len--;
-        }
-        else if (len && quoted && (*pLine == '"')) {
-            quoted = PR_FALSE;
-            pLine++;
-            len--;
-        }
-        else if (len) {
-            if (!quoted && (*pLine == delim))
-                wasDelim = PR_TRUE;
-            else
-                wasDelim = PR_FALSE;
-            pLine++;
-            len--;
-        }
+      if ((*pLine == '"')) {
+        quoted = !quoted;
+      }
+      pLine++;
+      len--;
     }
-    if (quoted)
-        return( PR_FALSE);
-    return( PR_TRUE);
+
+    return !quoted;
 }
 
 PRInt32 nsTextAddress::CountFields( const char *pLine, PRInt32 maxLen, char delim)
@@ -502,7 +495,7 @@ nsresult nsTextAddress::ProcessLine( const char *pLine, PRInt32 len, nsString& e
                         }
                     }
                     if (newRow) {
-                        ConvertToUnicode( fieldVal.get(), uVal);
+                        NS_CopyNativeToUnicode( fieldVal, uVal);
                         rv = m_fieldMap->SetFieldValue( m_database, newRow, fieldNum, uVal.get());
                     }
                 }

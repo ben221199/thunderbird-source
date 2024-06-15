@@ -20,11 +20,11 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- * Original Author: Aaron Leventhal (aaronl@netscape.com)
+ *   Original Author: Aaron Leventhal (aaronl@netscape.com)
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
@@ -38,9 +38,21 @@
 
 #include "nsDocAccessibleWrap.h"
 #include "ISimpleDOMDocument_i.c"
+#include "nsIAccessibilityService.h"
 #include "nsIAccessibleEvent.h"
+#include "nsIDocShell.h"
+#include "nsIDocShellTreeNode.h"
+#include "nsIDOMDocumentTraversal.h"
+#include "nsIDOMNodeFilter.h"
+#include "nsIDOMTreeWalker.h"
+#include "nsIFrame.h"
+#include "nsIInterfaceRequestorUtils.h"
 #include "nsIPresShell.h"
+#include "nsISelectionController.h"
+#include "nsIServiceManager.h"
+#include "nsIURI.h"
 #include "nsIViewManager.h"
+#include "nsIWebNavigation.h"
 #include "nsIWidget.h"
 
 /* For documentation of the accessibility architecture, 
@@ -50,7 +62,7 @@
 //----- nsDocAccessibleWrap -----
 
 nsDocAccessibleWrap::nsDocAccessibleWrap(nsIDOMNode *aDOMNode, nsIWeakReference *aShell): 
-  nsDocAccessible(aDOMNode, aShell)
+  nsDocAccessible(aDOMNode, aShell), mWasAnchor(PR_FALSE)
 {
 }
 
@@ -131,9 +143,8 @@ STDMETHODIMP nsDocAccessibleWrap::get_accChild(
         nsIPresShell *parentShell = parentDoc->GetShellAt(0);
         nsCOMPtr<nsIWeakReference> weakParentShell(do_GetWeakReference(parentShell));
         if (weakParentShell) {
-          nsCOMPtr<nsIAccessibleDocument> parentDocAccessible;
-          nsAccessNode::GetDocAccessibleFor(weakParentShell, 
-                                            getter_AddRefs(parentDocAccessible));
+          nsCOMPtr<nsIAccessibleDocument> parentDocAccessible = 
+            nsAccessNode::GetDocAccessibleFor(weakParentShell);
           nsCOMPtr<nsIAccessible> accessible(do_QueryInterface(parentDocAccessible));
           IAccessible *msaaParentDoc;
           if (accessible) {
@@ -150,6 +161,15 @@ STDMETHODIMP nsDocAccessibleWrap::get_accChild(
 
   // Otherwise, the normal get_accChild() will do
   return nsAccessibleWrap::get_accChild(varChild, ppdispChild);
+}
+
+NS_IMETHODIMP nsDocAccessibleWrap::Shutdown()
+{
+  if (mDocLoadTimer) {
+    mDocLoadTimer->Cancel();
+    mDocLoadTimer = nsnull;
+  }
+  return nsDocAccessible::Shutdown();
 }
 
 NS_IMETHODIMP nsDocAccessibleWrap::FireToolkitEvent(PRUint32 aEvent, nsIAccessible* aAccessible, void* aData)
@@ -188,19 +208,19 @@ NS_IMETHODIMP nsDocAccessibleWrap::FireToolkitEvent(PRUint32 aEvent, nsIAccessib
     // Clear out the cache in this subtree
   }
 
-  HWND hWnd = NS_REINTERPRET_CAST(HWND, mWnd);
-  if (gmGetGUIThreadInfo && (aEvent == nsIAccessibleEvent::EVENT_FOCUS || 
-      aEvent == nsIAccessibleEvent::EVENT_MENUPOPUPSTART ||
-      aEvent == nsIAccessibleEvent::EVENT_MENUPOPUPEND)) {
-    GUITHREADINFO guiInfo;
-    guiInfo.cbSize = sizeof(GUITHREADINFO);
-    if (gmGetGUIThreadInfo(NULL, &guiInfo)) {
-      hWnd = guiInfo.hwndFocus;
-    }
-  }
+  nsCOMPtr<nsPIAccessNode> privateAccessNode =
+    do_QueryInterface(aAccessible);
+  nsIFrame *frame = privateAccessNode->GetFrame();
 
-  // notify the window system
-  NotifyWinEvent(aEvent, hWnd, worldID, childID);
+  HWND hWnd = frame ? (HWND)frame->GetWindow()->GetNativeData(NS_NATIVE_WINDOW) :
+                      (HWND)mWnd;
+
+  // Gecko uses two windows for every scrollable area. One window contains
+  // scrollbars and the child window contains only the client area.
+  // Details of the 2 window system:
+  // * Scrollbar window: caret drawing window & return value for WindowFromAccessibleObject()
+  // * Client area window: text drawing window & MSAA event window
+  NotifyWinEvent(aEvent, hWnd, worldID, childID);   // Fire MSAA event for client area window
 
   return NS_OK;
 }
@@ -218,6 +238,145 @@ PRInt32 nsDocAccessibleWrap::GetChildIDFor(nsIAccessible* aAccessible)
   // Yes, this means we're only compatibible with 32 bit
   // MSAA is only available for 32 bit windows, so it's okay
   return - NS_PTR_TO_INT32(uniqueID);
+}
+
+already_AddRefed<nsIAccessible>
+nsDocAccessibleWrap::GetFirstLeafAccessible(nsIDOMNode *aStartNode)
+{
+  nsCOMPtr<nsIAccessibilityService> accService(do_GetService("@mozilla.org/accessibilityService;1"));
+  nsCOMPtr<nsIAccessible> accessible;
+  nsCOMPtr<nsIDOMTreeWalker> walker; 
+  nsCOMPtr<nsIDOMNode> currentNode(aStartNode);
+
+  while (currentNode) {
+    accService->GetAccessibleInWeakShell(currentNode, mWeakShell, getter_AddRefs(accessible)); // AddRef'd
+    if (accessible) {
+      PRInt32 numChildren;
+      accessible->GetChildCount(&numChildren);
+      if (numChildren == 0) {
+        nsIAccessible *leafAccessible = accessible;
+        NS_ADDREF(leafAccessible);
+        return leafAccessible;  // It's a leaf accessible, return it
+      }
+    }
+    if (!walker) {
+      // Instantiate walker lazily since we won't need it in 90% of the cases
+      // where the first DOM node we're given provides an accessible
+      nsCOMPtr<nsIDOMDocumentTraversal> trav = do_QueryInterface(mDocument);
+      NS_ASSERTION(trav, "No DOM document traversal for document");
+      trav->CreateTreeWalker(mDOMNode, 
+                            nsIDOMNodeFilter::SHOW_ELEMENT | nsIDOMNodeFilter::SHOW_TEXT,
+                            nsnull, PR_FALSE, getter_AddRefs(walker));
+      NS_ENSURE_TRUE(walker, nsnull);
+      walker->SetCurrentNode(currentNode);
+    }
+
+    walker->NextNode(getter_AddRefs(currentNode));
+  }
+
+  return nsnull;
+}
+
+NS_IMETHODIMP nsDocAccessibleWrap::FireAnchorJumpEvent()
+{
+  // Staying on the same page, jumping to a named anchor
+  // Fire EVENT_SELECTION_WITHIN on first leaf accessible -- because some
+  // assistive technologies only cache the child numbers for leaf accessibles
+  // the can only relate events back to their internal model if it's a leaf.
+  // There is usually an accessible for the focus node, but if it's an empty text node
+  // we have to move forward in the document to get one
+  PRUint32 state;
+  GetState(&state);
+  if (state & STATE_BUSY) {
+    return NS_OK;
+  }
+  nsCOMPtr<nsISupports> container = mDocument->GetContainer();
+  nsCOMPtr<nsIWebNavigation> webNav(do_GetInterface(container));
+  nsCAutoString theURL;
+  if (webNav) {
+    nsCOMPtr<nsIURI> pURI;
+    webNav->GetCurrentURI(getter_AddRefs(pURI));
+    if (pURI) {
+      pURI->GetSpec(theURL);
+    }
+  }
+  const char kHash = '#';
+  PRBool hasAnchor = PR_FALSE;
+  if (theURL.FindChar(kHash) > 0) {
+    hasAnchor = PR_TRUE;
+  }
+
+  // mWasAnchor is set when the previous URL included a named anchor.
+  // This way we still know to fire the SELECTION_WITHIN event when we
+  // move from a named anchor back to the top.
+  if (!mWasAnchor && !hasAnchor) {
+    return NS_OK;
+  }
+  mWasAnchor = hasAnchor;
+
+  nsCOMPtr<nsIDOMNode> focusNode;
+  if (hasAnchor) {
+    nsCOMPtr<nsISelectionController> selCon(do_QueryReferent(mWeakShell));
+    if (!selCon) {
+      return NS_OK;
+    }
+    nsCOMPtr<nsISelection> domSel;
+    selCon->GetSelection(nsISelectionController::SELECTION_NORMAL, getter_AddRefs(domSel));
+    if (!domSel) {
+      return NS_OK;
+    }
+    domSel->GetFocusNode(getter_AddRefs(focusNode));
+  }
+  else {
+    focusNode = mDOMNode; // Moved to top, so event is for 1st leaf after root
+  }
+
+  nsCOMPtr<nsIAccessible> accessible = GetFirstLeafAccessible(focusNode);
+  nsCOMPtr<nsPIAccessible> privateAccessible = do_QueryInterface(accessible);
+  if (privateAccessible) {
+    privateAccessible->FireToolkitEvent(nsIAccessibleEvent::EVENT_SELECTION_WITHIN,
+                                        accessible, nsnull);
+  }
+  return NS_OK;
+}
+
+void nsDocAccessibleWrap::DocLoadCallback(nsITimer *aTimer, void *aClosure)
+{
+  // Doc has finished loading, fire "load finished" event
+  // By using short timer we can wait for MS Windows to make the window visible,
+  // which it does asynchronously. This avoids confusing the screen reader with a
+  // hidden window.
+
+  nsDocAccessibleWrap *docAcc =
+    NS_REINTERPRET_CAST(nsDocAccessibleWrap*, aClosure);
+  if (docAcc) {
+    docAcc->FireToolkitEvent(nsIAccessibleEvent::EVENT_STATE_CHANGE,
+                             docAcc, nsnull);
+    docAcc->FireAnchorJumpEvent();
+  }
+}
+
+NS_IMETHODIMP nsDocAccessibleWrap::FireDocLoadingEvent(PRBool aIsFinished)
+{
+  if (!mDocument || !mWeakShell)
+    return NS_OK;  // Document has been shut down
+
+  if (aIsFinished) {
+    // Use short timer before firing state change event for finished doc,
+    // because the window is made visible asynchronously by Microsoft Windows
+    if (!mDocLoadTimer) {
+      mDocLoadTimer = do_CreateInstance("@mozilla.org/timer;1");
+    }
+    if (mDocLoadTimer) {
+      mDocLoadTimer->InitWithFuncCallback(DocLoadCallback, this, 0,
+                                          nsITimer::TYPE_ONE_SHOT);
+    }
+  }
+  else {
+    FireToolkitEvent(nsIAccessibleEvent::EVENT_STATE_CHANGE, this, nsnull);
+  }
+
+  return nsDocAccessible::FireDocLoadingEvent(aIsFinished);
 }
 
 STDMETHODIMP nsDocAccessibleWrap::get_URL(/* [out] */ BSTR __RPC_FAR *aURL)

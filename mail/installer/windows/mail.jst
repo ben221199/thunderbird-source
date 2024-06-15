@@ -64,8 +64,8 @@ function createShortcuts()
   scLicenseDesc        = "License";
   scProfileDesc        = "Profile Manager";
   scProfileDescParam   = "-ProfileManager";
-  scSafeModeDesc       = "$ProductName$ (Safe Mode)";
-  scSafeModeDescParam  = "-safe-mode";
+  scSafeModeDesc       = "$ProductName$ (No Extensions)";
+  scSafeModeDescParam  = "-no-extensions";
   scFolderName         = "$ProductName$";
 
   fileMailIcon              = getFolder("Chrome", "icons/default/messengerWindow.ico");
@@ -249,6 +249,8 @@ function updateMapi()
   var winsysMapi32File;
   var mapiProxyFile;
   var subkey;
+  var oldVersionIsDefautClient = false;
+
   var mailDefaultDescription = "$ProductName$";
 
   winreg = getWinRegistry();
@@ -362,10 +364,51 @@ function updateMapi()
     winreg.createKey(subkey      + "\\protocols\\snews\\DefaultIcon", "");
     winreg.setValueString(subkey + "\\protocols\\snews\\DefaultIcon", sfpMainExePath + ",0");
 
+    subkey              = "SOFTWARE\\$ProductName$\\Desktop";
+    szCurrentVersion    = winreg.getValueString(subkey, "CurrentVersion");
+    logComment("szCurrentVersion: " + szCurrentVersion);
+
     // Register MapiProxy.dll
     mapiProxyFile = getFolder("Program", "MapiProxy.dll");
     err = File.windowsRegisterServer(mapiProxyFile);
     logComment("File.windowsRegisterServer(" + mapiProxyFile + ") returned: " + err);
+
+    // Ok, we've registered ourselves as a Mail and News client. We've registered all of the protocols we support.
+    // If the user was using Thunderbird as their default client but had Thunderbird installed in a different directory
+    // than what the installer is installing into, then we end up with the wrong version of Thunderbird as the default app.
+    // to work around this, we are going to test what the current default mail app is. If it contains Thunderbird and it is not
+    // pointing to us, then write into the registry the values necessary for Thunderbird to re-ask the user about being the default
+    // mail app the next time the newly installed version comes up. This case happens a lot because we've had so many releases without
+    // an installer that everyone has ended up installing bits into their own locations.
+    if (szDefaultMailClient == "$ProductName$")
+    {
+      // check to see if the location of the default mail protocol handler matches the location we just wrote to...
+      // if it does not, then 
+      var szNewMailtoProtocolHandler = sfpMainExePath + " -compose \"%1\"";
+      var szOldMailtoProtocolHandler = winreg.getValueString("Software\\Classes\\mailto\\shell\\open\\command", "");
+
+      if ((szOldMailtoProtocolHandler != null) && (szNewMailtoProtocolHandler != szOldMailtoProtocolHandler))
+        oldVersionIsDefautClient = true;
+      logComment("oldVersionIsDefautClient: " + oldVersionIsDefautClient);
+    } 
+
+    // now that we have registred ourselves as a mail and news client, make some notations in our scratch pad
+    // so the client doesn't try to re-register the same keys all over again.
+    subkey  = "SOFTWARE\\$ProductName$";
+    winreg.createKey(subkey, "");
+    winreg.createKey(subkey + "\\Desktop", "");
+    winreg.setValueString(subkey + "\\Desktop", "registeredAsMailApp", "1");
+    winreg.setValueString(subkey + "\\Desktop", "registeredAsNewsApp", "1");
+
+    if (oldVersionIsDefautClient)
+    {
+      // ok here's a scenario where a different version of thunderbird is the default mail client in a different directory
+      // from where the installer is putting it. So clear out our scratchpad registry entries to make Thunderbird ask the user
+      // if it should be the default client again.
+      logComment("Resetting showMapiDialog and defaultMailHasBeenSet");
+      winreg.setValueString(subkey + "\\Desktop", "showMapiDialog", "1");
+      winreg.setValueString(subkey + "\\Desktop", "defaultMailHasBeenSet", "0");
+    }
   }
 }
 
@@ -566,6 +609,7 @@ function upgradeCleanup()
   deleteThisFile("Components",  "jsdservice.xpt");
   deleteThisFile("Components",  "jsurl.xpt");
   deleteThisFile("Components",  "layout_base.xpt");
+  deleteThisFile("Components",  "layout_printing.xpt");
   deleteThisFile("Components",  "layout_xul.xpt");
   deleteThisFile("Components",  "layout_xul_tree.xpt");
   deleteThisFile("Components",  "locale.xpt");
@@ -635,8 +679,12 @@ function upgradeCleanup()
 
   // obsolete JS components
   deleteThisFile("Components", "nsBackgroundUpdateService.js");
-  
+
+  deleteThisFile("Chrome",  "installed-chrome.txt");
   deleteThisFile("Chrome",  "chrome.rdf");
+  deleteThisFile("Chrome",  "mail.jar");
+  deleteThisFile("Chrome",  "qute.jar");
+  deleteThisFile("Chrome",  "en-US-mail.jar");
 
   deleteThisFile("Program",     "defaults/pref/all.js");
   deleteThisFile("Program",     "defaults/pref/security-prefs.js");
@@ -713,8 +761,8 @@ logComment("args: " + args);
 if(args == "-greLocal")
   gGreLocal = true;
 
-srDest = $SpaceRequired$:bin;
-err    = initInstall("$ProductName$", "Thunderbird", "$Version$"); 
+srDest = $SpaceRequired$:bin;	
+err    = initInstall("$ProductName$", "Thunderbird", "$Version$");
 logComment("initInstall: " + err);
 
 fProgram  = getFolder("Program");
@@ -749,51 +797,12 @@ if(verifyDiskSpace(fProgram, srDest))
     // we don't want to fail on errors for the above two
     resetError();
 
-    // register chrome
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome", "mail.jar"), "content/mozapps/");
-    
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"),"content/autoconfig/");
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"),"content/necko/");
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"),"content/wallet/");
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"),"content/xbl-marquee/");
-
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"),"content/global/");
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"),"content/global-region/");
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"),"content/global-platform/");
-
-    // XXXben Stuff that will become obsolete
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"),"content/navigator/");
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"),"content/navigator-region/");
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"),"content/navigator-platform/");
-
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"),"content/communicator/");
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"),"content/communicator-region/");
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"),"content/communicator-platform/");
-
-    // register chrome
-
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"), "content/editor/");
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"), "content/editor-region/");
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"), "content/help/");
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"), "content/mozldap/");
-
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"), "content/messenger/");
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"), "content/messenger-smime/");
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"), "content/messenger-region/");
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"), "content/messenger-mdn/");
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"), "content/messenger-views/");
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"), "content/messenger-mapi/");
-
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"), "content/communicator/downloadmanager/");  
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"), "content/pippki/"); 
-    registerChrome(CONTENT | DELAYED_CHROME, getFolder("Chrome","mail.jar"), "content/pipnss/");  
-
-    registerChrome(SKIN | DELAYED_CHROME, getFolder("Chrome","qute.jar"), "skin/classic/global/");
-    registerChrome(SKIN | DELAYED_CHROME, getFolder("Chrome","qute.jar"), "skin/classic/communicator/");
-    registerChrome(SKIN | DELAYED_CHROME, getFolder("Chrome","qute.jar"), "skin/classic/mozapps/");
-    registerChrome(SKIN | DELAYED_CHROME, getFolder("Chrome","qute.jar"), "skin/classic/navigator/");
-    registerChrome(SKIN | DELAYED_CHROME, getFolder("Chrome","qute.jar"), "skin/classic/editor/");
-    registerChrome(SKIN | DELAYED_CHROME, getFolder("Chrome","qute.jar"), "skin/classic/messenger/");
+    registerChrome(SKIN | DELAYED_CHROME, getFolder("Chrome","classic.jar"), "skin/classic/global/");
+    registerChrome(SKIN | DELAYED_CHROME, getFolder("Chrome","classic.jar"), "skin/classic/communicator/");
+    registerChrome(SKIN | DELAYED_CHROME, getFolder("Chrome","classic.jar"), "skin/classic/mozapps/");
+    registerChrome(SKIN | DELAYED_CHROME, getFolder("Chrome","classic.jar"), "skin/classic/navigator/");
+    registerChrome(SKIN | DELAYED_CHROME, getFolder("Chrome","classic.jar"), "skin/classic/editor/");
+    registerChrome(SKIN | DELAYED_CHROME, getFolder("Chrome","classic.jar"), "skin/classic/messenger/");
 
     // Create the uninstall folder. 
     err = File.dirCreate(getFolder("Program", "uninstall"));

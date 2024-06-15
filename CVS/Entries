@@ -1,32 +1,32 @@
-/client.mk/1.205.2.2.6.8.12.1.2.3.14.1/Sat Apr 15 03:35:29 2006//TTHUNDERBIRD_1_0_8_RELEASE
+/client.mk/1.234.6.1/Wed Jun  1 00:40:39 2005//TTHUNDERBIRD_1_1a1_RELEASE
 D/mail////
 D/build////
 D/nsprpub////
 D/security////
 D/directory////
 D/accessible////
-D/modules////
-D/ipc////
-D/calendar////
-D/other-licenses////
-D/toolkit////
 D/chrome////
+D/db////
+D/ipc////
+D/modules////
+D/other-licenses////
+D/storage////
+D/toolkit////
 D/editor////
 D/extensions////
-/.cvsignore/1.10/Thu Aug 22 01:14:34 2002//TTHUNDERBIRD_1_0_8_RELEASE
+/.cvsignore/1.10/Thu Aug 22 01:14:34 2002//TTHUNDERBIRD_1_1a1_RELEASE
 D/README////
-/README.txt/1.7/Sat Mar 13 06:25:28 2004//TTHUNDERBIRD_1_0_8_RELEASE
-/client.mak/3.124/Fri Sep 20 09:15:50 2002//TTHUNDERBIRD_1_0_8_RELEASE
-/configure/1.1304.2.5.2.16/Sun Oct 31 07:17:58 2004//TTHUNDERBIRD_1_0_8_RELEASE
-/configure.in/1.1335.2.6.2.18/Sun Oct 31 07:17:58 2004//TTHUNDERBIRD_1_0_8_RELEASE
-/allmakefiles.sh/1.485.2.2.4.19/Fri Sep 10 08:11:24 2004//TTHUNDERBIRD_1_0_8_RELEASE
-/Makefile.in/1.248.2.3.4.6/Tue Sep 14 20:59:40 2004//TTHUNDERBIRD_1_0_8_RELEASE
-/makefile.win/3.118/Sat Aug 10 02:45:56 2002//TTHUNDERBIRD_1_0_8_RELEASE
-/aclocal.m4/1.13.70.1/Thu May 13 21:57:46 2004//TTHUNDERBIRD_1_0_8_RELEASE
+/README.txt/1.7/Sat Mar 13 06:25:28 2004//TTHUNDERBIRD_1_1a1_RELEASE
+/client.mak/3.125/Fri Jul 16 18:13:24 2004//TTHUNDERBIRD_1_1a1_RELEASE
+/configure/1.1437/Sat May 21 15:56:04 2005//TTHUNDERBIRD_1_1a1_RELEASE
+/configure.in/1.1452/Sat May 21 15:54:36 2005//TTHUNDERBIRD_1_1a1_RELEASE
+/allmakefiles.sh/1.560/Fri May 13 19:47:56 2005//TTHUNDERBIRD_1_1a1_RELEASE
+/Makefile.in/1.291/Fri May  6 18:54:23 2005//TTHUNDERBIRD_1_1a1_RELEASE
+/makefile.win/3.119/Fri Jul 16 18:13:24 2004//TTHUNDERBIRD_1_1a1_RELEASE
+/aclocal.m4/1.14/Thu May 13 03:12:47 2004//TTHUNDERBIRD_1_1a1_RELEASE
 D/caps////
 D/config////
 D/dbm////
-D/db////
 D/docshell////
 D/embedding////
 D/gc////
@@ -35,7 +35,7 @@ D/jpeg////
 D/js////
 D/lib////
 D/netwerk////
-/nglayout.mk/1.34/Sun Dec 29 00:13:37 2002//TTHUNDERBIRD_1_0_8_RELEASE
+/nglayout.mk/1.34/Sun Dec 29 00:13:37 2002//TTHUNDERBIRD_1_1a1_RELEASE
 D/plugin////
 D/profile////
 D/rdf////
@@ -44,17 +44,16 @@ D/tools////
 D/uriloader////
 D/xpcom////
 D/xpinstall////
-/LEGAL/3.3/Tue Jul  6 23:00:05 1999//TTHUNDERBIRD_1_0_8_RELEASE
-/LICENSE/3.2/Wed Oct  6 02:14:51 1999//TTHUNDERBIRD_1_0_8_RELEASE
+/LEGAL/3.3/Tue Jul  6 23:00:05 1999//TTHUNDERBIRD_1_1a1_RELEASE
+/LICENSE/3.2/Wed Oct  6 02:14:51 1999//TTHUNDERBIRD_1_1a1_RELEASE
 D/content////
 D/dom////
 D/gfx////
-D/htmlparser////
+D/parser////
 D/layout////
 D/view////
 D/webshell////
 D/widget////
-D/expat////
 D/themes////
 D/xpfe////
 D/mailnews////

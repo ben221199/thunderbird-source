@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,38 +14,40 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- *          John Gaunt (jgaunt@netscape.com)
- *
+ *   John Gaunt (jgaunt@netscape.com)
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
 #include "nsBaseWidgetAccessible.h"
+#include "nsAccessibilityAtoms.h"
 #include "nsIAccessibilityService.h"
 #include "nsIAccessibleDocument.h"
 #include "nsAccessibleWrap.h"
 #include "nsGUIEvent.h"
 #include "nsILink.h"
-#include "nsIPresContext.h"
+#include "nsINameSpaceManager.h"
+#include "nsPresContext.h"
 #include "nsIPresShell.h"
 #include "nsIServiceManager.h"
+#include "nsIURI.h"
 
 // ------------
 // nsBlockAccessible
@@ -163,7 +165,7 @@ NS_IMPL_ISUPPORTS_INHERITED0(nsLinkableAccessible, nsAccessible)
 NS_IMETHODIMP nsLinkableAccessible::TakeFocus()
 { 
   if (IsALink()) {
-    mLinkContent->SetFocus(nsCOMPtr<nsIPresContext>(GetPresContext()));
+    mLinkContent->SetFocus(nsCOMPtr<nsPresContext>(GetPresContext()));
   }
   
   return NS_OK;
@@ -188,9 +190,12 @@ NS_IMETHODIMP nsLinkableAccessible::GetState(PRUint32 *aState)
       GetParent(getter_AddRefs(parentAccessible));
       if (parentAccessible) {
         PRUint32 orState = 0;
-        parentAccessible->GetState(&orState);
+        parentAccessible->GetFinalState(&orState);
         *aState |= orState;
       }
+    }
+    if (!mLinkContent->IsFocusable()) {
+      *aState &= ~STATE_FOCUSABLE; // Links must have href or tabindex
     }
   }
 
@@ -245,9 +250,10 @@ NS_IMETHODIMP nsLinkableAccessible::DoAction(PRUint8 index)
   // Action 0 (default action): Jump to link
   if (index == eAction_Jump) {
     if (IsALink()) {
-      nsCOMPtr<nsIPresContext> presContext(GetPresContext());
+      nsCOMPtr<nsPresContext> presContext(GetPresContext());
       if (presContext) {
-        nsMouseEvent linkClickEvent(PR_TRUE, NS_MOUSE_LEFT_CLICK, nsnull);
+        nsMouseEvent linkClickEvent(PR_TRUE, NS_MOUSE_LEFT_CLICK, nsnull,
+                                    nsMouseEvent::eReal);
 
         nsEventStatus eventStatus = nsEventStatus_eIgnore;
         mLinkContent->HandleDOMEvent(presContext, 
@@ -290,15 +296,24 @@ PRBool nsLinkableAccessible::IsALink()
   for (nsCOMPtr<nsIContent> walkUpContent(do_QueryInterface(mDOMNode));
        walkUpContent;
        walkUpContent = walkUpContent->GetParent()) {
-    nsCOMPtr<nsILink> link(do_QueryInterface(walkUpContent));
-    if (link) {
-      mLinkContent = walkUpContent;
-      mIsALinkCached = PR_TRUE;
-      nsLinkState linkState;
-      link->GetLinkState(linkState);
-      if (linkState == eLinkState_Visited)
-        mIsLinkVisited = PR_TRUE;
-      return PR_TRUE;
+    nsIAtom *tag = walkUpContent->Tag();
+    if ((tag == nsAccessibilityAtoms::a || tag == nsAccessibilityAtoms::area)) {
+      // Currently we do not expose <link> tags, because they are not typically
+      // in <body> and rendered.
+      // We do not yet support xlinks
+      nsCOMPtr<nsILink> link = do_QueryInterface(walkUpContent);
+      NS_ASSERTION(link, "No nsILink for area or a");
+      nsCOMPtr<nsIURI> uri;
+      link->GetHrefURI(getter_AddRefs(uri));
+      if (uri) {
+        mLinkContent = walkUpContent;
+        mIsALinkCached = PR_TRUE;
+        nsLinkState linkState;
+        link->GetLinkState(linkState);
+        if (linkState == eLinkState_Visited)
+          mIsLinkVisited = PR_TRUE;
+        return PR_TRUE;
+      }
     }
   }
   mIsALinkCached = PR_TRUE;  // Cached that there is no link
@@ -310,3 +325,4 @@ NS_IMETHODIMP nsLinkableAccessible::Shutdown()
   mLinkContent = nsnull;
   return nsAccessibleWrap::Shutdown();
 }
+

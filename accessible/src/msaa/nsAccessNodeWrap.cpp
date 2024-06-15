@@ -20,11 +20,11 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- * Original Author: Aaron Leventhal (aaronl@netscape.com)
+ *   Original Author: Aaron Leventhal (aaronl@netscape.com)
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
@@ -149,18 +149,15 @@ STDMETHODIMP nsAccessNodeWrap::get_nodeInfo(
 
   mDOMNode->GetNodeValue(nodeValue);
   *aNodeValue = ::SysAllocString(nodeValue.get());
+  *aNameSpaceID = content ? NS_STATIC_CAST(short, content->GetNameSpaceID()) : 0;
 
-  PRInt32 nameSpaceID = 0;
-  *aUniqueID = 0; // magic value of 0 means we're on the document node.
-  if (content) {
-    content->GetNameSpaceID(&nameSpaceID);
-    // This is a unique ID for every content node.  The 3rd party
-    // accessibility application can compare this to the childID we
-    // return for events such as focus events, to correlate back to
-    // data nodes in their internal object model.
-    *aUniqueID = content->ContentID();
-  }
-  *aNameSpaceID = NS_STATIC_CAST(short, nameSpaceID);
+  // This is a unique ID for every content node.  The 3rd party
+  // accessibility application can compare this to the childID we
+  // return for events such as focus events, to correlate back to
+  // data nodes in their internal object model.
+  void *uniqueID;
+  GetUniqueID(&uniqueID);
+  *aUniqueID = - NS_PTR_TO_INT32(uniqueID);
 
   *aNumChildren = 0;
   PRUint32 numChildren = 0;
@@ -258,16 +255,19 @@ STDMETHODIMP nsAccessNodeWrap::get_attributesForNames(
 
 NS_IMETHODIMP nsAccessNodeWrap::GetComputedStyleDeclaration(nsIDOMCSSStyleDeclaration **aCssDecl, PRUint32 *aLength)
 {
-  nsCOMPtr<nsIDOMElement> domElement(do_QueryInterface(mDOMNode));
   nsCOMPtr<nsIContent> content(do_QueryInterface(mDOMNode));
-  if (!domElement || !content) 
+  if (!content) 
     return NS_ERROR_FAILURE;   
 
-  nsCOMPtr<nsIDocument> doc;
-  if (content) 
-    doc = content->GetDocument();
+  if (content->IsContentOfType(nsIContent::eTEXT)) {
+    content = content->GetParent();
+    NS_ASSERTION(content, "No parent for text node");
+  }
 
-  if (!doc) {
+  nsCOMPtr<nsIDOMElement> domElement(do_QueryInterface(content));
+  nsCOMPtr<nsIDocument> doc = content->GetDocument();
+
+  if (!domElement || !doc) {
     return NS_ERROR_FAILURE;
   }
 
@@ -533,6 +533,26 @@ void nsAccessNodeWrap::InitAccessibility()
   nsCOMPtr<nsIPrefBranch> prefBranch(do_GetService(NS_PREFSERVICE_CONTRACTID));
   if (prefBranch) {
     prefBranch->GetBoolPref("accessibility.disableenumvariant", &gIsEnumVariantSupportDisabled);
+
+    PRBool isJavaEnabled;
+    prefBranch->GetBoolPref("security.enable_java", &isJavaEnabled);
+    if (isJavaEnabled) {
+      // Java is enabled
+      PRBool isJavaEnabledByUser;
+      prefBranch->PrefHasUserValue("security.enable_java", &isJavaEnabledByUser);
+      if (!isJavaEnabledByUser) {
+        // Java is enabled by default, not explicitly by the user
+        PRBool isScreenReaderActive;
+        if (SUCCEEDED(SystemParametersInfo(SPI_GETSCREENREADER, 0, &isScreenReaderActive, 0)) && 
+            isScreenReaderActive) {
+          // A screen reader is running, so let's turn off the default
+          // Java support to save ourselves from heap corruption.
+          // XXX only a temporary work around to this issue. It seems to be specific JRE 
+          // builds that have the problem
+          prefBranch->SetBoolPref("security.enable_java", PR_FALSE);
+        }
+      }
+    }
   }
 
   if (!gmUserLib) {
@@ -557,5 +577,3 @@ void nsAccessNodeWrap::ShutdownAccessibility()
 
   nsAccessNode::ShutdownXPAccessibility();
 }
-
-

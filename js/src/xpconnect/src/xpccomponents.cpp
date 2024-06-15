@@ -42,7 +42,7 @@
 /* The "Components" xpcom objects for JavaScript. */
 
 #include "xpcprivate.h"
-
+#include "nsReadableUtils.h"
 
 /***************************************************************************/
 // stuff used by all
@@ -65,8 +65,7 @@ JSValIsInterfaceOfType(JSContext *cx, jsval v, REFNSIID iid)
        nsnull != (xpc = nsXPConnect::GetXPConnect()) &&
        NS_SUCCEEDED(xpc->GetWrappedNativeOfJSObject(cx, JSVAL_TO_OBJECT(v),
                             getter_AddRefs(wn))) && wn &&
-       NS_SUCCEEDED(wn->GetNative(getter_AddRefs(sup))) && sup &&
-       NS_SUCCEEDED(sup->QueryInterface(iid, (void**)&iface)) && iface)
+       NS_SUCCEEDED(wn->Native()->QueryInterface(iid, (void**)&iface)) && iface)
     {
         NS_RELEASE(iface);
         return JS_TRUE;
@@ -84,7 +83,7 @@ char* xpc_CloneAllAccess()
 char * xpc_CheckAccessList(const PRUnichar* wideName, const char* list[])
 {
     nsCAutoString asciiName;   
-    CopyUCS2toASCII(nsDependentString(wideName), asciiName);
+    CopyUTF16toUTF8(nsDependentString(wideName), asciiName);
 
     for(const char** p = list; *p; p++)
         if(!strcmp(*p, asciiName.get()))
@@ -1656,11 +1655,9 @@ nsXPCComponents_Constructor::CallOrConstruct(nsIXPConnectWrappedNative *wrapper,
         }
 
         nsCOMPtr<nsIXPConnectWrappedNative> wn;
-        nsCOMPtr<nsISupports> sup;
         if(NS_FAILED(xpc->GetWrappedNativeOfJSObject(cx, JSVAL_TO_OBJECT(val),
                                 getter_AddRefs(wn))) || !wn ||
-           NS_FAILED(wn->GetNative(getter_AddRefs(sup))) || !sup ||
-           !(cInterfaceID = do_QueryInterface(sup)))
+           !(cInterfaceID = do_QueryWrappedNative(wn)))
         {
             return ThrowAndFail(NS_ERROR_XPC_UNEXPECTED, cx, _retval);
         }
@@ -1714,11 +1711,9 @@ nsXPCComponents_Constructor::CallOrConstruct(nsIXPConnectWrappedNative *wrapper,
         }
 
         nsCOMPtr<nsIXPConnectWrappedNative> wn;
-        nsCOMPtr<nsISupports> sup;
         if(NS_FAILED(xpc->GetWrappedNativeOfJSObject(cx, JSVAL_TO_OBJECT(val),
                                 getter_AddRefs(wn))) || !wn ||
-           NS_FAILED(wn->GetNative(getter_AddRefs(sup))) || !sup ||
-           !(cClassID = do_QueryInterface(sup)))
+           !(cClassID = do_QueryWrappedNative(wn)))
         {
             return ThrowAndFail(NS_ERROR_XPC_UNEXPECTED, cx, _retval);
         }
@@ -2097,14 +2092,124 @@ NS_IMETHODIMP nsXPCComponents::LookupMethod()
         return NS_ERROR_XPC_BAD_CONVERT_JS;
 
     // clone a function we can use for this object 
-    JSObject* funobj = xpc_CloneJSFunction(inner_cc, JSVAL_TO_OBJECT(funval), 
-                                           wrapper->GetFlatJSObject());
+    JSObject* funobj = JS_CloneFunctionObject(cx, JSVAL_TO_OBJECT(funval), 
+                                              wrapper->GetFlatJSObject());
     if(!funobj)
         return NS_ERROR_XPC_BAD_CONVERT_JS;
 
     // return the function and let xpconnect know we did so
     *retval = OBJECT_TO_JSVAL(funobj);
     cc->SetReturnValueWasSet(PR_TRUE);
+
+    return NS_OK;
+}
+
+/* void reportError (); */
+NS_IMETHODIMP nsXPCComponents::ReportError()
+{
+    // This function shall never fail! Silently eat any failure conditions.
+    nsresult rv;
+
+    nsCOMPtr<nsIConsoleService> console(
+      do_GetService(NS_CONSOLESERVICE_CONTRACTID));
+
+    nsCOMPtr<nsIScriptError> scripterr(new nsScriptError());
+
+    nsCOMPtr<nsIXPConnect> xpc(do_GetService(nsIXPConnect::GetCID()));
+    if(!scripterr || !console || !xpc)
+        return NS_OK;
+
+    // get the xpconnect native call context
+    nsCOMPtr<nsIXPCNativeCallContext> cc;
+    xpc->GetCurrentNativeCallContext(getter_AddRefs(cc));
+    if(!cc)
+        return NS_OK;
+
+    // verify that we are being called from JS (i.e. the current call is
+    // to this object - though we don't verify that it is to this exact method)
+    nsCOMPtr<nsISupports> callee;
+    cc->GetCallee(getter_AddRefs(callee));
+    if(!callee || callee.get() != 
+                  NS_STATIC_CAST(const nsISupports*,
+                                 NS_STATIC_CAST(const nsIXPCComponents*,this))) {
+        NS_ERROR("reportError() must only be called from JS!");
+        return NS_ERROR_FAILURE;
+    }
+
+    // Get JSContext of current call
+    JSContext* cx;
+    rv = cc->GetJSContext(&cx);
+    if(NS_FAILED(rv) || !cx)
+        return NS_OK;
+
+    // get argc and argv and verify arg count
+    PRUint32 argc;
+    rv = cc->GetArgc(&argc);
+    if(NS_FAILED(rv))
+        return NS_OK;
+
+    if(argc < 1)
+        return NS_ERROR_XPC_NOT_ENOUGH_ARGS;
+
+    jsval* argv;
+    rv = cc->GetArgvPtr(&argv);
+    if(NS_FAILED(rv) || !argv)
+        return NS_OK;
+
+    JSErrorReport* err = JS_ErrorFromException(cx, argv[0]);
+    if(err)
+    {
+        // It's a proper JS Error
+        nsAutoString fileUni;
+        CopyUTF8toUTF16(err->filename, fileUni);
+
+        PRUint32 column = err->uctokenptr - err->uclinebuf;
+
+        rv = scripterr->Init(NS_REINTERPRET_CAST(const PRUnichar*,
+                                                 err->ucmessage),
+                             fileUni.get(),
+                             NS_REINTERPRET_CAST(const PRUnichar*,
+                                                 err->uclinebuf),
+                             err->lineno,
+                             column,
+                             err->flags,
+                             "XPConnect JavaScript");
+        if(NS_FAILED(rv))
+            return NS_OK;
+
+        console->LogMessage(scripterr);
+        return NS_OK;
+    }
+
+    // It's not a JS Error object, so we synthesize as best we're able
+    JSString* msgstr = JS_ValueToString(cx, argv[0]);
+    if(msgstr)
+    {
+        // Root the string during scripterr->Init
+        argv[0] = STRING_TO_JSVAL(msgstr);
+
+        nsCOMPtr<nsIStackFrame> frame;
+        nsXPConnect* xpc = nsXPConnect::GetXPConnect();
+        if(xpc)
+            xpc->GetCurrentJSStack(getter_AddRefs(frame));
+
+        nsXPIDLCString fileName;
+        PRInt32 lineNo = 0;
+        if(frame)
+        {
+            frame->GetFilename(getter_Copies(fileName));
+            frame->GetLineNumber(&lineNo);
+        }
+
+        rv = scripterr->Init(NS_REINTERPRET_CAST(const PRUnichar*,
+                                                 JS_GetStringChars(msgstr)),
+                             NS_ConvertUTF8toUTF16(fileName).get(),
+                             nsnull,
+                             lineNo, 0,
+                             0, "XPConnect JavaScript");
+        if(NS_SUCCEEDED(rv))
+            console->LogMessage(scripterr);
+    }
 
     return NS_OK;
 }
@@ -2123,8 +2228,8 @@ nsXPCComponents::CanCreateWrapper(const nsIID * iid, char **_retval)
 NS_IMETHODIMP
 nsXPCComponents::CanCallMethod(const nsIID * iid, const PRUnichar *methodName, char **_retval)
 {
-    // If you have to ask, then the answer is NO
-    *_retval = nsnull;
+    static const char* allowed[] = { "isSuccessCode", "lookupMethod", nsnull };
+    *_retval = xpc_CheckAccessList(methodName, allowed);
     return NS_OK;
 }
 

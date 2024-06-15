@@ -1,28 +1,44 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
  *
- * The contents of this file are subject to the Netscape Public
- * License Version 1.1 (the "License"); you may not use this file
- * except in compliance with the License. You may obtain a copy of
- * the License at http://www.mozilla.org/NPL/
+ * ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * Software distributed under the License is distributed on an "AS
- * IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
- * implied. See the License for the specific language governing
- * rights and limitations under the License.
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
+ *
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+ * for the specific language governing rights and limitations under the
+ * License.
  *
  * The Original Code is Mozilla Communicator client code.
  *
- * The Initial Developer of the Original Code is Netscape Communications
- * Corporation.  Portions created by Netscape are
- * Copyright (C) 1998 Netscape Communications Corporation. All
- * Rights Reserved.
+ * The Initial Developer of the Original Code is
+ * Netscape Communications Corporation.
+ * Portions created by the Initial Developer are Copyright (C) 1998
+ * the Initial Developer. All Rights Reserved.
  *
- * Contributor(s): 
- */
+ * Contributor(s):
+ *
+ * Alternatively, the contents of this file may be used under the terms of
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK ***** */
 
 #include "nsIFormSubmission.h"
 
-#include "nsIPresContext.h"
+#include "nsPresContext.h"
 #include "nsCOMPtr.h"
 #include "nsIForm.h"
 #include "nsILinkHandler.h"
@@ -33,8 +49,7 @@
 #include "nsIScriptGlobalObject.h"
 #include "nsIDOMHTMLFormElement.h"
 #include "nsDOMError.h"
-#include "nsHTMLValue.h"
-#include "nsGenericElement.h"
+#include "nsGenericHTMLElement.h"
 #include "nsISaveAsCharset.h"
 
 // JBK added for submit move from content frame
@@ -43,8 +58,6 @@
 #include "nsIFormProcessor.h"
 #include "nsIURI.h"
 #include "nsNetUtil.h"
-#include "nsIPrefBranch.h"
-#include "nsIPrefService.h"
 #include "nsLinebreakConverter.h"
 #include "nsICharsetConverterManager.h"
 #include "nsICharsetAlias.h"
@@ -98,7 +111,7 @@ public:
   // nsIFormSubmission
   //
   virtual nsresult SubmitTo(nsIURI* aActionURI, const nsAString& aTarget,
-                            nsIContent* aSource, nsIPresContext* aPresContext,
+                            nsIContent* aSource, nsPresContext* aPresContext,
                             nsIDocShell** aDocShell, nsIRequest** aRequest);
 
   /**
@@ -171,7 +184,7 @@ public:
    *        builds.
    * @param aCharset the returned charset [OUT]
    */
-  static void GetSubmitCharset(nsIHTMLContent* aForm,
+  static void GetSubmitCharset(nsGenericHTMLElement* aForm,
                                PRUint8 aCtrlsModAtSubmit,
                                nsACString& aCharset);
   /**
@@ -181,8 +194,8 @@ public:
    * @param aCharset the charset of the form
    * @param aEncoder the returned encoder [OUT]
    */
-  static nsresult GetEncoder(nsIHTMLContent* aForm,
-                             nsIPresContext* aPresContext,
+  static nsresult GetEncoder(nsGenericHTMLElement* aForm,
+                             nsPresContext* aPresContext,
                              const nsACString& aCharset,
                              nsISaveAsCharset** aEncoder);
   /**
@@ -193,7 +206,7 @@ public:
    *        exist on the form, so *make sure you provide a default value*.)
    *        [OUT]
    */
-  static void GetEnumAttr(nsIHTMLContent* aForm,
+  static void GetEnumAttr(nsGenericHTMLElement* aForm,
                           nsIAtom* aAtom, PRInt32* aValue);
 };
 
@@ -208,8 +221,8 @@ public:
  *        layout/html/forms/src/HtmlProperties.js
  */
 static nsresult
-SendJSWarning(nsIHTMLContent* aContent,
-              const nsAFlatString& aWarningName);
+SendJSWarning(nsIContent* aContent,
+              const char* aWarningName);
 /**
  * Send a warning to the JS console
  * @param aContent the content the warning is about
@@ -218,8 +231,8 @@ SendJSWarning(nsIHTMLContent* aContent,
  * @param aWarningArg1 an argument to replace a %S in the warning
  */
 static nsresult
-SendJSWarning(nsIHTMLContent* aContent,
-              const nsAFlatString& aWarningName,
+SendJSWarning(nsIContent* aContent,
+              const char* aWarningName,
               const nsAFlatString& aWarningArg1);
 /**
  * Send a warning to the JS console
@@ -230,8 +243,8 @@ SendJSWarning(nsIHTMLContent* aContent,
  * @param aWarningArgsLen the number of strings in the array
  */
 static nsresult
-SendJSWarning(nsIHTMLContent* aContent,
-              const nsAFlatString& aWarningName,
+SendJSWarning(nsIContent* aContent,
+              const char* aWarningName,
               const PRUnichar** aWarningArgs, PRUint32 aWarningArgsLen);
 
 
@@ -324,8 +337,8 @@ nsFSURLEncoded::AddNameValuePair(nsIDOMHTMLElement* aSource,
   if (!mWarnedFileControl) {
     nsCOMPtr<nsIFormControl> formControl = do_QueryInterface(aSource);
     if (formControl->GetType() == NS_FORM_INPUT_FILE) {
-      nsCOMPtr<nsIHTMLContent> content = do_QueryInterface(aSource);
-      SendJSWarning(content, NS_LITERAL_STRING("ForgotFileEnctypeWarning"));
+      nsCOMPtr<nsIContent> content = do_QueryInterface(aSource);
+      SendJSWarning(content, "ForgotFileEnctypeWarning");
       mWarnedFileControl = PR_TRUE;
     }
   }
@@ -433,7 +446,27 @@ HandleMailtoSubject(nsCString& aPath) {
       aPath.Append('?');
     }
 
-    aPath += NS_LITERAL_CSTRING("subject=Form%20Post%20From%20Mozilla&");
+    // Get the default subject
+    nsXPIDLString brandName;
+    nsresult rv =
+      nsContentUtils::GetLocalizedString(nsContentUtils::eBRAND_PROPERTIES,
+                                         "brandShortName", brandName);
+    if (NS_FAILED(rv))
+      return;
+    const PRUnichar *formatStrings[] = { brandName.get() };
+    nsXPIDLString subjectStr;
+    rv = nsContentUtils::FormatLocalizedString(
+                                           nsContentUtils::eFORMS_PROPERTIES,
+                                           "DefaultFormSubject",
+                                           formatStrings,
+                                           NS_ARRAY_LENGTH(formatStrings),
+                                           subjectStr);
+    if (NS_FAILED(rv))
+      return;
+    aPath.AppendLiteral("subject=");
+    nsCString subjectStrEscaped;
+    aPath.Append(NS_EscapeURL(NS_ConvertUTF16toUTF8(subjectStr), esc_Query,
+                              subjectStrEscaped));
   }
 }
 
@@ -676,12 +709,8 @@ nsFSMultipartFormData::nsFSMultipartFormData(const nsACString& aCharset,
     : nsFormSubmission(aCharset, aEncoder, aFormProcessor, aBidiOptions)
 {
   // XXX I can't *believe* we have a pref for this.  ifdef, anyone?
-  mBackwardsCompatibleSubmit = PR_FALSE;
-  nsCOMPtr<nsIPrefBranch> prefBranch(do_GetService(NS_PREFSERVICE_CONTRACTID));
-  if (prefBranch) {
-    prefBranch->GetBoolPref("browser.forms.submit.backwards_compatible",
-                            &mBackwardsCompatibleSubmit);
-  }
+  mBackwardsCompatibleSubmit =
+    nsContentUtils::GetBoolPref("browser.forms.submit.backwards_compatible");
 }
 
 nsresult
@@ -799,7 +828,7 @@ nsFSMultipartFormData::AddNameFilePair(nsIDOMHTMLElement* aSource,
   //
   // CRLF after file
   //
-  mPostDataChunk += NS_LITERAL_CSTRING(CRLF);
+  mPostDataChunk.AppendLiteral(CRLF);
 
   return NS_OK;
 }
@@ -825,7 +854,7 @@ nsFSMultipartFormData::Init()
   //
   // Build boundary
   //
-  mBoundary = NS_LITERAL_CSTRING("---------------------------");
+  mBoundary.AssignLiteral("---------------------------");
   mBoundary.AppendInt(rand());
   mBoundary.AppendInt(rand());
   mBoundary.AppendInt(rand());
@@ -1061,15 +1090,15 @@ NS_INTERFACE_MAP_END
 // submission
 
 static nsresult
-SendJSWarning(nsIHTMLContent* aContent,
-               const nsAFlatString& aWarningName)
+SendJSWarning(nsIContent* aContent,
+               const char* aWarningName)
 {
   return SendJSWarning(aContent, aWarningName, nsnull, 0);
 }
 
 static nsresult
-SendJSWarning(nsIHTMLContent* aContent,
-               const nsAFlatString& aWarningName,
+SendJSWarning(nsIContent* aContent,
+               const char* aWarningName,
                const nsAFlatString& aWarningArg1)
 {
   const PRUnichar* formatStrings[1] = { aWarningArg1.get() };
@@ -1077,71 +1106,31 @@ SendJSWarning(nsIHTMLContent* aContent,
 }
 
 static nsresult
-SendJSWarning(nsIHTMLContent* aContent,
-              const nsAFlatString& aWarningName,
+SendJSWarning(nsIContent* aContent,
+              const char* aWarningName,
               const PRUnichar** aWarningArgs, PRUint32 aWarningArgsLen)
 {
-  nsresult rv = NS_OK;
-
-  //
   // Get the document URL to use as the filename
-  //
-  nsCAutoString documentURISpec;
 
   nsIDocument* document = aContent->GetDocument();
+  nsIURI *documentURI = nsnull;
   if (document) {
-    nsIURI *documentURI = document->GetDocumentURI();
+    documentURI = document->GetDocumentURI();
     NS_ENSURE_TRUE(documentURI, NS_ERROR_UNEXPECTED);
-    documentURI->GetPath(documentURISpec);
   }
 
-  //
-  // Get the error string
-  //
-  nsCOMPtr<nsIStringBundleService> bundleService = do_GetService(NS_STRINGBUNDLE_CONTRACTID, &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
-  nsCOMPtr<nsIStringBundle> bundle;
-  rv = bundleService->CreateBundle(
-      "chrome://global/locale/layout/HtmlForm.properties",
-      getter_AddRefs(bundle));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsXPIDLString warningStr;
-  if (aWarningArgsLen > 0) {
-    bundle->FormatStringFromName(aWarningName.get(),
-                                 aWarningArgs, aWarningArgsLen,
-                                 getter_Copies(warningStr));
-  } else {
-    bundle->GetStringFromName(aWarningName.get(), getter_Copies(warningStr));
-  }
-
-  //
-  // Create the error
-  //
-  nsCOMPtr<nsIScriptError>
-      scriptError(do_CreateInstance(NS_SCRIPTERROR_CONTRACTID));
-  NS_ENSURE_TRUE(scriptError, NS_ERROR_UNEXPECTED);
-
-  rv = scriptError->Init(warningStr.get(),
-                         NS_ConvertUTF8toUTF16(documentURISpec).get(),
-                         nsnull, (uintN)0,
-                         0, nsIScriptError::warningFlag,
-                         "HTML");
-  NS_ENSURE_SUCCESS(rv,rv);
-
-  //
-  // Send the error to the console
-  //
-  nsCOMPtr<nsIConsoleService>
-      consoleService(do_GetService(NS_CONSOLESERVICE_CONTRACTID));
-  NS_ENSURE_TRUE(consoleService, NS_ERROR_UNEXPECTED);
-
-  return consoleService->LogMessage(scriptError);
+  return nsContentUtils::ReportToConsole(nsContentUtils::eFORMS_PROPERTIES,
+                                         aWarningName,
+                                         aWarningArgs, aWarningArgsLen,
+                                         documentURI,
+                                         EmptyString(), 0, 0,
+                                         nsIScriptError::warningFlag,
+                                         "HTML");
 }
 
 nsresult
-GetSubmissionFromForm(nsIHTMLContent* aForm,
-                      nsIPresContext* aPresContext,
+GetSubmissionFromForm(nsGenericHTMLElement* aForm,
+                      nsPresContext* aPresContext,
                       nsIFormSubmission** aFormSubmission)
 {
   nsresult rv = NS_OK;
@@ -1151,9 +1140,8 @@ GetSubmissionFromForm(nsIHTMLContent* aForm,
   //
 
   // Get BIDI options
-  PRUint32 bidiOptions = 0;
   PRUint8 ctrlsModAtSubmit = 0;
-  aPresContext->GetBidi(&bidiOptions);
+  PRUint32 bidiOptions = aPresContext->GetBidi();
   ctrlsModAtSubmit = GET_BIDI_OPTION_CONTROLSTEXTMODE(bidiOptions);
 
   // Get encoding type (default: urlencoded)
@@ -1198,7 +1186,7 @@ GetSubmissionFromForm(nsIHTMLContent* aForm,
         enctype == NS_FORM_ENCTYPE_TEXTPLAIN) {
       nsAutoString enctypeStr;
       aForm->GetAttr(kNameSpaceID_None, nsHTMLAtoms::enctype, enctypeStr);
-      SendJSWarning(aForm, NS_LITERAL_STRING("ForgotPostWarning"), PromiseFlatString(enctypeStr));
+      SendJSWarning(aForm, "ForgotPostWarning", PromiseFlatString(enctypeStr));
     }
     *aFormSubmission = new nsFSURLEncoded(charset, encoder,
                                           formProcessor, bidiOptions, method);
@@ -1216,7 +1204,7 @@ GetSubmissionFromForm(nsIHTMLContent* aForm,
 
 nsresult
 nsFormSubmission::SubmitTo(nsIURI* aActionURI, const nsAString& aTarget,
-                           nsIContent* aSource, nsIPresContext* aPresContext,
+                           nsIContent* aSource, nsPresContext* aPresContext,
                            nsIDocShell** aDocShell, nsIRequest** aRequest)
 {
   nsresult rv;
@@ -1244,19 +1232,16 @@ nsFormSubmission::SubmitTo(nsIURI* aActionURI, const nsAString& aTarget,
 // JBK moved from nsFormFrame - bug 34297
 // static
 void
-nsFormSubmission::GetSubmitCharset(nsIHTMLContent* aForm,
+nsFormSubmission::GetSubmitCharset(nsGenericHTMLElement* aForm,
                                    PRUint8 aCtrlsModAtSubmit,
                                    nsACString& oCharset)
 {
-  oCharset = NS_LITERAL_CSTRING("UTF-8"); // default to utf-8
+  oCharset.AssignLiteral("UTF-8"); // default to utf-8
 
   nsresult rv = NS_OK;
   nsAutoString acceptCharsetValue;
-  nsHTMLValue value;
-  rv = aForm->GetHTMLAttribute(nsHTMLAtoms::acceptcharset, value);
-  if (rv == NS_CONTENT_ATTR_HAS_VALUE && value.GetUnit() == eHTMLUnit_String) {
-    value.GetStringValue(acceptCharsetValue);
-  }
+  aForm->GetAttr(kNameSpaceID_None, nsHTMLAtoms::acceptcharset,
+                 acceptCharsetValue);
 
   PRInt32 charsetLen = acceptCharsetValue.Length();
   if (charsetLen > 0) {
@@ -1294,22 +1279,22 @@ nsFormSubmission::GetSubmitCharset(nsIHTMLContent* aForm,
      && oCharset.Equals(NS_LITERAL_CSTRING("windows-1256"),
                         nsCaseInsensitiveCStringComparator())) {
 //Mohamed
-    oCharset = NS_LITERAL_CSTRING("IBM864");
+    oCharset.AssignLiteral("IBM864");
   }
   else if (aCtrlsModAtSubmit==IBMBIDI_CONTROLSTEXTMODE_LOGICAL
           && oCharset.Equals(NS_LITERAL_CSTRING("IBM864"),
                              nsCaseInsensitiveCStringComparator())) {
-    oCharset = NS_LITERAL_CSTRING("IBM864i");
+    oCharset.AssignLiteral("IBM864i");
   }
   else if (aCtrlsModAtSubmit==IBMBIDI_CONTROLSTEXTMODE_VISUAL
           && oCharset.Equals(NS_LITERAL_CSTRING("ISO-8859-6"),
                              nsCaseInsensitiveCStringComparator())) {
-    oCharset = NS_LITERAL_CSTRING("IBM864");
+    oCharset.AssignLiteral("IBM864");
   }
   else if (aCtrlsModAtSubmit==IBMBIDI_CONTROLSTEXTMODE_VISUAL
           && oCharset.Equals(NS_LITERAL_CSTRING("UTF-8"),
                              nsCaseInsensitiveCStringComparator())) {
-    oCharset = NS_LITERAL_CSTRING("IBM864");
+    oCharset.AssignLiteral("IBM864");
   }
 
 }
@@ -1317,8 +1302,8 @@ nsFormSubmission::GetSubmitCharset(nsIHTMLContent* aForm,
 // JBK moved from nsFormFrame - bug 34297
 // static
 nsresult
-nsFormSubmission::GetEncoder(nsIHTMLContent* aForm,
-                             nsIPresContext* aPresContext,
+nsFormSubmission::GetEncoder(nsGenericHTMLElement* aForm,
+                             nsPresContext* aPresContext,
                              const nsACString& aCharset,
                              nsISaveAsCharset** aEncoder)
 {
@@ -1326,8 +1311,8 @@ nsFormSubmission::GetEncoder(nsIHTMLContent* aForm,
   nsresult rv = NS_OK;
 
   nsCAutoString charset(aCharset);
-  if(charset.Equals(NS_LITERAL_CSTRING("ISO-8859-1")))
-    charset.Assign(NS_LITERAL_CSTRING("windows-1252"));
+  if(charset.EqualsLiteral("ISO-8859-1"))
+    charset.AssignLiteral("windows-1252");
 
   rv = CallCreateInstance( NS_SAVEASCHARSET_CONTRACTID, aEncoder);
   NS_ASSERTION(NS_SUCCEEDED(rv), "create nsISaveAsCharset failed");
@@ -1418,14 +1403,12 @@ nsFormSubmission::UnicodeToNewBytes(const PRUnichar* aStr, PRUint32 aLen,
 
 // static
 void
-nsFormSubmission::GetEnumAttr(nsIHTMLContent* aContent,
+nsFormSubmission::GetEnumAttr(nsGenericHTMLElement* aContent,
                               nsIAtom* atom, PRInt32* aValue)
 {
-  nsHTMLValue value;
-  if (aContent->GetHTMLAttribute(atom, value) == NS_CONTENT_ATTR_HAS_VALUE) {
-    if (eHTMLUnit_Enumerated == value.GetUnit()) {
-      *aValue = value.GetIntValue();
-    }
+  const nsAttrValue* value = aContent->GetParsedAttr(atom);
+  if (value && value->Type() == nsAttrValue::eEnum) {
+    *aValue = value->GetEnumValue();
   }
 }
 
@@ -1448,7 +1431,7 @@ nsFormSubmission::ProcessValue(nsIDOMHTMLElement* aSource,
                                const nsAString& aName, const nsAString& aValue)
 {
   // Hijack _charset_ (hidden inputs only) for internationalization (bug 18643)
-  if (aName == NS_LITERAL_STRING("_charset_")) {
+  if (aName.EqualsLiteral("_charset_")) {
     nsCOMPtr<nsIFormControl> formControl = do_QueryInterface(aSource);
     if (formControl) {
       if (formControl->GetType() == NS_FORM_INPUT_HIDDEN) {

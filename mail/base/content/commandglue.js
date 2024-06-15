@@ -1,26 +1,43 @@
 # -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
-# The contents of this file are subject to the Netscape Public
-# License Version 1.1 (the "License"); you may not use this file
-# except in compliance with the License. You may obtain a copy of
-# the License at http://www.mozilla.org/NPL/
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 1.1/GPL 2.0/LGPL 2.1
 #
-# Software distributed under the License is distributed on an "AS
-# IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
-# implied. See the License for the specific language governing
-# rights and limitations under the License.
+# The contents of this file are subject to the Mozilla Public License Version
+# 1.1 (the "License"); you may not use this file except in compliance with
+# the License. You may obtain a copy of the License at
+# http://www.mozilla.org/MPL/
+#
+# Software distributed under the License is distributed on an "AS IS" basis,
+# WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+# for the specific language governing rights and limitations under the
+# License.
 #
 # The Original Code is Mozilla Communicator client code, released
 # March 31, 1998.
 #
-# The Initial Developer of the Original Code is Netscape
-# Communications Corporation. Portions created by Netscape are
-# Copyright (C) 1998-1999 Netscape Communications Corporation. All
-# Rights Reserved.
+# The Initial Developer of the Original Code is
+# Netscape Communications Corporation.
+# Portions created by the Initial Developer are Copyright (C) 1998-1999
+# the Initial Developer. All Rights Reserved.
 #
-# Contributors(s):
+# Contributor(s):
 #   Jan Varga <varga@nixcorp.com>
 #   Håkan Waara (hwaara@chello.se)
 #   David Bienvenu (bienvenu@nventure.com)
+#
+# Alternatively, the contents of this file may be used under the terms of
+# either the GNU General Public License Version 2 or later (the "GPL"), or
+# the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+# in which case the provisions of the GPL or the LGPL are applicable instead
+# of those above. If you wish to allow use of your version of this file only
+# under the terms of either the GPL or the LGPL, and not to allow others to
+# use your version of this file under the terms of the MPL, indicate your
+# decision by deleting the provisions above and replace them with the notice
+# and other provisions required by the GPL or the LGPL. If you do not delete
+# the provisions above, a recipient may use your version of this file under
+# the terms of any one of the MPL, the GPL or the LGPL.
+#
+# ***** END LICENSE BLOCK *****
 /*
  * Command-specific code. This stuff should be called by the widgets
  */
@@ -141,13 +158,13 @@ function setTitleFromFolder(msgfolder, subject)
             }
         if (middle) title += " " + middle;
         if (end) title += " " + end;
-      }
+    }
     }
 
 #ifndef XP_MACOSX
     title += " - " + gBrandBundle.getString("brandShortName");
 #endif
-    window.title = title;
+    document.title = title;
 }
 
 function UpdateMailToolbar(caller)
@@ -185,7 +202,7 @@ function ChangeFolderByURI(uri, viewType, viewFlags, sortType, sortOrder)
     msgWindow.openFolder = null;
 
     ClearThreadPane();
-
+    
     // Load AccountCentral page here.
     ShowAccountCentral();
 
@@ -201,16 +218,7 @@ function ChangeFolderByURI(uri, viewType, viewFlags, sortType, sortOrder)
   }
 
   // If the user clicks on msgfolder, time to display thread pane and message pane.
-  // Hide AccountCentral page
-  if (gAccountCentralLoaded)
-  {
-      HideAccountCentral();
-  }
-
-  if (gFakeAccountPageLoaded)
-  {
-      HideFakeAccountPage();
-  }
+  ShowThreadPane();
 
   gCurrentLoadingFolderURI = uri;
   gNextMessageAfterDelete = null; // forget what message to select, if any
@@ -690,7 +698,6 @@ function CreateBareDBView(originalView, msgFolder, viewType, viewFlags, sortType
 
   if (!originalView) {
     gDBView.init(messenger, msgWindow, gThreadPaneCommandUpdater);
-
     gDBView.open(msgFolder, gCurSortType, sortOrder, viewFlags, count);
     if (viewType == nsMsgViewType.eShowVirtualFolderResults)
     {
@@ -740,7 +747,7 @@ function GetSelectedFolderResource()
     var folderTree = GetFolderTree();
     var startIndex = {};
     var endIndex = {};
-    folderTree.treeBoxObject.selection.getRangeAt(0, startIndex, endIndex);
+    folderTree.view.selection.getRangeAt(0, startIndex, endIndex);
     return GetFolderResource(folderTree, startIndex.value);
 }
 
@@ -776,7 +783,7 @@ function OnMouseUpThreadAndMessagePaneSplitter()
 function FolderPaneSelectionChange()
 {
     var folderTree = GetFolderTree();
-    var folderSelection = folderTree.treeBoxObject.selection;
+    var folderSelection = folderTree.view.selection;
 
     // This prevents a folder from being loaded in the case that the user
     // has right-clicked on a folder different from the one that was
@@ -808,7 +815,7 @@ function FolderPaneSelectionChange()
         if (msgFolder == gMsgFolderSelected)
            return;
 
-	      gPrevSelectedFolder = gMsgFolderSelected;
+	gPrevSelectedFolder = gMsgFolderSelected;
         gMsgFolderSelected = msgFolder;
         var folderFlags = msgFolder.flags;
         // if this is same folder, and we're not showing a virtual folder
@@ -821,6 +828,7 @@ function FolderPaneSelectionChange()
         }
         else
         {
+            OnLeavingFolder(gPrevSelectedFolder);  // mark all read in last folder
             var sortType = 0;
             var sortOrder = 0;
             var viewFlags = 0;
@@ -845,8 +853,7 @@ function FolderPaneSelectionChange()
                   {
                     viewType = nsMsgViewType.eShowQuickSearchResults;
                     var searchTermString = dbFolderInfo.getCharPtrProperty("searchStr");
-                    var searchOnline = {};
-                    dbFolderInfo.getBooleanProperty("searchOnline", searchOnline, false);
+                    var searchOnline = dbFolderInfo.getBooleanProperty("searchOnline", false);
                     // trick the view code into updating the real folder...
                     gCurrentVirtualFolderUri = uriToLoad;
                     viewDebug("uriToLoad = " + uriToLoad + "\n");
@@ -861,7 +868,7 @@ function FolderPaneSelectionChange()
                     {
                       viewType = nsMsgViewType.eShowVirtualFolderResults;
                       gXFVirtualFolderTerms = CreateGroupedSearchTerms(tempFilter.searchTerms);
-                      setupXFVirtualFolderSearch(srchFolderUriArray, gXFVirtualFolderTerms, searchOnline.value);
+                      setupXFVirtualFolderSearch(srchFolderUriArray, gXFVirtualFolderTerms, searchOnline);
                       // need to set things up so that reroot folder issues the search
                     }
                     else
@@ -872,7 +879,7 @@ function FolderPaneSelectionChange()
                       // will return false...
                       var realFolderRes = GetResourceFromUri(uriToLoad);
                       var realFolder = realFolderRes.QueryInterface(Components.interfaces.nsIMsgFolder);
-                      msgDatabase = realFolder.getMsgDatabase(msgWindow);                   
+                      msgDatabase = realFolder.getMsgDatabase(msgWindow);
                       gVirtualFolderTerms = CreateGroupedSearchTerms(tempFilter.searchTerms);
                     }
                   }
@@ -1053,7 +1060,7 @@ function  CreateVirtualFolder(newName, parentFolder, searchFolderURIs, searchTer
 
       vfdb.summaryValid = true;
       vfdb.Close(true);
-      parentFolder.NotifyItemAdded(parentFolder, newFolder, "folderView");
+      parentFolder.NotifyItemAdded(newFolder);
       var accountManager = Components.classes["@mozilla.org/messenger/account-manager;1"].getService(Components.interfaces.nsIMsgAccountManager);
       accountManager.saveVirtualFolders();
     }
@@ -1149,6 +1156,21 @@ function CreateGroupedSearchTerms(searchTermsArray)
     searchTermsArrayForQS.AppendElement(searchTermForQS);
   }
   return searchTermsArrayForQS;
+}
+
+function OnLeavingFolder(aFolder)
+{
+  try
+  {
+    // Mark all messages of aFolder as read:
+    // We can't use the command controller, because it is already tuned in to the
+    // new folder, so we just mimic its behaviour wrt goDoCommand('cmd_markAllRead').
+    if (gDBView && gPrefBranch.getBoolPref("mailnews.mark_message_read." + aFolder.server.type))
+    {
+      gDBView.doCommand(nsMsgViewCommandType.markAllRead);
+    }
+  }
+  catch(e){/* ignore */}
 }
 
 var gViewDebug = false;

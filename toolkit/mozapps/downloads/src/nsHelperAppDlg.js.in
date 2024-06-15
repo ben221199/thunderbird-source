@@ -1,29 +1,31 @@
 /*
 # -*- Mode: Java; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+# ***** BEGIN LICENSE BLOCK *****
 # Version: MPL 1.1/GPL 2.0/LGPL 2.1
-# 
+#
 # The contents of this file are subject to the Mozilla Public License Version
 # 1.1 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
 # http://www.mozilla.org/MPL/
-# 
+#
 # Software distributed under the License is distributed on an "AS IS" basis,
 # WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
 # for the specific language governing rights and limitations under the
 # License.
-# 
+#
 # The Original Code is Mozilla.org Code.
-# 
+#
 # The Initial Developer of the Original Code is
 # Doron Rosenberg.
 # Portions created by the Initial Developer are Copyright (C) 2001
 # the Initial Developer. All Rights Reserved.
-# 
+#
 # Contributor(s):
 #   Bill Law <law@netscape.com>
 #   Scott MacGregor <mscott@netscape.com>
 #   Ben Goodger <ben@bengoodger.com> (2.0)
-# 
+#   Fredrik Holmqvist <thesuckiestemail@yahoo.se>
+#
 # Alternatively, the contents of this file may be used under the terms of
 # either the GNU General Public License Version 2 or later (the "GPL"), or
 # the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
@@ -35,8 +37,8 @@
 # and other provisions required by the GPL or the LGPL. If you do not delete
 # the provisions above, a recipient may use your version of this file under
 # the terms of any one of the MPL, the GPL or the LGPL.
-# 
-# ***** END LICENSE BLOCK ***** 
+#
+# ***** END LICENSE BLOCK *****
 */
 
 /* This file implements the nsIHelperAppLauncherDialog interface.
@@ -81,7 +83,7 @@ nsUnknownContentTypeDialog.prototype = {
     // show: Open XUL dialog using window watcher.  Since the dialog is not
     //       modal, it needs to be a top level window and the way to open
     //       one of those is via that route).
-    show: function(aLauncher, aContext)  {  
+    show: function(aLauncher, aContext, aReason)  {
       this.mLauncher = aLauncher;
       this.mContext  = aContext;
       // Display the dialog using the Window Watcher interface.
@@ -139,16 +141,21 @@ nsUnknownContentTypeDialog.prototype = {
         if (autodownload) {
           function getSpecialFolderKey(aFolderType) 
           {
+            if (aFolderType == "Desktop")
+              return "Desk";
+        
+            if (aFolderType != "Downloads")
+              throw "ASSERTION FAILED: folder type should be 'Desktop' or 'Downloads'";
+        
 #ifdef XP_WIN
-            return aFolderType == "Desktop" ? "DeskP" : "Pers";
-#endif
+            return "Pers";
+#else
 #ifdef XP_MACOSX
-            return aFolderType == "Desktop" ? "UsrDsk" : "UsrDocs";
-#endif
-#ifdef XP_OS2
-            return aFolderType == "Desktop" ? "Desk" : "Home";
-#endif
+            return "UsrDocs";
+#else
             return "Home";
+#endif
+#endif
           }
           
           function getDownloadsFolder(aFolder)
@@ -215,7 +222,7 @@ nsUnknownContentTypeDialog.prototype = {
         var wildCardExtension = "*";
         if (aSuggestedFileExtension) {
           wildCardExtension += aSuggestedFileExtension;
-          picker.appendFilter(this.mLauncher.MIMEInfo.Description, wildCardExtension);
+          picker.appendFilter(this.mLauncher.MIMEInfo.description, wildCardExtension);
         }
 
         picker.appendFilters( nsIFilePicker.filterAll );
@@ -275,7 +282,7 @@ nsUnknownContentTypeDialog.prototype = {
         // logic to check for existing files, so we need to do that here.
         //
         // Note - this code is identical to that in 
-        //   browser/base/content/contentAreaUtils.js. 
+        //   toolkit/content/contentAreaUtils.js.
         // If you are updating this code, update that code too! We can't share code
         // here since this is called in a js component. 
         while (aLocalFile.exists()) {
@@ -337,6 +344,16 @@ nsUnknownContentTypeDialog.prototype = {
                                     aMaxTotalProgress ) {
         },
 
+        onProgressChange64: function( aWebProgress,
+                                      aRequest,
+                                      aCurSelfProgress,
+                                      aMaxSelfProgress,
+                                      aCurTotalProgress,
+                                      aMaxTotalProgress ) {
+        },
+
+
+
         onStateChange: function( aWebProgress, aRequest, aStateFlags, aStatus ) {
         },
 
@@ -350,7 +367,6 @@ nsUnknownContentTypeDialog.prototype = {
     // initDialog:  Fill various dialog fields with initial content.
     initDialog : function() {
       // Put file name in window title.
-      var win   = this.dialogElement( "unknownContentType" );
       var suggestedFileName = this.mLauncher.suggestedFileName;
 
       // Some URIs do not implement nsIURL, so we can't just QI.
@@ -374,7 +390,7 @@ nsUnknownContentTypeDialog.prototype = {
       var displayName = fname.replace(/ +/g, " ");
 
       this.mTitle = this.dialogElement("strings").getFormattedString("title", [displayName]);
-      win.setAttribute( "title", this.mTitle );
+      this.mDialog.document.title = this.mTitle;
 
       // Put content type, filename and location into intro.
       this.initIntro(url, fname, displayName);
@@ -497,7 +513,7 @@ nsUnknownContentTypeDialog.prototype = {
         var mimeInfo = this.mLauncher.MIMEInfo;
         
         // 1. Try to use the pretty description of the type, if one is available.
-        var typeString = mimeInfo.Description;
+        var typeString = mimeInfo.description;
         
         if (typeString == "") {
           // 2. If there is none, use the extension to identify the file, e.g. "ZIP file"
@@ -602,7 +618,7 @@ nsUnknownContentTypeDialog.prototype = {
         this.dialogElement("open").disabled = true;
         var openHandler = this.dialogElement("openHandler");
         openHandler.disabled = true;
-        openHandler.label = "";
+        openHandler.selectedItem = null;
         modeGroup.selectedItem = this.dialogElement("save");
         return;
       }
@@ -852,7 +868,8 @@ nsUnknownContentTypeDialog.prototype = {
 
       // Cancel app launcher.
       try {
-        this.mLauncher.Cancel();
+        const NS_BINDING_ABORTED = 0x804b0002;
+        this.mLauncher.cancel(NS_BINDING_ABORTED);
       } catch(exception) {
       }
 

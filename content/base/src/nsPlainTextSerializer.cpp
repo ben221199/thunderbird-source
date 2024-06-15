@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,35 +14,32 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- *     Daniel Bratell <bratell@lysator.liu.se>
- *     Ben Bucksch <mozilla@bucksch.org>
- *
+ *   Daniel Bratell <bratell@lysator.liu.se>
+ *   Ben Bucksch <mozilla@bucksch.org>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
 #include "nsPlainTextSerializer.h"
 #include "nsILineBreakerFactory.h"
 #include "nsLWBrkCIID.h"
-#include "nsIPrefBranch.h"
-#include "nsIPrefService.h"
 #include "nsIServiceManager.h"
 #include "nsHTMLAtoms.h"
 #include "nsIDOMText.h"
@@ -187,7 +184,7 @@ nsPlainTextSerializer::Init(PRUint32 aFlags, PRUint32 aWrapColumn,
   if ((mFlags & nsIDocumentEncoder::OutputCRLineBreak)
       && (mFlags & nsIDocumentEncoder::OutputLFLineBreak)) {
     // Windows
-    mLineBreak.Assign(NS_LITERAL_STRING("\r\n"));
+    mLineBreak.AssignLiteral("\r\n");
   }
   else if (mFlags & nsIDocumentEncoder::OutputCRLineBreak) {
     // Mac
@@ -199,39 +196,36 @@ nsPlainTextSerializer::Init(PRUint32 aFlags, PRUint32 aWrapColumn,
   }
   else {
     // Platform/default
-    mLineBreak.AssignWithConversion(NS_LINEBREAK);
+    mLineBreak.AssignLiteral(NS_LINEBREAK);
   }
 
   mLineBreakDue = PR_FALSE;
   mFloatingLines = -1;
 
-  nsCOMPtr<nsIPrefBranch> prefBranch(do_GetService(NS_PREFSERVICE_CONTRACTID));
-  if (!prefBranch) {
-    NS_WARNING("Could not get a pref branch!");
-    return NS_OK;
-  }
-
-  PRBool tempBool = PR_FALSE;
   if (mFlags & nsIDocumentEncoder::OutputFormatted) {
     // Get some prefs that controls how we do formatted output
-    prefBranch->GetBoolPref(PREF_STRUCTS, &tempBool);
-    mStructs = tempBool;
-    prefBranch->GetIntPref(PREF_HEADER_STRATEGY, &mHeaderStrategy);
+    mStructs = nsContentUtils::GetBoolPref(PREF_STRUCTS, mStructs);
+
+    mHeaderStrategy =
+      nsContentUtils::GetIntPref(PREF_HEADER_STRATEGY, mHeaderStrategy);
+
     // The quotesPreformatted pref is a temporary measure. See bug 69638.
-    prefBranch->GetBoolPref("editor.quotesPreformatted", &tempBool);
-    mQuotesPreformatted = tempBool;
+    mQuotesPreformatted =
+      nsContentUtils::GetBoolPref("editor.quotesPreformatted",
+                                  mQuotesPreformatted);
+
     // DontWrapAnyQuotes is set according to whether plaintext mail
     // is wrapping to window width -- see bug 134439.
     // We'll only want this if we're wrapping and formatted.
     if (mFlags & nsIDocumentEncoder::OutputWrap || mWrapColumn > 0) {
-      prefBranch->GetBoolPref("mail.compose.wrap_to_window_width", &tempBool);
-      mDontWrapAnyQuotes = tempBool;
+      mDontWrapAnyQuotes =
+        nsContentUtils::GetBoolPref("mail.compose.wrap_to_window_width",
+                                    mDontWrapAnyQuotes);
     }
   }
 
   // XXX We should let the caller pass this in.
-  prefBranch->GetBoolPref("browser.frames.enabled", &tempBool);
-  if (tempBool) {
+  if (nsContentUtils::GetBoolPref("browser.frames.enabled")) {
     mFlags &= ~nsIDocumentEncoder::OutputNoFramesContent;
   }
   else {
@@ -319,8 +313,7 @@ nsPlainTextSerializer::AppendText(nsIDOMText* aText,
   nsCOMPtr<nsITextContent> content = do_QueryInterface(aText);
   if (!content) return NS_ERROR_FAILURE;
   
-  const nsTextFragment* frag;
-  content->GetText(&frag);
+  const nsTextFragment* frag = content->Text();
 
   if (frag) {
     PRInt32 endoffset = (aEndOffset == -1) ? frag->GetLength() : aEndOffset;
@@ -486,6 +479,10 @@ nsPlainTextSerializer::CloseContainer(const nsHTMLTag aTag)
 NS_IMETHODIMP 
 nsPlainTextSerializer::AddHeadContent(const nsIParserNode& aNode)
 {
+  if (eHTMLTag_title == aNode.GetNodeType()) {
+    // XXX collect the skipped content
+    return NS_OK;
+  }
   OpenHead(aNode);
   nsresult rv = AddLeaf(aNode);
   CloseHead();
@@ -783,8 +780,8 @@ nsPlainTextSerializer::DoOpenContainer(const nsIParserNode* aNode, PRInt32 aTag)
     }
     else {
       static char bulletCharArray[] = "*o+#";
-      NS_ASSERTION(mULCount > 0, "mULCount should be greater than 0 here");
-      char bulletChar = bulletCharArray[(mULCount - 1) % 4];
+      PRUint32 index = mULCount > 0 ? (mULCount - 1) : 3;
+      char bulletChar = bulletCharArray[index % 4];
       mInIndentString.Append(PRUnichar(bulletChar));
     }
     
@@ -810,7 +807,7 @@ nsPlainTextSerializer::DoOpenContainer(const nsIParserNode* aNode, PRInt32 aTag)
     nsresult rv = GetAttributeValue(aNode, nsHTMLAtoms::type, value);
 
     PRBool isInCiteBlockquote =
-      NS_SUCCEEDED(rv) && value.EqualsIgnoreCase("cite");
+      NS_SUCCEEDED(rv) && value.LowerCaseEqualsLiteral("cite");
     // Push
     PushBool(mIsInCiteBlockquote, isInCiteBlockquote);
     if (isInCiteBlockquote) {
@@ -1065,7 +1062,7 @@ nsPlainTextSerializer::DoCloseContainer(PRInt32 aTag)
   }
   else if (type == eHTMLTag_a && !currentNodeIsConverted && !mURL.IsEmpty()) {
     nsAutoString temp; 
-    temp.Assign(NS_LITERAL_STRING(" <"));
+    temp.AssignLiteral(" <");
     temp += mURL;
     temp.Append(PRUnichar('>'));
     Write(temp);
@@ -1159,7 +1156,7 @@ nsPlainTextSerializer::DoAddLeaf(const nsIParserNode *aNode, PRInt32 aTag,
     // ignore the bogus br tags that the editor sticks here and there.
     nsAutoString typeAttr;
     if (NS_FAILED(GetAttributeValue(aNode, nsHTMLAtoms::type, typeAttr))
-        || !typeAttr.Equals(NS_LITERAL_STRING("_moz"))) {
+        || !typeAttr.EqualsLiteral("_moz")) {
       EnsureVerticalSpace(mEmptyLines+1);
     }
   }
@@ -1514,7 +1511,7 @@ nsPlainTextSerializer::EndLine(PRBool aSoftlinebreak)
   // (see RFC 2646). We only check for "-- " when it's a hard line
   // break for obvious reasons.
   if(!(mFlags & nsIDocumentEncoder::OutputPreformatted) &&
-     (aSoftlinebreak || !mCurrentLine.Equals(NS_LITERAL_STRING("-- ")))) {
+     (aSoftlinebreak || !mCurrentLine.EqualsLiteral("-- "))) {
     // Remove SPACE:s from the end of the line.
     while(currentlinelength > 0 &&
           mCurrentLine[currentlinelength-1] == ' ') {

@@ -1,26 +1,41 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-/*
- * The contents of this file are subject to the Netscape Public
- * License Version 1.1 (the "License"); you may not use this file
- * except in compliance with the License. You may obtain a copy of
- * the License at http://www.mozilla.org/NPL/
+/* ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * Software distributed under the License is distributed on an "AS
- * IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
- * implied. See the License for the specific language governing
- * rights and limitations under the License.
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
- * The Original Code is Mozilla Communicator client code,
- * released March 31, 1998.
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+ * for the specific language governing rights and limitations under the
+ * License.
  *
- * The Initial Developer of the Original Code is Netscape Communications
- * Corporation.  Portions created by Netscape are
- * Copyright (C) 1998-1999 Netscape Communications Corporation. All
- * Rights Reserved.
+ * The Original Code is Mozilla Communicator client code, released
+ * March 31, 1998.
+ *
+ * The Initial Developer of the Original Code is
+ * Netscape Communications Corporation.
+ * Portions created by the Initial Developer are Copyright (C) 1998-1999
+ * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- *     Daniel Veditz <dveditz@netscape.com>
- */
+ *   Daniel Veditz <dveditz@netscape.com>
+ *
+ * Alternatively, the contents of this file may be used under the terms of
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK ***** */
 
 #include "nscore.h"
 #include "nsXPITriggerInfo.h"
@@ -29,7 +44,6 @@
 #include "nsIServiceManager.h"
 #include "nsIEventQueueService.h"
 #include "nsIJSContextStack.h"
-#include "nsIScriptSecurityManager.h"
 
 static NS_DEFINE_IID(kEventQueueServiceCID, NS_EVENTQUEUESERVICE_CID);
 
@@ -129,7 +143,7 @@ nsXPITriggerItem::SetPrincipal(nsIPrincipal* aPrincipal)
     if (hasCert) {
         nsXPIDLCString cName;
         aPrincipal->GetCommonName(getter_Copies(cName));
-        mCertName = NS_ConvertUTF8toUCS2(cName);
+        CopyUTF8toUTF16(cName, mCertName);
     }
 }
 
@@ -157,8 +171,11 @@ nsXPITriggerInfo::~nsXPITriggerInfo()
     }
     mItems.Clear();
 
-    if ( mCx && !JSVAL_IS_NULL(mCbval) )
+    if ( mCx && !JSVAL_IS_NULL(mCbval) ) {
+        JS_BeginRequest(mCx);
         JS_RemoveRoot( mCx, &mCbval );
+        JS_EndRequest(mCx);
+    }
 
     MOZ_COUNT_DTOR(nsXPITriggerInfo);
 }
@@ -187,13 +204,18 @@ void nsXPITriggerInfo::SaveCallback( JSContext *aCx, jsval aVal )
     mCbval = aVal;
     mThread = PR_GetCurrentThread();
 
-    if ( !JSVAL_IS_NULL(mCbval) )
+    if ( !JSVAL_IS_NULL(mCbval) ) {
+        JS_BeginRequest(mCx);
         JS_AddRoot( mCx, &mCbval );
+        JS_EndRequest(mCx);
+    }
 }
 
 static void  destroyTriggerEvent(XPITriggerEvent* event)
 {
+    JS_BeginRequest(event->cx);
     JS_RemoveRoot( event->cx, &event->cbval );
+    JS_EndRequest(event->cx);
     delete event;
 }
 
@@ -203,6 +225,7 @@ static void* handleTriggerEvent(XPITriggerEvent* event)
     void*  mark;
     jsval* args;
 
+    JS_BeginRequest(event->cx);
     args = JS_PushArguments( event->cx, &mark, "Wi",
                              event->URL.get(),
                              event->status );
@@ -212,32 +235,6 @@ static void* handleTriggerEvent(XPITriggerEvent* event)
             do_GetService("@mozilla.org/js/xpc/ContextStack;1");
         if (stack)
             stack->Push(event->cx);
-        
-        nsCOMPtr<nsIScriptSecurityManager> secman = 
-            do_GetService(NS_SCRIPTSECURITYMANAGER_CONTRACTID);
-        
-        if (!secman)
-        {
-            JS_ReportError(event->cx, "Could not get script security manager service");
-            return 0;
-        }
-
-        nsCOMPtr<nsIPrincipal> principal;
-        secman->GetSubjectPrincipal(getter_AddRefs(principal));
-        if (!principal)
-        {
-            JS_ReportError(event->cx, "Could not get principal from script security manager");
-            return 0;
-        }
-
-        PRBool equals = PR_FALSE;
-        principal->Equals(event->princ, &equals);
-
-        if (!equals)
-        {
-            JS_ReportError(event->cx, "Principal of callback context is different then InstallTriggers");
-            return 0;
-        }
 
         JS_CallFunctionValue( event->cx,
                               JSVAL_TO_OBJECT(event->global),
@@ -251,6 +248,7 @@ static void* handleTriggerEvent(XPITriggerEvent* event)
 
         JS_PopArguments( event->cx, mark );
     }
+    JS_EndRequest(event->cx);
 
     return 0;
 }
@@ -281,7 +279,6 @@ void nsXPITriggerInfo::SendStatus(const PRUnichar* URL, PRInt32 status)
                     event->URL      = URL;
                     event->status   = status;
                     event->cx       = mCx;
-                    event->princ    = mPrincipal;
 
                     JSObject *obj = nsnull;
 
@@ -290,8 +287,10 @@ void nsXPITriggerInfo::SendStatus(const PRUnichar* URL, PRInt32 status)
                     event->global   = OBJECT_TO_JSVAL(obj);
 
                     event->cbval    = mCbval;
+                    JS_BeginRequest(event->cx);
                     JS_AddNamedRoot( event->cx, &event->cbval,
                                      "XPITriggerEvent::cbval" );
+                    JS_EndRequest(event->cx);
 
                     // Hold a strong reference to keep the underlying
                     // JSContext from dying before we handle this event.

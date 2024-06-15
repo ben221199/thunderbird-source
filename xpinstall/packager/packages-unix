@@ -37,6 +37,11 @@ bin/defaults/profile/search.rdf
 bin/defaults/profile/mimeTypes.rdf
 bin/defaults/messenger/mailViews.dat
 bin/defaults/isp/movemail.rdf
+bin/defaults/messenger/Habeas.sfd
+bin/defaults/messenger/SpamAssassin.sfd
+bin/defaults/messenger/SpamCatcher.sfd
+bin/defaults/messenger/SpamPal.sfd
+
 
 [xpcom]
 bin/libmozjs.so
@@ -45,6 +50,7 @@ bin/libplc4.so
 bin/libplds4.so
 bin/cpu/sparcv8plus/libnspr_flt4.so
 bin/libxpcom.so
+bin/libxpcom_core.so
 bin/libxpistub.so
 bin/libmozz.so
 bin/components/libxpinstall.so
@@ -76,20 +82,25 @@ bin/res/cmessage.txt
 bin/libgtkembedmoz.so
 ; this is used by Xprint and Xlib gfx
 bin/libxlibrgb.so
+; This is used by libgfxps and libgfx_gtk
+bin/libgfxpsshar.so
 bin/components/libaccessibility.so
 bin/components/accessibility.xpt
 bin/components/accessibility-atk.xpt
 bin/components/libappcomps.so
+bin/components/libsearchservice.so
+bin/components/appstartup.xpt
 bin/components/bookmarks.xpt
 bin/components/directory.xpt
 bin/components/downloadmanager.xpt
 bin/components/history.xpt
 bin/components/related.xpt
-bin/components/urlbarhistory.xpt
 bin/components/search.xpt
 bin/components/autocomplete.xpt   
 bin/components/appshell.xpt
 bin/components/caps.xpt
+bin/components/chrome.xpt
+bin/components/nsComposerCmdLineHandler.js
 bin/components/cookie.xpt
 bin/components/libjsd.so
 bin/components/jsdservice.xpt
@@ -118,6 +129,7 @@ bin/components/libnsappshell.so
 bin/components/libcaps.so
 bin/components/libchrome.so
 bin/components/libcookie.so
+bin/components/libpermissions.so
 bin/components/libcomposer.so
 bin/components/composer.xpt
 bin/components/libdocshell.so
@@ -139,6 +151,7 @@ bin/components/content_html.xpt
 bin/components/content_htmldoc.xpt
 bin/components/content_xmldoc.xpt
 bin/components/content_xslt.xpt
+bin/components/content_xtf.xpt
 bin/components/libgklayout.so
 bin/components/libgkplugin.so
 bin/components/libhtmlpars.so
@@ -169,7 +182,6 @@ bin/components/necko_data.xpt
 bin/components/necko_dns.xpt
 bin/components/necko_ftp.xpt
 bin/components/necko_http.xpt
-bin/components/necko_jar.xpt
 bin/components/necko_res.xpt
 bin/components/necko_socket.xpt
 bin/components/necko_cookie.xpt
@@ -202,10 +214,9 @@ bin/components/xpcom_ds.xpt
 bin/components/xpcom_io.xpt
 bin/components/xpcom_obsolete.xpt
 bin/components/xpconnect.xpt
-bin/components/chrome.xpt
 bin/components/docshell.xpt
-bin/components/jsurl.xpt
 bin/components/layout_base.xpt
+bin/components/layout_printing.xpt
 bin/components/layout_xul.xpt
 bin/components/layout_xul_tree.xpt
 bin/components/xuldoc.xpt
@@ -224,6 +235,8 @@ bin/components/nsXmlRpcClient.js
 bin/components/libxremote_client.so
 bin/components/libxremoteservice.so
 bin/components/xremoteservice.xpt
+bin/components/libremoteservice.so
+bin/components/toolkitremote.xpt
 bin/components/embed_base.xpt
 bin/components/commandhandler.xpt
 bin/components/webbrowserpersist.xpt
@@ -242,8 +255,10 @@ bin/components/libuniversalchardet.so
 bin/components/typeaheadfind.xpt
 bin/components/libtypeaheadfind.so
 bin/components/nsCloseAllWindows.js
+bin/components/extensions.xpt
+bin/components/nsExtensionManager.js
 
-; Kerberos NegotiateAuth
+; NegotiateAuth
 bin/components/libnegotiateauth.so
 
 ; GnomeVFS support
@@ -259,6 +274,10 @@ bin/libprldap50.so
 bin/liblber50.so
 bin/components/libmozldap.so
 bin/components/mozldap.xpt
+
+; Roaming
+bin/components/libsroaming.so
+bin/chrome/sroaming.jar
 
 ; p3p
 bin/components/p3p.xpt
@@ -316,7 +335,6 @@ bin/res/ua.css
 bin/res/html.css
 bin/res/quirk.css
 bin/res/forms.css
-bin/res/platform-forms.css
 bin/res/EditorOverride.css
 bin/res/grabber.gif
 bin/res/table-add-column-after-active.gif
@@ -345,9 +363,12 @@ bin/res/rdf/loading.gif
 bin/res/html/*
 bin/res/fonts/*
 bin/res/dtd/*
-;debug menus reference samples dir - remove for actual releases:
-bin/res/samples/*
+bin/res/builtin/platformHTMLBindings.xml
 
+; svg
+bin/res/svg.css
+bin/res/svg.properties
+bin/components/dom_svg.xpt
 
 [mail]
 bin/libmsgbaseutil.so

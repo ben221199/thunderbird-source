@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 2000
  * the Initial Developer. All Rights Reserved.
@@ -22,18 +22,17 @@
  * Contributor(s):
  *   Jessica Blanco <jblanco@us.ibm.com>
  *
- *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -69,47 +68,50 @@ static NS_DEFINE_IID(kCPrinterEnumerator, NS_PRINTER_ENUMERATOR_CID);
 NS_IMPL_ISUPPORTS2(nsPrintOptions, nsIPrintOptions, nsIPrintSettingsService)
 
 // Pref Constants
-const char kMarginTop[]       = "print_margin_top";
-const char kMarginLeft[]      = "print_margin_left";
-const char kMarginBottom[]    = "print_margin_bottom";
-const char kMarginRight[]     = "print_margin_right";
+static const char kMarginTop[]       = "print_margin_top";
+static const char kMarginLeft[]      = "print_margin_left";
+static const char kMarginBottom[]    = "print_margin_bottom";
+static const char kMarginRight[]     = "print_margin_right";
 
 // Prefs for Print Options
-const char kPrintEvenPages[]       = "print_evenpages";
-const char kPrintOddPages[]        = "print_oddpages";
-const char kPrintHeaderStrLeft[]   = "print_headerleft";
-const char kPrintHeaderStrCenter[] = "print_headercenter";
-const char kPrintHeaderStrRight[]  = "print_headerright";
-const char kPrintFooterStrLeft[]   = "print_footerleft";
-const char kPrintFooterStrCenter[] = "print_footercenter";
-const char kPrintFooterStrRight[]  = "print_footerright";
+static const char kPrintEvenPages[]       = "print_evenpages";
+static const char kPrintOddPages[]        = "print_oddpages";
+static const char kPrintHeaderStrLeft[]   = "print_headerleft";
+static const char kPrintHeaderStrCenter[] = "print_headercenter";
+static const char kPrintHeaderStrRight[]  = "print_headerright";
+static const char kPrintFooterStrLeft[]   = "print_footerleft";
+static const char kPrintFooterStrCenter[] = "print_footercenter";
+static const char kPrintFooterStrRight[]  = "print_footerright";
 
 // Additional Prefs
-const char kPrintPaperSize[]     = "print_paper_size"; // this has been deprecated
+static const char kPrintPaperSize[]     = "print_paper_size"; // this has been deprecated
 
-const char kPrintReversed[]      = "print_reversed";
-const char kPrintInColor[]       = "print_in_color";
-const char kPrintPaperName[]     = "print_paper_name";
-const char kPrintPlexName[]      = "print_plex_name";
-const char kPrintPaperSizeType[] = "print_paper_size_type";
-const char kPrintPaperData[]     = "print_paper_data";
-const char kPrintPaperSizeUnit[] = "print_paper_size_unit";
-const char kPrintPaperWidth[]    = "print_paper_width";
-const char kPrintPaperHeight[]   = "print_paper_height";
-const char kPrintOrientation[]   = "print_orientation";
-const char kPrintCommand[]       = "print_command";
-const char kPrinterName[]        = "print_printer";
-const char kPrintToFile[]        = "print_to_file";
-const char kPrintToFileName[]    = "print_to_filename";
-const char kPrintPageDelay[]     = "print_pagedelay";
-const char kPrintBGColors[]      = "print_bgcolor";
-const char kPrintBGImages[]      = "print_bgimages";
-const char kPrintShrinkToFit[]   = "print_shrink_to_fit";
-const char kPrintScaling[]       = "print_scaling";
+static const char kPrintReversed[]      = "print_reversed";
+static const char kPrintInColor[]       = "print_in_color";
+static const char kPrintPaperName[]     = "print_paper_name";
+static const char kPrintPlexName[]      = "print_plex_name";
+static const char kPrintPaperSizeType[] = "print_paper_size_type";
+static const char kPrintPaperData[]     = "print_paper_data";
+static const char kPrintPaperSizeUnit[] = "print_paper_size_unit";
+static const char kPrintPaperWidth[]    = "print_paper_width";
+static const char kPrintPaperHeight[]   = "print_paper_height";
+static const char kPrintColorspace[]    = "print_colorspace";
+static const char kPrintResolutionName[]= "print_resolution_name";
+static const char kPrintDownloadFonts[] = "print_downloadfonts";
+static const char kPrintOrientation[]   = "print_orientation";
+static const char kPrintCommand[]       = "print_command";
+static const char kPrinterName[]        = "print_printer";
+static const char kPrintToFile[]        = "print_to_file";
+static const char kPrintToFileName[]    = "print_to_filename";
+static const char kPrintPageDelay[]     = "print_pagedelay";
+static const char kPrintBGColors[]      = "print_bgcolor";
+static const char kPrintBGImages[]      = "print_bgimages";
+static const char kPrintShrinkToFit[]   = "print_shrink_to_fit";
+static const char kPrintScaling[]       = "print_scaling";
 
-const char kJustLeft[]   = "left";
-const char kJustCenter[] = "center";
-const char kJustRight[]  = "right";
+static const char kJustLeft[]   = "left";
+static const char kJustCenter[] = "center";
+static const char kJustRight[]  = "right";
 
 static NS_DEFINE_IID(kPrinterEnumeratorCID, NS_PRINTER_ENUMERATOR_CID);
 
@@ -218,8 +220,7 @@ NS_IMETHODIMP nsPrinterListEnumerator::GetNext(nsISupports **aPrinter)
    nsCOMPtr<nsISupportsString> printerNameWrapper;
    nsresult rv;
 
-   rv = nsComponentManager::CreateInstance(NS_SUPPORTS_STRING_CONTRACTID, nsnull,
-                                           NS_GET_IID(nsISupportsString), getter_AddRefs(printerNameWrapper));
+   printerNameWrapper = do_CreateInstance(NS_SUPPORTS_STRING_CONTRACTID, &rv);
    NS_ENSURE_SUCCESS(rv, rv);
    NS_ENSURE_TRUE(printerNameWrapper, NS_ERROR_OUT_OF_MEMORY);
    printerNameWrapper->SetData(nsDependentString(printerName));
@@ -539,6 +540,27 @@ nsPrintOptions::ReadPrefs(nsIPrintSettings* aPS, const nsString& aPrefName, PRUi
     }
   }
 
+  if (aFlags & nsIPrintSettings::kInitSaveColorspace) {
+    if (NS_SUCCEEDED(ReadPrefString(GetPrefName(kPrintColorspace, aPrefName), str))) {
+      aPS->SetColorspace(str.get());
+      DUMP_STR(kReadStr, kPrintColorspace, str.get());
+    }
+  }
+
+  if (aFlags & nsIPrintSettings::kInitSaveResolutionName) {
+    if (NS_SUCCEEDED(ReadPrefString(GetPrefName(kPrintResolutionName, aPrefName), str))) {
+      aPS->SetResolutionName(str.get());
+      DUMP_STR(kReadStr, kPrintResolutionName, str.get());
+    }
+  }
+
+  if (aFlags & nsIPrintSettings::kInitSaveDownloadFonts) {
+    if (NS_SUCCEEDED(mPrefBranch->GetBoolPref(GetPrefName(kPrintDownloadFonts, aPrefName), &b))) {
+      aPS->SetDownloadFonts(b);
+      DUMP_BOOL(kReadStr, kPrintDownloadFonts, b);
+    }
+  }
+
   if (aFlags & nsIPrintSettings::kInitSaveOrientation) {
     if (NS_SUCCEEDED(mPrefBranch->GetIntPref(GetPrefName(kPrintOrientation, aPrefName), &iVal))) {
       aPS->SetOrientation(iVal);
@@ -771,6 +793,27 @@ nsPrintOptions::WritePrefs(nsIPrintSettings *aPS, const nsString& aPrefName, PRU
     }
   }
 
+  if (aFlags & nsIPrintSettings::kInitSaveColorspace) {
+    if (NS_SUCCEEDED(aPS->GetColorspace(&uStr))) {
+      DUMP_STR(kWriteStr, kPrintColorspace, uStr);
+      WritePrefString(uStr, GetPrefName(kPrintColorspace, aPrefName));
+    }
+  }
+
+  if (aFlags & nsIPrintSettings::kInitSaveResolutionName) {
+    if (NS_SUCCEEDED(aPS->GetResolutionName(&uStr))) {
+      DUMP_STR(kWriteStr, kPrintResolutionName, uStr);
+      WritePrefString(uStr, GetPrefName(kPrintResolutionName, aPrefName));
+    }
+  }
+
+  if (aFlags & nsIPrintSettings::kInitSaveDownloadFonts) {
+    if (NS_SUCCEEDED(aPS->GetDownloadFonts(&b))) {
+      DUMP_BOOL(kWriteStr, kPrintDownloadFonts, b);
+      mPrefBranch->SetBoolPref(GetPrefName(kPrintDownloadFonts, aPrefName), b);
+    }
+  }
+
   if (aFlags & nsIPrintSettings::kInitSaveOrientation) {
     if (NS_SUCCEEDED(aPS->GetOrientation(&iVal))) {
       DUMP_INT(kWriteStr, kPrintOrientation, iVal);
@@ -907,13 +950,12 @@ NS_IMETHODIMP nsPrintOptions::CreatePrintSettings(nsIPrintSettings **_retval)
 /* readonly attribute nsIPrintSettings globalPrintSettings; */
 NS_IMETHODIMP nsPrintOptions::GetGlobalPrintSettings(nsIPrintSettings * *aGlobalPrintSettings)
 {
-  if (!mGlobalPrintSettings) {
-    CreatePrintSettings(getter_AddRefs(mGlobalPrintSettings));
-    NS_ASSERTION(mGlobalPrintSettings, "Can't be NULL!");
-  }
+  nsresult rv;
+  rv = CreatePrintSettings(getter_AddRefs(mGlobalPrintSettings));
+  NS_ASSERTION(NS_FAILED(rv) || mGlobalPrintSettings, "Can't be NULL!");
 
   // If this still NULL, we have some very big problems going on
-  if (!mGlobalPrintSettings) {
+  if (NS_FAILED(rv) || !mGlobalPrintSettings) {
     return NS_ERROR_FAILURE;
   }
 
@@ -1193,10 +1235,10 @@ void nsPrintOptions::ReadJustification(const char * aPrefId,
   aJust = aInitValue;
   nsAutoString justStr;
   if (NS_SUCCEEDED(ReadPrefString(aPrefId, justStr))) {
-    if (justStr.EqualsWithConversion(kJustRight)) {
+    if (justStr.EqualsASCII(kJustRight)) {
       aJust = nsIPrintSettings::kJustRight;
 
-    } else if (justStr.EqualsWithConversion(kJustCenter)) {
+    } else if (justStr.EqualsASCII(kJustCenter)) {
       aJust = nsIPrintSettings::kJustCenter;
 
     } else {
@@ -1303,6 +1345,9 @@ Tester::Tester()
       {kPrintPaperHeight, nsIPrintSettings::kInitSavePaperHeight},
       {kPrintReversed, nsIPrintSettings::kInitSaveReversed},
       {kPrintInColor, nsIPrintSettings::kInitSaveInColor},
+      {kPrintColorspace, nsIPrintSettings::kInitSaveColorspace},
+      {kPrintResolutionName, nsIPrintSettings::kInitSaveResolutionName},
+      {kPrintDownloadFonts, nsIPrintSettings::kInitSaveDownloadFonts},
       {kPrintOrientation, nsIPrintSettings::kInitSaveOrientation},
       {kPrintCommand, nsIPrintSettings::kInitSavePrintCommand},
       {kPrinterName, nsIPrintSettings::kInitSavePrinterName},
@@ -1313,7 +1358,7 @@ Tester::Tester()
       {"All", nsIPrintSettings::kInitSaveAll},
       {nsnull, 0}};
 
-    nsString prefix; prefix.AssignWithConversion("Printer Name");
+    nsString prefix; prefix.AssignLiteral("Printer Name");
     PRInt32 i = 0;
     while (gSettings[i].mName != nsnull) {
       printf("------------------------------------------------\n");

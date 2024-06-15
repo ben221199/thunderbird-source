@@ -35,8 +35,6 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-const PREF_APP_ID                           = "app.id";
-const PREF_APP_VERSION                      = "app.version";
 const PREF_UPDATE_APP_ENABLED               = "app.update.enabled";
 const PREF_UPDATE_APP_AUTOUPDATEENABLED     = "app.update.autoUpdateEnabled";
 const PREF_UPDATE_APP_URI                   = "app.update.url";
@@ -87,10 +85,10 @@ function stackTraceFunctionFormat(aFunctionName)
   var classDelimiter = aFunctionName.indexOf("_");
   var className = aFunctionName.substr(0, classDelimiter);
   if (!className)
-    className == "<global>";
+    className = "<global>";
   var functionName = aFunctionName.substr(classDelimiter + 1, aFunctionName.length);
   if (!functionName) 
-    functionName == "<anonymous>";
+    functionName = "<anonymous>";
   return className + "::" + functionName;
 }
 
@@ -109,12 +107,15 @@ function stackTrace(aArguments, aMaxCount)
   dump("==================================================================\n");
 }
 
+var gApp    = null;
 var gPref   = null;
 var gOS     = null;
 var gRDF    = null;
 
 function nsUpdateService()
 {
+  gApp  = Components.classes["@mozilla.org/xre/app-info;1"]
+                    .getService(Components.interfaces.nsIXULAppInfo);
   gPref = Components.classes["@mozilla.org/preferences-service;1"]
                     .getService(Components.interfaces.nsIPrefBranch);
   gOS   = Components.classes["@mozilla.org/observer-service;1"]
@@ -124,7 +125,7 @@ function nsUpdateService()
   
   this.watchForUpdates();
 
-  var pbi = gPref.QueryInterface(Components.interfaces.nsIPrefBranchInternal);
+  var pbi = gPref.QueryInterface(Components.interfaces.nsIPrefBranch2);
   pbi.addObserver(PREF_UPDATE_APP_AUTOUPDATEENABLED, this, false);
   pbi.addObserver(PREF_UPDATE_APP_ENABLED, this, false);
   pbi.addObserver(PREF_UPDATE_EXTENSIONS_AUTOUPDATEENABLED, this, false);
@@ -210,7 +211,7 @@ nsUpdateService.prototype = {
         var sbs = Components.classes["@mozilla.org/intl/stringbundle;1"]
                             .getService(Components.interfaces.nsIStringBundleService);
         var bundle = sbs.createBundle("chrome://mozapps/locale/update/update.properties");
-        var brandBundle = sbs.createBundle("chrome://global/locale/brand.properties");
+        var brandBundle = sbs.createBundle("chrome://branding/locale/brand.properties");
         var brandShortName = brandBundle.GetStringFromName("brandShortName");        
         var message = bundle.formatStringFromName("appupdateperformedmessage",
                                                   [brandShortName, brandShortName], 2);
@@ -311,9 +312,9 @@ nsUpdateService.prototype = {
     if (aSourceEvent == nsIUpdateService.SOURCE_EVENT_BACKGROUND && 
         (this._appAutoUpdateEnabled || this._extAutoUpdateEnabled)) {
       if (types & nsIUpdateItem.TYPE_ADDON)
-        gPref.setIntPref(PREF_UPDATE_EXTENSIONS_LASTUPDATEDATE, this._nowInMilliseconds / 1000);
+        gPref.setIntPref(PREF_UPDATE_EXTENSIONS_LASTUPDATEDATE, Date.now() / 1000);
       if (types & nsIUpdateItem.TYPE_APP)
-        gPref.setIntPref(PREF_UPDATE_APP_LASTUPDATEDATE, this._nowInMilliseconds / 1000);
+        gPref.setIntPref(PREF_UPDATE_APP_LASTUPDATEDATE, Date.now() / 1000);
     }
   },
   
@@ -377,7 +378,7 @@ nsUpdateService.prototype = {
   {
     var interval = gPref.getIntPref(aIntervalPref);
     var lastUpdateTime = gPref.getIntPref(aLastCheckPref);
-    return ((Math.round(this._nowInMilliseconds/1000) - lastUpdateTime) > Math.round(interval/1000));
+    return ((Math.round(Date.now() / 1000) - lastUpdateTime) > Math.round(interval/1000));
   },
   
   notify: function nsUpdateService_notify (aTimer)
@@ -452,7 +453,7 @@ nsUpdateService.prototype = {
       gOS.removeObserver(this, "xpcom-shutdown");    
       
       // Clean up held observers etc to avoid leaks. 
-      var pbi = gPref.QueryInterface(Components.interfaces.nsIPrefBranchInternal);
+      var pbi = gPref.QueryInterface(Components.interfaces.nsIPrefBranch2);
       pbi.removeObserver(PREF_UPDATE_APP_AUTOUPDATEENABLED, this);
       pbi.removeObserver(PREF_UPDATE_APP_ENABLED, this);
       pbi.removeObserver(PREF_UPDATE_EXTENSIONS_AUTOUPDATEENABLED, this);
@@ -483,18 +484,6 @@ nsUpdateService.prototype = {
     this._timer.cancel();
     this._timer.initWithCallback(this, aDelay, 
                                  Components.interfaces.nsITimer.TYPE_REPEATING_SLACK);
-  },
-  
-  get _nowInMilliseconds ()
-  {
-    var d = new Date();
-    return Date.UTC(d.getUTCFullYear(), 
-                    d.getUTCMonth(),
-                    d.getUTCDate(),
-                    d.getUTCHours(),
-                    d.getUTCMinutes(),
-                    d.getUTCSeconds(),
-                    d.getUTCMilliseconds());
   },
   
   _clearAppUpdatePrefs: function nsUpdateService__clearAppUpdatePrefs ()
@@ -584,6 +573,20 @@ nsUpdateObserver.prototype = {
       this.appUpdater.destroy();
       this.appUpdater = null;
       break;
+    case "alertfinished":
+      // must not show alert again
+      return;
+    case "alertclickcallback":
+      var updates = Components.classes["@mozilla.org/updates/update-service;1"]
+                              .getService(Components.interfaces.nsIUpdateService);
+      updates.checkForUpdates([], 0, Components.interfaces.nsIUpdateItem.TYPE_ANY, 
+                              Components.interfaces.nsIUpdateService.SOURCE_EVENT_USER,
+                              null);
+      // must not show alert again
+      return;
+    default:
+      dump("nsUpdateObserver received unknown topic: " + aTopic + "\n");
+      return;
     }
     
     if (this._doneUpdating) {
@@ -647,21 +650,6 @@ nsUpdateObserver.prototype = {
       this._endedTimer.cancel();
       this._endedTimer = null;
     }
-  },
-
-  ////////////////////////////////////////////////////////////////////////////
-  // nsIAlertListener
-  onAlertFinished: function nsUpdateObserver_onAlertFinished ()
-  {
-  },
-  
-  onAlertClickCallback: function nsUpdateObserver_onAlertClickCallback (aCookie)
-  {
-    var updates = Components.classes["@mozilla.org/updates/update-service;1"]
-                            .getService(Components.interfaces.nsIUpdateService);
-    updates.checkForUpdates([], 0, Components.interfaces.nsIUpdateItem.TYPE_ANY, 
-                            Components.interfaces.nsIUpdateService.SOURCE_EVENT_USER,
-                            null);
   },
   
   /////////////////////////////////////////////////////////////////////////////
@@ -755,8 +743,8 @@ nsAppUpdater.prototype = {
   //
   onDatasourceLoaded: function nsAppUpdater_onDatasourceLoaded (aDataSource)
   {
-    var appID = gPref.getCharPref(PREF_APP_ID);
-    var appVersion = gPref.getCharPref(PREF_APP_VERSION);
+    var appID = gApp.ID;
+    var appVersion = gApp.version;
     
     var appResource = gRDF.GetResource("urn:mozilla:app:" + appID);
     var updatesArc = gRDF.GetResource(APP_NS("updates"));
@@ -974,50 +962,50 @@ function UpdateItem ()
 UpdateItem.prototype = {
   init: function UpdateItem_init (aID, 
                                   aVersion, 
+                                  aInstallLocationKey,
                                   aMinAppVersion, 
                                   aMaxAppVersion, 
                                   aName, 
-                                  aRow, 
                                   aXPIURL, 
                                   aIconURL, 
                                   aUpdateRDF, 
                                   aType)
   {
-    this._id            = aID;
-    this._version       = aVersion;
-    this._minAppVersion = aMinAppVersion;
-    this._maxAppVersion = aMaxAppVersion;
-    this._name          = aName;
-    this._row           = aRow;
-    this._xpiURL        = aXPIURL;
-    this._iconURL       = aIconURL;
-    this._updateRDF     = aUpdateRDF;
-    this._type          = aType;
+    this._id                  = aID;
+    this._version             = aVersion;
+    this._installLocationKey  = aInstallLocationKey;
+    this._minAppVersion       = aMinAppVersion;
+    this._maxAppVersion       = aMaxAppVersion;
+    this._name                = aName;
+    this._xpiURL              = aXPIURL;
+    this._iconURL             = aIconURL;
+    this._updateRDF           = aUpdateRDF;
+    this._type                = aType;
   },
   
-  get id()            { return this._id;            },
-  get version()       { return this._version;       },
-  get minAppVersion() { return this._minAppVersion; },
-  get maxAppVersion() { return this._maxAppVersion; },
-  get name()          { return this._name;          },
-  get row()           { return this._row;           },
-  get xpiURL()        { return this._xpiURL;        },
-  get iconURL()       { return this._iconURL        },
-  get updateRDF()     { return this._updateRDF;     },
-  get type()          { return this._type;          },
+  get id()                { return this._id;                },
+  get version()           { return this._version;           },
+  get installLocationKey(){ return this._installLocationKey;},
+  get minAppVersion()     { return this._minAppVersion;     },
+  get maxAppVersion()     { return this._maxAppVersion;     },
+  get name()              { return this._name;              },
+  get xpiURL()            { return this._xpiURL;            },
+  get iconURL()           { return this._iconURL            },
+  get updateRDF()         { return this._updateRDF;         },
+  get type()              { return this._type;              },
 
   get objectSource()
   {
-    return { id             : this._id, 
-             version        : this._version, 
-             minAppVersion  : this._minAppVersion,
-             maxAppVersion  : this._maxAppVersion,
-             name           : this._name, 
-             row            : this._row, 
-             xpiURL         : this._xpiURL, 
-             iconURL        : this._iconURL, 
-             updateRDF      : this._updateRDF,
-             type           : this._type 
+    return { id                 : this._id, 
+             version            : this._version, 
+             installLocationKey : this._installLocationKey,
+             minAppVersion      : this._minAppVersion,
+             maxAppVersion      : this._maxAppVersion,
+             name               : this._name, 
+             xpiURL             : this._xpiURL, 
+             iconURL            : this._iconURL, 
+             updateRDF          : this._updateRDF,
+             type               : this._type 
            }.toSource();
   },
 
@@ -1160,20 +1148,7 @@ nsVersionChecker.prototype = {
   
   isValidVersion: function nsVersionChecker_isValidVersion (aVersion)
   {
-    var parts = aVersion.split(".");
-    if (parts.length == 0)
-      return false;
-    for (var i = 0; i < parts.length; ++i) {
-      var part = parts[i];
-      if (i == parts.length - 1) {
-        if (part.lastIndexOf("+") != -1) 
-          parts[i] = part.substr(0, part.length - 1);
-      }
-      var integer = parseInt(part);
-      if (isNaN(integer))
-        return false;
-    }
-    return true;
+    return /^([0-9]+\.){0,3}[0-9]+\+?$/.test(aVersion);
   },
 
   /////////////////////////////////////////////////////////////////////////////

@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,26 +14,25 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- * Original Author: David W. Hyatt (hyatt@netscape.com)
- *
+ *   Original Author: David W. Hyatt (hyatt@netscape.com)
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -52,11 +51,10 @@
 #include "nsIDOMElement.h"
 #include "nsIDOMNSHTMLInputElement.h"
 #include "nsIDOMNSHTMLTextAreaElement.h"
-#include "nsIDOMUIEvent.h"
 #include "nsIDOMWindowInternal.h"
 #include "nsIDOMXULElement.h"
 #include "nsIDocument.h"
-#include "nsIPresContext.h"
+#include "nsPresContext.h"
 #include "nsIPresShell.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsPIDOMWindow.h"
@@ -130,9 +128,7 @@ nsXULCommandDispatcher::EnsureFocusController()
     // guaranteed that the focus controller outlives us, so it
     // is safe to hold on to it (since we can't die until it has
     // died).
-    nsCOMPtr<nsIFocusController> focus;
-    win->GetRootFocusController(getter_AddRefs(focus));
-    mFocusController = focus; // Store as a weak ptr.
+    mFocusController = win->GetRootFocusController(); // Store as a weak ptr.
   }
 }
 
@@ -232,18 +228,20 @@ nsXULCommandDispatcher::AddCommandUpdater(nsIDOMElement* aElement,
     if (updater->mElement == aElement) {
 
 #ifdef NS_DEBUG
-      nsCAutoString eventsC, targetsC, aeventsC, atargetsC; 
-      eventsC.AssignWithConversion(updater->mEvents);
-      targetsC.AssignWithConversion(updater->mTargets);
-      CopyUTF16toUTF8(aEvents, aeventsC);
-      CopyUTF16toUTF8(aTargets, atargetsC);
-      PR_LOG(gLog, PR_LOG_ALWAYS,
-             ("xulcmd[%p] replace %p(events=%s targets=%s) with (events=%s targets=%s)",
-              this, aElement,
-              eventsC.get(),
-              targetsC.get(),
-              aeventsC.get(),
-              atargetsC.get()));
+      if (PR_LOG_TEST(gLog, PR_LOG_NOTICE)) {
+        nsCAutoString eventsC, targetsC, aeventsC, atargetsC; 
+        eventsC.AssignWithConversion(updater->mEvents);
+        targetsC.AssignWithConversion(updater->mTargets);
+        CopyUTF16toUTF8(aEvents, aeventsC);
+        CopyUTF16toUTF8(aTargets, atargetsC);
+        PR_LOG(gLog, PR_LOG_NOTICE,
+               ("xulcmd[%p] replace %p(events=%s targets=%s) with (events=%s targets=%s)",
+                this, aElement,
+                eventsC.get(),
+                targetsC.get(),
+                aeventsC.get(),
+                atargetsC.get()));
+      }
 #endif
 
       // If the updater was already in the list, then replace
@@ -258,15 +256,17 @@ nsXULCommandDispatcher::AddCommandUpdater(nsIDOMElement* aElement,
     updater = updater->mNext;
   }
 #ifdef NS_DEBUG
-  nsCAutoString aeventsC, atargetsC; 
-  CopyUTF16toUTF8(aEvents, aeventsC);
-  CopyUTF16toUTF8(aTargets, atargetsC);
+  if (PR_LOG_TEST(gLog, PR_LOG_NOTICE)) {
+    nsCAutoString aeventsC, atargetsC; 
+    CopyUTF16toUTF8(aEvents, aeventsC);
+    CopyUTF16toUTF8(aTargets, atargetsC);
 
-  PR_LOG(gLog, PR_LOG_ALWAYS,
-         ("xulcmd[%p] add     %p(events=%s targets=%s)",
-          this, aElement,
-          aeventsC.get(),
-          atargetsC.get()));
+    PR_LOG(gLog, PR_LOG_NOTICE,
+           ("xulcmd[%p] add     %p(events=%s targets=%s)",
+            this, aElement,
+            aeventsC.get(),
+            atargetsC.get()));
+  }
 #endif
 
   // If we get here, this is a new updater. Append it to the list.
@@ -291,14 +291,16 @@ nsXULCommandDispatcher::RemoveCommandUpdater(nsIDOMElement* aElement)
   while (updater) {
     if (updater->mElement == aElement) {
 #ifdef NS_DEBUG
-      nsCAutoString eventsC, targetsC; 
-      eventsC.AssignWithConversion(updater->mEvents);
-      targetsC.AssignWithConversion(updater->mTargets);
-      PR_LOG(gLog, PR_LOG_ALWAYS,
-             ("xulcmd[%p] remove  %p(events=%s targets=%s)",
-              this, aElement,
-              eventsC.get(),
-              targetsC.get()));
+      if (PR_LOG_TEST(gLog, PR_LOG_NOTICE)) {
+        nsCAutoString eventsC, targetsC; 
+        eventsC.AssignWithConversion(updater->mEvents);
+        targetsC.AssignWithConversion(updater->mTargets);
+        PR_LOG(gLog, PR_LOG_NOTICE,
+               ("xulcmd[%p] remove  %p(events=%s targets=%s)",
+                this, aElement,
+                eventsC.get(),
+                targetsC.get()));
+      }
 #endif
 
       *link = updater->mNext;
@@ -317,8 +319,6 @@ nsXULCommandDispatcher::RemoveCommandUpdater(nsIDOMElement* aElement)
 NS_IMETHODIMP
 nsXULCommandDispatcher::UpdateCommands(const nsAString& aEventName)
 {
-  nsresult rv;
-
   EnsureFocusController();
   NS_ENSURE_TRUE(mFocusController, NS_ERROR_FAILURE);
 
@@ -326,7 +326,7 @@ nsXULCommandDispatcher::UpdateCommands(const nsAString& aEventName)
   nsCOMPtr<nsIDOMElement> element;
   mFocusController->GetFocusedElement(getter_AddRefs(element));
   if (element) {
-    rv = element->GetAttribute(NS_LITERAL_STRING("id"), id);
+    nsresult rv = element->GetAttribute(NS_LITERAL_STRING("id"), id);
     NS_ASSERTION(NS_SUCCEEDED(rv), "unable to get element's id");
     if (NS_FAILED(rv)) return rv;
   }
@@ -360,12 +360,14 @@ nsXULCommandDispatcher::UpdateCommands(const nsAString& aEventName)
       continue;
 
 #ifdef NS_DEBUG
-    nsCAutoString aeventnameC; 
-    CopyUTF16toUTF8(aEventName, aeventnameC);
-    PR_LOG(gLog, PR_LOG_ALWAYS,
-           ("xulcmd[%p] update %p event=%s",
-            this, updater->mElement,
-            aeventnameC.get()));
+    if (PR_LOG_TEST(gLog, PR_LOG_NOTICE)) {
+      nsCAutoString aeventnameC; 
+      CopyUTF16toUTF8(aEventName, aeventnameC);
+      PR_LOG(gLog, PR_LOG_NOTICE,
+             ("xulcmd[%p] update %p event=%s",
+              this, updater->mElement,
+              aeventnameC.get()));
+    }
 #endif
 
     PRUint32 count = document->GetNumberOfShells();
@@ -373,9 +375,7 @@ nsXULCommandDispatcher::UpdateCommands(const nsAString& aEventName)
       nsIPresShell *shell = document->GetShellAt(i);
 
       // Retrieve the context in which our DOM event will fire.
-      nsCOMPtr<nsIPresContext> context;
-      rv = shell->GetPresContext(getter_AddRefs(context));
-      if (NS_FAILED(rv)) return rv;
+      nsCOMPtr<nsPresContext> context = shell->GetPresContext();
 
       // Handle the DOM event
       nsEventStatus status = nsEventStatus_eIgnore;
@@ -392,7 +392,7 @@ PRBool
 nsXULCommandDispatcher::Matches(const nsString& aList, 
                                 const nsAString& aElement)
 {
-  if (aList.Equals(NS_LITERAL_STRING("*")))
+  if (aList.EqualsLiteral("*"))
     return PR_TRUE; // match _everything_!
 
   PRInt32 indx = aList.Find(PromiseFlatString(aElement));

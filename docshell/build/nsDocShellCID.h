@@ -41,4 +41,12 @@
 #define NS_GLOBALHISTORY2_CONTRACTID \
     "@mozilla.org/browser/global-history;2"
 
+/**
+ * A contract that can be used to get a service that provides
+ * meta-information about nsIWebNavigation objects' capabilities.
+ * @implements nsIWebNavigationInfo
+ */
+#define NS_WEBNAVIGATION_INFO_CONTRACTID \
+    "@mozilla.org/webnavigation-info;1"
+
 #endif // nsDocShellCID_h__

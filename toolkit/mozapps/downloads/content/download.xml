@@ -1,6 +1,7 @@
 <?xml version="1.0"?>
 
 # -*- Mode: Java; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+# ***** BEGIN LICENSE BLOCK *****
 # Version: MPL 1.1/GPL 2.0/LGPL 2.1
 # 
 # The contents of this file are subject to the Mozilla Public License Version
@@ -15,7 +16,8 @@
 # 
 # The Original Code is Mozilla.org Code.
 # 
-# The Initial Developer of the Original Code is.
+# The Initial Developer of the Original Code is
+# Blake Ross.
 # Portions created by the Initial Developer are Copyright (C) 2001
 # the Initial Developer. All Rights Reserved.
 # 
@@ -41,8 +43,6 @@
 <!DOCTYPE window [
   <!ENTITY % downloadDTD SYSTEM "chrome://mozapps/locale/downloads/downloads.dtd" >
   %downloadDTD;
-  <!ENTITY % browserDTD  SYSTEM "chrome://browser/locale/browser.dtd" >
-  %browserDTD;
 ]>
 
 <bindings id="downloadBindings"
@@ -207,7 +207,7 @@
           else if (aDownload._atiStep  == aDownload._ati_kLowerBounds)
             aDownload._atiIsIncrementing = true;
 
-          aIcon.setAttribute("style", "-moz-opacity: 0." + aDownload._atiStep );
+          aIcon.setAttribute("style", "opacity: 0." + aDownload._atiStep );
         ]]>
         </body>
       </method>
@@ -246,7 +246,7 @@
             return;
             
           aDownload._adlStep += aDownload._adl_kIncrement;
-          aContent.setAttribute("style", "-moz-opacity: " + aDownload._adlStep + "!important;");
+          aContent.setAttribute("style", "opacity: " + aDownload._adlStep + "!important;");
           
           setTimeout(aDownload._adlTimerCallback, aDownload._adl_kTimeout, aDownload, aContent);
         ]]>
@@ -306,12 +306,14 @@
             </xul:vbox>
             <xul:vbox pack="start">
               <xul:label value="&cmd.cancel.label;" class="link"
-                        onclick="this.parentNode.parentNode.parentNode.parentNode.parentNode.fireEvent('cancel');"/>          
+                         onclick="this.parentNode.parentNode.parentNode.parentNode.parentNode.fireEvent('cancel');"
+                         onkeypress="if (event.keyCode == 13) this.onclick();"/>
             </xul:vbox>
           </xul:hbox>                              
           <xul:hbox align="center">
             <xul:label value="&cmd.resume.label;" class="link"
-                       onclick="this.parentNode.parentNode.parentNode.parentNode.fireEvent('resume');"/>
+                       onclick="this.parentNode.parentNode.parentNode.parentNode.fireEvent('resume');"
+                       onkeypress="if (event.keyCode == 13) this.onclick();"/>
             <xul:label xbl:inherits="value=status" flex="1" crop="right"/>
           </xul:hbox>                            
         </xul:vbox>
@@ -342,9 +344,11 @@
         </xul:vbox>
         <xul:vbox pack="start">
           <xul:label value="&cmd.open.label;" class="link" 
-                     onclick="this.parentNode.parentNode.parentNode.fireEvent('open');"/>
+                     onclick="this.parentNode.parentNode.parentNode.fireEvent('open');"
+                     onkeypress="if (event.keyCode == 13) this.onclick();"/>
           <xul:label value="&cmd.remove.label;" class="link" 
-                     onclick="this.parentNode.parentNode.parentNode.fireEvent('remove');"/>
+                     onclick="this.parentNode.parentNode.parentNode.fireEvent('remove');"
+                     onkeypress="if (event.keyCode == 13) this.onclick();"/>
         </xul:vbox>
       </xul:hbox>
     </content>  
@@ -364,9 +368,11 @@
         </xul:vbox>
         <xul:vbox pack="start">
           <xul:label value="&cmd.retry.label;" class="link" 
-                     onclick="this.parentNode.parentNode.parentNode.fireEvent('retry');"/>
+                     onclick="this.parentNode.parentNode.parentNode.fireEvent('retry');"
+                     onkeypress="if (event.keyCode == 13) this.onclick();"/>
           <xul:label value="&cmd.remove.label;" class="link" 
-                     onclick="this.parentNode.parentNode.parentNode.fireEvent('remove');"/>
+                     onclick="this.parentNode.parentNode.parentNode.fireEvent('remove');"
+                     onkeypress="if (event.keyCode == 13) this.onclick();"/>
         </xul:vbox>
       </xul:hbox>
     </content>  
@@ -386,9 +392,11 @@
         </xul:vbox>
         <xul:vbox pack="start">
           <xul:label value="&cmd.retry.label;" class="link" 
-                     onclick="this.parentNode.parentNode.parentNode.fireEvent('retry');"/>
+                     onclick="this.parentNode.parentNode.parentNode.fireEvent('retry');"
+                     onkeypress="if (event.keyCode == 13) this.onclick();"/>
           <xul:label value="&cmd.remove.label;" class="link" 
-                     onclick="this.parentNode.parentNode.parentNode.fireEvent('remove');"/>
+                     onclick="this.parentNode.parentNode.parentNode.fireEvent('remove');"
+                     onkeypress="if (event.keyCode == 13) this.onclick();"/>
         </xul:vbox>
       </xul:hbox>
     </content>  
@@ -503,6 +511,11 @@
       </method>
     </implementation>
     <handlers>
+      <handler event="focus">
+      <![CDATA[
+        this.selected = event.target;
+      ]]>
+      </handler>
       <handler event="click">
       <![CDATA[
         if (event.ctrlKey) {
@@ -525,7 +538,6 @@
       <handler event="keypress" keycode="vk_right" modifiers="meta" action="this.selected = null"/>
       <handler event="keypress" keycode="vk_delete" action="if (this.selected) this.selected.fireEvent('remove');"/>
       <handler event="keypress" key=" " action="if (this.selected) { this.selected.pauseResume(); }"/>
-      <handler event="keypress" key="&newNavigatorCmd.key;" modifiers="control" action="parent.window.open('');"/>
     </handlers>
   </binding>
   

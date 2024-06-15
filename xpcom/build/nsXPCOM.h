@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -22,21 +22,38 @@
  * Contributor(s):
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
 #ifndef nsXPCOM_h__
 #define nsXPCOM_h__
+
+// Map frozen functions to private symbol names if not using strict API.
+#ifdef MOZILLA_INTERNAL_API
+# define NS_InitXPCOM2               NS_InitXPCOM2_P
+# define NS_ShutdownXPCOM            NS_ShutdownXPCOM_P
+# define NS_GetServiceManager        NS_GetServiceManager_P
+# define NS_GetComponentManager      NS_GetComponentManager_P
+# define NS_GetComponentRegistrar    NS_GetComponentRegistrar_P
+# define NS_GetMemoryManager         NS_GetMemoryManager_P
+# define NS_NewLocalFile             NS_NewLocalFile_P
+# define NS_NewNativeLocalFile       NS_NewNativeLocalFile_P
+# define NS_GetDebug                 NS_GetDebug_P
+# define NS_GetTraceRefcnt           NS_GetTraceRefcnt_P
+# define NS_Alloc                    NS_Alloc_P
+# define NS_Realloc                  NS_Realloc_P
+# define NS_Free                     NS_Free_P
+#endif
 
 #include "nscore.h"
 #include "nsXPCOMCID.h"
@@ -68,12 +85,12 @@ class nsITraceRefcnt;
  *
  * @param result           The service manager.  You may pass null.
  *
- * @param abinDirectory    The directory containing the component
+ * @param binDirectory     The directory containing the component
  *                         registry and runtime libraries;
  *                         or use <CODE>nsnull</CODE> to use the working
  *                         directory.
  *
- * @param aAppFileLocProvider The object to be used by Gecko that specifies
+ * @param appFileLocationProvider The object to be used by Gecko that specifies
  *                         to Gecko where to find profiles, the component
  *                         registry preferences and so on; or use
  *                         <CODE>nsnull</CODE> for the default behaviour.
@@ -167,7 +184,7 @@ NS_GetMemoryManager(nsIMemory* *result);
  * 
  * @status FROZEN
  * 
- *   @param filePath       
+ *   @param path       
  *       A string which specifies a full file path to a 
  *       location.  Relative paths will be treated as an
  *       error (NS_ERROR_FILE_UNRECOGNIZED_PATH).       
@@ -194,6 +211,52 @@ NS_NewNativeLocalFile(const nsACString &path,
                       PRBool followLinks, 
                       nsILocalFile* *result);
 
+/**
+ * Allocates a block of memory of a particular size. If the memory cannot
+ * be allocated (because of an out-of-memory condition), null is returned.
+ *
+ * @status FROZEN
+ *
+ * @param size   The size of the block to allocate
+ * @result       The block of memory
+ * @note         This function is thread-safe.
+ */
+extern "C" NS_COM void*
+NS_Alloc(PRSize size);
+
+/**
+ * Reallocates a block of memory to a new size.
+ *
+ * @status FROZEN
+ *
+ * @param ptr     The block of memory to reallocate. This block must originally
+                  have been allocated by NS_Alloc or NS_Realloc
+ * @param size    The new size. If 0, frees the block like NS_Free
+ * @result        The reallocated block of memory
+ * @note          This function is thread-safe.
+ *
+ * If ptr is null, this function behaves like NS_Alloc.
+ * If s is the size of the block to which ptr points, the first min(s, size)
+ * bytes of ptr's block are copied to the new block. If the allocation
+ * succeeds, ptr is freed and a pointer to the new block is returned. If the
+ * allocation fails, ptr is not freed and null is returned. The returned
+ * value may be the same as ptr.
+ */
+extern "C" NS_COM void*
+NS_Realloc(void* ptr, PRSize size);
+
+/**
+ * Frees a block of memory. Null is a permissible value, in which case no
+ * action is taken.
+ *
+ * @status FROZEN
+ *
+ * @param ptr   The block of memory to free. This block must originally have
+ *              been allocated by NS_Alloc or NS_Realloc
+ * @note        This function is thread-safe.
+ */
+extern "C" NS_COM void
+NS_Free(void* ptr);
 
 extern "C" NS_COM nsresult
 NS_GetDebug(nsIDebug* *result);

@@ -1,21 +1,40 @@
 # -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
-# The contents of this file are subject to the Netscape Public
-# License Version 1.1 (the "License"); you may not use this file
-# except in compliance with the License. You may obtain a copy of
-# the License at http://www.mozilla.org/NPL/
-# 
-# Software distributed under the License is distributed on an "AS
-# IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
-# implied. See the License for the specific language governing
-# rights and limitations under the License.
-# 
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 1.1/GPL 2.0/LGPL 2.1
+#
+# The contents of this file are subject to the Mozilla Public License Version
+# 1.1 (the "License"); you may not use this file except in compliance with
+# the License. You may obtain a copy of the License at
+# http://www.mozilla.org/MPL/
+#
+# Software distributed under the License is distributed on an "AS IS" basis,
+# WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+# for the specific language governing rights and limitations under the
+# License.
+#
 # The Original Code is Mozilla Communicator client code, released
 # March 31, 1998.
-# 
-# The Initial Developer of the Original Code is Netscape
-# Communications Corporation. Portions created by Netscape are
-# Copyright (C) 1998-1999 Netscape Communications Corporation. All
-# Rights Reserved.
+#
+# The Initial Developer of the Original Code is
+# Netscape Communications Corporation.
+# Portions created by the Initial Developer are Copyright (C) 1998-1999
+# the Initial Developer. All Rights Reserved.
+#
+# Contributor(s):
+#
+# Alternatively, the contents of this file may be used under the terms of
+# either the GNU General Public License Version 2 or later (the "GPL"), or
+# the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+# in which case the provisions of the GPL or the LGPL are applicable instead
+# of those above. If you wish to allow use of your version of this file only
+# under the terms of either the GPL or the LGPL, and not to allow others to
+# use your version of this file under the terms of the MPL, indicate your
+# decision by deleting the provisions above and replace them with the notice
+# and other provisions required by the GPL or the LGPL. If you do not delete
+# the provisions above, a recipient may use your version of this file under
+# the terms of any one of the MPL, the GPL or the LGPL.
+#
+# ***** END LICENSE BLOCK *****
 
 
 /* This is where functions related to displaying the headers for a selected message in the
@@ -61,15 +80,19 @@ var gOpenLabel;
 var gOpenLabelAccesskey;
 var gSaveLabel;
 var gSaveLabelAccesskey;
+var gDetachLabel;
+var gDeleteLabel;
+var gDetachLabelAccesskey;
+var gDeleteLabelAccesskey;
 var gMessengerBundle;
 var gProfileDirURL;
 var gIOService;
-var gFileHandler;
+var gFileHandler;  
 var gShowCondensedEmailAddresses = true; // show the friendly display names for people I know instead of the name + email address
 var gPersonalAddressBookDirectory; // used for determining if we want to show just the display name in email address nodes
 
 var msgHeaderParser = Components.classes[msgHeaderParserContractID].getService(Components.interfaces.nsIMsgHeaderParser);
-var abAddressCollector = Components.classes[abAddressCollectorContractID].getService(Components.interfaces.nsIAbAddressCollecter);
+var abAddressCollector = null;
 
 // other components may listen to on start header & on end header notifications for each message we display
 // to do that you need to add yourself to our gMessageListeners array with object that has two properties:
@@ -104,6 +127,7 @@ var gCollapsedHeaderList = [ {name:"subject", outputFunction:updateHeaderValueIn
 // We also have an expanded header view. This shows many of your more common (and useful) headers.
 var gExpandedHeaderList = [ {name:"subject"}, 
                             {name:"from", outputFunction:OutputEmailAddresses},
+                            {name:"sender", outputFunction:OutputEmailAddresses},
                             {name:"reply-to", outputFunction:OutputEmailAddresses},
                             {name:"date"},
                             {name:"to", useToggle:true, outputFunction:OutputEmailAddresses},
@@ -132,7 +156,7 @@ var currentHeaderData = {};
 // .contentType --> the content type of the attachment
 // url --> an imap, or mailbox url which can be used to fetch the message
 // uri --> an RDF URI which refers to the message containig the attachment
-// notDownloaded --> boolean flag stating whether the attachment is downloaded or not.
+// isExternalAttachment --> boolean flag stating whether the attachment is an attachment which is a URL that refers to the attachment location
 var currentAttachments = new Array();
 
 // createHeaderEntry --> our constructor method which creates a header Entry 
@@ -273,7 +297,7 @@ const MsgHdrViewObserver =
 var messageHeaderSink = {
     onStartHeaders: function()
     {
-      mSaveHdr = null;
+      this.mSaveHdr = null;
       // clear out any pending collected address timers...
       if (gCollectAddressTimer)
       {
@@ -281,7 +305,7 @@ var messageHeaderSink = {
         clearTimeout(gCollectAddressTimer);
         gCollectAddressTimer = null;
       }
-      mSaveHdr = null;
+
       // every time we start to redisplay a message, check the view all headers pref....
       var showAllHeadersPref = pref.getIntPref("mail.show_headers");
       if (showAllHeadersPref == 2)
@@ -307,7 +331,7 @@ var messageHeaderSink = {
       gBuildAttachmentPopupForCurrentMsg = true;
       ClearAttachmentList();
       ClearEditMessageButton();
-      SetUpRemoteContentBar(null);
+      gMessageNotificationBar.clearMsgNotifications();
 
       for (index in gMessageListeners)
         gMessageListeners[index].onStartHeaders();
@@ -328,11 +352,16 @@ var messageHeaderSink = {
       UpdateMessageHeaders();
       if (gIsEditableMsgFolder)
         ShowEditMessageButton();
+      
+      for (index in gMessageListeners)
+        gMessageListeners[index].onEndHeaders();
     },
     processHeaders: function(headerNameEnumerator, headerValueEnumerator, dontCollectAddress)
     {
       this.onStartHeaders(); 
+      var fromMailbox;
 
+      var index = 0;
       while (headerNameEnumerator.hasMore()) 
       {
         var header = new Object;        
@@ -343,11 +372,16 @@ var messageHeaderSink = {
         // we don't have to worry about looking for: Cc and CC, etc.
         var lowerCaseHeaderName = header.headerName.toLowerCase();
 
-        // if we have an x-mailer string, put it in the user-agent slot which we know how to handle
+        // if we have an x-mailer or x-mimeole string, put it in the user-agent slot which we know how to handle
         // already. 
-        if (lowerCaseHeaderName == "x-mailer")
+        if (lowerCaseHeaderName == "x-mailer" || lowerCaseHeaderName == "x-mimeole")
           lowerCaseHeaderName = "user-agent";   
         
+        if (lowerCaseHeaderName == "sender")
+        {
+          if (fromMailbox == header.headerValue)
+            continue;
+        }
         // according to RFC 2822, certain headers
         // can occur "unlimited" times
         if (lowerCaseHeaderName in currentHeaderData)
@@ -367,17 +401,26 @@ var messageHeaderSink = {
 
         if (lowerCaseHeaderName == "from")
         {
-          if (header.value && abAddressCollector) {
+          if (msgHeaderParser && header.value)
+            fromMailbox = msgHeaderParser.extractHeaderAddressMailboxes(null, header.value);
+
+          if (header.value) {
             if ((gCollectIncoming && !dontCollectAddress) || 
                 (gCollectNewsgroup && dontCollectAddress))
             {
+              if (!abAddressCollector)
+                abAddressCollector = Components.classes[abAddressCollectorContractID].getService(Components.interfaces.nsIAbAddressCollecter);
+
               gCollectAddress = header.headerValue;
-              // collect, and add card if doesn't exist
+              // collect, and add card if doesn't exist, unknown preferred send format
               gCollectAddressTimer = setTimeout('abAddressCollector.collectUnicodeAddress(gCollectAddress, true, Components.interfaces.nsIAbPreferMailFormat.unknown);', 2000);
             }
             else if (gCollectOutgoing) 
             {
-              // collect, but only update existing cards
+              if (!abAddressCollector)
+                abAddressCollector = Components.classes[abAddressCollectorContractID].getService(Components.interfaces.nsIAbAddressCollecter);
+
+              // collect, but only update existing cards, unknown preferred send format
               gCollectAddress = header.headerValue;
               gCollectAddressTimer = setTimeout('abAddressCollector.collectUnicodeAddress(gCollectAddress, false, Components.interfaces.nsIAbPreferMailFormat.unknown);', 2000);
             }
@@ -388,23 +431,28 @@ var messageHeaderSink = {
       this.onEndHeaders();
     },
 
-    handleAttachment: function(contentType, url, displayName, uri, notDownloaded) 
+    handleAttachment: function(contentType, url, displayName, uri, isExternalAttachment) 
     {
       // presentation level change....don't show vcards as external attachments in the UI.
       // libmime already renders them inline.
 
+      try
+      {
+        if (!mSaveHdr)
+          this.mSaveHdr = messenger.messageServiceFromURI(uri).messageURIToMsgHdr(uri);
+      }
+      catch (ex) {}
       if (contentType == "text/x-vcard")
       {
         var inlineAttachments = pref.getBoolPref("mail.inline_attachments");
         var displayHtmlAs = pref.getIntPref("mailnews.display.html_as");
         if (inlineAttachments && !displayHtmlAs)
         {
-          mSaveHdr = messenger.messageServiceFromURI(uri).messageURIToMsgHdr(uri);
           return;
         }
       }
 
-      currentAttachments.push (new createNewAttachmentInfo(contentType, url, displayName, uri, notDownloaded));
+      currentAttachments.push (new createNewAttachmentInfo(contentType, url, displayName, uri, isExternalAttachment));
       // if we have an attachment, set the MSG_FLAG_ATTACH flag on the hdr
       // this will cause the "message with attachment" icon to show up
       // in the thread pane
@@ -418,8 +466,7 @@ var messageHeaderSink = {
 
         try {
           // convert the uri into a hdr
-          var hdr = messenger.messageServiceFromURI(uri).messageURIToMsgHdr(uri);
-          hdr.markHasAttachments(true);
+          this.mSaveHdr.markHasAttachments(true);
         }
         catch (ex) {
           dump("ex = " + ex + "\n");
@@ -429,15 +476,24 @@ var messageHeaderSink = {
     
     onEndAllAttachments: function()
     {
-      // if we only got a v-card, turn off the attachments flag
-      if (!currentAttachments.length && mSaveHdr)
-        mSaveHdr.markHasAttachments(false);
-      mSaveHdr = null;
       displayAttachmentsForExpandedView();
     },
 
     onEndMsgDownload: function(url)
     {
+      // if we don't have any attachments, turn off the attachments flag
+      if (!this.mSaveHdr)
+      {
+        var messageUrl = url.QueryInterface(Components.interfaces.nsIMsgMessageUrl);
+        try
+        {
+          this.mSaveHdr = messenger.messageServiceFromURI(messageUrl.uri).messageURIToMsgHdr(messageUrl.uri);
+        }
+        catch (ex) {}
+
+      }
+      if (!currentAttachments.length && this.mSaveHdr)
+        this.mSaveHdr.markHasAttachments(false);
       OnMsgParsed(url);
     },
 
@@ -445,9 +501,10 @@ var messageHeaderSink = {
     { 
       OnMsgLoaded(url);
     },
+
     onMsgHasRemoteContent: function(aMsgHdr)
     {
-      SetUpRemoteContentBar(aMsgHdr);
+      gMessageNotificationBar.setRemoteContentMsg(aMsgHdr);
     },
 
     mSecurityInfo  : null,
@@ -641,9 +698,9 @@ function createNewHeaderView(headerName)
   } 
   else
   {
-  newHeader.setAttribute('label', currentHeaderData[headerName].headerName + ':');
-  // all mail-headerfield elements are keyword related
-  newHeader.setAttribute('keywordrelated','true');
+    newHeader.setAttribute('label', currentHeaderData[headerName].headerName + ':');
+    // all mail-headerfield elements are keyword related
+    newHeader.setAttribute('keywordrelated','true');
   }
   
   newHeader.collapsed = true;
@@ -694,7 +751,7 @@ function UpdateMessageHeaders()
     else if (!gCollapsedHeaderViewMode && !gBuiltExpandedView)
     {
       if (headerName in gExpandedHeaderView)
-      headerEntry = gExpandedHeaderView[headerName];
+       headerEntry = gExpandedHeaderView[headerName];
 
       if (!headerEntry && gViewAllHeaders)
       {
@@ -837,6 +894,7 @@ function OutputEmailAddresses(headerEntry, emailAddresses)
   } // if msgheader parser
 }
 
+
 function setFromBuddyIcon(email)
 {
    var fromBuddyIcon = document.getElementById("fromBuddyIcon");
@@ -844,6 +902,9 @@ function setFromBuddyIcon(email)
    try {
      // better to cache this?
      var myScreenName = pref.getCharPref("aim.session.screenname");
+
+     if (!abAddressCollector)
+       abAddressCollector = Components.classes[abAddressCollectorContractID].getService(Components.interfaces.nsIAbAddressCollecter);
 
      var card = abAddressCollector.getCardFromAttribute("PrimaryEmail", email);
 
@@ -1024,13 +1085,13 @@ function CreateFilter(emailAddressNode)
 
 // createnewAttachmentInfo --> constructor method for creating new attachment object which goes into the
 // data attachment array.
-function createNewAttachmentInfo(contentType, url, displayName, uri, notDownloaded)
+function createNewAttachmentInfo(contentType, url, displayName, uri, isExternalAttachment)
 {
   this.contentType = contentType;
   this.url = url;
   this.displayName = displayName;
   this.uri = uri;
-  this.notDownloaded = notDownloaded;
+  this.isExternalAttachment = isExternalAttachment;
 }
 
 function dofunc(aFunctionName, aFunctionArg)
@@ -1041,6 +1102,10 @@ function dofunc(aFunctionName, aFunctionArg)
     openAttachment(aFunctionArg); 
   else if (aFunctionName == "printAttachment") 
     printAttachment(aFunctionArg);
+  else if (aFunctionName == "deleteAttachment")
+    detachAttachment(aFunctionArg, false);
+  else if (aFunctionName == "detachAttachment")
+    detachAttachment(aFunctionArg, true);
 }
 
 function saveAttachment(aAttachment)
@@ -1048,7 +1113,7 @@ function saveAttachment(aAttachment)
   messenger.saveAttachment(aAttachment.contentType, 
                            aAttachment.url, 
                            encodeURIComponent(aAttachment.displayName), 
-                           aAttachment.messageUri);
+                           aAttachment.messageUri, aAttachment.isExternalAttachment);
 }
 
 function openAttachment(aAttachment)
@@ -1056,7 +1121,7 @@ function openAttachment(aAttachment)
   messenger.openAttachment(aAttachment.contentType, 
                            aAttachment.url, 
                            encodeURIComponent(aAttachment.displayName), 
-                           aAttachment.messageUri);
+                           aAttachment.messageUri, aAttachment.isExternalAttachment);
 }
 
 function printAttachment(aAttachment)
@@ -1069,6 +1134,14 @@ function printAttachment(aAttachment)
   */
 }
 
+function detachAttachment(aAttachment, aSaveFirst)
+{
+  messenger.detachAttachment(aAttachment.contentType, 
+                           aAttachment.url, 
+                           encodeURIComponent(aAttachment.displayName), 
+                           aAttachment.messageUri, aSaveFirst);
+}
+
 function onShowAttachmentContextMenu()
 {
   // if no attachments are selected, disable the Open and Save...
@@ -1076,8 +1149,16 @@ function onShowAttachmentContextMenu()
   var selectedAttachments = attachmentList.selectedItems;
   var openMenu = document.getElementById('context-openAttachment');
   var saveMenu = document.getElementById('context-saveAttachment');
+  var detachMenu = document.getElementById('context-detachAttachment');
+  var deleteMenu = document.getElementById('context-deleteAttachment');
+
+  var canDetach = false;
   if (selectedAttachments.length > 0)
   {
+    var attachment = selectedAttachments[0].attachment
+    canDetach = attachment.contentType != 'text/x-moz-deleted' &&
+        !(/news-message:/.test(attachment.messageUri)) && 
+        (!(/imap-message/.test(attachment.messageUri)) || CheckOnline());
     openMenu.removeAttribute('disabled');
     saveMenu.removeAttribute('disabled');
   }
@@ -1085,6 +1166,17 @@ function onShowAttachmentContextMenu()
   {
     openMenu.setAttribute('disabled', true);
     saveMenu.setAttribute('disabled', true);
+  }
+
+  if (canDetach)
+  {
+    detachMenu.removeAttribute('disabled');
+    deleteMenu.removeAttribute('disabled');
+  }
+  else
+  {
+    detachMenu.setAttribute('disabled', true);
+    deleteMenu.setAttribute('disabled', true);
   }
 }
 
@@ -1100,7 +1192,7 @@ function attachmentListClick(event)
     var target = event.target;
     if (target.localName == "descriptionitem")
     {
-	    dofunc("openAttachment", target.attachment);
+      dofunc("openAttachment", target.attachment);
     }
   }
 }
@@ -1135,6 +1227,7 @@ function cloneAttachment(aAttachment)
   obj.url = aAttachment.url;
   obj.displayName = aAttachment.displayName;
   obj.messageUri = aAttachment.uri;
+  obj.isExternalAttachment = aAttachment.isExternalAttachment;
   return obj;
 }
 
@@ -1188,7 +1281,10 @@ function setApplicationIconForAttachment(attachment, listitem, largeView)
 {
   var iconSize = largeView ? kLargeIcon : kSmallIcon;
   // generate a moz-icon url for the attachment so we'll show a nice icon next to it.
-  listitem.setAttribute('image', "moz-icon:" + "//" + attachment.displayName + "?size=" + iconSize + "&contentType=" + attachment.contentType);
+  if ( attachment.contentType == 'text/x-moz-deleted' )
+    listitem.setAttribute('image', 'chrome://messenger/skin/icons/message-mail-attach-del.gif');
+  else
+    listitem.setAttribute('image', "moz-icon:" + "//" + attachment.displayName + "?size=" + iconSize + "&contentType=" + attachment.contentType);
 }
 
 // Public method called to generate a tooltip over an attachment
@@ -1205,7 +1301,6 @@ function FillAttachmentListPopup(popup)
 {
   // the FE sometimes call this routine TWICE...I haven't been able to figure out why yet...
   // protect against it...
-
   if (!gBuildAttachmentPopupForCurrentMsg) return; 
 
   var attachmentIndex = 0;
@@ -1229,7 +1324,7 @@ function ClearAttachmentMenu(popup)
 { 
   if ( popup ) 
   { 
-     while ( popup.childNodes.length > 2 ) 
+     while ( popup.childNodes[0].localName == 'menu' )
        popup.removeChild(popup.childNodes[0]); 
   } 
 }
@@ -1254,8 +1349,14 @@ function addAttachmentToPopup(popup, attachment, attachmentIndex)
       // insert the item just before the separator...the separator is the 2nd to last element in the popup.
       item.setAttribute('class', 'menu-iconic');
       setApplicationIconForAttachment(attachment,item, false);
+      
       var numItemsInPopup = popup.childNodes.length;
-      item = popup.insertBefore(item, popup.childNodes[numItemsInPopup-2]);
+      // find the separator
+      var indexOfSeparator = 0;
+      while (popup.childNodes[indexOfSeparator].localName != 'menuseparator')
+        indexOfSeparator++;
+
+      item = popup.insertBefore(item, popup.childNodes[indexOfSeparator]);
 
       var formattedDisplayNameString = gMessengerBundle.getFormattedString("attachmentDisplayNameFormat",
                                        [attachmentIndex, attachment.displayName]);
@@ -1279,10 +1380,26 @@ function addAttachmentToPopup(popup, attachment, attachmentIndex)
         gOpenLabel = gMessengerBundle.getString("openLabel");
       if (!gOpenLabelAccesskey)
         gOpenLabelAccesskey = gMessengerBundle.getString("openLabelAccesskey");
+      if (!gDetachLabel)
+        gDetachLabel = gMessengerBundle.getString("detachLabel");
+      if (!gDetachLabelAccesskey)
+        gDetachLabelAccesskey = gMessengerBundle.getString("detachLabelAccesskey");
+      if (!gDeleteLabel)
+        gDeleteLabel = gMessengerBundle.getString("deleteLabel");
+      if (!gDeleteLabelAccesskey)
+        gDeleteLabelAccesskey = gMessengerBundle.getString("deleteLabelAccesskey");
 
+      // we should also check if an attachment has been detached...
+      // but that uses X-Mozilla-External-Attachment-URL, which
+      // we'd need to check for somehow.
+
+      var canDetach = !(/news-message:/.test(attachment.uri)) && 
+          (!(/imap-message/.test(attachment.uri)) || CheckOnline());
       menuitementry.setAttribute('label', gOpenLabel); 
       menuitementry.setAttribute('accesskey', gOpenLabelAccesskey); 
       menuitementry = openpopup.appendChild(menuitementry);
+      if (attachment.contentType == 'text/x-moz-deleted')
+        menuitementry.setAttribute('disabled', true); 
 
       var menuseparator = document.createElement('menuseparator');
       openpopup.appendChild(menuseparator);
@@ -1292,12 +1409,35 @@ function addAttachmentToPopup(popup, attachment, attachmentIndex)
       menuitementry.setAttribute('oncommand', 'saveAttachment(this.attachment)'); 
       menuitementry.setAttribute('label', gSaveLabel); 
       menuitementry.setAttribute('accesskey', gSaveLabelAccesskey); 
+      if (attachment.contentType == 'text/x-moz-deleted' || !canDetach)
+        menuitementry.setAttribute('disabled', true); 
+      menuitementry = openpopup.appendChild(menuitementry);
+
+      var menuseparator = document.createElement('menuseparator');
+      openpopup.appendChild(menuseparator);
+
+      menuitementry = document.createElement('menuitem');
+      menuitementry.attachment = attachment;
+      menuitementry.setAttribute('oncommand', 'this.attachment.detachAttachment()'); 
+      menuitementry.setAttribute('label', gDetachLabel); 
+      menuitementry.setAttribute('accesskey', gDetachLabelAccesskey); 
+      if (attachment.contentType == 'text/x-moz-deleted' || !canDetach)
+        menuitementry.setAttribute('disabled', true); 
+      menuitementry = openpopup.appendChild(menuitementry);
+
+      menuitementry = document.createElement('menuitem');
+      menuitementry.attachment = attachment;
+      menuitementry.setAttribute('oncommand', 'this.attachment.deleteAttachment()'); 
+      menuitementry.setAttribute('label', gDeleteLabel); 
+      menuitementry.setAttribute('accesskey', gDeleteLabelAccesskey); 
+      if (attachment.contentType == 'text/x-moz-deleted' || !canDetach)
+        menuitementry.setAttribute('disabled', true); 
       menuitementry = openpopup.appendChild(menuitementry);
     }  // if we created a menu item for this attachment...
   } // if we have a popup
 } 
 
-function SaveAllAttachments()
+function HandleAllAttachments(action)
 {
  try 
  {
@@ -1308,24 +1448,43 @@ function SaveAllAttachments()
    var attachmentMessageUriArray = new Array();
 
    // populate these arrays..
+   var actionIndex = 0;
    for (index in currentAttachments)
    {
+     // exclude all attachments already deleted
      var attachment = currentAttachments[index];
-     attachmentContentTypeArray[index] = attachment.contentType;
-     attachmentUrlArray[index] = attachment.url;
-     attachmentDisplayNameArray[index] = encodeURIComponent(attachment.displayName);
-     attachmentMessageUriArray[index] = attachment.uri;
+     if ( attachment.contentType != 'text/x-moz-deleted' )
+     {
+       attachmentContentTypeArray[actionIndex] = attachment.contentType;
+       attachmentUrlArray[actionIndex] = attachment.url;
+       attachmentDisplayNameArray[actionIndex] = encodeURI(attachment.displayName);
+       attachmentMessageUriArray[actionIndex] = attachment.uri;
+       ++actionIndex;
+     }
    }
 
-   // okay the list has been built...now call our save all attachments code...
-   messenger.saveAllAttachments(attachmentContentTypeArray.length,
-                                attachmentContentTypeArray, attachmentUrlArray,
-                                attachmentDisplayNameArray, attachmentMessageUriArray);
- }
- catch (ex)
- {
-   dump ("** failed to save all attachments **\n");
- }
+   // okay the list has been built... now call our action code...
+   if ( action == 'save' )
+     messenger.saveAllAttachments(attachmentContentTypeArray.length,
+                                  attachmentContentTypeArray, attachmentUrlArray,
+                                  attachmentDisplayNameArray, attachmentMessageUriArray);
+   else if ( action == 'detach' )
+     messenger.detachAllAttachments(attachmentContentTypeArray.length,
+                                    attachmentContentTypeArray, attachmentUrlArray,
+                                    attachmentDisplayNameArray, attachmentMessageUriArray,
+                                    true); // save
+   else if ( action == 'delete' )
+     messenger.detachAllAttachments(attachmentContentTypeArray.length,
+                                    attachmentContentTypeArray, attachmentUrlArray,
+                                    attachmentDisplayNameArray, attachmentMessageUriArray,
+                                    false); // don't save
+   else
+     dump ("** unknown HandleAllAttachments action: " + action + "**\n");
+   }
+   catch (ex)
+   {
+   dump ("** failed to handle all attachments **\n");
+   }
 }
 
 function ClearAttachmentList() 
@@ -1338,8 +1497,8 @@ function ClearAttachmentList()
   // clear selection
   var list = document.getElementById('attachmentList');
 
-  while (list.childNodes.length) 
-    list.removeChild(list.firstChild);
+  while (list.hasChildNodes()) 
+    list.removeChild(list.lastChild);
 }
 
 function ShowEditMessageButton() 

@@ -1,27 +1,42 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-/*
- * The contents of this file are subject to the Netscape Public
- * License Version 1.1 (the "License"); you may not use this file
- * except in compliance with the License. You may obtain a copy of
- * the License at http://www.mozilla.org/NPL/
+/* ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * Software distributed under the License is distributed on an "AS
- * IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
- * implied. See the License for the specific language governing
- * rights and limitations under the License.
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
- * The Original Code is Mozilla Communicator client code, 
- * released March 31, 1998. 
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+ * for the specific language governing rights and limitations under the
+ * License.
  *
- * The Initial Developer of the Original Code is Netscape Communications 
- * Corporation.  Portions created by Netscape are
- * Copyright (C) 1998 Netscape Communications Corporation. All
- * Rights Reserved.
+ * The Original Code is Mozilla Communicator client code, released
+ * March 31, 1998.
  *
- * Contributor(s): 
- *     Doug Turner <dougt@netscape.com>
- *     IBM Corp.
- */
+ * The Initial Developer of the Original Code is
+ * Netscape Communications Corporation.
+ * Portions created by the Initial Developer are Copyright (C) 1998
+ * the Initial Developer. All Rights Reserved.
+ *
+ * Contributor(s):
+ *   Doug Turner <dougt@netscape.com>
+ *   IBM Corp.
+ *
+ * Alternatively, the contents of this file may be used under the terms of
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK ***** */
 
 #include "nsSpecialSystemDirectory.h"
 #include "nsDebug.h"
@@ -41,8 +56,6 @@
 #include <shlobj.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <ctype.h>
-#include "nsNativeCharsetUtils.h"
 #elif defined(XP_OS2)
 #define MAX_PATH _MAX_PATH
 #define INCL_WINWORKPLACE
@@ -127,70 +140,47 @@ typedef BOOL (WINAPI * GetSpecialPathProc) (HWND hwndOwner, LPSTR lpszPath, int 
 GetSpecialPathProc gGetSpecialPathProc = NULL;
 static HINSTANCE gShell32DLLInst = NULL;
 #endif
-NS_COM_OBSOLETE void StartupSpecialSystemDirectory()
-{
-#if defined (XP_WIN)
-    /* On windows, the old method to get file locations is incredibly slow.
-       As of this writing, 3 calls to GetWindowsFolder accounts for 3% of mozilla
-       startup. Replacing these older calls with a single call to SHGetSpecialFolderPath
-       effectively removes these calls from the performace radar.  We need to 
-       support the older way of file location lookup on systems that do not have
-       IE4. (Note: gets the ansi version: SHGetSpecialFolderPathA).
-    */ 
-    gShell32DLLInst = LoadLibrary("Shell32.dll");
-    if(gShell32DLLInst)
-    {
-        gGetSpecialPathProc  = (GetSpecialPathProc) GetProcAddress(gShell32DLLInst, 
-                                                                   "SHGetSpecialFolderPathA");
-    }
-#endif
-}
-
-NS_COM_OBSOLETE void ShutdownSpecialSystemDirectory()
-{
-    if (systemDirectoriesLocations)
-    {
-        systemDirectoriesLocations->Reset(DeleteSystemDirKeys);
-        delete systemDirectoriesLocations;
-    }
-#if defined (XP_WIN)
-   if (gShell32DLLInst)
-   {
-       FreeLibrary(gShell32DLLInst);
-       gShell32DLLInst = NULL;
-       gGetSpecialPathProc = NULL;
-   }
-#endif
-}
 
 #if defined (XP_WIN)
+
+static PRBool gGlobalOSInitialized = PR_FALSE;
+static PRBool gGlobalDBCSEnabledOS = PR_FALSE;
 
 //----------------------------------------------------------------------------------------
 static char* MakeUpperCase(char* aPath)
 //----------------------------------------------------------------------------------------
 {
-  // windows does not care about case.  push to uppercase:
-  nsAutoString widePath;
-
-  if (NS_FAILED(NS_CopyNativeToUnicode(nsDependentCString(aPath), widePath))) {
-    NS_ASSERTION(0, "failed to convert a path to Unicode");
-    return aPath;
+  // check if the Windows is DBCSEnabled once.
+  if (PR_FALSE == gGlobalOSInitialized) {
+#ifndef WINCE
+    if (GetSystemMetrics(SM_DBCSENABLED))
+      gGlobalDBCSEnabledOS = PR_TRUE;
+#endif
+    gGlobalOSInitialized = PR_TRUE;
   }
 
-  nsString::iterator start, end;
-  widePath.BeginWriting(start);
-  widePath.EndWriting(end);
-
-  while (start != end) {
-    *start = towupper(*start);
-    ++start;
+  // windows does not care about case.  pu sh to uppercase:
+  int length = strlen(aPath);
+  int i = 0; /* C++ portability guide #20 */
+  if (!gGlobalDBCSEnabledOS)  {
+    // for non-DBCS windows
+    for (i = 0; i < length; i++)
+        if (islower(aPath[i]))
+          aPath[i] = _toupper(aPath[i]);
   }
-
-  nsCAutoString newCPath;
-  NS_CopyUnicodeToNative(widePath, newCPath);
-  // strncpy(aPath, newCPath.get(), strlen(aPath) + 1);
-  strcpy(aPath, newCPath.get());
-
+  else {
+    // for DBCS windows
+    for (i = 0; i < length; i++)  {
+      if (IsDBCSLeadByte(aPath[i])) {
+        // begining of the double bye char
+        i++;
+      }
+      else  {
+        if ( islower(aPath[i]))
+          aPath[i] = _toupper(aPath[i]);
+      }
+    } //end of for loop
+  }
   return aPath;
 }
 
@@ -497,7 +487,11 @@ void nsSpecialSystemDirectory::operator = (SystemDirectories aSystemSystemDirect
 
             
         case OS_TemporaryDirectory:
-#if defined (XP_WIN)
+#if defined (WINCE)
+            {
+                *this = "\\TEMP";
+            }
+#elif defined (XP_WIN)
         {
             char path[_MAX_PATH];
             DWORD len = GetTempPath(_MAX_PATH, path);
@@ -885,6 +879,7 @@ void nsSpecialSystemDirectory::operator = (SystemDirectories aSystemSystemDirect
             GetWindowsFolder(CSIDL_TEMPLATES, *this);
             break;
         }
+#ifndef WINCE
         case Win_Common_Startmenu:
         {
             GetWindowsFolder(CSIDL_COMMON_STARTMENU, *this);
@@ -905,11 +900,6 @@ void nsSpecialSystemDirectory::operator = (SystemDirectories aSystemSystemDirect
             GetWindowsFolder(CSIDL_COMMON_DESKTOPDIRECTORY, *this);
             break;
         }
-        case Win_Appdata:
-        {
-            GetWindowsFolder(CSIDL_APPDATA, *this);
-            break;
-        }
         case Win_Printhood:
         {
             GetWindowsFolder(CSIDL_PRINTHOOD, *this);
@@ -918,6 +908,13 @@ void nsSpecialSystemDirectory::operator = (SystemDirectories aSystemSystemDirect
         case Win_Cookies:
         {
             GetWindowsFolder(CSIDL_COOKIES, *this);
+            break;
+        }
+#endif // WINCE
+
+        case Win_Appdata:
+        {
+            GetWindowsFolder(CSIDL_APPDATA, *this);
             break;
         }
 #endif  // XP_WIN

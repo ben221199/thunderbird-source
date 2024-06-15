@@ -43,8 +43,9 @@
 #include "nsContentCID.h"
 #include "nsIAccessibleDocument.h"
 #include "nsIDOMRange.h"
+#include "nsIFontMetrics.h"
 #include "nsIFrame.h"
-#include "nsIPresContext.h"
+#include "nsPresContext.h"
 #include "nsIPresShell.h"
 #include "nsIRenderingContext.h"
 #include "nsISelection.h"
@@ -172,8 +173,7 @@ STDMETHODIMP nsTextAccessibleWrap::scrollToSubstring(
     return E_FAIL;  // This accessible has been shut down
   }
 
-  nsCOMPtr<nsIPresContext> presContext;
-  presShell->GetPresContext(getter_AddRefs(presContext));
+  nsPresContext *presContext = presShell->GetPresContext();
   nsCOMPtr<nsIDOMRange> scrollToRange = do_CreateInstance(kRangeCID);
   nsCOMPtr<nsISelectionController> selCon;
   frame->GetSelectionController(presContext, getter_AddRefs(selCon));
@@ -200,7 +200,7 @@ STDMETHODIMP nsTextAccessibleWrap::scrollToSubstring(
 }
 
 nsIFrame* nsTextAccessibleWrap::GetPointFromOffset(nsIFrame *aContainingFrame, 
-                                                nsIPresContext *aPresContext,
+                                                nsPresContext *aPresContext,
                                                 nsIRenderingContext *aRendContext,
                                                 PRInt32 aOffset, 
                                                 nsPoint& aOutPoint)
@@ -226,8 +226,7 @@ nsresult nsTextAccessibleWrap::GetCharacterExtents(PRInt32 aStartOffset, PRInt32
   nsCOMPtr<nsIPresShell> presShell(GetPresShell());
   NS_ENSURE_TRUE(presShell, NS_ERROR_FAILURE);
 
-  nsCOMPtr<nsIPresContext> presContext;
-  presShell->GetPresContext(getter_AddRefs(presContext));
+  nsPresContext *presContext = presShell->GetPresContext();
   NS_ENSURE_TRUE(presContext, NS_ERROR_FAILURE);
   float t2p = presContext->TwipsToPixels();
 
@@ -264,4 +263,46 @@ nsresult nsTextAccessibleWrap::GetCharacterExtents(PRInt32 aStartOffset, PRInt32
                                 startPoint.y - startRect.y , t2p);
 
   return NS_OK;
+}
+
+STDMETHODIMP nsTextAccessibleWrap::get_fontFamily(
+    /* [retval][out] */ BSTR __RPC_FAR *aFontFamily)
+{
+  nsIFrame *frame = GetFrame();
+  nsCOMPtr<nsIPresShell> presShell = GetPresShell();
+  if (!frame || !presShell) {
+    return E_FAIL;
+  }
+
+  nsCOMPtr<nsIRenderingContext> rc;
+  presShell->CreateRenderingContext(frame, getter_AddRefs(rc));
+  if (!rc) {
+    return E_FAIL;
+  }
+
+  const nsStyleFont *font = frame->GetStyleFont();
+
+  const nsStyleVisibility *visibility = frame->GetStyleVisibility();
+
+  if (NS_FAILED(rc->SetFont(font->mFont, visibility->mLangGroup))) {
+    return E_FAIL;
+  }
+
+  nsCOMPtr<nsIDeviceContext> deviceContext;
+  rc->GetDeviceContext(*getter_AddRefs(deviceContext));
+  if (!deviceContext) {
+    return E_FAIL;
+  }
+
+  nsIFontMetrics *fm;
+  rc->GetFontMetrics(fm);
+  if (!fm) {
+    return E_FAIL;
+  }
+
+  nsAutoString fontFamily;
+  deviceContext->FirstExistingFont(fm->Font(), fontFamily);
+  
+  *aFontFamily = ::SysAllocString(fontFamily.get());
+  return S_OK;
 }

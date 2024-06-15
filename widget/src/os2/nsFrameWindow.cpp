@@ -1,21 +1,38 @@
-/*
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
+/* ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
+ *
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
  * http://www.mozilla.org/MPL/
  *
- * Software distributed under the License is distributed on an "AS IS"
- * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See the
- * License for the specific language governing rights and limitations
- * under the License.
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+ * for the specific language governing rights and limitations under the
+ * License.
  *
  * The Original Code is the Mozilla OS/2 libraries.
  *
- * The Initial Developer of the Original Code is John Fairhurst,
- * <john_fairhurst@iname.com>.  Portions created by John Fairhurst are
- * Copyright (C) 1999 John Fairhurst. All Rights Reserved.
+ * The Initial Developer of the Original Code is
+ * John Fairhurst, <john_fairhurst@iname.com>.
+ * Portions created by the Initial Developer are Copyright (C) 1999
+ * the Initial Developer. All Rights Reserved.
  *
- * Contributor(s): 
+ * Contributor(s):
+ *
+ * Alternatively, the contents of this file may be used under the terms of
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
+ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK *****
  *
  * This Original Code has been modified by IBM Corporation.
  * Modifications made by IBM described herein are
@@ -190,12 +207,10 @@ void nsFrameWindow::RealDoCreate( HWND hwndP, nsWindow *aParent,
    }
    else
    {
-      nsresult rc = NS_OK;
+      nsresult rc;
       static NS_DEFINE_IID(kDeviceContextCID, NS_DEVICE_CONTEXT_CID);
 
-      rc = nsComponentManager::CreateInstance( kDeviceContextCID, nsnull,
-                                               NS_GET_IID(nsIDeviceContext),
-                                               (void **)&mContext);
+      rc = CallCreateInstance(kDeviceContextCID, &mContext);
       if( NS_SUCCEEDED(rc))
          mContext->Init( (nsNativeWidget) mWnd);
 #ifdef DEBUG
@@ -209,7 +224,7 @@ void nsFrameWindow::RealDoCreate( HWND hwndP, nsWindow *aParent,
    // NB: We haven't subclassed yet, so callbacks to change mBounds won't
    //     have happened!
    mBounds = frameRect;
-   mBounds.height = GetHeight( frameRect.height);
+   mBounds.height = frameRect.height;
 
    // Record passed in things
    mAppShell = aAppShell;
@@ -325,10 +340,10 @@ MRESULT EXPENTRY fnwpFrame( HWND hwnd, ULONG msg, MPARAM mp1, MPARAM mp2)
 // Process messages from the frame
 MRESULT nsFrameWindow::FrameMessage( ULONG msg, MPARAM mp1, MPARAM mp2)
 {
-   MRESULT mRC = 0;
+   MRESULT mresult = 0;
    BOOL    bDone = FALSE;
 
-   switch( msg)
+   switch (msg)
    {
       case WM_WINDOWPOSCHANGED:
       {
@@ -348,7 +363,7 @@ MRESULT nsFrameWindow::FrameMessage( ULONG msg, MPARAM mp1, MPARAM mp2)
          // When the frame is sized, do stuff to recalculate client size.
          if( pSwp->fl & SWP_SIZE && !(pSwp->fl & SWP_MINIMIZE))
          {
-            mRC = (*fnwpDefFrame)( mFrameWnd, msg, mp1, mp2);
+            mresult = (*fnwpDefFrame)( mFrameWnd, msg, mp1, mp2);
             bDone = TRUE;
 
             mBounds.width = pSwp->cx;
@@ -357,12 +372,12 @@ MRESULT nsFrameWindow::FrameMessage( ULONG msg, MPARAM mp1, MPARAM mp2)
             UpdateClientSize();
             DispatchResizeEvent( mSizeClient.width, mSizeClient.height);
          }
-
-         if ( pSwp->fl & (SWP_MAXIMIZE | SWP_MINIMIZE | SWP_RESTORE)) {
+ 
+         if (pSwp->fl & (SWP_MAXIMIZE | SWP_MINIMIZE | SWP_RESTORE)) {
            nsSizeModeEvent event(PR_TRUE, NS_SIZEMODE, this);
-            if ( pSwp->fl & SWP_MAXIMIZE)
+            if (pSwp->fl & SWP_MAXIMIZE)
               event.mSizeMode = nsSizeMode_Maximized;
-            else if ( pSwp->fl & SWP_MINIMIZE)
+            else if (pSwp->fl & SWP_MINIMIZE)
               event.mSizeMode = nsSizeMode_Minimized;
             else
               event.mSizeMode = nsSizeMode_Normal;
@@ -409,7 +424,7 @@ MRESULT nsFrameWindow::FrameMessage( ULONG msg, MPARAM mp1, MPARAM mp2)
               if (SHORT1FROMMP(mp1) == SC_SYSMENU) {
                 MENUITEM menuitem;
                 WinSendMsg(WinWindowFromID(mFrameWnd, FID_SYSMENU), MM_QUERYITEM, MPFROM2SHORT(SC_SYSMENU, FALSE), MPARAM(&menuitem));
-                mRC = (*fnwpDefFrame)( mFrameWnd, msg, mp1, mp2);
+                mresult = (*fnwpDefFrame)( mFrameWnd, msg, mp1, mp2);
                 WinEnableMenuItem(menuitem.hwndSubMenu, SC_MAXIMIZE, FALSE);
                 bDone = TRUE;
               }
@@ -437,13 +452,13 @@ MRESULT nsFrameWindow::FrameMessage( ULONG msg, MPARAM mp1, MPARAM mp2)
 #ifdef DEBUG_FOCUS
             printf("[%x] NS_GOTFOCUS (%d)\n", this, mWindowIdentifier);
 #endif
-            mRC = DispatchFocus(NS_GOTFOCUS, PR_TRUE);
+            bDone = DispatchFocus(NS_GOTFOCUS, PR_TRUE);
          }
          break;
    }
 
    if( !bDone)
-      mRC = (*fnwpDefFrame)( mFrameWnd, msg, mp1, mp2);
+      mresult = (*fnwpDefFrame)( mFrameWnd, msg, mp1, mp2);
 
-   return mRC;
+   return mresult;
 }

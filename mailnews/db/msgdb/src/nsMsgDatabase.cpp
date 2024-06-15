@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1999
  * the Initial Developer. All Rights Reserved.
@@ -24,16 +24,16 @@
  *   David Bienvenu <bienvenu@mozilla.org>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -53,7 +53,7 @@
 #include "nsIEnumerator.h"
 #include "nsMsgThread.h"
 #include "nsFileStream.h"
-#include "nsString.h"
+#include "nsDependentSubstring.h"
 #include "nsXPIDLString.h"
 #include "nsReadableUtils.h"
 #include "nsIMsgHeaderParser.h"
@@ -115,7 +115,7 @@ nsMsgDBService::~nsMsgDBService()
 {
 }
 
-NS_IMETHODIMP nsMsgDBService::OpenFolderDB(nsIMsgFolder *aFolder, PRBool aCreate, PRBool aUpgrading, nsIMsgDatabase **_retval)
+NS_IMETHODIMP nsMsgDBService::OpenFolderDB(nsIMsgFolder *aFolder, PRBool aCreate, PRBool aLeaveInvalidDB, nsIMsgDatabase **_retval)
 {
   NS_ENSURE_ARG(aFolder);
   *_retval = nsMsgDatabase::FindInCache(aFolder);
@@ -134,7 +134,7 @@ NS_IMETHODIMP nsMsgDBService::OpenFolderDB(nsIMsgFolder *aFolder, PRBool aCreate
   nsCOMPtr <nsIFileSpec> folderPath;
   rv = aFolder->GetPath(getter_AddRefs(folderPath));
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = msgDB->Open(folderPath, aCreate, aUpgrading);
+  rv = msgDB->Open(folderPath, aCreate, aLeaveInvalidDB);
   if (NS_FAILED(rv) && (rv != NS_MSG_ERROR_FOLDER_SUMMARY_MISSING 
     && rv != NS_MSG_ERROR_FOLDER_SUMMARY_OUT_OF_DATE || !aCreate))
     return rv;
@@ -167,7 +167,7 @@ NS_IMETHODIMP nsMsgDBService::OpenFolderDB(nsIMsgFolder *aFolder, PRBool aCreate
   return rv;
 }
 
-NS_IMETHODIMP nsMsgDBService::OpenMailDBFromFileSpec(nsIFileSpec *aFolderName, PRBool aCreate, PRBool aUpgrading, nsIMsgDatabase** pMessageDB)
+NS_IMETHODIMP nsMsgDBService::OpenMailDBFromFileSpec(nsIFileSpec *aFolderName, PRBool aCreate, PRBool aLeaveInvalidDB, nsIMsgDatabase** pMessageDB)
 {
   nsFileSpec  folderName;
   
@@ -184,7 +184,7 @@ NS_IMETHODIMP nsMsgDBService::OpenMailDBFromFileSpec(nsIFileSpec *aFolderName, P
   nsresult rv;
   nsCOMPtr <nsIMsgDatabase> msgDB = do_CreateInstance(NS_MAILBOXDB_CONTRACTID, &rv);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = msgDB->Open(aFolderName, aCreate, aUpgrading);
+  rv = msgDB->Open(aFolderName, aCreate, aLeaveInvalidDB);
   NS_IF_ADDREF(*pMessageDB = msgDB);
   if (aCreate && msgDB && rv == NS_MSG_ERROR_FOLDER_SUMMARY_MISSING)
     rv = NS_OK;
@@ -221,6 +221,20 @@ NS_IMETHODIMP nsMsgDBService::UnregisterPendingListener(nsIDBChangeListener *aLi
     return NS_OK;
   }
   return NS_ERROR_FAILURE;
+}
+
+static PRBool gGotGlobalPrefs = PR_FALSE;
+static PRBool gThreadWithoutRe = PR_TRUE;
+static PRBool gStrictThreading = PR_FALSE;
+
+void nsMsgDatabase::GetGlobalPrefs()
+{
+  if (!gGotGlobalPrefs)
+  {
+    GetBoolPref("mail.thread_without_re", &gThreadWithoutRe);
+    GetBoolPref("mail.strict_threading", &gStrictThreading);
+    gGotGlobalPrefs = PR_TRUE;
+  }
 }
 
 // we never need to call this because we check the use cache first,
@@ -854,7 +868,7 @@ nsMsgDatabase::nsMsgDatabase()
         m_nextPseudoMsgKey(kFirstPseudoKey),
         m_mdbEnv(nsnull), m_mdbStore(nsnull),
         m_mdbAllMsgHeadersTable(nsnull), m_mdbAllThreadsTable(nsnull),
-        m_dbName(""), m_newSet(nsnull),
+        m_dbName(""), 
         m_mdbTokensInitialized(PR_FALSE), m_ChangeListeners(nsnull),
         m_hdrRowScopeToken(0),
         m_hdrTableKindToken(0),
@@ -942,22 +956,6 @@ nsMsgDatabase::~nsMsgDatabase()
     NS_ASSERTION(count == 0, "shouldn't have any listeners");
     m_ChangeListeners = nsnull;
   }
-  
-  if (m_newSet) 
-  {
-#ifdef DEBUG_MSGKEYSET
-    char *str = nsnull;
-    nsresult rv = m_newSet->Output(&str);
-    if (NS_SUCCEEDED(rv) && str) 
-    {
-      printf("setStr = %s on destroy\n",str);
-      nsMemory::Free(str);
-      str = nsnull;
-    }
-#endif
-    delete m_newSet;
-    m_newSet = nsnull;
-  }
 }
 
 NS_IMPL_ADDREF(nsMsgDatabase)
@@ -985,11 +983,9 @@ NS_IMETHODIMP nsMsgDatabase::QueryInterface(REFNSIID aIID, void** aResult)
   static nsIMdbFactory *gMDBFactory = nsnull;
   if (!gMDBFactory)
   {
-    nsCOMPtr <nsIMdbFactoryFactory> factoryfactory;
-    nsresult rv = nsComponentManager::CreateInstance(kCMorkFactory,
-          nsnull,NS_GET_IID(nsIMdbFactoryFactory), (void **) getter_AddRefs(factoryfactory));
-    if (NS_SUCCEEDED(rv) && factoryfactory)
-      rv = factoryfactory->GetMdbFactory(&gMDBFactory);
+    nsCOMPtr <nsIMdbFactoryFactory> factoryfactory = do_CreateInstance(kCMorkFactory);
+    if (factoryfactory)
+      factoryfactory->GetMdbFactory(&gMDBFactory);
   }
   return gMDBFactory;
 }
@@ -1165,7 +1161,6 @@ NS_IMETHODIMP nsMsgDatabase::Open(nsIFileSpec *aFolderName, PRBool aCreate, PRBo
     GetDBCache()->AppendElement(this);
   return (summaryFileExists) ? err : NS_MSG_ERROR_FOLDER_SUMMARY_MISSING;
 }
-
 
 // Open the MDB database synchronously. If successful, this routine
 // will set up the m_mdbStore and m_mdbEnv of the database object 
@@ -1711,7 +1706,7 @@ NS_IMETHODIMP nsMsgDatabase::GetMsgHdrForKey(nsMsgKey key, nsIMsgDBHdr **pmsgHdr
   mdb_bool	hasOid;
   mdbOid		rowObjectId;
   
-#ifdef DEBUG_bienvenu
+#ifdef DEBUG_bienvenu1
   NS_ASSERTION(m_folder, "folder should be set");
 #endif
   
@@ -1816,8 +1811,7 @@ NS_IMETHODIMP nsMsgDatabase::DeleteHeader(nsIMsgDBHdr *msg, nsIDBChangeListener 
   // only need to do this for mail - will this speed up news expiration? 
   SetHdrFlag(msg, PR_TRUE, MSG_FLAG_EXPUNGED);	// tell mailbox (mail)
   
-  if (m_newSet)	// if it's in the new set, better get rid of it.
-    m_newSet->Remove(key);
+  m_newSet.RemoveElement(key);
   
   if (m_dbFolderInfo != NULL)
   {
@@ -1926,7 +1920,7 @@ PRUint32	nsMsgDatabase::GetStatusFlags(nsIMsgDBHdr *msgHdr, PRUint32 origFlags)
   
   nsMsgKey key;
   (void)msgHdr->GetMessageKey(&key);
-  if (m_newSet && m_newSet->IsMember(key))
+  if (m_newSet.GetSize() > 0 && m_newSet.GetAt(m_newSet.GetSize() - 1) == key || m_newSet.IndexOf(key) != kNotFound)
     statusFlags |= MSG_FLAG_NEW;
   else
     statusFlags &= ~MSG_FLAG_NEW;
@@ -2012,8 +2006,7 @@ nsresult nsMsgDatabase::MarkHdrReadInDB(nsIMsgDBHdr *msgHdr, PRBool bRead,
   (void)msgHdr->GetMessageKey(&key);
   msgHdr->GetFlags(&oldFlags);
   
-  if (m_newSet)
-    m_newSet->Remove(key);
+  m_newSet.RemoveElement(key);
   (void) ContainsKey(key, &hdrInDB);
   if (hdrInDB && m_dbFolderInfo)
   {
@@ -2375,7 +2368,7 @@ NS_IMETHODIMP nsMsgDatabase::MarkHdrMarked(nsIMsgDBHdr *msgHdr, PRBool mark,
 NS_IMETHODIMP nsMsgDatabase::MarkAllRead(nsMsgKeyArray *thoseMarked)
 {
   nsresult		rv;
-  nsMsgHdr		*pHeader;
+  nsMsgHdr  *pHeader;
   
   nsCOMPtr <nsISimpleEnumerator> hdrs;
   rv = EnumerateMessages(getter_AddRefs(hdrs));
@@ -2389,19 +2382,19 @@ NS_IMETHODIMP nsMsgDatabase::MarkAllRead(nsMsgKeyArray *thoseMarked)
     NS_ASSERTION(NS_SUCCEEDED(rv), "nsMsgDBEnumerator broken");
     if (NS_FAILED(rv)) 
       break;
-    
+
     PRBool isRead;
     IsHeaderRead(pHeader, &isRead);
 
     if (!isRead)
     {
-    if (thoseMarked) 
-    {
-      nsMsgKey key;
-      (void)pHeader->GetMessageKey(&key);
-      thoseMarked->Add(key);
-    }
-    rv = MarkHdrRead(pHeader, PR_TRUE, nsnull); 	// ### dmb - blow off error?
+      if (thoseMarked) 
+      {
+        nsMsgKey key;
+        (void)pHeader->GetMessageKey(&key);
+        thoseMarked->Add(key);
+      }
+      rv = MarkHdrRead(pHeader, PR_TRUE, nsnull); 	// ### dmb - blow off error?
     }
     NS_RELEASE(pHeader);
   }
@@ -2419,9 +2412,8 @@ NS_IMETHODIMP nsMsgDatabase::MarkAllRead(nsMsgKeyArray *thoseMarked)
 NS_IMETHODIMP nsMsgDatabase::MarkReadByDate (PRTime startDate, PRTime endDate, nsMsgKeyArray *markedIds)
 {
   nsresult rv;
-  nsMsgHdr	*pHeader;
-  //ListContext		*listContext = NULL;
-  PRInt32			numChanged = 0;
+  nsMsgHdr  *pHeader;
+  PRInt32 numChanged = 0;
   
   nsISimpleEnumerator* hdrs;
   rv = EnumerateMessages(&hdrs);
@@ -2467,47 +2459,41 @@ NS_IMETHODIMP nsMsgDatabase::MarkReadByDate (PRTime startDate, PRTime endDate, n
 
 NS_IMETHODIMP nsMsgDatabase::AddToNewList(nsMsgKey key)
 {
-  if (!m_newSet)
-  {
-    m_newSet = nsMsgKeySet::Create("" /* , this */);
-    if (!m_newSet) return NS_ERROR_OUT_OF_MEMORY;
-  }
-  
-  return m_newSet->Add(key);
+  // we add new keys in increasing order...
+  if (m_newSet.GetSize() == 0 
+      || (m_newSet.GetAt(m_newSet.GetSize() - 1) < key))
+    m_newSet.Add(key);
+  return NS_OK;
 }
 
 
 NS_IMETHODIMP nsMsgDatabase::ClearNewList(PRBool notify /* = FALSE */)
 {
-  nsresult			err = NS_OK;
-  if (m_newSet)
+  nsresult err = NS_OK;
+  if (notify && m_newSet.GetSize() > 0)	// need to update view
   {
-    if (notify)	// need to update view
+    nsMsgKeyArray saveNewSet;
+    saveNewSet.CopyArray(m_newSet);
+    // clear m_newSet so that the code that's listening to the key change
+    // doesn't think we have new messages and send notifications all over
+    // that we have new messages.
+    m_newSet.RemoveAll();
+    for (PRUint32 elementIndex = saveNewSet.GetSize() - 1; ; elementIndex--)
     {
-      PRInt32 firstMember;
-      nsMsgKeySet *saveNewSet = m_newSet;
-      // set m_newSet to null so that the code that's listening to the key change
-      // doesn't think we have new messages and send notifications all over
-      // that we have new messages.
-      m_newSet = nsnull;
-      while ((firstMember = saveNewSet->GetFirstMember()) != 0)
+      nsMsgKey lastNewKey = saveNewSet.ElementAt(elementIndex);
+      nsCOMPtr <nsIMsgDBHdr> msgHdr;
+      err = GetMsgHdrForKey(lastNewKey, getter_AddRefs(msgHdr));
+      if (NS_SUCCEEDED(err))
       {
-        saveNewSet->Remove(firstMember);	// this bites, since this will cause us to regen new list many times.
-        nsCOMPtr <nsIMsgDBHdr> msgHdr;
-        err = GetMsgHdrForKey(firstMember, getter_AddRefs(msgHdr));
-        if (NS_SUCCEEDED(err))
-        {
-          PRUint32 flags;
-          (void)msgHdr->GetFlags(&flags);
-          
-          if ((flags | MSG_FLAG_NEW) != flags)
-            NotifyHdrChangeAll(msgHdr, flags | MSG_FLAG_NEW, flags, nsnull);
-        }
+        PRUint32 flags;
+        (void)msgHdr->GetFlags(&flags);
+        
+        if ((flags | MSG_FLAG_NEW) != flags)
+          NotifyHdrChangeAll(msgHdr, flags | MSG_FLAG_NEW, flags, nsnull);
       }
-      m_newSet = saveNewSet;
+      if (elementIndex == 0)
+        break;
     }
-    delete m_newSet;
-    m_newSet = NULL;
   }
   return err;
 }
@@ -2516,7 +2502,7 @@ NS_IMETHODIMP nsMsgDatabase::HasNew(PRBool *_retval)
 {
   if (!_retval) return NS_ERROR_NULL_POINTER;
 
-  *_retval = (m_newSet && m_newSet->getLength() > 0);
+  *_retval = (m_newSet.GetSize() > 0);
   return NS_OK;
 }
 
@@ -2525,7 +2511,7 @@ NS_IMETHODIMP nsMsgDatabase::GetFirstNew(nsMsgKey *result)
   PRBool hasnew;
   nsresult rv = HasNew(&hasnew);
   if (NS_FAILED(rv)) return rv;
-  *result = (hasnew) ? m_newSet->GetFirstMember() : nsMsgKey_None;
+  *result = (hasnew) ? m_newSet.ElementAt(0) : nsMsgKey_None;
   return NS_OK;
 }
 
@@ -2933,17 +2919,6 @@ nsMsgDatabase::EnumerateMessagesWithFlag(nsISimpleEnumerator* *result, PRUint32 
     return NS_OK;
 }
 
-static nsresult
-nsMsgReadFilter(nsIMsgDBHdr* msg, void* closure)
-{
-    nsMsgDatabase* db = (nsMsgDatabase*)closure;
-    PRBool wasRead = PR_TRUE;
-    nsresult rv = db->IsHeaderRead(msg, &wasRead);
-    if (NS_FAILED(rv))
-        return rv;
-    return wasRead ? NS_OK : NS_ERROR_FAILURE;
-}
-
 NS_IMETHODIMP nsMsgDatabase::CreateNewHdr(nsMsgKey key, nsIMsgDBHdr **pnewHdr)
 {
   nsresult	err = NS_OK;
@@ -3045,7 +3020,7 @@ NS_IMETHODIMP nsMsgDatabase::CopyHdrFromExistingHdr(nsMsgKey key, nsIMsgDBHdr *e
   return err;
 }
 
-nsresult nsMsgDatabase::RowCellColumnTonsString(nsIMdbRow *hdrRow, mdb_token columnToken, nsString &resultStr)
+nsresult nsMsgDatabase::RowCellColumnTonsString(nsIMdbRow *hdrRow, mdb_token columnToken, nsAString &resultStr)
 {
   nsresult	err = NS_OK;
   
@@ -3054,7 +3029,7 @@ nsresult nsMsgDatabase::RowCellColumnTonsString(nsIMdbRow *hdrRow, mdb_token col
     struct mdbYarn yarn;
     err = hdrRow->AliasCellYarn(GetEnv(), columnToken, &yarn);
     if (err == NS_OK)
-      YarnTonsString(&yarn, &resultStr);
+      YarnTonsString(&yarn, resultStr);
   }
   return err;
 }
@@ -3158,7 +3133,7 @@ nsresult nsMsgDatabase::GetCollationKeyGenerator()
   if (!m_collationKeyGenerator)
   {
     nsCOMPtr <nsILocale> locale; 
-    nsString localeName; 
+    nsAutoString localeName; 
     
     // get a locale service 
     nsCOMPtr <nsILocaleService> localeService = do_GetService(NS_LOCALESERVICE_CONTRACTID, &err);
@@ -3172,15 +3147,11 @@ nsresult nsMsgDatabase::GetCollationKeyGenerator()
         // or generate a locale from a stored locale name ("en_US", "fr_FR") 
         //err = localeFactory->NewLocale(&localeName, &locale); 
         
-        nsCOMPtr <nsICollationFactory> f;
-        
-        err = nsComponentManager::CreateInstance(kCollationFactoryCID, NULL,
-          NS_GET_IID(nsICollationFactory), getter_AddRefs(f)); 
+        nsCOMPtr <nsICollationFactory> f = do_CreateInstance(kCollationFactoryCID, &err);
         if (NS_SUCCEEDED(err) && f)
         {
           // get a collation interface instance 
           err = f->CreateCollation(locale, getter_AddRefs(m_collationKeyGenerator));
-          
         }
       }
     }
@@ -3330,10 +3301,10 @@ nsresult nsMsgDatabase::RowCellColumnToCharPtr(nsIMdbRow *row, mdb_token columnT
 
 
 
-/* static */struct mdbYarn *nsMsgDatabase::nsStringToYarn(struct mdbYarn *yarn, nsString *str)
+/* static */struct mdbYarn *nsMsgDatabase::nsStringToYarn(struct mdbYarn *yarn, const nsAString &str)
 {
-  yarn->mYarn_Buf = ToNewCString(*str);
-  yarn->mYarn_Size = PL_strlen((const char *) yarn->mYarn_Buf) + 1;
+  yarn->mYarn_Buf = ToNewCString(str);
+  yarn->mYarn_Size = str.Length() + 1;
   yarn->mYarn_Fill = yarn->mYarn_Size - 1;
   yarn->mYarn_Form = 0;	// what to do with this? we're storing csid in the msg hdr...
   return yarn;
@@ -3347,22 +3318,22 @@ nsresult nsMsgDatabase::RowCellColumnToCharPtr(nsIMdbRow *row, mdb_token columnT
   return yarn;
 }
 
-/* static */void nsMsgDatabase::YarnTonsString(struct mdbYarn *yarn, nsString *str)
+/* static */void nsMsgDatabase::YarnTonsString(struct mdbYarn *yarn, nsAString &str)
 {
   const char* buf = (const char*)yarn->mYarn_Buf;
   if (buf)
-    str->AssignWithConversion(buf, yarn->mYarn_Fill);
+    CopyASCIItoUTF16(Substring(buf, buf + yarn->mYarn_Fill), str);
   else
-    str->Truncate();
+    str.Truncate();
 }
 
-/* static */void nsMsgDatabase::YarnTonsCString(struct mdbYarn *yarn, nsCString *str)
+/* static */void nsMsgDatabase::YarnTonsCString(struct mdbYarn *yarn, nsACString &str)
 {
     const char* buf = (const char*)yarn->mYarn_Buf;
     if (buf)
-        str->Assign(buf, yarn->mYarn_Fill);
+        str.Assign(buf, yarn->mYarn_Fill);
     else
-        str->Truncate();
+        str.Truncate();
 }
 
 // WARNING - if yarn is empty, *pResult will not be changed!!!!
@@ -3392,25 +3363,6 @@ nsresult nsMsgDatabase::RowCellColumnToCharPtr(nsIMdbRow *row, mdb_token columnT
   }
 }
 
-/* static */void nsMsgDatabase::PRTime2Seconds(PRTime prTime, PRUint32 *seconds)
-{
-  PRInt64 microSecondsPerSecond, intermediateResult;
-  
-  LL_I2L(microSecondsPerSecond, PR_USEC_PER_SEC);
-  LL_DIV(intermediateResult, prTime, microSecondsPerSecond);
-  LL_L2UI((*seconds), intermediateResult);
-}
-
-/* static */void nsMsgDatabase::Seconds2PRTime(PRUint32 seconds, PRTime *prTime)
-{
-  PRInt64 microSecondsPerSecond, intermediateResult;
-  
-  LL_I2L(microSecondsPerSecond, PR_USEC_PER_SEC);
-  LL_UI2L(intermediateResult, seconds);
-  LL_MUL((*prTime), intermediateResult, microSecondsPerSecond);
-}
-
-
 nsresult nsMsgDatabase::GetProperty(nsIMdbRow *row, const char *propertyName, char **result)
 {
   nsresult err = NS_OK;
@@ -3437,20 +3389,19 @@ nsresult nsMsgDatabase::SetProperty(nsIMdbRow *row, const char *propertyName, co
   return err;
 }
 
-nsresult nsMsgDatabase::GetPropertyAsNSString(nsIMdbRow *row, const char *propertyName, nsString *result)
+nsresult nsMsgDatabase::GetPropertyAsNSString(nsIMdbRow *row, const char *propertyName, nsAString &result)
 {
   nsresult err = NS_OK;
   mdb_token	property_token;
   
-  NS_ENSURE_ARG(result);
   err = m_mdbStore->StringToToken(GetEnv(),  propertyName, &property_token);
   if (err == NS_OK)
-    err = RowCellColumnTonsString(row, property_token, *result);
+    err = RowCellColumnTonsString(row, property_token, result);
   
   return err;
 }
 
-nsresult nsMsgDatabase::SetPropertyFromNSString(nsIMdbRow *row, const char *propertyName, nsString *propertyVal)
+nsresult nsMsgDatabase::SetPropertyFromNSString(nsIMdbRow *row, const char *propertyName, const nsAString &propertyVal)
 {
   nsresult err = NS_OK;
   mdb_token	property_token;
@@ -3497,7 +3448,7 @@ nsresult nsMsgDatabase::SetUint32Property(nsIMdbRow *row, const char *propertyNa
   return err;
 }
 
-nsresult nsMsgDatabase::SetNSStringPropertyWithToken(nsIMdbRow *row, mdb_token aProperty, nsString *propertyStr)
+nsresult nsMsgDatabase::SetNSStringPropertyWithToken(nsIMdbRow *row, mdb_token aProperty, const nsAString &propertyStr)
 {
   NS_ENSURE_ARG(row);
   struct mdbYarn yarn;
@@ -3534,6 +3485,21 @@ NS_IMETHODIMP	nsMsgDatabase::GetSummaryValid(PRBool *aResult)
 	
 
 // protected routines
+
+// should we thread messages with common subjects that don't start with Re: together?
+// I imagine we might have separate preferences for mail and news, so this is a virtual method.
+PRBool	nsMsgDatabase::ThreadBySubjectWithoutRe()
+{
+  GetGlobalPrefs();
+  return gThreadWithoutRe;
+}
+
+PRBool nsMsgDatabase::UseStrictThreading()
+{
+  GetGlobalPrefs();
+  return gStrictThreading;
+}
+
 
 nsresult nsMsgDatabase::CreateNewThread(nsMsgKey threadId, const char *subject, nsMsgThread **pnewThread)
 {
@@ -3687,10 +3653,13 @@ nsresult nsMsgDatabase::ThreadNewHdr(nsMsgHdr* newHdr, PRBool &newThread)
   PRUint16 numReferences = 0;
   PRUint32 newHdrFlags = 0;
   
-  newHdr->GetFlags(&newHdrFlags);
+  // use raw flags instead of GetFlags, because GetFlags will
+  // pay attention to what's in m_newSet, and this new hdr isn't
+  // in m_newSet yet.
+  newHdr->GetRawFlags(&newHdrFlags);
   newHdr->GetNumReferences(&numReferences);
   
-#define SUBJ_THREADING 1// try reference threading first
+  // try reference threading first
   for (PRInt32 i = numReferences - 1; i >= 0;  i--)
   {
     nsCAutoString reference;
@@ -3712,26 +3681,28 @@ nsresult nsMsgDatabase::ThreadNewHdr(nsMsgHdr* newHdr, PRBool &newThread)
       break;
     }
   }
-#ifdef SUBJ_THREADING
-  // try subject threading if we couldn't find a reference and the subject starts with Re:
-  nsXPIDLCString subject;
-  
-  newHdr->GetSubject(getter_Copies(subject));
-  if ((ThreadBySubjectWithoutRe() || (newHdrFlags & MSG_FLAG_HAS_RE)) && (!thread))
+  // if user hasn't said "only thread by ref headers", thread by subject
+  if (!UseStrictThreading())
   {
-    nsCAutoString cSubject(subject);
-    thread = getter_AddRefs(GetThreadForSubject(cSubject));
-    if(thread)
+    // try subject threading if we couldn't find a reference and the subject starts with Re:
+    nsXPIDLCString subject;
+  
+    newHdr->GetSubject(getter_Copies(subject));
+    if ((ThreadBySubjectWithoutRe() || (newHdrFlags & MSG_FLAG_HAS_RE)) && (!thread))
     {
-      thread->GetThreadKey(&threadId);
-      newHdr->SetThreadId(threadId);
-      //TRACE("threading based on subject %s\n", (const char *) msgHdr->m_subject);
-      // if we move this and do subject threading after, ref threading, 
-      // don't thread within children, since we know it won't work. But for now, pass TRUE.
-      result = AddToThread(newHdr, thread, nsnull, PR_TRUE);     
+      nsCAutoString cSubject(subject);
+      thread = getter_AddRefs(GetThreadForSubject(cSubject));
+      if(thread)
+      {
+        thread->GetThreadKey(&threadId);
+        newHdr->SetThreadId(threadId);
+        //TRACE("threading based on subject %s\n", (const char *) msgHdr->m_subject);
+        // if we move this and do subject threading after, ref threading, 
+        // don't thread within children, since we know it won't work. But for now, pass TRUE.
+        result = AddToThread(newHdr, thread, nsnull, PR_TRUE);     
+      }
     }
   }
-#endif // SUBJ_THREADING
   
   if (!thread)
   {
@@ -3754,7 +3725,7 @@ nsresult nsMsgDatabase::AddToThread(nsMsgHdr *newHdr, nsIMsgThread *thread, nsIM
   return thread->AddChild(newHdr, inReplyTo, threadInThread, announcer);
 }
 
-nsMsgHdr	*	nsMsgDatabase::GetMsgHdrForReference(nsCString &reference)
+nsMsgHdr * nsMsgDatabase::GetMsgHdrForReference(nsCString &reference)
 {
   NS_ASSERTION(PR_FALSE, "not implemented yet.");
   return nsnull;
@@ -3934,14 +3905,6 @@ nsresult nsMsgDatabase::AddNewThread(nsMsgHdr *msgHdr)
     threadHdr->Release();
   }
   return err;
-}
-
-
-// should we thread messages with common subjects that don't start with Re: together?
-// I imagine we might have separate preferences for mail and news, so this is a virtual method.
-PRBool	nsMsgDatabase::ThreadBySubjectWithoutRe()
-{
-  return PR_TRUE;
 }
 
 nsresult nsMsgDatabase::GetBoolPref(const char *prefName, PRBool *result)
@@ -4249,13 +4212,13 @@ NS_IMETHODIMP nsMsgDatabase::GetMsgRetentionSettings(nsIMsgRetentionSettings **r
       PRUint32 daysToKeepBodies = 0;
       PRBool cleanupBodiesByDays = PR_FALSE;
 
-      rv = m_dbFolderInfo->GetUint32Property("retainBy", &retainByPreference, nsIMsgRetentionSettings::nsMsgRetainAll);
-      m_dbFolderInfo->GetUint32Property("daysToKeepHdrs", &daysToKeepHdrs, 0);
-      m_dbFolderInfo->GetUint32Property("numHdrsToKeep", &numHeadersToKeep, 0);
-      m_dbFolderInfo->GetUint32Property("daysToKeepBodies", &daysToKeepBodies, 0);
-      m_dbFolderInfo->GetUint32Property("keepUnreadOnly", &keepUnreadMessagesProp, 0);
-      m_dbFolderInfo->GetBooleanProperty("useServerDefaults", &useServerDefaults, PR_TRUE);
-      m_dbFolderInfo->GetBooleanProperty("cleanupBodies", &cleanupBodiesByDays, PR_FALSE);
+      rv = m_dbFolderInfo->GetUint32Property("retainBy", nsIMsgRetentionSettings::nsMsgRetainAll, &retainByPreference);
+      m_dbFolderInfo->GetUint32Property("daysToKeepHdrs", 0, &daysToKeepHdrs);
+      m_dbFolderInfo->GetUint32Property("numHdrsToKeep", 0, &numHeadersToKeep);
+      m_dbFolderInfo->GetUint32Property("daysToKeepBodies", 0, &daysToKeepBodies);
+      m_dbFolderInfo->GetUint32Property("keepUnreadOnly", 0, &keepUnreadMessagesProp);
+      m_dbFolderInfo->GetBooleanProperty("useServerDefaults", PR_TRUE, &useServerDefaults);
+      m_dbFolderInfo->GetBooleanProperty("cleanupBodies", PR_FALSE, &cleanupBodiesByDays);
       keepUnreadMessagesOnly = (keepUnreadMessagesProp == 1);
       m_retentionSettings->SetRetainByPreference(retainByPreference);
       m_retentionSettings->SetDaysToKeepHdrs(daysToKeepHdrs);
@@ -4314,10 +4277,10 @@ NS_IMETHODIMP nsMsgDatabase::GetMsgDownloadSettings(nsIMsgDownloadSettings **dow
       PRUint32 ageLimitOfMsgsToDownload;
       PRBool downloadUnreadOnly;
 
-      m_dbFolderInfo->GetBooleanProperty("useServerDefaults", &useServerDefaults, PR_TRUE);
-      m_dbFolderInfo->GetBooleanProperty("downloadByDate", &downloadByDate, PR_FALSE);
-      m_dbFolderInfo->GetBooleanProperty("downloadUnreadOnly", &downloadUnreadOnly, PR_FALSE);
-      m_dbFolderInfo->GetUint32Property("ageLimit", &ageLimitOfMsgsToDownload, 0);
+      m_dbFolderInfo->GetBooleanProperty("useServerDefaults", PR_TRUE, &useServerDefaults);
+      m_dbFolderInfo->GetBooleanProperty("downloadByDate", PR_FALSE, &downloadByDate);
+      m_dbFolderInfo->GetBooleanProperty("downloadUnreadOnly", PR_FALSE, &downloadUnreadOnly);
+      m_dbFolderInfo->GetUint32Property("ageLimit", 0, &ageLimitOfMsgsToDownload);
 
       m_downloadSettings->SetUseServerDefaults(useServerDefaults);
       m_downloadSettings->SetDownloadByDate(downloadByDate);
@@ -4697,9 +4660,14 @@ nsMsgDatabase::GetNewList(nsMsgKeyArray * *aNewList)
 {
     NS_ENSURE_ARG_POINTER(aNewList);
 
-    if (m_newSet) 
-        return m_newSet->ToMsgKeyArray(aNewList);
-
+    if (m_newSet.GetSize() > 0)
+    {
+      *aNewList = new nsMsgKeyArray;
+      if (!*aNewList)
+        return NS_ERROR_OUT_OF_MEMORY;
+      (*aNewList)->CopyArray(m_newSet);
+      return NS_OK;
+    }
     // if there were no new messages, signal this by returning a null pointer
     //
     *aNewList = 0;

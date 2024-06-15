@@ -12,7 +12,7 @@
  * for the specific language governing rights and limitations under the
  * License.
  *
- * The Original Code is mozilla.org code.
+ * The Original Code is TransforMiiX XSLT processor code.
  *
  * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
@@ -20,8 +20,7 @@
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- *   Peter Van der Beken <peterv@netscape.com> (original author)
- *
+ *   Peter Van der Beken <peterv@propagandism.org>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -61,6 +60,7 @@
 #include "XMLUtils.h"
 #include "txUnknownHandler.h"
 #include "txXSLTProcessor.h"
+#include "nsIPrincipal.h"
 
 static NS_DEFINE_CID(kXMLDocumentCID, NS_XMLDOCUMENT_CID);
 
@@ -125,7 +125,7 @@ txToDocHandlerFactory::createHandlerWith(txOutputFormat* aFormat,
 
         case eHTMLOutput:
         {
-            *aHandler = new txMozillaXMLOutput(nsString(),
+            *aHandler = new txMozillaXMLOutput(EmptyString(),
                                                kNameSpaceID_None,
                                                aFormat, mSourceDocument,
                                                mResultDocument, mObserver);
@@ -292,31 +292,7 @@ txMozillaXSLTProcessor::TransformDocument(nsIDOMNode* aSourceDOM,
 
     mSource = aSourceDOM;
 
-    nsAutoPtr<txXPathNode> sourceNode(txXPathNativeNode::createXPathNode(aSourceDOM));
-    if (!sourceNode) {
-        return NS_ERROR_OUT_OF_MEMORY;
-    }
-
-    nsCOMPtr<nsIDOMDocument> sourceDOMDocument;
-    aSourceDOM->GetOwnerDocument(getter_AddRefs(sourceDOMDocument));
-    if (!sourceDOMDocument) {
-        sourceDOMDocument = do_QueryInterface(aSourceDOM);
-    }
-
-    txExecutionState es(mStylesheet);
-
-    txToDocHandlerFactory handlerFactory(&es, sourceDOMDocument, aOutputDoc,
-                                         nsnull);
-    es.mOutputHandlerFactory = &handlerFactory;
-
-    es.init(*sourceNode, &mVariables);
-
-    // Process root of XML source document
-    rv = txXSLTProcessor::execute(es);
-    // XXX setup exception context, bug 204658
-    es.end();
-
-    return rv;
+    return TransformToDoc(aOutputDoc, nsnull);
 }
 
 NS_IMETHODIMP
@@ -350,36 +326,7 @@ txMozillaXSLTProcessor::DoTransform()
     NS_ENSURE_TRUE(mStylesheet, NS_ERROR_UNEXPECTED);
     NS_ASSERTION(mObserver, "no observer");
 
-    nsAutoPtr<txXPathNode> sourceNode(txXPathNativeNode::createXPathNode(mSource));
-    if (!sourceNode) {
-        return NS_ERROR_OUT_OF_MEMORY;
-    }
-
-    nsCOMPtr<nsIDOMDocument> sourceDOMDocument;
-    mSource->GetOwnerDocument(getter_AddRefs(sourceDOMDocument));
-    if (!sourceDOMDocument) {
-        sourceDOMDocument = do_QueryInterface(mSource);
-    }
-
-    txExecutionState es(mStylesheet);
-
-    // XXX Need to add error observers
-
-    txToDocHandlerFactory handlerFactory(&es, sourceDOMDocument, nsnull,
-                                         mObserver);
-    es.mOutputHandlerFactory = &handlerFactory;
-
-    es.init(*sourceNode, &mVariables);
-
-    // Process root of XML source document
-    nsresult rv = txXSLTProcessor::execute(es);
-    if (NS_FAILED(rv) && mObserver) {
-        // XXX set up context information, bug 204655
-        reportError(rv, nsnull, nsnull);
-    }
-    es.end();
-
-    return rv;
+    return TransformToDoc(nsnull, nsnull);
 }
 
 NS_IMETHODIMP
@@ -439,36 +386,49 @@ txMozillaXSLTProcessor::TransformToDocument(nsIDOMNode *aSource,
     nsresult rv = ensureStylesheet();
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsAutoPtr<txXPathNode> sourceNode(txXPathNativeNode::createXPathNode(aSource));
+    mSource = aSource;
+
+    return TransformToDoc(nsnull, aResult);
+}
+
+nsresult
+txMozillaXSLTProcessor::TransformToDoc(nsIDOMDocument *aOutputDoc,
+                                       nsIDOMDocument **aResult)
+{
+    nsAutoPtr<txXPathNode> sourceNode(txXPathNativeNode::createXPathNode(mSource));
     if (!sourceNode) {
         return NS_ERROR_OUT_OF_MEMORY;
     }
 
     nsCOMPtr<nsIDOMDocument> sourceDOMDocument;
-    aSource->GetOwnerDocument(getter_AddRefs(sourceDOMDocument));
+    mSource->GetOwnerDocument(getter_AddRefs(sourceDOMDocument));
     if (!sourceDOMDocument) {
-        sourceDOMDocument = do_QueryInterface(aSource);
+        sourceDOMDocument = do_QueryInterface(mSource);
     }
 
     txExecutionState es(mStylesheet);
 
     // XXX Need to add error observers
 
-    txToDocHandlerFactory handlerFactory(&es, sourceDOMDocument, nsnull,
-                                         nsnull);
+    txToDocHandlerFactory handlerFactory(&es, sourceDOMDocument, aOutputDoc,
+                                         mObserver);
     es.mOutputHandlerFactory = &handlerFactory;
 
     es.init(*sourceNode, &mVariables);
 
     // Process root of XML source document
-    rv = txXSLTProcessor::execute(es);
-    // XXX setup exception context, bug 204658
-    es.end();
-
+    nsresult rv = txXSLTProcessor::execute(es);
+    es.end(rv);
     if (NS_SUCCEEDED(rv)) {
-        txAOutputXMLEventHandler* handler =
-            NS_STATIC_CAST(txAOutputXMLEventHandler*, es.mOutputHandler);
-        handler->getOutputDocument(aResult);
+        if (aResult) {
+            txAOutputXMLEventHandler* handler =
+                NS_STATIC_CAST(txAOutputXMLEventHandler*, es.mOutputHandler);
+            handler->getOutputDocument(aResult);
+        }
+    }
+    else if (mObserver) {
+        // XXX set up context information, bug 204655
+        reportError(rv, nsnull, nsnull);
     }
 
     return rv;
@@ -511,7 +471,7 @@ txMozillaXSLTProcessor::TransformToFragment(nsIDOMNode *aSource,
     // Process root of XML source document
     rv = txXSLTProcessor::execute(es);
     // XXX setup exception context, bug 204658
-    es.end();
+    es.end(rv);
 
     return rv;
 }
@@ -643,9 +603,9 @@ txMozillaXSLTProcessor::Reset()
 
 NS_IMETHODIMP
 txMozillaXSLTProcessor::LoadStyleSheet(nsIURI* aUri, nsILoadGroup* aLoadGroup,
-                                       nsIURI* aReferrerUri)
+                                       nsIPrincipal* aCallerPrincipal)
 {
-    nsresult rv = TX_LoadSheet(aUri, this, aLoadGroup, aReferrerUri);
+    nsresult rv = TX_LoadSheet(aUri, this, aLoadGroup, aCallerPrincipal);
     if (NS_FAILED(rv) && mObserver) {
         // This is most likely a network or security error, just
         // use the uri as context.
@@ -688,11 +648,8 @@ txMozillaXSLTProcessor::reportError(nsresult aResult,
             do_GetService(NS_STRINGBUNDLE_CONTRACTID);
         if (sbs) {
             nsXPIDLString errorText;
-            nsresult rv = sbs->FormatStatusMessage(aResult, nsString().get(),
-                                                   getter_Copies(errorText));
-            if (NS_FAILED(rv) && aResult == NS_ERROR_XSLT_LOAD_BLOCKED_ERROR) {
-                errorText.Append(NS_LITERAL_STRING("An XSLT stylesheet load was blocked for security reasons."));
-            }
+            sbs->FormatStatusMessage(aResult, EmptyString().get(),
+                                     getter_Copies(errorText));
 
             nsXPIDLString errorMessage;
             nsCOMPtr<nsIStringBundle> bundle;
@@ -755,8 +712,10 @@ txMozillaXSLTProcessor::notifyError()
         return;
     }
 
-    rootContent->SetDocument(document, PR_FALSE, PR_TRUE);
-    document->SetRootContent(rootContent);
+    rv = document->SetRootContent(rootContent);
+    if (NS_FAILED(rv)) {
+        return;
+    }
 
     nsCOMPtr<nsIDOMText> text;
     rv = errorDocument->CreateTextNode(mErrorText, getter_AddRefs(text));
@@ -878,16 +837,6 @@ void
 txMozillaXSLTProcessor::ContentInserted(nsIDocument* aDocument,
                                         nsIContent* aContainer,
                                         nsIContent* aChild,
-                                        PRInt32 aIndexInContainer)
-{
-    mStylesheet = nsnull;
-}
-
-void
-txMozillaXSLTProcessor::ContentReplaced(nsIDocument* aDocument,
-                                        nsIContent* aContainer,
-                                        nsIContent* aOldChild,
-                                        nsIContent* aNewChild,
                                         PRInt32 aIndexInContainer)
 {
     mStylesheet = nsnull;

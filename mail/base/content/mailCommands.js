@@ -1,40 +1,59 @@
 # -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
-# The contents of this file are subject to the Netscape Public
-# License Version 1.1 (the "License"); you may not use this file
-# except in compliance with the License. You may obtain a copy of
-# the License at http://www.mozilla.org/NPL/
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 1.1/GPL 2.0/LGPL 2.1
 #
-# Software distributed under the License is distributed on an "AS
-# IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
-# implied. See the License for the specific language governing
-# rights and limitations under the License.
+# The contents of this file are subject to the Mozilla Public License Version
+# 1.1 (the "License"); you may not use this file except in compliance with
+# the License. You may obtain a copy of the License at
+# http://www.mozilla.org/MPL/
+#
+# Software distributed under the License is distributed on an "AS IS" basis,
+# WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+# for the specific language governing rights and limitations under the
+# License.
 #
 # The Original Code is Mozilla Communicator client code, released
 # March 31, 1998.
 #
-# The Initial Developer of the Original Code is Netscape
-# Communications Corporation. Portions created by Netscape are
-# Copyright (C) 1998-1999 Netscape Communications Corporation. All
-# Rights Reserved.
+# The Initial Developer of the Original Code is
+# Netscape Communications Corporation.
+# Portions created by the Initial Developer are Copyright (C) 1998-1999
+# the Initial Developer. All Rights Reserved.
+#
+# Contributor(s):
+#
+# Alternatively, the contents of this file may be used under the terms of
+# either the GNU General Public License Version 2 or later (the "GPL"), or
+# the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+# in which case the provisions of the GPL or the LGPL are applicable instead
+# of those above. If you wish to allow use of your version of this file only
+# under the terms of either the GPL or the LGPL, and not to allow others to
+# use your version of this file under the terms of the MPL, indicate your
+# decision by deleting the provisions above and replace them with the notice
+# and other provisions required by the GPL or the LGPL. If you do not delete
+# the provisions above, a recipient may use your version of this file under
+# the terms of any one of the MPL, the GPL or the LGPL.
+#
+# ***** END LICENSE BLOCK *****
 
 function DoRDFCommand(dataSource, command, srcArray, argumentArray)
 {
-  var commandResource = RDF.GetResource(command);
-  if (commandResource) {
+	var commandResource = RDF.GetResource(command);
+	if(commandResource) {
     try {
       if (!argumentArray)
         argumentArray = Components.classes["@mozilla.org/supports-array;1"]
                         .createInstance(Components.interfaces.nsISupportsArray);
 
-        if (argumentArray)
-          argumentArray.AppendElement(msgWindow);
-	          dataSource.DoCommand(srcArray, commandResource, argumentArray);
+      if (argumentArray)
+        argumentArray.AppendElement(msgWindow);
+		  dataSource.DoCommand(srcArray, commandResource, argumentArray);
     }
     catch(e) { 
       if (command == "http://home.netscape.com/NC-rdf#NewFolder") {
         throw(e); // so that the dialog does not automatically close.
       }
-      dump("Exception : In mail commands\n");
+      dump("Exception : In mail commands" + e + "\n");
     }
   }
 }
@@ -61,6 +80,7 @@ function GetNewMessages(selectedFolders, server, compositeDataSource)
 			folderArray.AppendElement(folderResource);
 		  var serverArray = Components.classes["@mozilla.org/supports-array;1"].createInstance(Components.interfaces.nsISupportsArray);
       serverArray.AppendElement(server);
+
 			DoRDFCommand(compositeDataSource, "http://home.netscape.com/NC-rdf#GetNewMessages", folderArray, serverArray);
 		}
 	}
@@ -169,7 +189,7 @@ function ComposeMessage(type, format, folder, messageArray)
 			{
         type = msgComposeType.NewsPost;
         newsgroup = folder.folderURL;
-			}  
+			}
 
       identity = getIdentityForServer(server);
       // dump("identity = " + identity + "\n");
@@ -197,6 +217,7 @@ function ComposeMessage(type, format, folder, messageArray)
     // the selected addresses from it
     if (document.commandDispatcher.focusedWindow.document.documentElement.hasAttribute("selectedaddresses"))
       NewMessageToSelectedAddresses(type, format, identity);
+
     else
       msgComposeService.OpenComposeWindow(null, null, type, format, identity, msgWindow);
 		return;
@@ -218,29 +239,19 @@ function ComposeMessage(type, format, folder, messageArray)
 		for (var i = 0; i < messageArray.length; i ++)
 		{	
 			var messageUri = messageArray[i];
+
       var hdr = messenger.messageServiceFromURI(messageUri).messageURIToMsgHdr(messageUri);
       var hintForIdentity = (type == msgComposeType.Template) ? hdr.author : hdr.recipients + hdr.ccList;
-
-      if (folder)
-        server = folder.server;
+      var accountKey = hdr.accountKey;
+      if (accountKey.length > 0)
+      {
+        var account = accountManager.getAccount(accountKey);
+        if (account)
+          server = account.incomingServer;
+      }
 
       if (server)
         identity = getIdentityForServer(server, hintForIdentity);
-
-      if (!identity || hintForIdentity.search(identity.email) < 0)
-      {
-        var accountKey = hdr.accountKey;
-        if (accountKey.length > 0)
-        {
-          var account = accountManager.getAccount(accountKey);
-          if (account)
-          {
-            server = account.incomingServer;
-            if (server)
-              identity = getIdentityForServer(server, hintForIdentity);
-          }
-        }
-      }
 
       var messageID = hdr.messageId;
       var messageIDScheme = messageID.split(":")[0];
@@ -263,7 +274,6 @@ function ComposeMessage(type, format, folder, messageArray)
 				uri += messageUri;
 			}
 		}
-
 		if (type == msgComposeType.ForwardAsAttachment && uri)
 			msgComposeService.OpenComposeWindow(null, uri, type, format, identity, msgWindow);
 	}
@@ -663,33 +673,28 @@ function analyzeMessagesForJunk()
 
 function analyzeMessages(messages)
 {
-    function processNext()
+  function processNext()
+  {
+    if (counter < messages.length) 
     {
-        if (counter < messages.length) {
-            var messageUri = messages[counter];
-            var message = messenger.messageServiceFromURI(messageUri).messageURIToMsgHdr(messageUri);
-            ++counter;
-            analyze(message, processNext);
-        }
-        else {
-            dump('[bayesian filter message analysis complete.]\n');
-            gJunkmailComponent.endBatch();
-            performActionOnJunkMsgs();
-        }
-    }
+      var messageUri = messages[counter];
+      var message = messenger.messageServiceFromURI(messageUri).messageURIToMsgHdr(messageUri);
+      ++counter;
+      analyze(message, processNext);
+     }
+     else 
+       performActionOnJunkMsgs();
+  }
 
-    getJunkmailComponent();
-    var counter = 0;
-    gJunkmailComponent.startBatch();
-    dump('[bayesian filter message analysis begins.]\n');
-    processNext();
+  getJunkmailComponent();
+  var counter = 0;
+  processNext();
 }
 
 function JunkSelectedMessages(setAsJunk)
 {
-    MsgJunkMailInfo(true);
-    gDBView.doCommand(setAsJunk ? nsMsgViewCommandType.junk
-                      : nsMsgViewCommandType.unjunk);
+  MsgJunkMailInfo(true);
+  gDBView.doCommand(setAsJunk ? nsMsgViewCommandType.junk : nsMsgViewCommandType.unjunk);
 }
 
 function deleteJunkInFolder()

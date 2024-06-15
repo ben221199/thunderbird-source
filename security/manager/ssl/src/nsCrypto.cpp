@@ -1,25 +1,41 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
  *
- * The contents of this file are subject to the Mozilla Public
- * License Version 1.1 (the "License"); you may not use this file
- * except in compliance with the License. You may obtain a copy of
- * the License at http://www.mozilla.org/MPL/
+ * ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * Software distributed under the License is distributed on an "AS
- * IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
- * implied. See the License for the specific language governing
- * rights and limitations under the License.
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
+ *
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+ * for the specific language governing rights and limitations under the
+ * License.
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is Netscape
- * Communications Corporation.  Portions created by Netscape are
- * Copyright (C) 2001 Netscape Communications Corporation. All
- * Rights Reserved.
+ * The Initial Developer of the Original Code is
+ * Netscape Communications Corporation.
+ * Portions created by the Initial Developer are Copyright (C) 2001
+ * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- *  Javier Delgadillo <javi@netscape.com>
- */
+ *   Javier Delgadillo <javi@netscape.com>
+ *
+ * Alternatively, the contents of this file may be used under the terms of
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
+ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK ***** */
 #include "nsNSSComponent.h"
 #include "nsCrypto.h"
 #include "nsKeygenHandler.h"
@@ -55,7 +71,6 @@
 #include "nsIDOMCryptoDialogs.h"
 #include "nsIFormSigningDialog.h"
 #include "nsIProxyObjectManager.h"
-#include "nsIJSContextStack.h"
 #include "jsapi.h"
 #include "jsdbgapi.h"
 #include <ctype.h>
@@ -307,7 +322,7 @@ cryptojs_GetObjectPrincipal(JSContext *aCx, JSObject *aObj,
     if (jsClass && (jsClass->flags & (privateNsISupports)) == 
                     privateNsISupports)
     {
-      nsCOMPtr<nsISupports> supports = (nsISupports *) JS_GetPrivate(aCx, parent);
+      nsISupports *supports = (nsISupports *) JS_GetPrivate(aCx, parent);
       nsCOMPtr<nsIScriptObjectPrincipal> objPrin = do_QueryInterface(supports);
               
       if (!objPrin)
@@ -319,19 +334,21 @@ cryptojs_GetObjectPrincipal(JSContext *aCx, JSObject *aObj,
         nsCOMPtr<nsIXPConnectWrappedNative> xpcNative = 
                                             do_QueryInterface(supports);
 
-        if (xpcNative)
-          xpcNative->GetNative(getter_AddRefs(supports));
-          objPrin = do_QueryInterface(supports);
+        if (xpcNative) {
+          objPrin = do_QueryWrappedNative(xpcNative);
         }
+      }
 
-        if (objPrin && NS_SUCCEEDED(objPrin->GetPrincipal(result)))
-          return NS_OK;
-        }
-        parent = JS_GetParent(aCx, parent);
-    } while (parent);
+      if (objPrin && ((*result = objPrin->GetPrincipal()))) {
+        NS_ADDREF(*result);
+        return NS_OK;
+      }
+    }
+    parent = JS_GetParent(aCx, parent);
+  } while (parent);
 
-    // Couldn't find a principal for this object.
-    return NS_ERROR_FAILURE;
+  // Couldn't find a principal for this object.
+  return NS_ERROR_FAILURE;
 }
 
 static nsresult
@@ -387,7 +404,7 @@ nsCrypto::GetScriptPrincipal(JSContext *cx)
     nsCOMPtr<nsIScriptObjectPrincipal> globalData =
       do_QueryInterface(scriptContext->GetGlobalObject());
     NS_ENSURE_TRUE(globalData, nsnull);
-    globalData->GetPrincipal(&principal);
+    principal = globalData->GetPrincipal();
   }
 
   return principal;
@@ -1131,7 +1148,7 @@ nsSetDSASignNonRepudiation(CRMFCertRequest *crmfReq)
 static nsresult
 nsSetKeyUsageExtension(CRMFCertRequest *crmfReq, nsKeyGenType keyGenType)
 {
-  nsresult rv = NS_OK;
+  nsresult rv;
 
   switch (keyGenType) {
   case rsaDualUse:
@@ -1802,23 +1819,15 @@ nsCryptoRunnable::Run()
   if (NS_FAILED(rv))
     return NS_ERROR_FAILURE;
 
-  // make sure the right context is on the stack. must not return w/out popping
-  nsCOMPtr<nsIJSContextStack> stack(do_GetService("@mozilla.org/js/xpc/ContextStack;1"));
-  if (!stack || NS_FAILED(stack->Push(cx))) {
-    return NS_ERROR_FAILURE;
-  }
-
   jsval retval;
   if (JS_EvaluateScriptForPrincipals(cx, m_args->m_scope, principals,
                                      m_args->m_jsCallback, 
                                      strlen(m_args->m_jsCallback),
                                      nsnull, 0,
                                      &retval) != JS_TRUE) {
-    rv = NS_ERROR_FAILURE;
+    return NS_ERROR_FAILURE;
   }
-
-  stack->Pop(nsnull);
-  return rv;
+  return NS_OK;
 }
 
 //Quick helper function to check if a newly issued cert
@@ -2157,8 +2166,8 @@ nsCrypto::SignText(const nsAString& aStringToSign, const nsAString& aCaOption,
     return NS_OK;
   }
 
-  if (!aCaOption.Equals(NS_LITERAL_STRING("auto")) &&
-      !aCaOption.Equals(NS_LITERAL_STRING("ask"))) {
+  if (!aCaOption.EqualsLiteral("auto") &&
+      !aCaOption.EqualsLiteral("ask")) {
     JS_ReportError(cx, "%s%s\n", JS_ERROR, "caOption argument must be ask or auto");
 
     aResult.Append(internalError);
@@ -2215,7 +2224,7 @@ nsCrypto::SignText(const nsAString& aStringToSign, const nsAString& aCaOption,
   }
 
   if (!certList || CERT_LIST_EMPTY(certList)) {
-    aResult.Append(NS_LITERAL_STRING("error:noMatchingCert"));
+    aResult.AppendLiteral("error:noMatchingCert");
 
     return NS_OK;
   }
@@ -2384,7 +2393,7 @@ nsCrypto::SignText(const nsAString& aStringToSign, const nsAString& aCaOption,
   }
 
   if (canceled) {
-    aResult.Append(NS_LITERAL_STRING("error:userCancel"));
+    aResult.AppendLiteral("error:userCancel");
 
     return NS_OK;
   }
@@ -2400,8 +2409,8 @@ nsCrypto::SignText(const nsAString& aStringToSign, const nsAString& aCaOption,
 
   // XXX Doing what nsFormSubmission::GetEncoder does (see
   //     http://bugzilla.mozilla.org/show_bug.cgi?id=81203).
-  if (charset.Equals(NS_LITERAL_CSTRING("ISO-8859-1"))) {
-    charset.Assign(NS_LITERAL_CSTRING("windows-1252"));
+  if (charset.EqualsLiteral("ISO-8859-1")) {
+    charset.AssignLiteral("windows-1252");
   }
 
   nsCOMPtr<nsISaveAsCharset> encoder =

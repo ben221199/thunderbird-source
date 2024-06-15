@@ -164,7 +164,7 @@
           var typetext = warning ? "typeWarning" : "typeError";
           row.setAttribute("typetext", this.mStrBundle.getString(typetext));
           row.setAttribute("type", warning ? "warning" : "error");
-          row.setAttribute("msg", aObject.message);
+          row.setAttribute("msg", aObject.errorMessage);
           if (aObject.lineNumber || aObject.sourceName) {
             row.setAttribute("url", aObject.sourceName);
             row.setAttribute("line", aObject.lineNumber);
@@ -371,7 +371,7 @@
     </content>
 
     <handlers>
-      <handler event="click"><![CDATA[
+      <handler event="click" button="0"><![CDATA[
           var url = this.getAttribute("url");
           var line = getAttribute("line");  
           window.openDialog(

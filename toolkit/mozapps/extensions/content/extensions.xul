@@ -1,27 +1,29 @@
 <?xml version="1.0"?>
 
 # -*- Mode: Java; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+# ***** BEGIN LICENSE BLOCK *****
 # Version: MPL 1.1/GPL 2.0/LGPL 2.1
-# 
+#
 # The contents of this file are subject to the Mozilla Public License Version
 # 1.1 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
 # http://www.mozilla.org/MPL/
-# 
+#
 # Software distributed under the License is distributed on an "AS IS" basis,
 # WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
 # for the specific language governing rights and limitations under the
 # License.
-# 
+#
 # The Original Code is The Extension Manager.
-# 
-# The Initial Developer of the Original Code is Ben Goodger. 
+#
+# The Initial Developer of the Original Code is
+# Ben Goodger.
 # Portions created by the Initial Developer are Copyright (C) 2004
 # the Initial Developer. All Rights Reserved.
-# 
+#
 # Contributor(s):
 #   Ben Goodger <ben@bengoodger.com>
-# 
+#
 # Alternatively, the contents of this file may be used under the terms of
 # either the GNU General Public License Version 2 or later (the "GPL"), or
 # the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
@@ -33,7 +35,7 @@
 # and other provisions required by the GPL or the LGPL. If you do not delete
 # the provisions above, a recipient may use your version of this file under
 # the terms of any one of the MPL, the GPL or the LGPL.
-# 
+#
 # ***** END LICENSE BLOCK *****
 
 <?xml-stylesheet href="chrome://global/skin/" type="text/css"?> 
@@ -41,7 +43,7 @@
 <?xml-stylesheet href="chrome://mozapps/skin/extensions/extensions.css"?>
 
 <!DOCTYPE window [
-<!ENTITY % brandDTD SYSTEM "chrome://global/locale/brand.dtd">
+<!ENTITY % brandDTD SYSTEM "chrome://branding/locale/brand.dtd">
 %brandDTD;
 <!ENTITY % extensionsDTD SYSTEM "chrome://mozapps/locale/extensions/extensions.dtd">
 %extensionsDTD;
@@ -62,7 +64,7 @@
   <script type="application/x-javascript" src="chrome://global/content/nsTransferable.js"/>
   
   <stringbundleset id="extensionsSet">
-    <stringbundle id="brandStrings" src="chrome://global/locale/brand.properties"/>
+    <stringbundle id="brandStrings" src="chrome://branding/locale/brand.properties"/>
     <stringbundle id="extensionsStrings" src="chrome://mozapps/locale/extensions/extensions.properties"/>
     <stringbundle id="xpinstallStrings" src="chrome://global/locale/xpinstall/xpinstall.properties"/>
   </stringbundleset>
@@ -87,7 +89,7 @@
     <command id="cmd_options"/>
     <command id="cmd_about"/>
     <command id="cmd_homepage"/>
-#ifdef MOZ_THUNDERBIRD
+#ifndef MOZ_PHOENIX
     <command id="cmd_install"/>
 #endif
     <command id="cmd_uninstall"/>
@@ -151,74 +153,77 @@
             <triple subject="?extension"
                     predicate="http://www.mozilla.org/2004/em-rdf#version"
                     object="?version"/>
+            <triple id="typeCondition" subject="?extension"
+                    predicate="http://www.mozilla.org/2004/em-rdf#type"
+                    object="2" parsetype="Integer"/>
           </conditions>
           <bindings>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#creator"
-                    object="?creator"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#iconURL"
+                     object="?icon"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#iconURL"
-                    object="?icon"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#previewImage"
+                     object="?previewImage"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#previewImage"
-                    object="?previewImage"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#optionsURL"
+                     object="?options-url"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#optionsURL"
-                    object="?options-url"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#aboutURL"
+                     object="?about-url"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#aboutURL"
-                    object="?about-url"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#updateURL"
+                     object="?update-url"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#updateURL"
-                    object="?update-url"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#disabled"
+                     object="?disabled"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#disabled"
-                    object="?disabled"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#compatible"
+                     object="?compatible"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#compatible"
-                    object="?compatible"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#homepageURL"
+                     object="?homepage-url"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#homepageURL"
-                    object="?homepage-url"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#description"
+                     object="?description"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#description"
-                    object="?description"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#displayDescription"
+                     object="?displayDescription"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#displayDescription"
-                    object="?displayDescription"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#locked"
+                     object="?locked"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#locked"
-                    object="?locked"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#toBeInstalled"
+                     object="?toBeInstalled"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#toBeInstalled"
-                    object="?toBeInstalled"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#toBeUpgraded"
+                     object="?toBeUpgraded"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#toBeUninstalled"
-                    object="?toBeUninstalled"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#toBeUninstalled"
+                     object="?toBeUninstalled"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#toBeEnabled"
-                    object="?toBeEnabled"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#toBeEnabled"
+                     object="?toBeEnabled"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#toBeDisabled"
-                    object="?toBeDisabled"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#toBeDisabled"
+                     object="?toBeDisabled"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#itemType"
-                    object="?itemType"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#internalName"
+                     object="?internalName"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#internalName"
-                    object="?internalName"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#downloadURL"
+                     object="?downloadURL"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#downloadURL"
-                    object="?downloadURL"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#state"
+                     object="?state"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#state"
-                    object="?state"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#progress"
+                     object="?progress"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#progress"
-                    object="?progress"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#status"
+                     object="?status"/>
             <binding subject="?extension"
-                    predicate="http://www.mozilla.org/2004/em-rdf#status"
-                    object="?status"/>
+                     predicate="http://www.mozilla.org/2004/em-rdf#hidden"
+                     object="?hidden"/>
           </bindings>            
           <action>
             <!-- XXXben - we could really use a variety of different templates
@@ -227,13 +232,14 @@
                        image="?icon" name="?name" version="?version" 
                        description="?displayDescription" creator="?creator"
                        disabled="?disabled" locked="?locked" 
-                       compatible="?compatible"
+                       compatible="?compatible" hidden="?hidden"
                        optionsURL="?options-url" homepageURL="?homepage-url"
                        aboutURL="?about-url" updateURL="?update-url"
                        previewImage="?previewImage" internalName="?internalName"
                        toBeInstalled="?toBeInstalled" toBeUninstalled="?toBeUninstalled"
                        toBeEnabled="?toBeEnabled" toBeDisabled="?toBeDisabled"
-                       itemType="?itemType" downloadURL="?downloadURL"
+                       toBeUpgraded="?toBeUpgraded"
+                       downloadURL="?downloadURL"
                        state="?state" progress="?progress" status="?status"/>
           </action>
         </rule>
@@ -259,7 +265,7 @@
   <hbox>
     <hbox id="commandBar" flex="1" align="center">
       <hbox>
-#ifdef MOZ_THUNDERBIRD
+#ifndef MOZ_PHOENIX
         <button id="installButton"
                 label="&cmd.install.label;" accesskey="&cmd.install.accesskey;" tooltiptext="&cmd.install.tooltip;" 
                 command="cmd_install"/>
@@ -272,9 +278,12 @@
                 label="&cmd.update.label;" accesskey="&cmd.update.accesskey;" tooltiptext="&cmd.update.tooltip;"
                 command="cmd_update"/>
         <separator class="commandBarSeparator"/>              
-        <button id="optionsButton"
-                label="&cmd.options.label;" accesskey="&cmd.options.accesskey;" tooltiptext="&cmd.options.tooltip;"
-                command="cmd_options"/>
+        <button id="optionsButton" command="cmd_options"
+#ifdef XP_WIN
+              label="&cmd.options.label;" accesskey="&cmd.options.accesskey;" tooltiptext="&cmd.options.tooltip;"/>
+#else
+              label="&cmd.optionsUnix.label;" accesskey="&cmd.optionsUnix.accesskey;" tooltiptext="&cmd.optionsUnix.tooltip;"/>
+#endif
         <button id="useThemeButton" hidden="true"
                 label="&cmd.useTheme.label;" accesskey="&cmd.useTheme.accesskey;" tooltiptext="&cmd.useTheme.tooltip;"
                 command="cmd_useTheme"/>

@@ -14,6 +14,10 @@
  *
  * The Original Code is the virtual folder properties dialog
  *
+ * The Initial Developer of the Original Code is
+ * David Bienvenu.
+ * Portions created by the Initial Developer are Copyright (C) 2004
+ * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
  *  David Bienvenu <bienvenu@nventure.com> 
@@ -191,7 +195,7 @@ function selectFolderTreeOnClick(event)
   }
   else if (event.detail == 1)
   {
-    if (obj.value != "twisty" && col.value == "selectedColumn")
+    if (obj.value != "twisty" && col.value.id == "selectedColumn")
       ReverseStateFromNode(row.value)
   }
 }

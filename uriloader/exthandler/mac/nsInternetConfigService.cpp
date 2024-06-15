@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is Mozilla Communicator client code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -23,16 +23,16 @@
  *   Steve Dagley <sdagley@netscape.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -364,29 +364,29 @@ nsresult nsInternetConfigService::FillMIMEInfoForICEntry(ICMapEntry& entry, nsIM
     nsCAutoString mimetype ((char *)&entry.MIMEType[1], entry.MIMEType[0]);
     // check if entry.MIMEType is empty, if so, set mime type to APPLICATION_OCTET_STREAM
     if (entry.MIMEType[0])
-      info->SetMIMEType(mimetype.get());
+      info->SetMIMEType(mimetype);
     else
     { // The IC mappings seem to not be very agressive about determining the mime type if
       // all we have is a type or creator code.  This is a bandaid approach for when we
       // get a file of type 'TEXT' with no mime type mapping so that we'll display the
       // file rather than trying to download it.
       if (entry.fileType == 'TEXT')
-        info->SetMIMEType(TEXT_PLAIN);
+        info->SetMIMEType(NS_LITERAL_CSTRING(TEXT_PLAIN));
       else
-        info->SetMIMEType(APPLICATION_OCTET_STREAM);
+        info->SetMIMEType(NS_LITERAL_CSTRING(APPLICATION_OCTET_STREAM));
     }
     
     // convert entry.extension which is a Str255 
     // don't forget to remove the '.' in front of the file extension....
     nsCAutoString temp((char *)&entry.extension[2], entry.extension[0] > 0 ? (int)entry.extension[0]-1 : 0);
-    info->AppendExtension(temp.get());
+    info->AppendExtension(temp);
     info->SetMacType(entry.fileType);
     info->SetMacCreator(entry.fileCreator);
     temp.Assign((char *) &entry.entryName[1], entry.entryName[0]);
-    info->SetDescription(NS_ConvertASCIItoUCS2(temp.get()).get());
+    info->SetDescription(NS_ConvertASCIItoUCS2(temp));
     
     temp.Assign((char *) &entry.postAppName[1], entry.postAppName[0]);
-    info->SetDefaultDescription(NS_ConvertASCIItoUCS2(temp.get()).get());
+    info->SetDefaultDescription(NS_ConvertASCIItoUCS2(temp));
     
     if (entry.flags & kICMapPostMask)
     {

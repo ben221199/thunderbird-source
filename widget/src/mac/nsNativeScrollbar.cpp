@@ -36,11 +36,10 @@
  * ***** END LICENSE BLOCK ***** */
 
 
+#include <ControlDefinitions.h>
+
 #include "nsNativeScrollbar.h"
 #include "nsIDeviceContext.h"
-#if TARGET_CARBON || (UNIVERSAL_INTERFACES_VERSION >= 0x0330)
-#include <ControlDefinitions.h>
-#endif
 
 #include "nsWidgetAtoms.h"
 #include "nsWatchTask.h"
@@ -101,9 +100,10 @@ nsNativeScrollbar::nsNativeScrollbar()
   : nsMacControl()
   , mContent(nsnull)
   , mMediator(nsnull)
-  , mLineIncrement(0)
+  , mScrollbar(nsnull)
   , mMaxValue(0)
   , mVisibleImageSize(0)
+  , mLineIncrement(0)
   , mMouseDownInScroll(PR_FALSE)
   , mClickedPartCode(0)
 {
@@ -146,7 +146,6 @@ nsNativeScrollbar::DoScrollAction(ControlPartCode part)
   PRUint32 oldPos, newPos;
   PRUint32 incr;
   PRUint32 visibleImageSize;
-  PRInt32 scrollBarMessage = 0;
   GetPosition(&oldPos);
   GetLineIncrement(&incr);
   GetViewSize(&visibleImageSize);
@@ -157,7 +156,7 @@ nsNativeScrollbar::DoScrollAction(ControlPartCode part)
     // update the attributes on the content node (the scroll frame listens
     // for these attributes and will scroll accordingly). However,
     // if we have a mediator, we're in an outliner and we have to scroll by
-    // lines. Outliner ignores the params to ScrollbarButtonPressed() except
+    // lines. Outliner ignores the indexes in ScrollbarButtonPressed() except
     // to check if one is greater than the other to indicate direction.
     //
     
@@ -165,7 +164,7 @@ nsNativeScrollbar::DoScrollAction(ControlPartCode part)
       newPos = oldPos - (mLineIncrement ? mLineIncrement : 1);
       if ( mMediator ) {
         BoundsCheck(0, newPos, mMaxValue);
-        mMediator->ScrollbarButtonPressed(oldPos, newPos);
+        mMediator->ScrollbarButtonPressed(mScrollbar, oldPos, newPos);
       } else {
         UpdateContentPosition(newPos);
       }
@@ -175,7 +174,7 @@ nsNativeScrollbar::DoScrollAction(ControlPartCode part)
       newPos = oldPos + (mLineIncrement ? mLineIncrement : 1);
       if ( mMediator ) {
         BoundsCheck(0, newPos, mMaxValue);
-        mMediator->ScrollbarButtonPressed(oldPos, newPos);
+        mMediator->ScrollbarButtonPressed(mScrollbar, oldPos, newPos);
       } else {
         UpdateContentPosition(newPos); 
       }
@@ -197,7 +196,7 @@ nsNativeScrollbar::DoScrollAction(ControlPartCode part)
         PRInt32 op = oldPos, np = mValue;
         if ( np < 0 )
           np = 0;
-        mMediator->PositionChanged(op, np);
+        mMediator->PositionChanged(mScrollbar, op, np);
       }
       break;
       
@@ -208,7 +207,7 @@ nsNativeScrollbar::DoScrollAction(ControlPartCode part)
         PRInt32 op = oldPos, np = mValue;
         if ( np < 0 )
           np = 0;
-        mMediator->PositionChanged(op, np);
+        mMediator->PositionChanged(mScrollbar, op, np);
       }
       break;
       
@@ -219,7 +218,7 @@ nsNativeScrollbar::DoScrollAction(ControlPartCode part)
         PRInt32 op = oldPos, np = mValue;
         if ( np < 0 )
           np = 0;
-        mMediator->PositionChanged(op, np);
+        mMediator->PositionChanged(mScrollbar, op, np);
       }
       break;
   }
@@ -246,7 +245,7 @@ nsNativeScrollbar::DoScrollAction(ControlPartCode part)
 void
 nsNativeScrollbar::UpdateContentPosition(PRUint32 inNewPos)
 {
-  if ( inNewPos == mValue || !mContent )   // break any possible recursion
+  if ( (PRInt32)inNewPos == mValue || !mContent )   // break any possible recursion
     return;
 
   // guarantee |inNewPos| is in the range of [0, mMaxValue] so it's correctly unsigned
@@ -494,11 +493,7 @@ nsNativeScrollbar::GetNarrowSize(PRInt32* outSize)
   if ( *outSize )
     return NS_ERROR_FAILURE;
   SInt32 width = 0;
-#if TARGET_CARBON
   ::GetThemeMetric(kThemeMetricScrollBarWidth, &width);
-#else
-  width = 16;
-#endif
   *outSize = width;
   return NS_OK;
 }
@@ -512,9 +507,11 @@ nsNativeScrollbar::GetNarrowSize(PRInt32* outSize)
 // care about the mediator for <outliner> so we can do row-based scrolling.
 //
 NS_IMETHODIMP
-nsNativeScrollbar::SetContent(nsIContent* inContent, nsIScrollbarMediator* inMediator)
+nsNativeScrollbar::SetContent(nsIContent* inContent, nsISupports* inScrollbar, 
+                              nsIScrollbarMediator* inMediator)
 {
   mContent = inContent;
   mMediator = inMediator;
+  mScrollbar = inScrollbar;
   return NS_OK;
 }

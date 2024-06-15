@@ -24,6 +24,7 @@
  *   Frank Tang <ftang@netscape.com>
  *   Brendan Eich <brendan@mozilla.org>
  *   Sergei Dolgov <sergei_d@fi.fi.tartu.ee>
+ *   Jungshik Shin <jshin@i18nl10n.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
  * either the GNU General Public License Version 2 or later (the "GPL"), or

@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -22,16 +22,16 @@
  * Contributor(s):
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -65,23 +65,23 @@ public:
   /**
    * Log a warning message to the debug log.
    */
-  static NS_COM void Warning(const char* aMessage,
+  static NS_COM_GLUE void Warning(const char* aMessage,
                              const char* aFile, PRIntn aLine);
 
   /**
    * Abort the executing program. This works on all architectures.
    */
-  static NS_COM void Abort(const char* aFile, PRIntn aLine);
+  static NS_COM_GLUE void Abort(const char* aFile, PRIntn aLine);
 
   /**
    * Break the executing program into the debugger. 
    */
-  static NS_COM void Break(const char* aFile, PRIntn aLine);
+  static NS_COM_GLUE void Break(const char* aFile, PRIntn aLine);
 
   /**
    * Log an assertion message to the debug log
    */
-  static NS_COM void Assertion(const char* aStr, const char* aExpr,
+  static NS_COM_GLUE void Assertion(const char* aStr, const char* aExpr,
                                const char* aFile, PRIntn aLine);
 };
 
@@ -202,17 +202,17 @@ public:
  * The non-debug version of these macros do not evaluate the
  * expression or the message arguments to the macro.
  */
-#define NS_ABORT_IF_FALSE(_expr, _msg) /* nothing */
-#define NS_WARN_IF_FALSE(_expr, _msg)  /* nothing */
-#define NS_PRECONDITION(expr, str)     /* nothing */
-#define NS_ASSERTION(expr, str)        /* nothing */
-#define NS_POSTCONDITION(expr, str)    /* nothing */
-#define NS_NOTYETIMPLEMENTED(str)      /* nothing */
-#define NS_NOTREACHED(str)             /* nothing */
-#define NS_ERROR(str)                  /* nothing */
-#define NS_WARNING(str)                /* nothing */
-#define NS_ABORT()                     /* nothing */
-#define NS_BREAK()                     /* nothing */
+#define NS_ABORT_IF_FALSE(_expr, _msg) PR_BEGIN_MACRO /* nothing */ PR_END_MACRO
+#define NS_WARN_IF_FALSE(_expr, _msg)  PR_BEGIN_MACRO /* nothing */ PR_END_MACRO
+#define NS_PRECONDITION(expr, str)     PR_BEGIN_MACRO /* nothing */ PR_END_MACRO
+#define NS_ASSERTION(expr, str)        PR_BEGIN_MACRO /* nothing */ PR_END_MACRO
+#define NS_POSTCONDITION(expr, str)    PR_BEGIN_MACRO /* nothing */ PR_END_MACRO
+#define NS_NOTYETIMPLEMENTED(str)      PR_BEGIN_MACRO /* nothing */ PR_END_MACRO
+#define NS_NOTREACHED(str)             PR_BEGIN_MACRO /* nothing */ PR_END_MACRO
+#define NS_ERROR(str)                  PR_BEGIN_MACRO /* nothing */ PR_END_MACRO
+#define NS_WARNING(str)                PR_BEGIN_MACRO /* nothing */ PR_END_MACRO
+#define NS_ABORT()                     PR_BEGIN_MACRO /* nothing */ PR_END_MACRO
+#define NS_BREAK()                     PR_BEGIN_MACRO /* nothing */ PR_END_MACRO
 
 #endif /* ! NS_DEBUG */
 #endif /* __cplusplus */

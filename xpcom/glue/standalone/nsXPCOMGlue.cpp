@@ -1,12 +1,12 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 /* vim:set ts=4 sw=4 et cindent: */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -15,7 +15,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -23,36 +23,37 @@
  * Contributor(s):
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
 #include "nsXPCOMGlue.h"
 
 #include "nspr.h"
-#include "nsMemory.h"
+#include "nsDebug.h"
+#include "nsIServiceManager.h"
 #include "nsGREDirServiceProvider.h"
 #include "nsXPCOMPrivate.h"
+#include "nsCOMPtr.h"
 #include <stdlib.h>
 
 #if XP_WIN32
 #include <windows.h>
+#include <mbstring.h>
 #endif
 
 void GRE_AddGREToEnvironment();
 
-// functions provided by nsMemory.cpp and nsDebug.cpp
-nsresult GlueStartupMemory();
-void GlueShutdownMemory();
+// functions provided by nsDebug.cpp
 nsresult GlueStartupDebug();
 void GlueShutdownDebug();
 
@@ -65,8 +66,8 @@ nsresult XPCOMGlueStartup(const char* xpcomFile)
 #ifdef XPCOM_GLUE_NO_DYNAMIC_LOADING
     return NS_OK;
 #else
-    nsresult rv;
-    GetFrozenFunctionsFunc function;
+    nsresult rv = NS_OK;
+    GetFrozenFunctionsFunc function = nsnull;
 
     xpcomFunctions.version = XPCOM_GLUE_VERSION;
     xpcomFunctions.size    = sizeof(XPCOMFunctions);
@@ -82,29 +83,55 @@ nsresult XPCOMGlueStartup(const char* xpcomFile)
     //
 
     if (xpcomFile && (xpcomFile[0] == '.' && xpcomFile[1] == '\0')) {
-        function = (GetFrozenFunctionsFunc)PR_FindSymbolAndLibrary("NS_GetFrozenFunctions", &xpcomLib);
-        if (!function)
-            return NS_ERROR_FAILURE;
-
-        char *libPath = PR_GetLibraryFilePathname(XPCOM_DLL, (PRFuncPtr) function);
-
-        if (!libPath)
-            rv = NS_ERROR_FAILURE;
+        function = (GetFrozenFunctionsFunc)
+                PR_FindSymbolAndLibrary("NS_GetFrozenFunctions", &xpcomLib);
+        if (!function) {
+            // The symbol was not found, so failover to loading XPCOM_DLL,
+            // and look for the symbol there.  See bug 240986 for details.
+            xpcomFile = nsnull;
+        }
         else {
-            rv = (*function)(&xpcomFunctions, libPath);
-            PR_Free(libPath);
+            char *libPath = PR_GetLibraryFilePathname(XPCOM_DLL, (PRFuncPtr) function);
+            if (!libPath)
+                rv = NS_ERROR_FAILURE;
+            else {
+                rv = (*function)(&xpcomFunctions, libPath);
+                PR_Free(libPath);
+            }
         }
     }
-    else {
+
+    if (!function) {
         PRLibSpec libSpec;
 
         libSpec.type = PR_LibSpec_Pathname;
         if (!xpcomFile)
             libSpec.value.pathname = XPCOM_DLL;
-        else
+        else {
             libSpec.value.pathname = xpcomFile;
+#ifdef XP_WIN32
+            // Add directory containing xpcomFile to the DLL search path.  This
+            // is done so that the OS knows where to find xpcom_core.dll and
+            // any other dependent libs.
+            const char *lastSlash =
+                    (const char *) _mbsrchr((const unsigned char *) xpcomFile, '\\');
+            if (lastSlash) {
+                char path[32767];
+                DWORD pathLen = GetEnvironmentVariable("PATH", path, sizeof(path));
+                if (pathLen != 0)
+                    path[pathLen++] = ';';
+                DWORD dirLen = lastSlash - xpcomFile;
+                if (sizeof(path) - pathLen > dirLen) {
+                    memcpy(&path[pathLen], xpcomFile, dirLen);
+                    path[pathLen + dirLen] = '\0';
+                    SetEnvironmentVariable("PATH", path);
+                }
+            }
+#endif
+        }
 
         xpcomLib = PR_LoadLibraryWithFlags(libSpec, PR_LD_LAZY|PR_LD_GLOBAL);
+
         if (!xpcomLib)
             return NS_ERROR_FAILURE;
 
@@ -123,13 +150,6 @@ nsresult XPCOMGlueStartup(const char* xpcomFile)
     if (NS_FAILED(rv))
         goto bail;
 
-    // startup the nsMemory
-    rv = GlueStartupMemory();
-    if (NS_FAILED(rv)) {
-        GlueShutdownDebug();
-        goto bail;
-    }
-
     GRE_AddGREToEnvironment();
     return NS_OK;
 
@@ -147,8 +167,6 @@ nsresult XPCOMGlueShutdown()
 #ifdef XPCOM_GLUE_NO_DYNAMIC_LOADING
     return NS_OK;
 #else
-
-    GlueShutdownMemory();
 
     GlueShutdownDebug();
 
@@ -271,6 +289,17 @@ NS_StringContainerInit(nsStringContainer &aStr)
     return xpcomFunctions.stringContainerInit(aStr);
 }
 
+extern "C" NS_COM nsresult
+NS_StringContainerInit2(nsStringContainer &aStr,
+                        const PRUnichar   *aData,
+                        PRUint32           aDataLength,
+                        PRUint32           aFlags)
+{
+    if (!xpcomFunctions.stringContainerInit2)
+        return NS_ERROR_NOT_INITIALIZED;
+    return xpcomFunctions.stringContainerInit2(aStr, aData, aDataLength, aFlags);
+}
+
 extern "C" NS_COM void
 NS_StringContainerFinish(nsStringContainer &aStr)
 {
@@ -286,6 +315,16 @@ NS_StringGetData(const nsAString &aStr, const PRUnichar **aBuf, PRBool *aTerm)
         return 0;
     }
     return xpcomFunctions.stringGetData(aStr, aBuf, aTerm);
+}
+
+extern "C" NS_COM PRUint32
+NS_StringGetMutableData(nsAString &aStr, PRUint32 aLen, PRUnichar **aBuf)
+{
+    if (!xpcomFunctions.stringGetMutableData) {
+        *aBuf = nsnull;
+        return 0;
+    }
+    return xpcomFunctions.stringGetMutableData(aStr, aLen, aBuf);
 }
 
 extern "C" NS_COM PRUnichar *
@@ -331,6 +370,17 @@ NS_CStringContainerInit(nsCStringContainer &aStr)
     return xpcomFunctions.cstringContainerInit(aStr);
 }
 
+extern "C" NS_COM nsresult
+NS_CStringContainerInit2(nsCStringContainer &aStr,
+                         const char         *aData,
+                         PRUint32           aDataLength,
+                         PRUint32           aFlags)
+{
+    if (!xpcomFunctions.cstringContainerInit2)
+        return NS_ERROR_NOT_INITIALIZED;
+    return xpcomFunctions.cstringContainerInit2(aStr, aData, aDataLength, aFlags);
+}
+
 extern "C" NS_COM void
 NS_CStringContainerFinish(nsCStringContainer &aStr)
 {
@@ -346,6 +396,16 @@ NS_CStringGetData(const nsACString &aStr, const char **aBuf, PRBool *aTerm)
         return 0;
     }
     return xpcomFunctions.cstringGetData(aStr, aBuf, aTerm);
+}
+
+extern "C" NS_COM PRUint32
+NS_CStringGetMutableData(nsACString &aStr, PRUint32 aLen, char **aBuf)
+{
+    if (!xpcomFunctions.cstringGetMutableData) {
+        *aBuf = nsnull;
+        return 0;
+    }
+    return xpcomFunctions.cstringGetMutableData(aStr, aLen, aBuf);
 }
 
 extern "C" NS_COM char *
@@ -382,7 +442,7 @@ NS_CStringCopy(nsACString &aDest, const nsACString &aSrc)
 }
 
 extern "C" NS_COM nsresult
-NS_CStringToUTF16(const nsACString &aSrc, PRUint32 aSrcEncoding, nsAString &aDest)
+NS_CStringToUTF16(const nsACString &aSrc, nsCStringEncoding aSrcEncoding, nsAString &aDest)
 {
     if (!xpcomFunctions.cstringToUTF16)
         return NS_ERROR_NOT_INITIALIZED;
@@ -390,22 +450,47 @@ NS_CStringToUTF16(const nsACString &aSrc, PRUint32 aSrcEncoding, nsAString &aDes
 }
 
 extern "C" NS_COM nsresult
-NS_UTF16ToCString(const nsAString &aSrc, PRUint32 aDestEncoding, nsACString &aDest)
+NS_UTF16ToCString(const nsAString &aSrc, nsCStringEncoding aDestEncoding, nsACString &aDest)
 {
     if (!xpcomFunctions.utf16ToCString)
         return NS_ERROR_NOT_INITIALIZED;
     return xpcomFunctions.utf16ToCString(aSrc, aDestEncoding, aDest);
 }
 
+extern "C" NS_COM void*
+NS_Alloc(PRSize size)
+{
+    if (!xpcomFunctions.allocFunc)
+        return nsnull;
+    return xpcomFunctions.allocFunc(size);
+}
+
+extern "C" NS_COM void*
+NS_Realloc(void* ptr, PRSize size)
+{
+    if (!xpcomFunctions.reallocFunc)
+        return nsnull;
+    return xpcomFunctions.reallocFunc(ptr, size);
+}
+
+extern "C" NS_COM void
+NS_Free(void* ptr)
+{
+    if (xpcomFunctions.freeFunc)
+        xpcomFunctions.freeFunc(ptr);
+}
+
 #endif // #ifndef  XPCOM_GLUE_NO_DYNAMIC_LOADING
 
-
-static char  sEnvString[MAXPATHLEN*10];
 static char* spEnvString = 0;
 
 void
 GRE_AddGREToEnvironment()
 {
+#ifdef WINCE
+    return;
+#else
+
   const char* grePath = GRE_GetGREPath();
   if (!grePath)
     return;
@@ -415,38 +500,32 @@ GRE_AddGREToEnvironment()
     path = "";
   }
 
-  if (spEnvString) PR_smprintf_free(spEnvString);
-
   /**
-   * if the PATH string is longer than our static buffer, allocate a
-   * buffer for the environment string. This buffer will be leaked at shutdown!
+   * This buffer will leak at shutdown due to a restriction in PR_SetEnv
+   *   See: https://bugzilla.mozilla.org/show_bug.cgi?id=25982#c3
+   *   See-Also: http://lxr.mozilla.org/mozilla/source/nsprpub/pr/include/prenv.h
    */
-  if (strlen(grePath) + strlen(path) +
-      sizeof(XPCOM_SEARCH_KEY) + sizeof(XPCOM_ENV_PATH_SEPARATOR) > MAXPATHLEN*10) {
-      if (PR_smprintf(XPCOM_SEARCH_KEY "=%s" XPCOM_ENV_PATH_SEPARATOR "%s",
-                      grePath,
-                      path)) {
-          PR_SetEnv(spEnvString);
-      }
-  } else {
-      if (sprintf(sEnvString,
-                  XPCOM_SEARCH_KEY "=%s" XPCOM_ENV_PATH_SEPARATOR "%s",
-                  grePath,
-                  path) > 0) {
-          PR_SetEnv(sEnvString);
-      }
+  char * tempPath = PR_smprintf(XPCOM_SEARCH_KEY "=%s" XPCOM_ENV_PATH_SEPARATOR "%s",
+                                grePath, path);
+  if (tempPath){
+    if (PR_SetEnv(tempPath) == PR_SUCCESS){
+      if (spEnvString) PR_smprintf_free(spEnvString);
+      spEnvString = tempPath;
+    }else
+      PR_smprintf_free(tempPath);
   }
                  
-#if XP_WIN32
+#ifdef XP_WIN32
   // On windows, the current directory is searched before the 
   // PATH environment variable.  This is a very bad thing 
   // since libraries in the cwd will be picked up before
   // any that are in either the application or GRE directory.
 
   if (grePath) {
-    SetCurrentDirectory(grePath);
+      SetCurrentDirectory(grePath);
   }
-#endif
+#endif // XP_WIN32
+#endif // WINCE
 }
 
 

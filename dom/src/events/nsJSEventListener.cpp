@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,25 +14,24 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
  *
- *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 #include "nsJSEventListener.h"
@@ -46,6 +45,7 @@
 #include "nsIXPConnect.h"
 #include "nsIPrivateDOMEvent.h"
 #include "nsGUIEvent.h"
+#include "nsContentUtils.h"
 
 
 /*
@@ -100,8 +100,8 @@ nsJSEventListener::HandleEvent(nsIDOMEvent* aEvent)
       return NS_OK;
     }
     //if (mReturnResult == nsReturnResult_eNotSet) {
-      if (eventString.Equals(NS_LITERAL_STRING("error")) ||
-          eventString.Equals(NS_LITERAL_STRING("mouseover"))) {
+      if (eventString.EqualsLiteral("error") ||
+          eventString.EqualsLiteral("mouseover")) {
         mReturnResult = nsReturnResult_eReverseReturnResult;
       }
       else {
@@ -115,7 +115,7 @@ nsJSEventListener::HandleEvent(nsIDOMEvent* aEvent)
   }
 
   nsresult rv;
-  nsCOMPtr<nsIXPConnect> xpc(do_GetService(nsIXPConnect::GetCID()));
+  nsIXPConnect *xpc = nsContentUtils::XPConnect();
 
   // root
   nsCOMPtr<nsIXPConnectJSObjectHolder> wrapper;
@@ -139,7 +139,7 @@ nsJSEventListener::HandleEvent(nsIDOMEvent* aEvent)
   }
 
   PRBool handledScriptError = PR_FALSE;
-  if (eventString.Equals(NS_LITERAL_STRING("onerror"))) {
+  if (eventString.EqualsLiteral("onerror")) {
     nsCOMPtr<nsIPrivateDOMEvent> priv(do_QueryInterface(aEvent));
     NS_ENSURE_TRUE(priv, NS_ERROR_UNEXPECTED);
 
@@ -179,7 +179,7 @@ nsJSEventListener::HandleEvent(nsIDOMEvent* aEvent)
   }
 
   if (NS_SUCCEEDED(rv)) {
-    if (eventString.Equals(NS_LITERAL_STRING("onbeforeunload"))) {
+    if (eventString.EqualsLiteral("onbeforeunload")) {
       nsCOMPtr<nsIPrivateDOMEvent> priv(do_QueryInterface(aEvent));
       NS_ENSURE_TRUE(priv, NS_ERROR_UNEXPECTED);
 
@@ -194,12 +194,15 @@ nsJSEventListener::HandleEvent(nsIDOMEvent* aEvent)
       if (!JSVAL_IS_VOID(rval)) {
         aEvent->PreventDefault();
 
-        if (JSVAL_IS_STRING(rval)) {
+        // Set the text in the beforeUnload event as long as it wasn't
+        // already set (through event.returnValue, which takes
+        // precedence over a value returned from a JS function in IE)
+        if (JSVAL_IS_STRING(rval) && beforeUnload->text.IsEmpty()) {
           beforeUnload->text = nsDependentJSString(JSVAL_TO_STRING(rval));
         }
       }
     } else if (JSVAL_IS_BOOLEAN(rval)) {
-      // if the handler returned false and its sense is not reversed,
+      // If the handler returned false and its sense is not reversed,
       // or the handler returned true and its sense is reversed from
       // the usual (false means cancel), then prevent default.
 

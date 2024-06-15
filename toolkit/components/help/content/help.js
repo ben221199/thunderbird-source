@@ -22,6 +22,7 @@
 #      Brant Gurganus <brantgurganus2001@cherokeescouting.org>
 #      R.J. Keller <rlk@trfenv.com>
 #      Steffen Wilberg <steffen.wilberg@web.de>
+#      Jeff Walden <jwalden+code@mit.edu>
 #
 # Alternatively, the contents of this file may be used under the terms of
 # either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -39,21 +40,34 @@
 
 # Global Variables
 var helpBrowser;
-var helpWindow;
 var helpSearchPanel;
 var emptySearch;
-var emptySearchText
-var emptySearchLink
+var emptySearchText;
+var emptySearchLink = "about:blank";
 var helpTocPanel;
 var helpIndexPanel;
 var helpGlossaryPanel;
+var strBundle;
 
 # Namespaces
 const NC = "http://home.netscape.com/NC-rdf#";
-const SN = "rdf:http://www.w3.org/1999/02/22-rdf-syntax-ns#";
-const XML = "http://www.w3.org/XML/1998/namespace#"
 const MAX_LEVEL = 40; // maximum depth of recursion in search datasources.
 const MAX_HISTORY_MENU_ITEMS = 6;
+
+# ifdef logic ripped from toolkit/components/help/content/platformClasses.css
+#ifdef XP_WIN
+const platform = "win";
+#else
+#ifdef XP_MACOSX
+const platform = "mac";
+#else
+#ifdef XP_OS2
+const platform = "os2";
+#else
+const platform = "unix";
+#endif
+#endif
+#endif
 
 # Resources
 const RDF = Components.classes["@mozilla.org/rdf/rdf-service;1"]
@@ -64,6 +78,7 @@ const NC_PANELID = RDF.GetResource(NC + "panelid");
 const NC_EMPTY_SEARCH_TEXT = RDF.GetResource(NC + "emptysearchtext");
 const NC_EMPTY_SEARCH_LINK = RDF.GetResource(NC + "emptysearchlink");
 const NC_DATASOURCES = RDF.GetResource(NC + "datasources");
+const NC_PLATFORM = RDF.GetResource(NC + "platform");
 const NC_SUBHEADINGS = RDF.GetResource(NC + "subheadings");
 const NC_NAME = RDF.GetResource(NC + "name");
 const NC_CHILD = RDF.GetResource(NC + "child");
@@ -79,7 +94,6 @@ const RDFContainer = Components.classes["@mozilla.org/rdf/container;1"]
 const CONSOLE_SERVICE = Components.classes['@mozilla.org/consoleservice;1']
     .getService(Components.interfaces.nsIConsoleService);
 
-var urnID = 0;
 var RE;
 
 var helpFileURI;
@@ -88,12 +102,17 @@ var helpFileDS;
 # reduction on all links within the current help set.
 var helpBaseURI;
 
-const defaultHelpFile = "chrome://help/locale/help.rdf";
-# Set from nc:defaulttopic. It is used when the requested uri has no topic
-# specified.
-const defaultTopic = "use-help";
 var searchDatasources = "rdf:null";
 var searchDS = null;
+
+/* defaultTopic is either set
+   1. in the openHelp() call, passed as an argument to the Help window and
+      evaluated in init(), or
+   2. in nc:defaulttopic in the content pack (e.g. firebirdhelp.rdf),
+      evaluated in loadHelpRDF(), or
+   3. "welcome" as a fallback, specified in loadHelpRDF() as well;
+      displayTopic() then uses defaultTopic because topic is null. */
+var defaultTopic;
 
 const NSRESULT_RDF_SYNTAX_ERROR = 0x804e03f7;
 
@@ -117,13 +136,15 @@ function displayTopic(topic) {
 # Initialize the Help window
 function init() {
     // Cache panel references.
-    helpWindow = document.getElementById("help");
     helpSearchPanel = document.getElementById("help-search-panel");
     helpTocPanel = document.getElementById("help-toc-panel");
     helpIndexPanel = document.getElementById("help-index-panel");
     helpGlossaryPanel = document.getElementById("help-glossary-panel");
     helpBrowser = document.getElementById("help-content");
     
+    strBundle = document.getElementById("bundle_help");
+    emptySearchText = strBundle.getString("emptySearchText");
+
     initFindBar();
 
     // Get the content pack, base URL, and help topic
@@ -172,8 +193,7 @@ function init() {
     // Set the text of the sidebar toolbar button to "Hide Sidebar" taken the properties file.
     // This is needed so that it says "Toggle Sidebar" in toolbar customization, but outside
     // of it, it says either "Show Sidebar" or "Hide Sidebar".
-    document.getElementById("help-sidebar-button").label =
-           document.getElementById("bundle_help").getString("hideSidebarLabel");
+    document.getElementById("help-sidebar-button").label = strBundle.getString("hideSidebarLabel");
 }
 
 function loadHelpRDF() {
@@ -186,9 +206,10 @@ function loadHelpRDF() {
             log("Help file: " + helpFileURI + " was not found.");
         }
         try {
-            helpWindow.setAttribute("title",
-                getAttribute(helpFileDS, RDF_ROOT, NC_TITLE, ""));
+            document.title = getAttribute(helpFileDS, RDF_ROOT, NC_TITLE, "");
             helpBaseURI = getAttribute(helpFileDS, RDF_ROOT, NC_BASE, helpBaseURI);
+            // if there's no nc:defaulttopic in the content pack, set "welcome"
+            // as the default topic
             defaultTopic = getAttribute(helpFileDS,
                 RDF_ROOT, NC_DEFAULTTOPIC, "welcome");
 
@@ -203,21 +224,28 @@ function loadHelpRDF() {
                 var datasources = getAttribute(helpFileDS, panelDef,
                     NC_DATASOURCES, "rdf:none");
                 datasources = normalizeLinks(helpBaseURI, datasources);
+
+                var panelPlatforms = getAttribute(helpFileDS, panelDef, NC_PLATFORM, platform);
+                panelPlatforms = panelPlatforms.split(/\s+/);
+
+                if (panelPlatforms.indexOf(platform) == -1)
+                   continue; // ignore datasources for other platforms
+
                 // Cache Additional Datasources to Augment Search Datasources.
                 if (panelID == "search") {
                     emptySearchText = getAttribute(helpFileDS, panelDef,
-                        NC_EMPTY_SEARCH_TEXT, null) || "No search items found.";
+                        NC_EMPTY_SEARCH_TEXT, emptySearchText);
                     emptySearchLink = getAttribute(helpFileDS, panelDef,
-                        NC_EMPTY_SEARCH_LINK, null) || "about:blank";
-                    searchDatasources = datasources;
-                    // Don't try to display them yet!
-                    datasources = "rdf:null";
+                        NC_EMPTY_SEARCH_LINK, emptySearchLink);
+                    searchDatasources += " " + datasources;
+                    continue; // Don't try to display them yet!
                 }
 
                 // Cache TOC Datasources for Use by ID Lookup.
                 var tree = document.getElementById("help-" + panelID + "-panel");
                 loadDatabasesBlocking(datasources);
-                tree.setAttribute("datasources", datasources);
+                tree.setAttribute("datasources",
+                    tree.getAttribute("datasources") + " " + datasources);
             }
         } catch (e) {
             log(e + "");
@@ -376,7 +404,7 @@ function goForward() {
 
 function goHome() {
     // Load "Welcome" page
-    loadURI("chrome://help/locale/firefox_welcome.xhtml");
+    displayTopic(defaultTopic);
 }
 
 function print() {
@@ -414,7 +442,7 @@ function FillHistoryMenu(aParent, aMenu)
         case "forward":
           end  = ((count-index) > MAX_HISTORY_MENU_ITEMS) ? index + MAX_HISTORY_MENU_ITEMS : count;
           if ((index + 1) >= end) return false;
-          for (j = index + 1; j < end; j++)
+          for (j = index + 1; j <= end; j++)
             {
               entry = sessionHistory.getEntryAtIndex(j, false);
               if (entry)
@@ -575,6 +603,27 @@ function showPanel(panelId) {
       document.getElementById("findText").focus();
 }
 
+function findParentNode(node, parentNode)
+{
+  if (node && node.nodeType == Node.TEXT_NODE) {
+    node = node.parentNode;
+  }
+  while (node) {
+    var nodeName = node.localName;
+    if (!nodeName)
+      return null;
+    nodeName = nodeName.toLowerCase();
+    if (nodeName == "body" || nodeName == "html" ||
+        nodeName == "#document") {
+      return null;
+    }
+    if (nodeName == parentNode)
+      return node;
+    node = node.parentNode;
+  }
+  return null;
+}
+
 function onselect_loadURI(tree) {
     try {
         var resource = tree.view.getResourceAtIndex(tree.currentIndex);
@@ -596,15 +645,19 @@ function doFind() {
     // clear any previous results.
     clearDatabases(searchTree.database);
 
-    // split search string into separate terms and compile into regexp's
-    RE = findText.value.split(/\s+/);
-    for (var i=0; i < RE.length; ++i) {
-        if (RE[i] == "")
-            continue;
+    // if the search string is empty or contains only whitespace, purge the results tree and return
+    RE = findText.value.match(/\S+/g);
+    if (!RE) {
+      searchTree.builder.rebuild();
+      return;
+    }
 
-        RE[i] = new RegExp(RE[i], "i");
+    // compile the search string, which has already been split up above, into regexps
+    for (var i=0; i < RE.length; ++i) {
+      RE[i] = new RegExp(RE[i], "i");
     }
     emptySearch = true;
+
     // search TOC
     var resultsDS = Components.classes["@mozilla.org/rdf/datasource;1?name=in-memory-datasource"]
         .createInstance(Components.interfaces.nsIRDFDataSource);
@@ -613,7 +666,7 @@ function doFind() {
     doFindOnDatasource(resultsDS, sourceDS, RDF_ROOT, 0);
 
     // search glossary.
-    tree = helpSearchPanel;
+    tree = helpGlossaryPanel;
     sourceDS = tree.database;
     // If the glossary has never been displayed this will be null (sigh!).
     if (!sourceDS)
@@ -630,17 +683,17 @@ function doFind() {
 
     doFindOnDatasource(resultsDS, sourceDS, RDF_ROOT, 0);
 
+    // search additional search datasources
+    if (searchDatasources != "rdf:null") {
+      if (!searchDS) searchDS = loadCompositeDS(searchDatasources);
+      doFindOnDatasource(resultsDS, searchDS, RDF_ROOT, 0);
+    }
+
     if (emptySearch)
         assertSearchEmpty(resultsDS);
     // Add the datasource to the search tree
     searchTree.database.AddDataSource(resultsDS);
     searchTree.builder.rebuild();
-}
-
-function doEnabling() {
-    var findButton = document.getElementById("findButton");
-    var findTextbox = document.getElementById("findText");
-    findButton.disabled = !findTextbox.value;
 }
 
 function clearDatabases(compositeDataSource) {
@@ -678,30 +731,17 @@ function doFindOnSeq(resultsDS, sourceDS, resource, level) {
     var targets = RDFContainer.GetElements();
     while (targets.hasMoreElements()) {
         var target = targets.getNext();
-        target = target.QueryInterface(Components.interfaces.nsIRDFResource);
+        var link = sourceDS.GetTarget(target, NC_LINK, true);
         var name = sourceDS.GetTarget(target, NC_NAME, true);
         name = name.QueryInterface(Components.interfaces.nsIRDFLiteral);
 
-        if (isMatch(name.Value)) {
+        if (link && isMatch(name.Value)) {
             // we have found a search entry - add it to the results datasource.
+            var urn = RDF.GetAnonymousResource();
+            resultsDS.Assert(urn, NC_NAME, name, true);
+            resultsDS.Assert(urn, NC_LINK, link, true);
+            resultsDS.Assert(RDF_ROOT, NC_CHILD, urn, true);
 
-            // Get URL of html for this entry.
-            var link = sourceDS.GetTarget(target, NC_LINK, true);
-            link = link.QueryInterface(Components.interfaces.nsIRDFLiteral);
-
-            urnID++;
-            resultsDS.Assert(RDF_ROOT,
-                RDF.GetResource("http://home.netscape.com/NC-rdf#child"),
-                RDF.GetResource("urn:" + urnID),
-                true);
-            resultsDS.Assert(RDF.GetResource("urn:" + urnID),
-                 RDF.GetResource("http://home.netscape.com/NC-rdf#name"),
-                 name,
-                 true);
-             resultsDS.Assert(RDF.GetResource("urn:" + urnID),
-                RDF.GetResource("http://home.netscape.com/NC-rdf#link"),
-                link,
-                true);
             emptySearch = false;
         }
         // process any nested rdf:seq elements.
@@ -806,7 +846,6 @@ function toggleSidebar()
 
     //Use the string bundle to retrieve the text "Hide Sidebar"
     //and "Show Sidebar" from the locale directory.
-    var strBundle = document.getElementById("bundle_help");
     if (sidebar.hidden) {
       sidebar.removeAttribute("hidden");
       sidebarButton.label = strBundle.getString("hideSidebarLabel");
@@ -845,3 +884,41 @@ function showRelativePanel(goForward) {
   sidebarButtons[selectedIndex].doCommand();
 }
 
+# getXulWin - Returns the current Help window as a nsIXULWindow.
+function getXulWin()
+{
+  window.QueryInterface(Components.interfaces.nsIInterfaceRequestor);
+  var webnav = window.getInterface(Components.interfaces.nsIWebNavigation);
+  var dsti = webnav.QueryInterface(Components.interfaces.nsIDocShellTreeItem);
+  var treeowner = dsti.treeOwner;
+  var ifreq = treeowner.QueryInterface(Components.interfaces.nsIInterfaceRequestor);
+
+  return ifreq.getInterface(Components.interfaces.nsIXULWindow);
+}
+
+# toggleZLevel - Toggles whether or not the window will always appear on top. Because
+#   alwaysRaised is not supported on an OS other than Windows and Mac OS X, this code
+#   will not appear in those builds.
+#
+#   element - The DOM node that persists the checked state.
+#ifdef XP_MACOSX
+#define HELP_ALWAYS_RAISED_TOGGLE
+#endif
+#ifdef XP_WIN
+#define HELP_ALWAYS_RAISED_TOGGLE
+#endif
+#ifdef HELP_ALWAYS_RAISED_TOGGLE
+function toggleZLevel(element)
+{
+  var xulwin = getXulWin();
+  
+  // Now we can flip the zLevel, and set the attribute so that it persists correctly
+  if (xulwin.zLevel > xulwin.normalZ) {
+    xulwin.zLevel = xulwin.normalZ;
+    element.setAttribute("checked", "false");
+  } else {
+    xulwin.zLevel = xulwin.raisedZ;
+    element.setAttribute("checked", "true");
+  }
+}
+#endif

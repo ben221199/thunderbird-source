@@ -1,35 +1,57 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
- * The contents of this file are subject to the Netscape Public
- * License Version 1.1 (the "License"); you may not use this file
- * except in compliance with the License. You may obtain a copy of
- * the License at http://www.mozilla.org/NPL/
+ * ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * Software distributed under the License is distributed on an "AS
- * IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
- * implied. See the License for the specific language governing
- * rights and limitations under the License.
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
+ *
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+ * for the specific language governing rights and limitations under the
+ * License.
  *
  * The Original Code is Mozilla Communicator client code, released
  * March 31, 1998.
  *
- * The Initial Developer of the Original Code is Netscape
- * Communications Corporation. Portions created by Netscape are
- * Copyright (C) 1998-1999 Netscape Communications Corporation. All
- * Rights Reserved.
+ * The Initial Developer of the Original Code is
+ * Netscape Communications Corporation.
+ * Portions created by the Initial Developer are Copyright (C) 1998-1999
+ * the Initial Developer. All Rights Reserved.
  *
- * Contributors: timeless
- *               slucy@objectivesw.co.uk
- *               Håkan Waara <hwaara@chello.se>
- *               Jan Varga <varga@nixcorp.com>
- *               Seth Spitzer <sspitzer@netscape.com>
- *               David Bienvenu <bienvenu@netscape.com>
- */
+ * Contributor(s):
+ *   timeless
+ *   slucy@objectivesw.co.uk
+ *   Håkan Waara <hwaara@chello.se>
+ *   Jan Varga <varga@ku.sk>
+ *   Seth Spitzer <sspitzer@netscape.com>
+ *   David Bienvenu <bienvenu@netscape.com>
+ *
+ * Alternatively, the contents of this file may be used under the terms of
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK ***** */
 
+const MSG_FLAG_READ              = 0x000001;
 const MSG_FLAG_IMAP_DELETED      = 0x200000;
 const MSG_FLAG_MDN_REPORT_NEEDED = 0x400000;
 const MSG_FLAG_MDN_REPORT_SENT   = 0x800000;
 const MDN_DISPOSE_TYPE_DISPLAYED = 0;
 const MSG_DB_LARGE_COMMIT        = 1;
+
+const kClassicMailLayout = 0;
+const kWideMailLayout = 1;
+const kVerticalMailLayout = 2;
 
 var gMessengerBundle;
 var gPromptService;
@@ -116,32 +138,7 @@ function goUpdateMailMenuItems(commandset)
 
 function file_init()
 {
-    if (!gMessengerBundle)
-        gMessengerBundle = document.getElementById("bundle_messenger");
-    file_attachments();
-/* file_attachments() can return false to indicate a load failure,
-   but if you return false to oncreate then
-   the popup menu will not display which is not a good thing.
- */
-
   document.commandDispatcher.updateCommands('create-menu-file');
-}
-
-function file_attachments()
-{
-  var numAttachments = GetNumberOfAttachmentsForDisplayedMessage();
-  var amParent=document.getElementById('fileAttachmentMenu');
-  if (!amParent)
-    return false;
-
-  // hide the attachment menu item if the message does not have any messages..
-  if (numAttachments > 0)
-  {
-    amParent.removeAttribute('hidden');
-  }
-  else
-    amParent.setAttribute('hidden',true);
-  return true;
 }
 
 function InitEditMessagesMenu()
@@ -160,15 +157,16 @@ function view_init()
 {
   if (!gMessengerBundle)
       gMessengerBundle = document.getElementById("bundle_messenger");
-  var message_menuitem=document.getElementById('menu_showMessage');
 
-  if (message_menuitem)
-  {
-      var message_menuitem_hidden = message_menuitem.getAttribute("hidden");
-      if(message_menuitem_hidden != "true"){
-          message_menuitem.setAttribute('checked',!IsThreadAndMessagePaneSplitterCollapsed());
-      }
+  var message_menuitem = document.getElementById('menu_showMessagePane');
+  if (message_menuitem && !message_menuitem.hidden) {
+      message_menuitem.setAttribute('checked', !IsMessagePaneCollapsed());
+      message_menuitem.setAttribute('disabled', gAccountCentralLoaded);
   }
+
+  var folderPane_menuitem = document.getElementById('menu_showFolderPane');
+  if (folderPane_menuitem && !folderPane_menuitem.hidden)
+    folderPane_menuitem.setAttribute('checked', !IsFolderPaneCollapsed());
 
   // Disable some menus if account manager is showing
   var sort_menuitem = document.getElementById('viewSortMenu');
@@ -189,6 +187,14 @@ function view_init()
   document.getElementById("viewAttachmentsInlineMenuitem").setAttribute("checked", viewAttachmentInline ? "true" : "false");
 
   document.commandDispatcher.updateCommands('create-menu-view');
+}
+
+function InitViewLayoutStyleMenu(event)
+{
+  var paneConfig = GetMailPaneConfig();
+  var layoutStyleMenuitem = event.target.childNodes[paneConfig];
+  if (layoutStyleMenuitem)
+    layoutStyleMenuitem.setAttribute("checked", "true"); 
 }
 
 function setSortByMenuItemCheckState(id, value)
@@ -215,21 +221,32 @@ function InitViewSortByMenu()
     setSortByMenuItemCheckState("sortByJunkStatusMenuitem", (sortType == nsMsgViewSortType.byJunkStatus));
     setSortByMenuItemCheckState("sortBySenderMenuitem", (sortType == nsMsgViewSortType.byAuthor));
     setSortByMenuItemCheckState("sortByRecipientMenuitem", (sortType == nsMsgViewSortType.byRecipient));
+    setSortByMenuItemCheckState("sortByAttachmentsMenuitem", (sortType == nsMsgViewSortType.byAttachments));
 
     var sortOrder = gDBView.sortOrder;
+    var sortTypeSupportsGrouping = (sortType == nsMsgViewSortType.byAuthor 
+        || sortType == nsMsgViewSortType.byDate || sortType == nsMsgViewSortType.byPriority
+        || sortType == nsMsgViewSortType.bySubject || sortType == nsMsgViewSortType.byLabel
+        || sortType == nsMsgViewSortType.byRecipient);
 
     setSortByMenuItemCheckState("sortAscending", (sortOrder == nsMsgViewSortOrder.ascending));
     setSortByMenuItemCheckState("sortDescending", (sortOrder == nsMsgViewSortOrder.descending));
 
-    var threaded = ((gDBView.viewFlags & nsMsgViewFlagsType.kThreadedDisplay) != 0);
+    var grouped = ((gDBView.viewFlags & nsMsgViewFlagsType.kGroupBySort) != 0);
+    var threaded = ((gDBView.viewFlags & nsMsgViewFlagsType.kThreadedDisplay) != 0 && !grouped);
     var sortThreadedMenuItem = document.getElementById("sortThreaded");
     var sortUnthreadedMenuItem = document.getElementById("sortUnthreaded");
 
     sortThreadedMenuItem.setAttribute("checked", threaded);
-    sortUnthreadedMenuItem.setAttribute("checked", !threaded);
+    sortUnthreadedMenuItem.setAttribute("checked", !threaded && !grouped);
 
     sortThreadedMenuItem.setAttribute("disabled", !gDBView.supportsThreading);
     sortUnthreadedMenuItem.setAttribute("disabled", !gDBView.supportsThreading);
+
+    var groupBySortOrderMenuItem = document.getElementById("groupBySort");
+
+    groupBySortOrderMenuItem.setAttribute("disabled", !gDBView.supportsThreading || !sortTypeSupportsGrouping);
+    groupBySortOrderMenuItem.setAttribute("checked", grouped);
 }
 
 function InitViewMessagesMenu()
@@ -289,9 +306,10 @@ function viewRefreshCustomMailViews(aCurrentViewValue)
   // remove any existing entries...
   var menupopupNode = document.getElementById('viewMessageViewPopup');
   var userDefinedItems = menupopupNode.getElementsByAttribute("userdefined","true");
-  for (var i=0; i<userDefinedItems.length; i++)
+  for (var i=0; userDefinedItems.item(i); )
   {
-    menupopupNode.removeChild(userDefinedItems[i]);
+    if (!menupopupNode.removeChild(userDefinedItems[i]))
+      ++i;
   }
   
   // now rebuild the list
@@ -324,7 +342,7 @@ function ViewMessagesBy(id)
 {
   var viewPicker = document.getElementById('viewPicker');
   viewPicker.selectedItem = document.getElementById(id);
-  viewChange(viewPicker);
+  viewChange(viewPicker, viewPicker.value);
 }
 
 function InitMessageMenu()
@@ -592,21 +610,8 @@ function InitMessageMark()
 
 function UpdateJunkToolbarButton()
 {
-  try 
-  {
-    var junkButton = document.getElementById("button-junk");
-    if (SelectedMessagesAreJunk())
-    {
-      junkButton.label = junkButton.getAttribute('notjunk_label');
-      junkButton.setAttribute('tooltiptext', junkButton.getAttribute('notjunk_tooltiptext'));
-    }
-    else
-    {
-      junkButton.label = junkButton.getAttribute('junk_label');
-      junkButton.setAttribute('tooltiptext', junkButton.getAttribute('junk_tooltiptext'));
-    }
-  } 
-  catch(e) {}
+  var junkButtonDeck = document.getElementById("button-junk");
+  junkButtonDeck.selectedIndex = SelectedMessagesAreJunk() ? 1 : 0;
 }
 
 function UpdateDeleteCommand()
@@ -716,6 +721,7 @@ function GetInboxFolder(server)
 
 function GetMessagesForInboxOnServer(server)
 {
+  dump ("GetMessagesForInboxOnServer uri = " + server.serverURI + "\n");
   var inboxFolder = GetInboxFolder(server);
   if (!inboxFolder) return;
 
@@ -741,23 +747,33 @@ function MsgGetMessagesForAllServers(defaultServer)
     try
     {
         var allServers = accountManager.allServers;
+        var i;
+        // array of isupportsarrays of servers for a particular folder
+        var pop3DownloadServersArray = new Array();
+        // parallel isupports array of folders to download to...
+        var localFoldersToDownloadTo = Components.classes["@mozilla.org/supports-array;1"].createInstance(Components.interfaces.nsISupportsArray);
+        var pop3Server;
 
-        for (var i=0;i<allServers.Count();i++)
+        for (i = 0; i < allServers.Count(); ++i)
         {
             var currentServer = allServers.GetElementAt(i).QueryInterface(Components.interfaces.nsIMsgIncomingServer);
             var protocolinfo = Components.classes["@mozilla.org/messenger/protocol/info;1?type=" + currentServer.type].getService(Components.interfaces.nsIMsgProtocolInfo);
             if (protocolinfo.canLoginAtStartUp && currentServer.loginAtStartUp)
             {
-                if (defaultServer && defaultServer.equals(currentServer))
+                if (currentServer.type == "pop3" && currentServer.downloadOnBiff)
                 {
-                    //dump(currentServer.serverURI + "...skipping, already opened\n");
+                  CoalesceGetMsgsForPop3ServersByDestFolder(currentServer, pop3DownloadServersArray, localFoldersToDownloadTo);
+                  pop3Server = currentServer.QueryInterface(Components.interfaces.nsIPop3IncomingServer);
                 }
                 else
-                {
-                    // Check to see if there are new messages on the server
-                    currentServer.PerformBiff(msgWindow);
-                }
+                // Check to see if there are new messages on the server
+                currentServer.PerformBiff(msgWindow);
             }
+        }
+        for (i = 0; i < pop3DownloadServersArray.length; ++i)
+        {
+          // any ol' pop3Server will do - the serversArray specifies which servers to download from
+          pop3Server.downloadMailFromServers(pop3DownloadServersArray[i], msgWindow, localFoldersToDownloadTo.GetElementAt(i), null);
         }
     }
     catch(ex)
@@ -1109,13 +1125,46 @@ function MsgSaveAsFile()
     }
 }
 
-
 function MsgSaveAsTemplate()
 {
     var folder = GetLoadedMsgFolder();
     if (GetNumSelectedMessages() == 1) {
         SaveAsTemplate(GetFirstSelectedMessage(), folder);
     }
+}
+
+const nsIFilePicker = Components.interfaces.nsIFilePicker;
+
+function MsgOpenFromFile()
+{
+   var fp = Components.classes["@mozilla.org/filepicker;1"].createInstance(nsIFilePicker);
+
+   var strBundleService = Components.classes["@mozilla.org/intl/stringbundle;1"].getService();
+   strBundleService = strBundleService.QueryInterface(Components.interfaces.nsIStringBundleService);
+   var extbundle = strBundleService.createBundle("chrome://messenger/locale/messenger.properties");
+   var filterLabel = extbundle.GetStringFromName("EMLFiles");
+   var windowTitle = extbundle.GetStringFromName("OpenEMLFiles");
+
+   fp.init(window, windowTitle, nsIFilePicker.modeOpen);
+   fp.appendFilter(filterLabel, "*.eml; *.msg");
+
+   // Default or last filter is "All Files"
+   fp.appendFilters(nsIFilePicker.filterAll);
+
+  try {
+     var ret = fp.show();
+     if (ret == nsIFilePicker.returnCancel)
+       return;
+   }
+   catch (ex) {
+     dump("filePicker.chooseInputFile threw an exception\n");
+     return;
+   }
+
+  var uri = fp.fileURL;
+  uri.query = "type=x-message-display";
+
+  MsgOpenNewWindowForMessage(uri, null);
 }
 
 function MsgOpenNewWindowForMsgHdr(hdr)
@@ -1358,7 +1407,7 @@ function MsgFilters(emailAddress, folder)
          we check this here in args to show filterList dialog */
       if ("refresh" in args && args.refresh)
       {
-         args = { refresh: true, folder: preselectedFolder };
+         args = { refresh: true, folder: folder };
          MsgFilterList(args);
       }
     }
@@ -1399,6 +1448,11 @@ function MsgApplyFilters()
     }
   }
   filterService.applyFiltersToFolders(tempFilterList, selectedFolders, msgWindow);
+}
+
+function ChangeMailLayout(newLayout)
+{
+  gPrefBranch.setIntPref("mail.pane_config.dynamic", newLayout);
 }
 
 function MsgViewAllHeaders()
@@ -1699,7 +1753,7 @@ function MsgAddAllToAddressBook() {}
 
 function SpaceHit(event)
 {
-  var contentWindow = window.top._content;
+  var contentWindow = window.top.content;
 
   if (event && event.shiftKey) {
     // if at the start of the message, go to the previous one
@@ -1886,22 +1940,64 @@ function SendUnsentMessages()
   }
 }
 
+function CoalesceGetMsgsForPop3ServersByDestFolder(currentServer, pop3DownloadServersArray, localFoldersToDownloadTo)
+{
+  var outNumFolders = new Object();
+  var inboxFolder = currentServer.rootMsgFolder.getFoldersWithFlag(0x1000, 1, outNumFolders); 
+  // coalesce the servers that download into the same folder...
+  var index = localFoldersToDownloadTo.GetIndexOf(inboxFolder);
+  if (index == -1)
+  {
+    if(inboxFolder) 
+    {
+      inboxFolder.biffState =  Components.interfaces.nsIMsgFolder.nsMsgBiffState_NoMail;
+      inboxFolder.clearNewMessages();
+    }
+    localFoldersToDownloadTo.AppendElement(inboxFolder);
+    index = pop3DownloadServersArray.length
+    pop3DownloadServersArray[index] = Components.classes["@mozilla.org/supports-array;1"].createInstance(Components.interfaces.nsISupportsArray);
+  }
+  pop3DownloadServersArray[index].AppendElement(currentServer);
+}
+
 function GetMessagesForAllAuthenticatedAccounts()
 {
-   try {
+  // now log into any server
+  try
+  {
     var allServers = accountManager.allServers;
-    for (var i=0;i<allServers.Count();i++) {
+    var i;
+    // array of isupportsarrays of servers for a particular folder
+    var pop3DownloadServersArray = new Array();
+    // parallel isupports array of folders to download to...
+    var localFoldersToDownloadTo = Components.classes["@mozilla.org/supports-array;1"].createInstance(Components.interfaces.nsISupportsArray);
+    var pop3Server;
+
+    for (i = 0; i < allServers.Count(); ++i)
+    {
       var currentServer = allServers.GetElementAt(i).QueryInterface(Components.interfaces.nsIMsgIncomingServer);
-      var protocolinfo = Components.classes["@mozilla.org/messenger/protocol/info;1?type=" +
-                           currentServer.type].getService(Components.interfaces.nsIMsgProtocolInfo);
-      if (protocolinfo.canGetMessages && !currentServer.passwordPromptRequired) {
-        // Get new messages now
-        GetMessagesForInboxOnServer(currentServer);
+      var protocolinfo = Components.classes["@mozilla.org/messenger/protocol/info;1?type=" + currentServer.type].getService(Components.interfaces.nsIMsgProtocolInfo);
+      if (protocolinfo.canGetMessages && !currentServer.passwordPromptRequired)
+      {
+        if (currentServer.type == "pop3")
+        {
+          CoalesceGetMsgsForPop3ServersByDestFolder(currentServer, pop3DownloadServersArray, localFoldersToDownloadTo);
+          pop3Server = currentServer.QueryInterface(Components.interfaces.nsIPop3IncomingServer);
+        }
+        else
+        // get new messages on the server for imap or rss
+          GetMessagesForInboxOnServer(currentServer);
       }
     }
+    for (i = 0; i < pop3DownloadServersArray.length; ++i)
+    {
+      // any ol' pop3Server will do - the serversArray specifies which servers to download from
+      pop3Server.downloadMailFromServers(pop3DownloadServersArray[i], msgWindow, localFoldersToDownloadTo.GetElementAt(i), null);
+    }
   }
-  catch(ex) {
-    dump(ex + "\n");
+  catch(ex)
+  {
+      dump(ex + "\n");
   }
 }
 
@@ -2044,6 +2140,12 @@ function OnMsgLoaded(aUrl)
     if (!folder || !msgURI)
       return;
 
+    // If we are in the middle of a delete or move operation, make sure that
+    // if the user clicks on another message then that message stays selected
+    // and the selection does not "snap back" to the message chosen by
+    // SetNextMessageAfterDelete() when the operation completes (bug 243532).
+    gNextMessageViewIndexAfterDelete = -2;
+
     if (/type=x-message-display/.test(msgURI))
       SetUpJunkBar(null);
     else
@@ -2126,9 +2228,20 @@ function HandleMDNResponse(aUrl)
 	if (IsNewsMessage(msgURI))
 		return;
 
+  // if the message is marked as junk, do NOT attempt to process a return receipt
+  // in order to better protect the user
+  if (SelectedMessagesAreJunk())
+    return;
+
   var msgHdr = messenger.messageServiceFromURI(msgURI).messageURIToMsgHdr(msgURI);
-  var mimeHdr = aUrl.mimeHeaders;
-    
+  var mimeHdr;
+
+  try {
+    mimeHdr = aUrl.mimeHeaders;
+  } catch (ex) {
+    return;
+  }
+
   // If we didn't get the message id when we downloaded the message header,
   // we cons up an md5: message id. If we've done that, we'll try to extract
   // the message id out of the mime headers for the whole message.
@@ -2147,7 +2260,8 @@ function HandleMDNResponse(aUrl)
     return;
 
   var DNTHeader = mimeHdr.extractHeader("Disposition-Notification-To", false);
-  if (!DNTHeader)
+  var oldDNTHeader = mimeHdr.extractHeader("Return-Receipt-To", false);
+  if (!DNTHeader && !oldDNTHeader)
     return;
  
   // Everything looks good so far, let's generate the MDN response.

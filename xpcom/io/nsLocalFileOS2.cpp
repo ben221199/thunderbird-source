@@ -1,27 +1,43 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-/*
- * The contents of this file are subject to the Netscape Public
- * License Version 1.1 (the "License"); you may not use this file
- * except in compliance with the License. You may obtain a copy of
- * the License at http://www.mozilla.org/NPL/
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */ 
+/* ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * Software distributed under the License is distributed on an "AS
- * IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
- * implied. See the License for the specific language governing
- * rights and limitations under the License.
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
- * The Original Code is Mozilla Communicator client code, 
- * released March 31, 1998. 
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+ * for the specific language governing rights and limitations under the
+ * License.
  *
- * The Initial Developer of the Original Code is Netscape Communications 
- * Corporation.  Portions created by Netscape are
- * Copyright (C) 1998-2000 Netscape Communications Corporation. All
- * Rights Reserved.
+ * The Original Code is Mozilla Communicator client code, released
+ * March 31, 1998.
  *
- * Contributor(s): 
- *     Henry Sobotka <sobotka@axess.com>
- *     IBM Corp.
- */
+ * The Initial Developer of the Original Code is
+ * Netscape Communications Corporation.
+ * Portions created by the Initial Developer are Copyright (C) 1998-2000
+ * the Initial Developer. All Rights Reserved.
+ *
+ * Contributor(s):
+ *   Henry Sobotka <sobotka@axess.com>
+ *   IBM Corp.
+ *   Rich Walsh <dragtext@e-vertise.com>
+ *
+ * Alternatively, the contents of this file may be used under the terms of
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK ***** */
 
 
 #include "nsCOMPtr.h"
@@ -31,6 +47,7 @@
 #include "nsNativeCharsetUtils.h"
 
 #include "nsISimpleEnumerator.h"
+#include "nsIDirectoryEnumerator.h"
 #include "nsIComponentManager.h"
 #include "prtypes.h"
 #include "prio.h"
@@ -43,6 +60,8 @@
 #include "prproces.h"
 #include "prthread.h"
 
+#include "nsISupportsPrimitives.h"
+#include "nsArray.h"
 
 static unsigned char* PR_CALLBACK
 _mbschr( const unsigned char* stringToSearch, int charToSearchFor);
@@ -99,23 +118,6 @@ static nsresult ConvertOS2Error(int err)
     return rv;
 }
 
-
-static void
-myLL_II2L(PRInt32 hi, PRInt32 lo, PRInt64 *result)
-{
-    PRInt64 a64, b64;  // probably could have been done with 
-                       // only one PRInt64, but these are macros, 
-                       // and I am a wimp.
-
-    // put hi in the low bits of a64.
-    LL_I2L(a64, hi);
-    // now shift it to the upperbit and place it the result in result
-    LL_SHL(b64, a64, 32);
-    // now put the low bits on by adding them to the result.
-    LL_ADD(*result, b64, lo);
-}
-
-
 static void
 myLL_L2II(PRInt64 result, PRInt32 *hi, PRInt32 *lo )
 {
@@ -133,8 +135,12 @@ myLL_L2II(PRInt64 result, PRInt32 *hi, PRInt32 *lo )
     LL_L2I(*lo, a64);
 }
 
+//-----------------------------------------------------------------------------
+// nsDirEnumerator
+//-----------------------------------------------------------------------------
 
-class nsDirEnumerator : public nsISimpleEnumerator
+class nsDirEnumerator : public nsISimpleEnumerator,
+                        public nsIDirectoryEnumerator
 {
     public:
 
@@ -163,7 +169,7 @@ class nsDirEnumerator : public nsISimpleEnumerator
             if (mDir == nsnull)    // not a directory?
                 return NS_ERROR_FAILURE;
 
-            mParent          = parent;    
+            mParent = parent;
             return NS_OK;
         }
 
@@ -206,6 +212,8 @@ class nsDirEnumerator : public nsISimpleEnumerator
                 mNext = do_QueryInterface(file);
             }
             *result = mNext != nsnull;
+            if (!*result)
+                Close();
             return NS_OK;
         }
 
@@ -223,14 +231,37 @@ class nsDirEnumerator : public nsISimpleEnumerator
             return NS_OK;
         }
 
-    private:
-        ~nsDirEnumerator() 
+        NS_IMETHOD GetNextFile(nsIFile **result)
         {
-            if (mDir) 
+            *result = nsnull;
+            PRBool hasMore = PR_FALSE;
+            nsresult rv = HasMoreElements(&hasMore);
+            if (NS_FAILED(rv) || !hasMore)
+                return rv;
+            *result = mNext;
+            NS_IF_ADDREF(*result);
+            mNext = nsnull;
+            return NS_OK;
+        }
+
+        NS_IMETHOD Close()
+        {
+            if (mDir)
             {
                 PRStatus status = PR_CloseDir(mDir);
                 NS_ASSERTION(status == PR_SUCCESS, "close failed");
+                if (status != PR_SUCCESS)
+                    return NS_ERROR_FAILURE;
+                mDir = nsnull;
             }
+            return NS_OK;
+        }
+
+        // dtor can be non-virtual since there are no subclasses, but must be
+        // public to use the class on the stack.
+        ~nsDirEnumerator()
+        {
+            Close();
         }
 
     protected:
@@ -239,8 +270,110 @@ class nsDirEnumerator : public nsISimpleEnumerator
         nsCOMPtr<nsILocalFile>  mNext;
 };
 
-NS_IMPL_ISUPPORTS1(nsDirEnumerator, nsISimpleEnumerator)
+NS_IMPL_ISUPPORTS2(nsDirEnumerator, nsISimpleEnumerator, nsIDirectoryEnumerator)
 
+//---------------------------------------------------------------------
+// class TypeEaEnumerator - a convenience for accessing
+// a file's .TYPE extended attribute
+//---------------------------------------------------------------------
+
+// this struct describes the first entry for an MVMT or MVST EA;
+// .TYPE is supposed to be MVMT but is sometimes malformed as MVST
+
+typedef struct _MVHDR {
+    USHORT  usEAType;
+    USHORT  usCodePage;
+    USHORT  usNumEntries;
+    USHORT  usDataType;
+    USHORT  usDataLth;
+    char    data[1];
+} MVHDR;
+
+typedef MVHDR *PMVHDR;
+
+
+class TypeEaEnumerator
+{
+public:
+    TypeEaEnumerator() : mEaBuf(nsnull) { }
+    ~TypeEaEnumerator() { if (mEaBuf) NS_Free(mEaBuf); }
+
+    nsresult Init(nsLocalFile * aFile);
+    char *   GetNext(PRUint32 *lth);
+
+private:
+    char *  mEaBuf;
+    char *  mpCur;
+    PMVHDR  mpMvh;
+    USHORT  mLth;
+    USHORT  mCtr;
+};
+
+
+nsresult TypeEaEnumerator::Init(nsLocalFile * aFile)
+{
+#define EABUFSIZE 512
+
+    // provide a buffer for the results
+    mEaBuf = (char*)NS_Alloc(EABUFSIZE);
+    if (!mEaBuf)
+        return NS_ERROR_OUT_OF_MEMORY;
+
+    PFEA2LIST   pfea2list = (PFEA2LIST)mEaBuf;
+    pfea2list->cbList = EABUFSIZE;
+
+    // ask for the .TYPE extended attribute
+    nsresult rv = aFile->GetEA(".TYPE", pfea2list);
+    if (NS_FAILED(rv))
+        return rv;
+
+    // point at the data - it starts immediately after the EA's name;
+    // then confirm the EA is MVMT (correct) or MVST (acceptable)
+    mpMvh = (PMVHDR)&(pfea2list->list[0].szName[pfea2list->list[0].cbName+1]);
+    if (mpMvh->usEAType != EAT_MVMT)
+        if (mpMvh->usEAType != EAT_MVST || mpMvh->usDataType != EAT_ASCII)
+            return NS_ERROR_FAILURE;
+
+    // init the variables that tell us where we are in the lsit
+    mLth = 0;
+    mCtr = 0;
+    mpCur = (char*)(mpMvh->usEAType == EAT_MVMT ?
+                    &mpMvh->usDataType : &mpMvh->usDataLth);
+
+    return NS_OK;
+}
+
+
+char *   TypeEaEnumerator::GetNext(PRUint32 *lth)
+{
+    char *  result = nsnull;
+
+    // this is a loop so we can skip invalid entries if needed;
+    // normally, it will break out on the first iteration
+    while (mCtr++ < mpMvh->usNumEntries) {
+
+        // advance to the next entry
+        mpCur += mLth;
+
+        // if MVMT, ensure the datatype is OK, then advance
+        // to the length field present in both formats
+        if (mpMvh->usEAType == EAT_MVMT) {
+            if (*((PUSHORT)mpCur) != EAT_ASCII)
+                continue;
+            mpCur += sizeof(USHORT);
+        }
+
+        // get the data's length, point at the data itself, then exit
+        mLth = *lth = *((PUSHORT)mpCur);
+        mpCur += sizeof(USHORT);
+        result = mpCur;
+        break;
+    }
+
+    return result;
+}
+
+//---------------------------------------------------------------------
 
 nsLocalFile::nsLocalFile()
 {
@@ -255,7 +388,7 @@ nsLocalFile::nsLocalFile(const nsLocalFile& other)
 }
 
 /* nsISupports interface implementation. */
-NS_IMPL_THREADSAFE_ISUPPORTS2(nsLocalFile, nsILocalFile, nsIFile)
+NS_IMPL_THREADSAFE_ISUPPORTS3(nsLocalFile, nsILocalFile, nsIFile, nsILocalFileOS2)
 
 NS_METHOD
 nsLocalFile::nsLocalFileConstructor(nsISupports* outer, const nsIID& aIID, void* *aInstancePtr)
@@ -542,6 +675,128 @@ nsLocalFile::GetNativePath(nsACString &_retval)
     return NS_OK;
 }
 
+//---------------------------------------------------------------------
+
+// get any single extended attribute for the current file or directory
+
+nsresult
+nsLocalFile::GetEA(const char *eaName, PFEA2LIST pfea2list)
+{
+    // ensure we have an out-buffer whose length is specified
+    if (!pfea2list || !pfea2list->cbList)
+        return NS_ERROR_FAILURE;
+
+    // the gea2list's name field is only 1 byte long;
+    // this expands its allocation to hold a 33 byte name
+    union {
+        GEA2LIST    gea2list;
+        char        dummy[sizeof(GEA2LIST)+32];
+    };
+    EAOP2       eaop2;
+
+    eaop2.fpFEA2List = pfea2list;
+    eaop2.fpGEA2List = &gea2list;
+
+    // fill in the request structure
+    dummy[sizeof(GEA2LIST)+31] = 0;
+    gea2list.list[0].oNextEntryOffset = 0;
+    strcpy(gea2list.list[0].szName, eaName);
+    gea2list.list[0].cbName = strlen(gea2list.list[0].szName);
+    gea2list.cbList = sizeof(GEA2LIST) + gea2list.list[0].cbName;
+
+    // see what we get - this will succeed even if the EA doesn't exist
+    APIRET rc = DosQueryPathInfo(mWorkingPath.get(), FIL_QUERYEASFROMLIST,
+                                 &eaop2, sizeof(eaop2));
+    if (rc)
+        return ConvertOS2Error(rc);
+
+    // if the data length is zero, requested EA doesn't exist
+    if (!pfea2list->list[0].cbValue)
+        return NS_ERROR_FAILURE;
+
+    return NS_OK;
+}
+
+
+// return an array of file types or null if there are none
+
+NS_IMETHODIMP
+nsLocalFile::GetFileTypes(nsIArray **_retval)
+{
+    NS_ENSURE_ARG(_retval);
+    *_retval = 0;
+
+    // fetch the .TYPE ea & prepare for enumeration
+    TypeEaEnumerator typeEnum;
+    nsresult rv = typeEnum.Init(this);
+    if (NS_FAILED(rv))
+        return rv;
+
+    // create an array that's scriptable
+    nsCOMPtr<nsIMutableArray> mutArray;
+    rv = NS_NewArray(getter_AddRefs(mutArray));
+    if (NS_FAILED(rv))
+        return rv;
+
+    PRInt32  cnt;
+    PRUint32 lth;
+    char *   ptr;
+
+    // get each file type, convert to a CString, then add to the array
+    for (cnt=0, ptr=typeEnum.GetNext(&lth); ptr; ptr=typeEnum.GetNext(&lth)) {
+        nsCOMPtr<nsISupportsCString> typeString(
+                    do_CreateInstance(NS_SUPPORTS_CSTRING_CONTRACTID, &rv));
+        if (NS_SUCCEEDED(rv)) {
+            nsCAutoString temp;
+            temp.Assign(ptr, lth);
+            typeString->SetData(temp);
+            mutArray->AppendElement(typeString, PR_FALSE);
+            cnt++;
+        }
+    }
+
+    // if the array has any contents, addref & return it
+    if (cnt) {
+        *_retval = mutArray;
+        NS_ADDREF(*_retval);
+        rv = NS_OK;
+    }
+    else
+        rv = NS_ERROR_FAILURE;
+
+    return rv;
+}
+
+
+// see if the file is of the requested type
+
+NS_IMETHODIMP
+nsLocalFile::IsFileType(const nsACString& fileType, PRBool *_retval)
+{
+    NS_ENSURE_ARG(_retval);
+    *_retval = PR_FALSE;
+
+    // fetch the .TYPE ea & prepare for enumeration
+    TypeEaEnumerator typeEnum;
+    nsresult rv = typeEnum.Init(this);
+    if (NS_FAILED(rv))
+        return rv;
+
+    PRUint32 lth;
+    char *   ptr;
+
+    // compare each type to the request;  if there's a match, exit
+    for (ptr = typeEnum.GetNext(&lth); ptr; ptr = typeEnum.GetNext(&lth))
+        if (fileType.EqualsASCII(ptr, lth)) {
+            *_retval = PR_TRUE;
+            break;
+        }
+
+    return NS_OK;
+}
+
+//---------------------------------------------------------------------
+
 nsresult
 nsLocalFile::CopySingleFile(nsIFile *sourceFile, nsIFile *destParent, const nsACString &newName, PRBool move)
 {
@@ -672,18 +927,25 @@ nsLocalFile::CopyMove(nsIFile *aParentDir, const nsACString &newName, PRBool mov
         }
     }
 
-    // check to see if we are a directory, if so enumerate it.
-
+    // Try different ways to move/copy files/directories
+    PRBool done = PR_FALSE;
     PRBool isDir;
     IsDirectory(&isDir);
 
-    if (!isDir)
+    // Try to move the file or directory, or try to copy a single file 
+    if (move || !isDir)
     {
+        // when moving things, first try to just MoveFile it, even if it is a directory
         rv = CopySingleFile(this, newParentDir, newName, move);
-        if (NS_FAILED(rv))
-            return rv;
+        done = NS_SUCCEEDED(rv);
+        // If we are moving a directory and that fails, fallback on directory
+        // enumeration.  See bug 231300 for details.
+        if (!done && !(move && isDir))
+            return rv;  
     }
-    else
+    
+    // Not able to copy or move directly, so enumerate it
+    if (!done)
     {
         // create a new target destination in the new parentDir;
         nsCOMPtr<nsIFile> target;
@@ -712,36 +974,34 @@ nsLocalFile::CopyMove(nsIFile *aParentDir, const nsACString &newName, PRBool mov
         if (NS_FAILED(rv))
             return rv;
         
-        nsDirEnumerator* dirEnum = new nsDirEnumerator();
-        if (!dirEnum)
-            return NS_ERROR_OUT_OF_MEMORY;
+        nsDirEnumerator dirEnum;
         
-        rv = dirEnum->Init(this);
-
-        nsCOMPtr<nsISimpleEnumerator> iterator = do_QueryInterface(dirEnum);
+        rv = dirEnum.Init(this);
+        if (NS_FAILED(rv)) {
+            NS_WARNING("dirEnum initalization failed");
+            return rv;
+        }
 
         PRBool more;
-        iterator->HasMoreElements(&more);
-        while (more)
+        while (NS_SUCCEEDED(dirEnum.HasMoreElements(&more)) && more)
         {
             nsCOMPtr<nsISupports> item;
             nsCOMPtr<nsIFile> file;
-            iterator->GetNext(getter_AddRefs(item));
+            dirEnum.GetNext(getter_AddRefs(item));
             file = do_QueryInterface(item);
-            PRBool isDir, isLink;
-            
-            file->IsDirectory(&isDir);
-
-            if (move)
+	    if (file)
             {
-                rv = file->MoveToNative(target, nsCString());
+                if (move)
+                {
+                    rv = file->MoveToNative(target, EmptyCString());
+                    NS_ENSURE_SUCCESS(rv,rv);		    
+                }
+                else
+                {   
+                    rv = file->CopyToNative(target, EmptyCString());
+                    NS_ENSURE_SUCCESS(rv,rv);		    
+                }
             }
-            else
-            {   
-                rv = file->CopyToNative(target, nsCString());
-            }
-                    
-            iterator->HasMoreElements(&more);
         }
         // we've finished moving all the children of this directory
         // in the new directory.  so now delete the directory
@@ -751,7 +1011,7 @@ nsLocalFile::CopyMove(nsIFile *aParentDir, const nsACString &newName, PRBool mov
         // to the new location.  nothing should be left in the folder.
         if (move)
         {
-          rv = Remove(PR_FALSE);
+          rv = Remove(PR_FALSE /* recursive */);
           NS_ENSURE_SUCCESS(rv,rv);
         }
     }
@@ -839,26 +1099,20 @@ nsLocalFile::Remove(PRBool recursive)
     {
         if (recursive)
         {
-            nsDirEnumerator* dirEnum = new nsDirEnumerator();
-            if (dirEnum == nsnull)
-                return NS_ERROR_OUT_OF_MEMORY;
-        
-            rv = dirEnum->Init(this);
+            nsDirEnumerator dirEnum;
 
-            nsCOMPtr<nsISimpleEnumerator> iterator = do_QueryInterface(dirEnum);
-        
+            rv = dirEnum.Init(this);
+            if (NS_FAILED(rv))
+                return rv;
+
             PRBool more;
-            iterator->HasMoreElements(&more);
-            while (more)
+            while (NS_SUCCEEDED(dirEnum.HasMoreElements(&more)) && more)
             {
                 nsCOMPtr<nsISupports> item;
-                nsCOMPtr<nsIFile> file;
-                iterator->GetNext(getter_AddRefs(item));
-                file = do_QueryInterface(item);
-    
-                file->Remove(recursive);
-                
-                iterator->HasMoreElements(&more);
+                dirEnum.GetNext(getter_AddRefs(item));
+                nsCOMPtr<nsIFile> file = do_QueryInterface(item);
+                if (file)
+                    file->Remove(recursive);
             }
         }
         rv = rmdir(filePath) == -1 ? NSRESULT_FOR_ERRNO() : NS_OK;
@@ -1584,7 +1838,7 @@ NS_IMETHODIMP
 nsLocalFile::InitWithPath(const nsAString &filePath)
 {
     if (filePath.IsEmpty())
-        return InitWithNativePath(nsCString());
+        return InitWithNativePath(EmptyCString());
 
     nsCAutoString tmp;
     nsresult rv = NS_CopyUnicodeToNative(filePath, tmp);
@@ -1641,7 +1895,7 @@ NS_IMETHODIMP
 nsLocalFile::SetLeafName(const nsAString &aLeafName)
 {
     if (aLeafName.IsEmpty())
-        return SetNativeLeafName(nsCString());
+        return SetNativeLeafName(EmptyCString());
 
     nsCAutoString tmp;
     nsresult rv = NS_CopyUnicodeToNative(aLeafName, tmp);
@@ -1662,7 +1916,7 @@ NS_IMETHODIMP
 nsLocalFile::CopyTo(nsIFile *newParentDir, const nsAString &newName)
 {
     if (newName.IsEmpty())
-        return CopyToNative(newParentDir, nsCString());
+        return CopyToNative(newParentDir, EmptyCString());
 
     nsCAutoString tmp;
     nsresult rv = NS_CopyUnicodeToNative(newName, tmp);
@@ -1677,7 +1931,7 @@ NS_IMETHODIMP
 nsLocalFile::CopyToFollowingLinks(nsIFile *newParentDir, const nsAString &newName)
 {
     if (newName.IsEmpty())
-        return CopyToFollowingLinksNative(newParentDir, nsCString());
+        return CopyToFollowingLinksNative(newParentDir, EmptyCString());
 
     nsCAutoString tmp;
     nsresult rv = NS_CopyUnicodeToNative(newName, tmp);
@@ -1692,7 +1946,7 @@ NS_IMETHODIMP
 nsLocalFile::MoveTo(nsIFile *newParentDir, const nsAString &newName)
 {
     if (newName.IsEmpty())
-        return MoveToNative(newParentDir, nsCString());
+        return MoveToNative(newParentDir, EmptyCString());
 
     nsCAutoString tmp;
     nsresult rv = NS_CopyUnicodeToNative(newName, tmp);

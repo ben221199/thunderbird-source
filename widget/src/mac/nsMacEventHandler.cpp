@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -22,16 +22,16 @@
  * Contributor(s):
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
  * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -93,46 +93,6 @@ static nsEventStatus HandleScrollEvent ( EventMouseWheelAxis inAxis, PRBool inBy
                                           Point inMouseLoc, nsIWidget* inWidget ) ;
 static void ConvertKeyEventToContextMenuEvent(const nsKeyEvent* inKeyEvent, nsMouseEvent* outCMEvent);
 static inline PRBool IsContextMenuKey(const nsKeyEvent& inKeyEvent);
-
-
-#if !TARGET_CARBON
-//
-// ScrollActionProc
-//
-// Called from ::TrackControl(), this senses which part of the phantom
-// scrollbar the click from the wheelMouse driver was in and sends
-// the correct NS_MOUSE_SCROLL event into Gecko. We have to retrieve the
-// mouse location from the event dispatcher because it will
-// just be the location of the phantom scrollbar, not actually the real
-// mouse position.
-//
-static pascal void ScrollActionProc(ControlHandle ctrl, ControlPartCode partCode)
-{
-	switch (partCode)
-	{
-		case kControlUpButtonPart:
-		case kControlDownButtonPart:
-		case kControlPageUpPart:
-		case kControlPageDownPart:
-		  PhantomScrollbarData* data = NS_REINTERPRET_CAST(PhantomScrollbarData*, ::GetControlReference(ctrl));
-		  if ( data && (data->mWidgetToGetEvent || gEventDispatchHandler.GetActive()) ) {
-		    WindowRef window = (**ctrl).contrlOwner;
-        StPortSetter portSetter(window);
-        StOriginSetter originSetter(window);
-        PRBool scrollByLine = !(partCode == kControlPageUpPart || partCode == kControlPageDownPart);
-        PRInt32 delta = 
-          (partCode == kControlUpButtonPart || partCode == kControlPageUpPart) ? -1 : 1;
-      	nsIWidget* widget = data->mWidgetToGetEvent ? 
-                              data->mWidgetToGetEvent : gEventDispatchHandler.GetActive();
-        
-        Point thePoint = gEventDispatchHandler.GetGlobalPoint();
-        ::GlobalToLocal(&thePoint);
-        HandleScrollEvent ( kEventMouseWheelAxisY, scrollByLine, delta, thePoint, widget );
-      }
-      break;
-  }
-}
-#endif
 
 
 //
@@ -465,9 +425,6 @@ nsMacEventHandler::nsMacEventHandler(nsMacWindow* aTopLevelWidget)
   mIMEIsComposing = PR_FALSE;
   mIMECompositionStr = nsnull;
 
-#if !TARGET_CARBON
-    mControlActionProc = NewControlActionUPP(ScrollActionProc);
-#endif
 }
 
 
@@ -479,12 +436,6 @@ nsMacEventHandler::~nsMacEventHandler()
 		delete mIMECompositionStr;
 		mIMECompositionStr = nsnull;
 	}
-#if !TARGET_CARBON
-	if ( mControlActionProc ) {
-	  DisposeControlActionUPP(mControlActionProc); 
-	  mControlActionProc = nsnull;
-	}
-#endif
 }
 
 
@@ -668,7 +619,7 @@ PRBool nsMacEventHandler::DragEvent ( unsigned int aMessage, Point aMouseGlobal,
 	// update the tracking of which widget the mouse is now over.
 	gEventDispatchHandler.SetWidgetPointed(widgetHit);
 	
-	nsMouseEvent geckoEvent(PR_TRUE, aMessage, widgetHit);
+	nsMouseEvent geckoEvent(PR_TRUE, aMessage, widgetHit, nsMouseEvent::eReal);
 
 	// nsEvent
 	geckoEvent.point = widgetHitPoint;
@@ -1132,18 +1083,18 @@ PRUint32 nsMacEventHandler::ConvertKeyEventToUnicode(EventRecord& aOSEvent)
 
 PRBool nsMacEventHandler::HandleKeyEvent(EventRecord& aOSEvent)
 {
-	nsresult result;
-	nsWindow* checkFocusedWidget;
+  nsresult result;
+  nsWindow* checkFocusedWidget;
 
-	// get the focused widget
-	nsWindow* focusedWidget = gEventDispatchHandler.GetActive();
-	if (!focusedWidget)
-		focusedWidget = mTopLevelWidget;
-	
-	// nsEvent
-	switch (aOSEvent.what)
-	{
-		case keyUp:
+  // get the focused widget
+  nsWindow* focusedWidget = gEventDispatchHandler.GetActive();
+  if (!focusedWidget)
+    focusedWidget = mTopLevelWidget;
+  
+  // nsEvent
+  switch (aOSEvent.what)
+  {
+    case keyUp:
       {
         nsKeyEvent keyUpEvent(PR_TRUE, NS_KEY_UP, nsnull);
         InitializeKeyEvent(keyUpEvent, aOSEvent, focusedWidget, NS_KEY_UP);
@@ -1151,7 +1102,7 @@ PRBool nsMacEventHandler::HandleKeyEvent(EventRecord& aOSEvent)
         break;
       }
 
-    case keyDown:	
+    case keyDown:
       {
         nsKeyEvent keyDownEvent(PR_TRUE, NS_KEY_DOWN, nsnull);
         nsKeyEvent keyPressEvent(PR_TRUE, NS_KEY_PRESS, nsnull);
@@ -1168,11 +1119,16 @@ PRBool nsMacEventHandler::HandleKeyEvent(EventRecord& aOSEvent)
           return result;
 
         InitializeKeyEvent(keyPressEvent, aOSEvent, focusedWidget, NS_KEY_PRESS);
+        if (result) {
+          // If keydown default was prevented, do same for keypress
+          keyPressEvent.flags |= NS_EVENT_FLAG_NO_DEFAULT;
+        }
 
         // before we dispatch this key, check if it's the contextmenu key.
         // If so, send a context menu event instead.
         if ( IsContextMenuKey(keyPressEvent) ) {
-          nsMouseEvent contextMenuEvent(PR_TRUE, 0, nsnull);
+          nsMouseEvent contextMenuEvent(PR_TRUE, 0, nsnull,
+                                        nsMouseEvent::eReal);
           ConvertKeyEventToContextMenuEvent(&keyPressEvent, &contextMenuEvent);
           result = focusedWidget->DispatchWindowEvent(contextMenuEvent);
           NS_ASSERTION(NS_SUCCEEDED(result), "cannot DispatchWindowEvent");
@@ -1191,9 +1147,9 @@ PRBool nsMacEventHandler::HandleKeyEvent(EventRecord& aOSEvent)
         result = focusedWidget->DispatchWindowEvent(keyPressEvent);
         break;
       }
-	}
+  }
 
-	return result;
+  return result;
 }
 
 
@@ -1210,6 +1166,7 @@ ConvertKeyEventToContextMenuEvent(const nsKeyEvent* inKeyEvent, nsMouseEvent* ou
 {
   *(nsInputEvent*)outCMEvent = *(nsInputEvent*)inKeyEvent;
   
+  outCMEvent->eventStructType = NS_MOUSE_EVENT;
   outCMEvent->message = NS_CONTEXTMENU_KEY;
   outCMEvent->isShift = outCMEvent->isControl = outCMEvent->isAlt = outCMEvent->isMeta = PR_FALSE;
   
@@ -1300,7 +1257,7 @@ PRBool nsMacEventHandler::HandleUKeyEvent(const PRUnichar* text, long charCount,
       // before we dispatch a key, check if it's the context menu key.
       // If so, send a context menu event instead.
       if ( IsContextMenuKey(keyPressEvent) ) {
-        nsMouseEvent contextMenuEvent(PR_TRUE, 0, nsnull);
+        nsMouseEvent contextMenuEvent(PR_TRUE, 0, nsnull, nsMouseEvent::eReal);
         ConvertKeyEventToContextMenuEvent(&keyPressEvent, &contextMenuEvent);
         result = focusedWidget->DispatchWindowEvent(contextMenuEvent);
         NS_ASSERTION(NS_SUCCEEDED(result), "cannot DispatchWindowEvent");
@@ -1550,12 +1507,14 @@ PRBool nsMacEventHandler::HandleMouseDownEvent(EventRecord&	aOSEvent)
 			macPoint = topLeft(portRect);
 			::LocalToGlobal(&macPoint);
 			mTopLevelWidget->MoveToGlobalPoint(macPoint.h, macPoint.v);
+			retVal = PR_TRUE;
 			break;
 		}
 
 		case inGrow:
 		{
       ResizeEvent ( whichWindow );
+      retVal = PR_TRUE;
       break;
 		}
 
@@ -1567,47 +1526,29 @@ PRBool nsMacEventHandler::HandleMouseDownEvent(EventRecord&	aOSEvent)
 			}
 			gEventDispatchHandler.DispatchGuiEvent(mTopLevelWidget, NS_XUL_CLOSE);		
 			// mTopLevelWidget->Destroy(); (this, by contrast, would immediately close the window)
+			retVal = PR_TRUE;
 			break;
 		}
 
 		case inContent:
 		{
-		  // don't allow clicks that rolled up a popup through to the content area.
-      if ( ignoreClickInContent )
-        break;
+			// don't allow clicks that rolled up a popup through to the content area.
+			if ( ignoreClickInContent )
+				break;
 						
-			nsMouseEvent mouseEvent(PR_TRUE, 0, nsnull);
+			nsMouseEvent mouseEvent(PR_TRUE, 0, nsnull, nsMouseEvent::eReal);
 			PRUint32 mouseButton = NS_MOUSE_LEFT_BUTTON_DOWN;
 			if ( aOSEvent.modifiers & controlKey )
 			  mouseButton = NS_MOUSE_RIGHT_BUTTON_DOWN;
+
+			// We've hacked our events to include the button.
+			// Normally message is undefined in mouse click/drag events.
+			if ( aOSEvent.message == kEventMouseButtonSecondary )
+			  mouseButton = NS_MOUSE_RIGHT_BUTTON_DOWN;
+			if ( aOSEvent.message == kEventMouseButtonTertiary )
+			  mouseButton = NS_MOUSE_MIDDLE_BUTTON_DOWN;
+
 			ConvertOSEventToMouseEvent(aOSEvent, mouseEvent, mouseButton);
-
-#if !TARGET_CARBON
-      // Check if the mousedown is in our window's phantom scrollbar. If so, track
-      // the movement of the mouse. The scrolling code is in the action proc.
-      Point local = aOSEvent.where;
-      ::GlobalToLocal ( &local );
-      ControlHandle scrollbar;
-      ControlPartCode partCode = ::FindControl(local, whichWindow, &scrollbar);
-      if ( partCode >= kControlUpButtonPart && partCode <= kControlPageDownPart && scrollbar ) {
-        PhantomScrollbarData* data = NS_REINTERPRET_CAST(PhantomScrollbarData*, ::GetControlReference(scrollbar));
-        if ( data && data->mTag == PhantomScrollbarData::kUniqueTag ) {
-
-#if USEMOUSEPOSITIONFORSCROLLWHEEL
-// Uncomment this in order to set the widget to scroll the widget the mouse is over. However,
-// we end up getting an idle event while scrolling quickly with the wheel, and the end result
-// is that our idle-time mouseMove event kicks in a moves where we think the mouse is to where
-// the scrollwheel driver has convinced the OS the mouse really is. Net result: we lose track
-// of the widget and scrolling stops until you stop the wheel and move it again :(
-       	  data->mWidgetToGetEvent = gEventDispatchHandler.GetWidgetPointed();            // tell action proc which widget to use
-#endif
-
-    	    ::TrackControl(scrollbar, local, mControlActionProc);
-    	    data->mWidgetToGetEvent = nsnull;
-          break;
-        }
-      }
-#endif
 
 			nsCOMPtr<nsIWidget> kungFuDeathGrip ( mouseEvent.widget );            // ensure widget doesn't go away
 			nsWindow* widgetHit = NS_STATIC_CAST(nsWindow*, mouseEvent.widget);   //   while we're processing event
@@ -1615,7 +1556,8 @@ PRBool nsMacEventHandler::HandleMouseDownEvent(EventRecord&	aOSEvent)
 			{        
 				// set the activation and focus on the widget hit, if it accepts it
 				{
-					nsMouseEvent mouseActivateEvent(PR_TRUE, 0, nsnull);
+					nsMouseEvent mouseActivateEvent(PR_TRUE, 0, nsnull,
+                                          nsMouseEvent::eReal);
           ConvertOSEventToMouseEvent(aOSEvent, mouseActivateEvent, NS_MOUSE_ACTIVATE);
 					widgetHit->DispatchMouseEvent(mouseActivateEvent);
 				}
@@ -1626,12 +1568,20 @@ PRBool nsMacEventHandler::HandleMouseDownEvent(EventRecord&	aOSEvent)
 				// if we're a control-click, send in an additional NS_CONTEXTMENU event
 				// after the mouse down.
 				if ( mouseButton == NS_MOUSE_RIGHT_BUTTON_DOWN ) {
-    			nsMouseEvent contextMenuEvent(PR_TRUE, 0, nsnull);
+    			nsMouseEvent contextMenuEvent(PR_TRUE, 0, nsnull,
+                                        nsMouseEvent::eReal);
     			ConvertOSEventToMouseEvent(aOSEvent, contextMenuEvent, NS_CONTEXTMENU);
     			contextMenuEvent.isControl = PR_FALSE;    			
 					widgetHit->DispatchMouseEvent(contextMenuEvent);
         } 
-			} 
+
+        // If we found a widget to dispatch to, say we handled the event.
+        // The meaning of the result of DispatchMouseEvent() is ambiguous.
+        // In Gecko terms, it means "continue processing", but that doesn't
+        // say if the event was really handled (which is a simplistic notion
+        // to Gecko).
+        retVal = PR_TRUE;
+			}
 						
 			gEventDispatchHandler.SetWidgetHit(widgetHit);
 			sMouseInWidgetHit = PR_TRUE;
@@ -1644,15 +1594,14 @@ PRBool nsMacEventHandler::HandleMouseDownEvent(EventRecord&	aOSEvent)
 		{
 			gEventDispatchHandler.DispatchSizeModeEvent(mTopLevelWidget,
 				partCode == inZoomIn ? nsSizeMode_Normal : nsSizeMode_Maximized);
+			retVal = PR_TRUE;
 			break;
 		}
 
-#if TARGET_CARBON
     case inToolbarButton:           // we get this part on Mac OS X only
       gEventDispatchHandler.DispatchGuiEvent(mTopLevelWidget, NS_OS_TOOLBAR);		
+      retVal = PR_TRUE;
       break;
-#endif
-    
 	}
 	return retVal;
 }
@@ -1668,14 +1617,28 @@ PRBool nsMacEventHandler::HandleMouseUpEvent(
 {
 	PRBool retVal = PR_FALSE;
 
-	nsMouseEvent mouseEvent(PR_TRUE, 0, nsnull);
-	ConvertOSEventToMouseEvent(aOSEvent, mouseEvent, NS_MOUSE_LEFT_BUTTON_UP);
+	nsMouseEvent mouseEvent(PR_TRUE, 0, nsnull, nsMouseEvent::eReal);
+	PRUint32 mouseButton = NS_MOUSE_LEFT_BUTTON_UP;
+
+	// We've hacked our events to include the button.
+	// Normally message is undefined in mouse click/drag events.
+	if ( aOSEvent.message == kEventMouseButtonSecondary )
+		mouseButton = NS_MOUSE_RIGHT_BUTTON_UP;
+	if ( aOSEvent.message == kEventMouseButtonTertiary )
+		mouseButton = NS_MOUSE_MIDDLE_BUTTON_UP;
+
+	ConvertOSEventToMouseEvent(aOSEvent, mouseEvent, mouseButton);
 
 	nsWindow* widgetReleased = (nsWindow*)mouseEvent.widget;
 	nsWindow* widgetHit = gEventDispatchHandler.GetWidgetHit();
 
 	if ( widgetReleased )
-		retVal |= widgetReleased->DispatchMouseEvent(mouseEvent);
+	{
+		widgetReleased->DispatchMouseEvent(mouseEvent);
+		// If we found a widget to dispatch the event to, say that we handled it
+		// (see comments in HandleMouseDownEvent()).
+		retVal = PR_TRUE;
+	}
 	
 	if ( widgetReleased != widgetHit ) {
 	  //XXX we should send a mouse exit event to the last widget, right?!?! But
@@ -1702,9 +1665,8 @@ PRBool nsMacEventHandler::HandleMouseMoveEvent( EventRecord& aOSEvent )
   
 	PRBool retVal = PR_FALSE;
 
-	nsMouseEvent mouseEvent(PR_TRUE, 0, nsnull);
+	nsMouseEvent mouseEvent(PR_TRUE, 0, nsnull, nsMouseEvent::eReal);
 	ConvertOSEventToMouseEvent(aOSEvent, mouseEvent, NS_MOUSE_MOVE);
-
 	if (lastWidgetHit)
 	{
 		Point macPoint = aOSEvent.where;
@@ -1720,7 +1682,8 @@ PRBool nsMacEventHandler::HandleMouseMoveEvent( EventRecord& aOSEvent )
 			sMouseInWidgetHit = inWidgetHit;
 			mouseEvent.message = (inWidgetHit ? NS_MOUSE_ENTER : NS_MOUSE_EXIT);
 		}
-		retVal |= lastWidgetHit->DispatchMouseEvent(mouseEvent);
+		lastWidgetHit->DispatchMouseEvent(mouseEvent);
+		retVal = PR_TRUE;
 	}
 	else
 	{
@@ -1730,9 +1693,32 @@ PRBool nsMacEventHandler::HandleMouseMoveEvent( EventRecord& aOSEvent )
 		{
 			if (lastWidgetPointed)
 			{
+        // We need to convert the coords to be relative to lastWidgetPointed.
+        nsPoint widgetHitPoint = mouseEvent.point;
+
+        Point macPoint = aOSEvent.where;
+        WindowRef wind = reinterpret_cast<WindowRef>(mTopLevelWidget->GetNativeData(NS_NATIVE_DISPLAY));
+        nsGraphicsUtils::SafeSetPortWindowPort(wind);
+
+        {
+          StOriginSetter originSetter(wind);
+          ::GlobalToLocal(&macPoint);
+        }
+
+        nsPoint lastWidgetHitPoint(macPoint.h, macPoint.v);
+
+          nsRect bounds;
+          lastWidgetPointed->GetBounds(bounds);
+          nsPoint widgetOrigin(bounds.x, bounds.y);
+          lastWidgetPointed->LocalToWindowCoordinate(widgetOrigin);
+          lastWidgetHitPoint.MoveBy(-widgetOrigin.x, -widgetOrigin.y);
 				mouseEvent.widget = lastWidgetPointed;
+				mouseEvent.point = lastWidgetHitPoint;
 				mouseEvent.message = NS_MOUSE_EXIT;
-				retVal |= lastWidgetPointed->DispatchMouseEvent(mouseEvent);
+				lastWidgetPointed->DispatchMouseEvent(mouseEvent);
+				retVal = PR_TRUE;
+
+				mouseEvent.point = widgetHitPoint;
 			}
 
       gEventDispatchHandler.SetWidgetPointed(widgetPointed);
@@ -1744,13 +1730,17 @@ PRBool nsMacEventHandler::HandleMouseMoveEvent( EventRecord& aOSEvent )
 			{
 				mouseEvent.widget = widgetPointed;
 				mouseEvent.message = NS_MOUSE_ENTER;
-				retVal |= widgetPointed->DispatchMouseEvent(mouseEvent);
+				widgetPointed->DispatchMouseEvent(mouseEvent);
+				retVal = PR_TRUE;
 			}
 		}
 		else
 		{
 			if (widgetPointed)
-				retVal |= widgetPointed->DispatchMouseEvent(mouseEvent);
+			{
+				widgetPointed->DispatchMouseEvent(mouseEvent);
+				retVal = PR_TRUE;
+			}
 		}
 	}
 
@@ -1774,13 +1764,17 @@ void nsMacEventHandler::ConvertOSEventToMouseEvent(
 	static SInt16	sLastClickCount = 0;
 	
 	// we're going to time double-clicks from mouse *up* to next mouse *down*
-	if (aMessage == NS_MOUSE_LEFT_BUTTON_UP)
+	if (aMessage == NS_MOUSE_LEFT_BUTTON_UP  ||
+      aMessage == NS_MOUSE_RIGHT_BUTTON_UP ||
+      aMessage == NS_MOUSE_MIDDLE_BUTTON_UP)
 	{
 		// remember when this happened for the next mouse down
 		sLastMouseUp = aOSEvent.when;
 		sLastWhere = aOSEvent.where;
 	}
-	else if (aMessage == NS_MOUSE_LEFT_BUTTON_DOWN)
+	else if (aMessage == NS_MOUSE_LEFT_BUTTON_DOWN  ||
+           aMessage == NS_MOUSE_RIGHT_BUTTON_DOWN ||
+           aMessage == NS_MOUSE_MIDDLE_BUTTON_DOWN)
 	{
 		// now look to see if we want to convert this to a double- or triple-click
 		const short kDoubleClickMoveThreshold	= 5;
@@ -2398,7 +2392,7 @@ nsresult nsMacEventHandler::UnicodeHandleUpdateInputArea(const PRUnichar* text, 
     //  so instead we iterate over the range list and map each range individually.  it's probably faster than
     //  trying to do collapse all the ranges into a single offset list
     //
-    PRUint32 i;
+    PRInt32 i;
     for(i = 0; i < rangeArray->fNumOfRanges; i++) {      
       // 2.2.2.1 check each range item in NS_ASSERTION
       NS_ASSERTION(

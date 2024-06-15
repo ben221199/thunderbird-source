@@ -1,11 +1,12 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* vim:set ts=4 sw=4 sts=4 et cindent: */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -28,11 +29,11 @@
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -49,10 +50,6 @@
 #include "nsNetCID.h"
 #include "netCore.h"
 #include "prprf.h"
-
-#if defined(XP_WIN)
-#include <windows.h> // ::IsDBCSLeadByte need
-#endif
 
 //----------------------------------------------------------------------------
 // Init/Shutdown
@@ -291,17 +288,6 @@ net_CoalesceDirs(netCoalesceFlags flags, char* path)
             (*fwdPtr != '?') && 
             (*fwdPtr != '#'); ++fwdPtr)
     {
-
-#if defined(XP_WIN)
-        // At first, If this is DBCS character, it skips next character.
-        if (::IsDBCSLeadByte(*fwdPtr) && *(fwdPtr+1) != '\0') 
-        {
-            *urlPtr++ = *fwdPtr++;
-            *urlPtr++ = *fwdPtr;
-            continue;
-        }
-#endif
-
         if (*fwdPtr == '/' && *(fwdPtr+1) == '.' && *(fwdPtr+2) == '/' )
         {
             // remove . followed by slash
@@ -421,7 +407,7 @@ net_ResolveRelativePath(const nsACString &relativePath,
             // fall through...
           case '/':
             // delimiter found
-            if (name.Equals("..")) {
+            if (name.EqualsLiteral("..")) {
                 // pop path
                 // If we already have the delim at end, then
                 //  skip over that when searching for next one to the left
@@ -435,17 +421,17 @@ net_ResolveRelativePath(const nsACString &relativePath,
                 else
                     path.Truncate();
             }
-            else if (name.Equals(".") || name.Equals("")) {
+            else if (name.IsEmpty() || name.EqualsLiteral(".")) {
                 // do nothing
             }
             else {
                 // append name to path
                 if (needsDelim)
-                    path += "/";
+                    path += '/';
                 path += name;
                 needsDelim = PR_TRUE;
             }
-            name = "";
+            name.Truncate();
             break;
 
           default:
@@ -574,6 +560,36 @@ net_FilterURIString(const char *str, nsACString& result)
 
     return writing;
 }
+
+#if defined(XP_WIN) || defined(XP_OS2)
+PRBool
+net_NormalizeFileURL(const nsACString &aURL, nsCString &aResultBuf)
+{
+    PRBool writing = PR_FALSE;
+
+    nsACString::const_iterator beginIter, endIter;
+    aURL.BeginReading(beginIter);
+    aURL.EndReading(endIter);
+
+    const char *s, *begin = beginIter.get();
+
+    for (s = begin; s != endIter.get(); ++s)
+    {
+        if (*s == '\\')
+        {
+            writing = PR_TRUE;
+            if (s > begin)
+                aResultBuf.Append(begin, s - begin);
+            aResultBuf += '/';
+            begin = s + 1;
+        }
+    }
+    if (writing && s > begin)
+        aResultBuf.Append(begin, s - begin);
+
+    return writing;
+}
+#endif
 
 //----------------------------------------------------------------------------
 // miscellaneous (i.e., stuff that should really be elsewhere)

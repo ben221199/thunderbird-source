@@ -379,12 +379,7 @@ Process(JSContext *cx, JSObject *obj, char *filename)
 
         /* Clear any pending exception from previous failed compiles.  */
         JS_ClearPendingException(cx);
-        script = JS_CompileScript(cx, obj, buffer, strlen(buffer),
-#ifdef JSDEBUGGER
-                                  "typein",
-#else
-                                  NULL,
-#endif
+        script = JS_CompileScript(cx, obj, buffer, strlen(buffer), "typein",
                                   startline);
         if (script) {
             ok = JS_ExecuteScript(cx, obj, script, &result);
@@ -406,7 +401,7 @@ static int
 usage(void)
 {
     fprintf(gErrFile, "%s\n", JS_GetImplementationVersion());
-    fprintf(gErrFile, "usage: js [-PswW] [-b branchlimit] [-c stackchunksize] [-v version] [-f scriptfile] [-S maxstacksize] [scriptfile] [scriptarg...]\n");
+    fprintf(gErrFile, "usage: js [-PswWx] [-b branchlimit] [-c stackchunksize] [-v version] [-f scriptfile] [-S maxstacksize] [scriptfile] [scriptarg...]\n");
     return 2;
 }
 
@@ -417,10 +412,15 @@ static JSBool
 my_BranchCallback(JSContext *cx, JSScript *script)
 {
     if (++gBranchCount == gBranchLimit) {
-        if (script->filename)
-            fprintf(gErrFile, "%s:", script->filename);
-        fprintf(gErrFile, "%u: script branches too much (%u callbacks)\n",
-                script->lineno, gBranchLimit);
+        if (script) {
+            if (script->filename)
+                fprintf(gErrFile, "%s:", script->filename);
+            fprintf(gErrFile, "%u: script branch callback (%u callbacks)\n",
+                    script->lineno, gBranchLimit);
+        } else {
+            fprintf(gErrFile, "native branch callback (%u callbacks)\n",
+                    gBranchLimit);
+        }
         gBranchCount = 0;
         return JS_FALSE;
     }
@@ -511,6 +511,10 @@ ProcessArgs(JSContext *cx, JSObject *obj, char **argv, int argc)
             JS_ToggleOptions(cx, JSOPTION_STRICT);
             break;
 
+        case 'x':
+            JS_ToggleOptions(cx, JSOPTION_XML);
+            break;
+
         case 'P':
             if (JS_GET_CLASS(cx, JS_GetPrototype(cx, obj)) != &global_class) {
                 JSObject *gobj;
@@ -531,6 +535,7 @@ ProcessArgs(JSContext *cx, JSObject *obj, char **argv, int argc)
         case 'b':
             gBranchLimit = atoi(argv[++i]);
             JS_SetBranchCallback(cx, my_BranchCallback);
+            JS_ToggleOptions(cx, JSOPTION_NATIVE_BRANCH_CALLBACK);
             break;
 
         case 'c':
@@ -586,6 +591,8 @@ static struct {
 } js_options[] = {
     {"strict",          JSOPTION_STRICT},
     {"werror",          JSOPTION_WERROR},
+    {"atline",          JSOPTION_ATLINE},
+    {"xml",             JSOPTION_XML},
     {0,                 0}
 };
 
@@ -773,14 +780,14 @@ ValueToScript(JSContext *cx, jsval v)
     JSScript *script;
     JSFunction *fun;
 
-    if (JSVAL_IS_OBJECT(v) &&
+    if (!JSVAL_IS_PRIMITIVE(v) &&
         JS_GET_CLASS(cx, JSVAL_TO_OBJECT(v)) == &js_ScriptClass) {
         script = (JSScript *) JS_GetPrivate(cx, JSVAL_TO_OBJECT(v));
     } else {
         fun = JS_ValueToFunction(cx, v);
         if (!fun)
             return NULL;
-        script = fun->script;
+        script = FUN_SCRIPT(fun);
     }
     return script;
 }
@@ -789,15 +796,19 @@ static JSBool
 GetTrapArgs(JSContext *cx, uintN argc, jsval *argv, JSScript **scriptp,
             int32 *ip)
 {
+    jsval v;
     uintN intarg;
     JSScript *script;
 
     *scriptp = cx->fp->down->script;
     *ip = 0;
     if (argc != 0) {
+        v = argv[0];
         intarg = 0;
-        if (JS_TypeOfValue(cx, argv[0]) == JSTYPE_FUNCTION) {
-            script = ValueToScript(cx, argv[0]);
+        if (!JSVAL_IS_PRIMITIVE(v) &&
+            (JS_GET_CLASS(cx, JSVAL_TO_OBJECT(v)) == &js_FunctionClass ||
+             JS_GET_CLASS(cx, JSVAL_TO_OBJECT(v)) == &js_ScriptClass)) {
+            script = ValueToScript(cx, v);
             if (!script)
                 return JS_FALSE;
             *scriptp = script;
@@ -1113,8 +1124,8 @@ DisassWithSrc(JSContext *cx, JSObject *obj, uintN argc, jsval *argv,
                 while (line1 < line2) {
                     if (!fgets(linebuf, LINE_BUF_LEN, file)) {
                         JS_ReportErrorNumber(cx, my_GetErrorMessage, NULL,
-                                       JSSMSG_UNEXPECTED_EOF,
-                                       script->filename);
+                                             JSSMSG_UNEXPECTED_EOF,
+                                             script->filename);
                         goto bail;
                     }
                     line1++;
@@ -1205,11 +1216,14 @@ DumpScope(JSContext *cx, JSObject *obj, FILE *fp)
         if (SCOPE_HAD_MIDDLE_DELETE(scope) && !SCOPE_HAS_PROPERTY(scope, sprop))
             continue;
         fprintf(fp, "%3u %p", i, sprop);
-        if (JSVAL_IS_INT(sprop->id)) {
+        if (JSID_IS_INT(sprop->id)) {
             fprintf(fp, " [%ld]", (long)JSVAL_TO_INT(sprop->id));
+        } else if (JSID_IS_ATOM(sprop->id)) {
+            JSAtom *atom = JSID_TO_ATOM(sprop->id);
+            fprintf(fp, " \"%s\"", js_AtomToPrintableString(cx, atom));
         } else {
-            fprintf(fp, " \"%s\"",
-                    js_AtomToPrintableString(cx, (JSAtom *)sprop->id));
+            jsval v = OBJECT_TO_JSVAL(JSID_TO_OBJECT(sprop->id));
+            fprintf(fp, " \"%s\"", js_ValueToPrintableString(cx, v));
         }
 
 #define DUMP_ATTR(name) if (sprop->attrs & JSPROP_##name) fputs(" " #name, fp)
@@ -1266,11 +1280,11 @@ DumpStats(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
             atom = js_Atomize(cx, bytes, JS_GetStringLength(str), 0);
             if (!atom)
                 return JS_FALSE;
-            if (!js_FindProperty(cx, (jsid)atom, &obj, &obj2, &prop))
+            if (!js_FindProperty(cx, ATOM_TO_JSID(atom), &obj, &obj2, &prop))
                 return JS_FALSE;
             if (prop) {
                 OBJ_DROP_PROPERTY(cx, obj2, prop);
-                if (!OBJ_GET_PROPERTY(cx, obj, (jsid)atom, &value))
+                if (!OBJ_GET_PROPERTY(cx, obj, ATOM_TO_JSID(atom), &value))
                     return JS_FALSE;
             }
             if (!prop || !JSVAL_IS_OBJECT(value)) {
@@ -1308,16 +1322,16 @@ DoExport(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
     atom = js_ValueToStringAtom(cx, argv[1]);
     if (!atom)
         return JS_FALSE;
-    if (!OBJ_LOOKUP_PROPERTY(cx, obj, (jsid)atom, &obj2, &prop))
+    if (!OBJ_LOOKUP_PROPERTY(cx, obj, ATOM_TO_JSID(atom), &obj2, &prop))
         return JS_FALSE;
     if (!prop) {
         ok = OBJ_DEFINE_PROPERTY(cx, obj, id, JSVAL_VOID, NULL, NULL,
                                  JSPROP_EXPORTED, NULL);
     } else {
-        ok = OBJ_GET_ATTRIBUTES(cx, obj, (jsid)atom, prop, &attrs);
+        ok = OBJ_GET_ATTRIBUTES(cx, obj, ATOM_TO_JSID(atom), prop, &attrs);
         if (ok) {
             attrs |= JSPROP_EXPORTED;
-            ok = OBJ_SET_ATTRIBUTES(cx, obj, (jsid)atom, prop, &attrs);
+            ok = OBJ_SET_ATTRIBUTES(cx, obj, ATOM_TO_JSID(atom), prop, &attrs);
         }
         OBJ_DROP_PROPERTY(cx, obj2, prop);
     }
@@ -1508,6 +1522,68 @@ Seal(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
     return JS_SealObject(cx, target, deep);
 }
 
+static JSBool
+GetPDA(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
+{
+    JSObject *vobj, *aobj, *pdobj;
+    JSBool ok;
+    JSPropertyDescArray pda;
+    JSPropertyDesc *pd;
+    uint32 i;
+    jsval v;
+
+    if (!JS_ValueToObject(cx, argv[0], &vobj))
+        return JS_FALSE;
+    if (!vobj)
+        return JS_TRUE;
+
+    aobj = JS_NewArrayObject(cx, 0, NULL);
+    if (!aobj)
+        return JS_FALSE;
+    *rval = OBJECT_TO_JSVAL(aobj);
+
+    ok = JS_GetPropertyDescArray(cx, vobj, &pda);
+    if (!ok)
+        return JS_FALSE;
+    pd = pda.array;
+    for (i = 0; i < pda.length; i++) {
+        pdobj = JS_NewObject(cx, NULL, NULL, NULL);
+        if (!pdobj) {
+            ok = JS_FALSE;
+            break;
+        }
+
+        ok = JS_SetProperty(cx, pdobj, "id", &pd->id) &&
+             JS_SetProperty(cx, pdobj, "value", &pd->value) &&
+             (v = INT_TO_JSVAL(pd->flags),
+              JS_SetProperty(cx, pdobj, "flags", &v)) &&
+             (v = INT_TO_JSVAL(pd->slot),
+              JS_SetProperty(cx, pdobj, "slot", &v)) &&
+             JS_SetProperty(cx, pdobj, "alias", &pd->alias);
+        if (!ok)
+            break;
+
+        v = OBJECT_TO_JSVAL(pdobj);
+        ok = JS_SetElement(cx, aobj, i, &v);
+        if (!ok)
+            break;
+    }
+    JS_PutPropertyDescArray(cx, &pda);
+    return ok;
+}
+
+static JSBool
+GetSLX(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
+{
+    JSScript *script;
+
+    script = ValueToScript(cx, argv[0]);
+    if (!script)
+        return JS_FALSE;
+    *rval = INT_TO_JSVAL(js_GetScriptLineExtent(script));
+    return JS_TRUE;
+}
+
 static JSFunctionSpec shell_functions[] = {
     {"version",         Version,        0},
     {"options",         Options,        0},
@@ -1538,6 +1614,8 @@ static JSFunctionSpec shell_functions[] = {
     {"intern",          Intern,         1},
     {"clone",           Clone,          1},
     {"seal",            Seal,           1, 0, 1},
+    {"getpda",          GetPDA,         1},
+    {"getslx",          GetSLX,         1},
     {0}
 };
 
@@ -1573,6 +1651,8 @@ static char *shell_help_messages[] = {
     "intern(str)            Internalize str in the atom table",
     "clone(fun[, scope])    Clone function object",
     "seal(obj[, deep])      Seal object, or object graph if deep",
+    "getpda(obj)            Get the property descriptors for obj",
+    "getslx(obj)            Get script line extent",
     0
 };
 
@@ -1670,8 +1750,36 @@ its_item(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
     return JS_TRUE;
 }
 
+static JSBool
+its_bindMethod(JSContext *cx, JSObject *obj, uintN argc, jsval *argv,
+               jsval *rval)
+{
+    char *name;
+    JSObject *method;
+
+    if (!JS_ConvertArguments(cx, argc, argv, "so", &name, &method))
+        return JS_FALSE;
+
+    *rval = OBJECT_TO_JSVAL(method);
+
+    if (JS_TypeOfValue(cx, *rval) != JSTYPE_FUNCTION) {
+        JSString *valstr = JS_ValueToString(cx, *rval);
+        if (valstr) {
+            JS_ReportError(cx, "can't bind method %s to non-callable object %s",
+                           name, JS_GetStringBytes(valstr));
+        }
+        return JS_FALSE;
+    }
+
+    if (!JS_DefineProperty(cx, obj, name, *rval, NULL, NULL, JSPROP_ENUMERATE))
+        return JS_FALSE;
+
+    return JS_SetParent(cx, method, obj);
+}
+
 static JSFunctionSpec its_methods[] = {
     {"item",            its_item,       0},
+    {"bindMethod",      its_bindMethod, 2},
     {0}
 };
 
@@ -2262,7 +2370,6 @@ int
 main(int argc, char **argv, char **envp)
 {
     int stackDummy;
-    JSVersion version;
     JSRuntime *rt;
     JSContext *cx;
     JSObject *glob, *it, *envobj;
@@ -2325,8 +2432,6 @@ main(int argc, char **argv, char **envp)
     gOutFile = gTestResultFile;
 #endif
 
-    version = JSVERSION_DEFAULT;
-
     argc--;
     argv++;
 
@@ -2350,10 +2455,6 @@ main(int argc, char **argv, char **envp)
 #endif
     if (!JS_DefineFunctions(cx, glob, shell_functions))
         return 1;
-
-    /* Set version only after there is a global object. */
-    if (version != JSVERSION_DEFAULT)
-        JS_SetVersion(cx, version);
 
     it = JS_DefineObject(cx, glob, "it", &its_class, NULL, 0);
     if (!it)

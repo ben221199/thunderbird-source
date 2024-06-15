@@ -42,11 +42,14 @@
 #include "nsCOMPtr.h"
 #include "nsIServiceManager.h"
 #include "prenv.h"
-#include "nsICmdLineService.h"
+#include "nsIFile.h"
 #include "nsIStringBundle.h"
 #include "nsIPromptService.h"
 #include "nsIPrefService.h"
 #include "nsIPrefBranch.h"
+#include "nsDirectoryServiceDefs.h"
+#include "nsDirectoryServiceUtils.h"
+#include "nsEmbedCID.h"
 
 #include <glib.h>
 #include <limits.h>
@@ -65,6 +68,8 @@ static const char* const sNewsProtocols[] = {
 nsresult
 nsMailGNOMEIntegration::Init()
 {
+  nsresult rv;
+
   // GConf _must_ be available, or we do not allow CreateInstance to succeed.
 
   nsCOMPtr<nsIGConfService> gconf = do_GetService(NS_GCONFSERVICE_CONTRACTID);
@@ -76,37 +81,16 @@ nsMailGNOMEIntegration::Init()
   // the locale encoding.  If it's not set, they use UTF-8.
   mUseLocaleFilenames = PR_GetEnv("G_BROKEN_FILENAMES") != nsnull;
 
-  // Get the path we were launched from.
-  nsCOMPtr<nsICmdLineService> cmdService =
-    do_GetService("@mozilla.org/appshell/commandLineService;1");
-  if (!cmdService)
-    return NS_ERROR_NOT_AVAILABLE;
+  nsCOMPtr<nsIFile> appPath;
+  rv = NS_GetSpecialDirectory(NS_XPCOM_CURRENT_PROCESS_DIR,
+                              getter_AddRefs(appPath));
+  NS_ENSURE_SUCCESS(rv, rv);
 
-  nsXPIDLCString programName;
-  cmdService->GetProgramName(getter_Copies(programName));
+  rv = appPath->AppendNative(NS_LITERAL_CSTRING("thunderbird"));
+  NS_ENSURE_SUCCESS(rv, rv);
 
-  // Make sure we have an absolute pathname.
-  if (programName[0] != '/') {
-    // First search PATH if we were just launched as 'thunderbird-bin'.
-    // If we were launched as './thunderbird-bin', this will just return
-    // the original string.
-
-    gchar *appPath = g_find_program_in_path(programName.get());
-
-    // Now resolve it.
-    char resolvedPath[PATH_MAX] = "";
-    if (realpath(appPath, resolvedPath)) {
-      mAppPath.Assign(resolvedPath);
-    }
-
-    g_free(appPath);
-  } else {
-    mAppPath.Assign(programName);
-  }
-
-  // strip "-bin" off of the binary name
-  if (StringEndsWith(mAppPath, NS_LITERAL_CSTRING("-bin")))
-    mAppPath.SetLength(mAppPath.Length() - 4);
+  rv = appPath->GetNativePath(mAppPath);
+  NS_ENSURE_SUCCESS(rv, rv);
 
   PRBool isDefault;
   nsMailGNOMEIntegration::GetIsDefaultMailClient(&isDefault);
@@ -227,6 +211,18 @@ nsMailGNOMEIntegration::SetIsDefaultNewsClient(PRBool aIsDefault)
 }
 
 NS_IMETHODIMP
+nsMailGNOMEIntegration::GetIsDefaultFeedClient(PRBool *aIsDefault)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+nsMailGNOMEIntegration::SetIsDefaultFeedClient(PRBool aIsDefault)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
 nsMailGNOMEIntegration::GetShowDialog(PRBool *aShow)
 {
   *aShow = (mShowMailDialog || mShowNewsDialog);
@@ -253,7 +249,7 @@ nsMailGNOMEIntegration::ShowMailIntegrationDialog(nsIDOMWindow* aParentWindow)
   NS_ENSURE_TRUE(bundleService, NS_ERROR_FAILURE);
 
   nsCOMPtr<nsIStringBundle> brandBundle;
-  bundleService->CreateBundle("chrome://global/locale/brand.properties",
+  bundleService->CreateBundle("chrome://branding/locale/brand.properties",
                               getter_AddRefs(brandBundle));
   NS_ENSURE_TRUE(brandBundle, NS_ERROR_FAILURE);
 
@@ -282,7 +278,7 @@ nsMailGNOMEIntegration::ShowMailIntegrationDialog(nsIDOMWindow* aParentWindow)
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsIPromptService> promptService =
-    do_GetService("@mozilla.org/embedcomp/prompt-service;1");
+    do_GetService(NS_PROMPTSERVICE_CONTRACTID);
   NS_ENSURE_TRUE(promptService, NS_ERROR_FAILURE);
 
   if (mShowMailDialog && showMailDialog) {
@@ -343,3 +339,5 @@ nsMailGNOMEIntegration::RegisterMailAndNewsClient()
 {
   return NS_OK;
 }
+
+

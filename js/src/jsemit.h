@@ -93,8 +93,11 @@ struct JSStmtInfo {
      (stmt)->continues = (stmt)->catchJump = (stmt)->gosub = (-1))
 
 struct JSTreeContext {              /* tree context for semantic checks */
-    uint32          flags;          /* statement state flags, see below */
+    uint16          flags;          /* statement state flags, see below */
+    uint16          numGlobalVars;  /* max. no. of global variables/regexps */
     uint32          tryCount;       /* total count of try statements parsed */
+    uint32          globalUses;     /* optimizable global var uses in total */
+    uint32          loopyGlobalUses;/* optimizable global var uses in loops */
     JSStmtInfo      *topStmt;       /* top of statement info stack */
     JSAtomList      decls;          /* function, const, and var declarations */
     JSParseNode     *nodeList;      /* list of recyclable parse-node structs */
@@ -109,10 +112,13 @@ struct JSTreeContext {              /* tree context for semantic checks */
 #define TCF_FUN_USES_NONLOCALS 0x40 /* function refers to non-local names */
 #define TCF_FUN_HEAVYWEIGHT    0x80 /* function needs Call object per call */
 #define TCF_FUN_FLAGS          0xE0 /* flags to propagate from FunctionBody */
+#define TCF_HAS_DEFXMLNS      0x100 /* default xml namespace = ...; parsed */
 
 #define TREE_CONTEXT_INIT(tc)                                                 \
-    ((tc)->flags = 0, (tc)->tryCount = 0, (tc)->topStmt = NULL,               \
-     ATOM_LIST_INIT(&(tc)->decls), (tc)->nodeList = NULL)
+    ((tc)->flags = (tc)->numGlobalVars = 0,                                   \
+     (tc)->tryCount = (tc)->globalUses = (tc)->loopyGlobalUses = 0,           \
+     (tc)->topStmt = NULL, ATOM_LIST_INIT(&(tc)->decls),                      \
+     (tc)->nodeList = NULL)
 
 #define TREE_CONTEXT_FINISH(tc)                                               \
     ((void)0)

@@ -119,7 +119,7 @@ function AddPrefObservers()
 {
   var prefService = Components.classes["@mozilla.org/preferences-service;1"]
                               .getService(Components.interfaces.nsIPrefService);
-  var prefBranch = prefService.getBranch(null).QueryInterface(Components.interfaces.nsIPrefBranchInternal);
+  var prefBranch = prefService.getBranch(null).QueryInterface(Components.interfaces.nsIPrefBranch2);
   prefBranch.addObserver(kPrefMailAddrBookLastNameFirst, gMailAddrBookLastNameFirstObserver, false);
 }
 
@@ -127,7 +127,7 @@ function RemovePrefObservers()
 {
   var prefService = Components.classes["@mozilla.org/preferences-service;1"]
                               .getService(Components.interfaces.nsIPrefService);
-  var prefBranch = prefService.getBranch(null).QueryInterface(Components.interfaces.nsIPrefBranchInternal);
+  var prefBranch = prefService.getBranch(null).QueryInterface(Components.interfaces.nsIPrefBranch2);
   prefBranch.removeObserver(kPrefMailAddrBookLastNameFirst, gMailAddrBookLastNameFirstObserver);
 }
 
@@ -253,6 +253,12 @@ function SetNameColumn(cmd)
 	}
 	
 	cvPrefs.prefs.setIntPref("mail.addr_book.lastnamefirst", prefValue);
+}
+
+function onFileMenuInit()
+{
+  goUpdateCommand('cmd_printcard'); 
+  goUpdateCommand('cmd_printcardpreview');
 }
 
 function CommandUpdate_AddressBook()
@@ -464,7 +470,7 @@ function AbPrintPreviewCard()
 
 function CreatePrintCardUrl(card)
 {
-  var url = "data:text/xml;base64," + card.convertToBase64EncodedXML();
+  var url = "data:application/xml;base64," + card.convertToBase64EncodedXML();
   return url;
 }
 
@@ -618,8 +624,15 @@ function onAdvancedAbSearch()
   var selectedABURI = GetSelectedDirectory();
   if (!selectedABURI) return;
 
-  window.openDialog("chrome://messenger/content/ABSearchDialog.xul", "", 
-                    "chrome,resizable,status,centerscreen,dialog=no", {directory: selectedABURI} );
+  var windowManager = Components.classes['@mozilla.org/appshell/window-mediator;1'].
+                                 getService(Components.interfaces.nsIWindowMediator);
+  var existingSearchWindow = windowManager.getMostRecentWindow("mailnews:absearch");
+  if (existingSearchWindow)
+    existingSearchWindow.focus();
+  else
+    window.openDialog("chrome://messenger/content/ABSearchDialog.xul", "", 
+                      "chrome,resizable,status,centerscreen,dialog=no", 
+                      {directory: selectedABURI});
 }
 
 function onEnterInSearchBar()

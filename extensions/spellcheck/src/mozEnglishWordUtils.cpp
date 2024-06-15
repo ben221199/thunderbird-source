@@ -49,7 +49,7 @@ NS_IMPL_ISUPPORTS1(mozEnglishWordUtils, mozISpellI18NUtil)
 
 mozEnglishWordUtils::mozEnglishWordUtils()
 {
-  mLanguage.Assign(NS_LITERAL_STRING("en"));
+  mLanguage.AssignLiteral("en");
 
   nsresult rv;
   mURLDetector = do_CreateInstance(MOZ_TXTTOHTMLCONV_CONTRACTID, &rv);
@@ -163,7 +163,8 @@ NS_IMETHODIMP mozEnglishWordUtils::GetRootForm(const PRUnichar *aWord, PRUint32 
 // This needs vast improvement
 static PRBool ucIsAlpha(PRUnichar c)
 {
-  return (5 == GetCat(c));
+  // XXX we have to fix callers to handle the full Unicode range
+  return (5 == GetCat(PRUint32(c)));
 }
 
 /* void FindNextWord (in wstring word, in PRUint32 length, in PRUint32 offset, out PRUint32 begin, out PRUint32 end); */
@@ -173,6 +174,7 @@ NS_IMETHODIMP mozEnglishWordUtils::FindNextWord(const PRUnichar *word, PRUint32 
   const PRUnichar *endbuf = word + length;
   const PRUnichar *startWord=p;
   if(p<endbuf){
+    // XXX These loops should be modified to handle non-BMP characters.
     while((p < endbuf) && (!ucIsAlpha(*p)))
       {
         p++;

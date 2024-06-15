@@ -5,7 +5,7 @@
    xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
    xmlns:xbl="http://www.mozilla.org/xbl">
   
-  <binding id="listbox-base">
+  <binding id="listbox-base" extends="chrome://global/content/bindings/general.xml#basecontrol">
     <resources>
       <stylesheet src="chrome://global/skin/listbox.css"/>
     </resources>
@@ -40,7 +40,6 @@
       <constructor>
       <![CDATA[
         var els = this.getElementsByAttribute("selected", "true");
-        this.selectedItems = [];
         for (var i = 0; i < els.length; ++i)
           this.selectedItems.push(els[i]);
       ]]>
@@ -67,6 +66,10 @@
                 onget="return this.hasAttribute('disableKeyNavigation');"
                 onset="if (val) this.setAttribute('disableKeyNavigation', 'true');
                        else this.removeAttribute('disableKeyNavigation'); return val;"/>
+
+      <property name="_selectDelay" 
+                onset="this.setAttribute('_selectDelay', val);"
+                onget="return this.getAttribute('_selectDelay') || 50;"/>
 
       <method name="timedSelect">
         <parameter name="item"/>
@@ -133,6 +136,7 @@
         ]]></setter>
       </property>
 
+      <field name="selectedItems">[]</field>
       <property name="selectedItem">
         <getter><![CDATA[
           return this.selectedItems.length > 0 ? this.selectedItems[0] : null;
@@ -154,7 +158,7 @@
         <setter>
           <![CDATA[
             var kids = this.getElementsByAttribute("value", val);
-            if (kids && kids.length)
+            if (kids && kids.item(0))
               this.selectItem(kids[0]);
             return val;
           ]]>
@@ -186,7 +190,7 @@
           var item = document.createElementNS(XULNS, "listitem");
           item.setAttribute("label", label);
           item.setAttribute("value", value);
-          var before = this.childNodes[index];
+          var before = this.getItemAtIndex(index);
           if (before)
             this.insertBefore(item, before);
           else
@@ -200,7 +204,7 @@
         <parameter name="index"/>
         <body>
         <![CDATA[
-          var remove = this.childNodes[index];
+          var remove = this.getItemAtIndex(index);
           if (remove)
             this.removeChild(remove);
           return remove;
@@ -221,7 +225,19 @@
         ]]>
         </setter>
       </property>
-      
+
+      <property name="currentIndex">
+        <getter><![CDATA[
+          return this.getIndexOfItem(this.currentItem);
+        ]]></getter>
+        <setter><![CDATA[
+          if (val >= 0)
+            this.currentItem = this.getItemAtIndex(val);
+          else
+            this.currentItem = null;
+        ]]></setter>
+      </property>
+
       <property name="selectedCount" onget="return this.selectedItems.length;"/>
       
       <method name="getSelectedItem">
@@ -497,7 +513,7 @@
          var n = this.getPreviousItem(this.selectedItems[this.selectedItems.length-1], 1);
          if (n) {
            this.ensureIndexIsVisible(this.getIndexOfItem(n));
-           this.timedSelect(n, 500);
+           this.timedSelect(n, this._selectDelay);
          }
         ]]>
       </handler>
@@ -515,7 +531,7 @@
 
          if (n) {
            this.ensureIndexIsVisible(this.getIndexOfItem(n));
-           this.timedSelect(n, 500);
+           this.timedSelect(n, this._selectDelay);
          }
         ]]>
       </handler>
@@ -581,7 +597,7 @@
            }
            this.scrollToIndex(newIndex);
          }
-         this.timedSelect(n, 500);
+         this.timedSelect(n, this._selectDelay);
         ]]>
       </handler>
       <handler event="keypress" keycode="vk_page_down" phase="target">
@@ -606,7 +622,7 @@
            }
            this.scrollToIndex(newIndex);
          }
-         this.timedSelect(n, 500);
+         this.timedSelect(n, this._selectDelay);
         ]]>
       </handler>
       <handler event="keypress" keycode="vk_home" phase="target">
@@ -684,7 +700,7 @@
                this._isUpSelection=0;
                this._isDownSelection=0;
                this.ensureIndexIsVisible(k);
-               this.timedSelect(item, 500);
+               this.timedSelect(item, this._selectDelay);
                break;
              }
            }
@@ -753,9 +769,6 @@
       <property name="label" onget="return this.getAttribute('label');"
                              onset="this.setAttribute('label', val); return val;"/>
       
-      <property name="disabled" onget="return this.getAttribute('disabled') == 'true';"
-                                onset="if (val) this.setAttribute('disabled', 'true'); else this.removeAttribute('disabled');"/>
-      
       <property name="selected" onget="return this.getAttribute('selected') == 'true';">
         <setter><![CDATA[
           if (val)
@@ -788,6 +801,7 @@
            click, so that drags work correctly. -->
       <handler event="mousedown">
       <![CDATA[
+        if (this.parentNode.disabled) return;
         if (!event.ctrlKey && !event.shiftKey && !event.metaKey) {
           if (!this.selected) {
             parentNode.selectItem(this);
@@ -799,9 +813,9 @@
 
       <!-- On a click (up+down on the same item), deselect everything
            except this item. -->
-      <handler event="click">
+      <handler event="click" button="0">
       <![CDATA[
-        if (event.button != 0) return;
+        if (this.parentNode.disabled) return;
         if (parentNode.selType != "multiple") {
           parentNode.selectItem(this);
         }
@@ -833,8 +847,10 @@
             else
               i++;
           }
-          if (didSuppressSelect)
+          if (didSuppressSelect) {
             parentNode._suppressOnSelect = false;
+            parentNode._fireOnSelect();
+          }
         }
       ]]>
       </handler>
@@ -875,7 +891,12 @@
     </implementation>
 
     <handlers> 
-      <handler event="mousedown" button="0" action="if (!this.disabled) this.checked = !this.checked;"/>
+      <handler event="mousedown" button="0">
+      <![CDATA[
+        if (!this.disabled && !this.parentNode.disabled)
+          this.checked = !this.checked;
+      ]]>
+      </handler>
     </handlers>
   </binding>
   

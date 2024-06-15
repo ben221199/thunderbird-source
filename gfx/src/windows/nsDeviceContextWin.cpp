@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,32 +14,30 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
  *
- *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
 #include "nsDeviceContextWin.h"
 #include "nsRenderingContextWin.h"
 #include "nsDeviceContextSpecWin.h"
-#include "nsIPref.h"
 #include "nsIServiceManager.h"
 #include "nsCOMPtr.h"
 #include "nsIScreenManager.h"
@@ -55,12 +53,7 @@
 
 #define DOC_TITLE_LENGTH      64
 
-static NS_DEFINE_CID(kPrefCID, NS_PREF_CID);
-
-PRBool nsDeviceContextWin::gRound = PR_FALSE;
 PRUint32 nsDeviceContextWin::sNumberOfScreens = 0;
-
-static char* nav4rounding = "font.size.nav4rounding";
 
 #include "prlog.h"
 #ifdef PR_LOGGING 
@@ -85,17 +78,6 @@ nsDeviceContextWin :: nsDeviceContextWin()
   mSpec = nsnull;
   mCachedClientRect = PR_FALSE;
   mCachedFullRect = PR_FALSE;
-
-  nsresult res = NS_ERROR_FAILURE;
-  nsCOMPtr<nsIPref> prefs(do_GetService(kPrefCID, &res));
-  if (NS_SUCCEEDED(res)) {
-    static PRBool roundingInitialized = PR_FALSE;
-    if (!roundingInitialized) {
-      roundingInitialized = PR_TRUE;
-      PrefChanged(nav4rounding, this);
-    }
-    prefs->RegisterCallback(nav4rounding, PrefChanged, this);
-  }
 }
 
 nsDeviceContextWin :: ~nsDeviceContextWin()
@@ -115,12 +97,6 @@ nsDeviceContextWin :: ~nsDeviceContextWin()
   }
 
   NS_IF_RELEASE(mSpec);
-
-  nsresult res = NS_ERROR_FAILURE;
-  nsCOMPtr<nsIPref> prefs(do_GetService(kPrefCID, &res));
-  if (NS_SUCCEEDED(res)) {
-    prefs->UnregisterCallback(nav4rounding, PrefChanged, this);
-  }
 }
 
 NS_IMETHODIMP nsDeviceContextWin :: Init(nsNativeWidget aWidget)
@@ -305,7 +281,7 @@ NS_IMETHODIMP nsDeviceContextWin :: CreateRenderingContext(nsIRenderingContext *
   nsresult             rv;
   nsDrawingSurfaceWin  *surf;
 
-  rv = nsComponentManager::CreateInstance(kRCCID,nsnull,NS_GET_IID(nsIRenderingContext),(void**)&pContext);
+  rv = CallCreateInstance(kRCCID, &pContext);
 
   if ( (NS_SUCCEEDED(rv)) && (nsnull != pContext))
   {
@@ -418,22 +394,37 @@ nsresult nsDeviceContextWin::CopyLogFontToNSFont(HDC* aHDC, const LOGFONT* ptrLo
   // any value when going to a printer, for example mPixleScale is
   // 6.25 when going to a 600dpi printer.
   // round, but take into account whether it is negative
-  LONG logHeight = LONG((float(ptrLogFont->lfHeight) * mPixelScale) + (ptrLogFont->lfHeight < 0 ? -0.5 : 0.5)); // round up
-  int pointSize = -MulDiv(logHeight, 72, ::GetDeviceCaps(*aHDC, LOGPIXELSY));
+  float pixelHeight = -ptrLogFont->lfHeight;
+  if (pixelHeight < 0) {
+    HFONT hFont = ::CreateFontIndirect(ptrLogFont);
+    if (!hFont)
+      return NS_ERROR_OUT_OF_MEMORY;
+    HGDIOBJ hObject = ::SelectObject(*aHDC, hFont);
+    TEXTMETRIC tm;
+    ::GetTextMetrics(*aHDC, &tm);
+    ::SelectObject(*aHDC, hObject);
+    ::DeleteObject(hFont);
+    pixelHeight = tm.tmAscent;
+  }
+
+  float pointSize = pixelHeight * mPixelScale * 72 / ::GetDeviceCaps(*aHDC, LOGPIXELSY);
 
   // we have problem on Simplified Chinese system because the system report
   // the default font size is 8. but if we use 8, the text display very
   // Ugly. force it to be at 9 on that system (cp936), but leave other sizes alone.
-  if ((pointSize == 8) && 
+  if ((pointSize < 9) && 
       (936 == ::GetACP())) 
     pointSize = 9;
 
-  aFont->size = NSIntPointsToTwips(pointSize);
+  aFont->size = NSFloatPointsToTwips(pointSize);
   return NS_OK;
 }
 
 nsresult nsDeviceContextWin :: GetSysFontInfo(HDC aHDC, nsSystemFontID anID, nsFont* aFont) const
 {
+#ifdef WINCE
+  return NS_ERROR_NOT_IMPLEMENTED;
+#else
   NONCLIENTMETRICS ncm;
   HGDIOBJ hGDI;
 
@@ -522,6 +513,7 @@ nsresult nsDeviceContextWin :: GetSysFontInfo(HDC aHDC, nsSystemFontID anID, nsF
   aFont->systemFont = PR_TRUE;
 
   return CopyLogFontToNSFont(&aHDC, ptrLogFont, aFont);
+#endif
 }
 
 NS_IMETHODIMP nsDeviceContextWin :: GetSystemFont(nsSystemFontID anID, nsFont *aFont) const
@@ -572,7 +564,7 @@ NS_IMETHODIMP nsDeviceContextWin :: GetSystemFont(nsSystemFontID anID, nsFont *a
   return status;
 }
 
-NS_IMETHODIMP nsDeviceContextWin :: GetDrawingSurface(nsIRenderingContext &aContext, nsDrawingSurface &aSurface)
+NS_IMETHODIMP nsDeviceContextWin :: GetDrawingSurface(nsIRenderingContext &aContext, nsIDrawingSurface* &aSurface)
 {
   if (NULL == mSurface) {
     nsRect empty(0,0,0,0); // CreateDrawingSurface(null,...) used width=0,height=0
@@ -631,12 +623,14 @@ NS_IMETHODIMP nsDeviceContextWin::GetPaletteInfo(nsPaletteInfo& aPaletteInfo)
   aPaletteInfo.sizePalette = mPaletteInfo.sizePalette;
   aPaletteInfo.numReserved = mPaletteInfo.numReserved;
 
+#ifndef WINCE
   if (NULL == mPaletteInfo.palette) {
     HWND    hwnd = (HWND)mWidget;
     HDC     hdc = ::GetDC(hwnd);
     mPaletteInfo.palette = ::CreateHalftonePalette(hdc);  
     ::ReleaseDC(hwnd, hdc);                                                     
   }
+#endif
 
   aPaletteInfo.palette = mPaletteInfo.palette;
                                          
@@ -777,7 +771,7 @@ NS_IMETHODIMP nsDeviceContextWin :: BeginDocument(PRUnichar * aTitle, PRUnichar*
     titleStr = aTitle;
     if (titleStr.Length() > DOC_TITLE_LENGTH) {
       titleStr.SetLength(DOC_TITLE_LENGTH-3);
-      titleStr.AppendWithConversion("...");
+      titleStr.AppendLiteral("...");
     }
     char *title = GetACPString(titleStr);
 
@@ -906,21 +900,7 @@ NS_IMETHODIMP nsDeviceContextWin :: EndPage(void)
   return NS_OK;
 }
 
-int
-nsDeviceContextWin :: PrefChanged(const char* aPref, void* aClosure)
-{
-  nsresult res = NS_ERROR_FAILURE;
-  nsCOMPtr<nsIPref> prefs(do_GetService(kPrefCID, &res));
-  if (NS_SUCCEEDED(res)) {
-    prefs->GetBoolPref(nav4rounding, &gRound);
-    nsDeviceContextWin* deviceContext = (nsDeviceContextWin*) aClosure;
-    deviceContext->FlushFontCache();
-  }
-
-  return 0;
-}
-
-char* 
+char*
 nsDeviceContextWin :: GetACPString(const nsAString& aStr)
 {
    int acplen = aStr.Length() * 2 + 1;

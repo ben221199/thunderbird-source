@@ -1,6 +1,6 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: MPL 1.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
  * The contents of this file are subject to the Mozilla Public License Version
  * 1.1 (the "License"); you may not use this file except in compliance with
@@ -26,6 +26,18 @@
  *   Brian Ryner <bryner@brianryner.com>
  *   Terry Hayes <thayes@netscape.com>
  *   Kai Engert <kaie@netscape.com>
+ *
+ * Alternatively, the contents of this file may be used under the terms of
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
+ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -66,9 +78,10 @@
 #include "nsIFormSubmitObserver.h"
 #include "nsISecurityWarningDialogs.h"
 #include "nsIProxyObjectManager.h"
+#include "nsNetUtil.h"
 #include "nsCRT.h"
 
-#define SECURITY_STRING_BUNDLE_URL "chrome://necko/locale/security.properties"
+#define SECURITY_STRING_BUNDLE_URL "chrome://pipnss/locale/security.properties"
 
 #define IS_SECURE(state) ((state & 0xFFFF) == STATE_IS_SECURE)
 
@@ -145,12 +158,6 @@ nsSecureBrowserUIImpl::nsSecureBrowserUIImpl()
 
 nsSecureBrowserUIImpl::~nsSecureBrowserUIImpl()
 {
-  nsresult rv;
-  // remove self from form post notifications:
-  nsCOMPtr<nsIObserverService> svc(do_GetService("@mozilla.org/observer-service;1", &rv));
-  if (NS_SUCCEEDED(rv)) {
-    svc->RemoveObserver(this, NS_FORMSUBMIT_SUBJECT);
-  }
   if (mTransferringRequests.ops) {
     PL_DHashTableFinish(&mTransferringRequests);
     mTransferringRequests.ops = nsnull;
@@ -170,8 +177,19 @@ NS_IMETHODIMP
 nsSecureBrowserUIImpl::Init(nsIDOMWindow *window)
 {
   PR_LOG(gSecureDocLog, PR_LOG_DEBUG,
-         ("SecureUI:%p: Init\n", this));
+         ("SecureUI:%p: Init: mWindow: %p, window: %p\n", this, mWindow.get(),
+          window));
 
+  if (!window) {
+    NS_WARNING("Null window passed to nsSecureBrowserUIImpl::Init()");
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  if (mWindow) {
+    NS_WARNING("Trying to init an nsSecureBrowserUIImpl twice");
+    return NS_ERROR_ALREADY_INITIALIZED;
+  }
+  
   nsresult rv = NS_OK;
   mWindow = window;
 
@@ -188,12 +206,20 @@ nsSecureBrowserUIImpl::Init(nsIDOMWindow *window)
     rv = svc->AddObserver(this, NS_FORMSUBMIT_SUBJECT, PR_TRUE);
   }
   
-  /* GetWebProgress(mWindow) */
-  // hook up to the webprogress notifications.
   nsCOMPtr<nsIScriptGlobalObject> sgo(do_QueryInterface(mWindow));
   if (!sgo) return NS_ERROR_FAILURE;
-  
-  nsCOMPtr<nsIWebProgress> wp(do_GetInterface(sgo->GetDocShell()));
+
+  nsIDocShell *docShell = sgo->GetDocShell();
+
+  // The Docshell will own the SecureBrowserUI object
+  if (!docShell)
+    return NS_ERROR_FAILURE;
+
+  docShell->SetSecurityUI(this);
+
+  /* GetWebProgress(mWindow) */
+  // hook up to the webprogress notifications.
+  nsCOMPtr<nsIWebProgress> wp(do_GetInterface(docShell));
   if (!wp) return NS_ERROR_FAILURE;
   /* end GetWebProgress */
   
@@ -908,21 +934,12 @@ nsSecureBrowserUIImpl::OnStateChange(nsIWebProgress* aWebProgress,
 void nsSecureBrowserUIImpl::ObtainEventSink(nsIChannel *channel)
 {
   if (!mToplevelEventSink)
-  {
-    nsCOMPtr<nsIInterfaceRequestor> requestor;
-    channel->GetNotificationCallbacks(getter_AddRefs(requestor));
-    if (requestor)
-      mToplevelEventSink = do_GetInterface(requestor);
-  }
-
+    NS_QueryNotificationCallbacks(channel, mToplevelEventSink);
 }
 
 nsresult nsSecureBrowserUIImpl::UpdateSecurityState(nsIRequest* aRequest)
 {
   lockIconState newSecurityState;
-
-  PRBool showWarning = PR_FALSE;
-  lockIconState warnSecurityState;
 
   if (mNewToplevelSecurityState & STATE_IS_SECURE)
   {
@@ -973,12 +990,19 @@ nsresult nsSecureBrowserUIImpl::UpdateSecurityState(nsIRequest* aRequest)
     newSecurityState = lis_no_security;
   }
 
+  return UpdateSecurityState(newSecurityState, aRequest);
+}
+
+nsresult
+nsSecureBrowserUIImpl::UpdateSecurityState(lockIconState aNewState,
+                                           nsIRequest *aRequest)
+{
   PR_LOG(gSecureDocLog, PR_LOG_DEBUG,
          ("SecureUI:%p: UpdateSecurityState:  old-new  %d - %d\n", this,
-         mPreviousSecurityState, newSecurityState
+         mPreviousSecurityState, aNewState
           ));
 
-  if (mPreviousSecurityState != newSecurityState)
+  if (mPreviousSecurityState != aNewState)
   {
     // must show alert
     
@@ -1017,13 +1041,13 @@ nsresult nsSecureBrowserUIImpl::UpdateSecurityState(nsIRequest* aRequest)
       high        high
     */
 
-    showWarning = PR_TRUE;
+    PRBool showWarning = PR_TRUE;
     
     switch (mPreviousSecurityState)
     {
       case lis_no_security:
       case lis_broken_security:
-        switch (newSecurityState)
+        switch (aNewState)
         {
           case lis_no_security:
           case lis_broken_security:
@@ -1037,15 +1061,33 @@ nsresult nsSecureBrowserUIImpl::UpdateSecurityState(nsIRequest* aRequest)
       default:
         break;
     }
-
+    
     if (showWarning)
     {
-      warnSecurityState = newSecurityState;
-    }
-    
-    mPreviousSecurityState = newSecurityState;
+      switch (aNewState)
+      {
+        case lis_no_security:
+        case lis_broken_security:
+          ConfirmLeavingSecure();
+          break;
 
-    if (lis_no_security == newSecurityState)
+        case lis_mixed_security:
+          ConfirmMixedMode();
+          break;
+
+        case lis_low_security:
+          ConfirmEnteringWeak();
+          break;
+
+        case lis_high_security:
+          ConfirmEnteringSecure();
+          break;
+      }
+    }
+
+    mPreviousSecurityState = aNewState;
+
+    if (lis_no_security == aNewState)
     {
       mSSLStatus = nsnull;
       mInfoTooltip.Truncate();
@@ -1056,7 +1098,7 @@ nsresult nsSecureBrowserUIImpl::UpdateSecurityState(nsIRequest* aRequest)
   {
     PRUint32 newState = STATE_IS_INSECURE;
 
-    switch (newSecurityState)
+    switch (aNewState)
     {
       case lis_broken_security:
         newState = STATE_IS_BROKEN;
@@ -1093,29 +1135,6 @@ nsresult nsSecureBrowserUIImpl::UpdateSecurityState(nsIRequest* aRequest)
            ("SecureUI:%p: UpdateSecurityState: NO mToplevelEventSink!\n", this
             ));
 
-  }
-
-  if (showWarning)
-  {
-    switch (warnSecurityState)
-    {
-      case lis_no_security:
-      case lis_broken_security:
-        ConfirmLeavingSecure();
-        break;
-
-      case lis_mixed_security:
-        ConfirmMixedMode();
-        break;
-
-      case lis_low_security:
-        ConfirmEnteringWeak();
-        break;
-
-      case lis_high_security:
-        ConfirmEnteringSecure();
-        break;
-    }
   }
 
   return NS_OK; 
@@ -1478,4 +1497,51 @@ ConfirmPostToInsecureFromSecure()
   if (NS_FAILED(rv)) return PR_FALSE;
 
   return result;
+}
+
+#define NS_SECUREBROWSERUISTATE_IID \
+{0x086c5daf, 0xbb0a, 0x45cb, {0x98, 0x2b, 0xf1, 0x62, 0x49, 0xd5, 0x0e, 0x28}}
+
+class nsSecureBrowserUIImpl::State : public nsISupports
+{
+public:
+  NS_DEFINE_STATIC_IID_ACCESSOR(NS_SECUREBROWSERUISTATE_IID)
+  NS_DECL_ISUPPORTS
+
+  State(lockIconState aState, nsISupports *aSSLStatus);
+
+  lockIconState GetState() const { return mState; }
+  nsISupports* GetSSLStatus() { return mSSLStatus; }
+
+private:
+  lockIconState mState;
+  nsCOMPtr<nsISupports> mSSLStatus;
+};
+
+NS_IMPL_ISUPPORTS1(nsSecureBrowserUIImpl::State, nsSecureBrowserUIImpl::State)
+
+nsSecureBrowserUIImpl::State::State(lockIconState aState,
+                                    nsISupports *aSSLStatus)
+  : mState(aState), mSSLStatus(aSSLStatus)
+{
+}
+
+NS_IMETHODIMP
+nsSecureBrowserUIImpl::CaptureState(nsISupports **aState)
+{
+  *aState = new State(mPreviousSecurityState, mSSLStatus);
+  NS_ENSURE_TRUE(aState, NS_ERROR_OUT_OF_MEMORY);
+
+  NS_ADDREF(*aState);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsSecureBrowserUIImpl::TransitionToState(nsISupports *aState)
+{
+  nsCOMPtr<nsSecureBrowserUIImpl::State> state = do_QueryInterface(aState);
+  NS_ENSURE_TRUE(state, NS_ERROR_NULL_POINTER);
+
+  mSSLStatus = state->GetSSLStatus();
+  return UpdateSecurityState(state->GetState(), nsnull);
 }

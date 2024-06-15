@@ -87,7 +87,6 @@ public:
     nsCOMPtr<nsIPrincipal> mSystemPrincipal;
 #endif
     JSRuntime *mRuntime;
-    JSContext *mContext;
     PLHashTable *mModules;
     PLHashTable *mGlobals;
 
@@ -95,18 +94,24 @@ public:
     nsSupportsArray mDeferredComponents;
 };
 
-class JSCLContextHelper
+class JSCLAutoContext
 {
 public:
-    JSCLContextHelper(JSContext* cx);
-    ~JSCLContextHelper();
+    JSCLAutoContext(JSRuntime* rt);
+    ~JSCLAutoContext();
 
     operator JSContext*() const {return mContext;}
+    JSContext* GetContext() const {return mContext;}
+    nsresult   GetError()   const {return mError;}
 
-    JSCLContextHelper(); // not implemnted
+
+    JSCLAutoContext(); // not implemnted
 private:
     JSContext* mContext;
+    nsresult   mError;
+    JSBool     mPopNeeded;
     intN       mContextThread; 
+    uint32     mSavedOptions;
 };
 
 

@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,7 +14,7 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
@@ -24,16 +24,16 @@
  *   Conrad Carlen <ccarlen@netscape.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
  * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -62,10 +62,6 @@
 // OS includes
 #include <PMApplication.h>
 #include <CFPlugIn.h>
-#include <Gestalt.h>
-
-// Constants
-static const char *kPrintProgressDialogURL = "chrome://global/content/printProgress.xul";
 
 //-----------------------------------------------------------------------------
 // Static Helpers
@@ -256,46 +252,7 @@ nsPrintingPromptService::ShowProgress(nsIDOMWindow*            parent,
                                       nsIPrintProgressParams** printProgressParams,
                                       PRBool*                  notifyOnOpen)
 {
-    NS_ENSURE_ARG(webProgressListener);
-    NS_ENSURE_ARG(printProgressParams);
-    NS_ENSURE_ARG(notifyOnOpen);
-
-    *notifyOnOpen = PR_FALSE;
-
-    // If running on OS X, the printing manager displays a nice progress dialog
-    // so we don't need to do this. Keeping this code here in order to support
-    // running TARGET_CARBON builds on OS 9.
-    
-    long version;
-    if (::Gestalt(gestaltSystemVersion, &version) == noErr && version >= 0x00001000)
-        return NS_ERROR_NOT_IMPLEMENTED;
-        
-    nsPrintProgress* prtProgress = new nsPrintProgress();
-    nsresult rv = prtProgress->QueryInterface(NS_GET_IID(nsIPrintProgress), (void**)getter_AddRefs(mPrintProgress));
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    rv = prtProgress->QueryInterface(NS_GET_IID(nsIWebProgressListener), (void**)getter_AddRefs(mWebProgressListener));
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    nsPrintProgressParams* prtProgressParams = new nsPrintProgressParams();
-    rv = prtProgressParams->QueryInterface(NS_GET_IID(nsIPrintProgressParams), (void**)printProgressParams);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    if (printProgressParams) 
-    {
-        if (mWatcher) 
-        {
-            nsCOMPtr<nsIDOMWindow> active;
-            mWatcher->GetActiveWindow(getter_AddRefs(active));
-            nsCOMPtr<nsIDOMWindowInternal> parent(do_QueryInterface(active));
-            mPrintProgress->OpenProgressDialog(parent, kPrintProgressDialogURL, *printProgressParams, openDialogObserver, notifyOnOpen);
-        }
-    }
-
-    *webProgressListener = NS_STATIC_CAST(nsIWebProgressListener*, this);
-    NS_ADDREF(*webProgressListener);
-
-    return rv;
+  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP 
@@ -352,13 +309,10 @@ nsPrintingPromptService::ShowPrinterProperties(nsIDOMWindow *parent, const PRUni
 NS_IMETHODIMP 
 nsPrintingPromptService::OnStateChange(nsIWebProgress *aWebProgress, nsIRequest *aRequest, PRUint32 aStateFlags, nsresult aStatus)
 {
-    if ((aStateFlags & STATE_STOP) && mWebProgressListener) 
-    {
+    if ((aStateFlags & STATE_STOP) && mWebProgressListener) {
         mWebProgressListener->OnStateChange(aWebProgress, aRequest, aStateFlags, aStatus);
         if (mPrintProgress) 
-        {
-            mPrintProgress->CloseProgressDialog(PR_TRUE);
-        }
+          mPrintProgress->CloseProgressDialog(PR_TRUE);
         mPrintProgress       = nsnull;
         mWebProgressListener = nsnull;
     }

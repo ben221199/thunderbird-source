@@ -1,25 +1,42 @@
 # -*- Mode: Java; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
-# The contents of this file are subject to the Netscape Public
-# License Version 1.1 (the "License"); you may not use this file
-# except in compliance with the License. You may obtain a copy of
-# the License at http://www.mozilla.org/NPL/
+# ***** BEGIN LICENSE BLOCK *****
+# Version: MPL 1.1/GPL 2.0/LGPL 2.1
 #
-# Software distributed under the License is distributed on an "AS
-# IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
-# implied. See the License for the specific language governing
-# rights and limitations under the License.
+# The contents of this file are subject to the Mozilla Public License Version
+# 1.1 (the "License"); you may not use this file except in compliance with
+# the License. You may obtain a copy of the License at
+# http://www.mozilla.org/MPL/
+#
+# Software distributed under the License is distributed on an "AS IS" basis,
+# WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+# for the specific language governing rights and limitations under the
+# License.
 #
 # The Original Code is Mozilla Communicator client code, released
 # March 31, 1998.
 #
-# The Initial Developer of the Original Code is Netscape
-# Communications Corporation. Portions created by Netscape are
-# Copyright (C) 1998-1999 Netscape Communications Corporation. All
-# Rights Reserved.
+# The Initial Developer of the Original Code is
+# Netscape Communications Corporation.
+# Portions created by the Initial Developer are Copyright (C) 1998-1999
+# the Initial Developer. All Rights Reserved.
 #
-# Contributors(s):
+# Contributor(s):
 #   Jan Varga <varga@nixcorp.com>
 #   Håkan Waara (hwaara@chello.se)
+#
+# Alternatively, the contents of this file may be used under the terms of
+# either the GNU General Public License Version 2 or later (the "GPL"), or
+# the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+# in which case the provisions of the GPL or the LGPL are applicable instead
+# of those above. If you wish to allow use of your version of this file only
+# under the terms of either the GPL or the LGPL, and not to allow others to
+# use your version of this file under the terms of the MPL, indicate your
+# decision by deleting the provisions above and replace them with the notice
+# and other provisions required by the GPL or the LGPL. If you do not delete
+# the provisions above, a recipient may use your version of this file under
+# the terms of any one of the MPL, the GPL or the LGPL.
+#
+# ***** END LICENSE BLOCK *****
 
 //This file stores variables common to mail windows
 var messengerContractID        = "@mozilla.org/messenger;1";
@@ -185,7 +202,7 @@ function CreateMailWindowGlobals()
 
   //Create datasources
   accountManagerDataSource = Components.classes[accountManagerDSContractID].createInstance();
-  folderDataSource         = Components.classes[folderDSContractID].createInstance();
+  folderDataSource         = Components.classes[folderDSContractID].getService();
 
   accountCentralBox = document.getElementById("accountCentralBox");
   gSearchBox = document.getElementById("searchBox");
@@ -283,7 +300,7 @@ nsMsgStatusFeedback.prototype =
     {
       if (status.length > 0)
       {
-        myDefaultStatus = status;
+        this.myDefaultStatus = status;
         this.statusTextFld.label = status;
       }
     },
@@ -306,9 +323,9 @@ nsMsgStatusFeedback.prototype =
     {
       this.ensureStatusFields();
       if ( !statusText.length )
-        statusText = myDefaultStatus;
+        statusText = this.myDefaultStatus;
       else
-        myDefaultStatus = "";
+        this.myDefaultStatus = "";
       this.statusTextFld.label = statusText;
   },
   _startMeteors : function()
@@ -469,35 +486,44 @@ function StopUrls()
   msgWindow.StopUrls();
 }
 
-function loadStartPage() {
-    try {
-        // collapse the junk bar
-        SetUpJunkBar(null);
-        SetUpRemoteContentBar(null);
-
-        var startpageenabled = pref.getBoolPref("mailnews.start_page.enabled");
-
-        if (startpageenabled) {
-            var startpage = pref.getComplexValue("mailnews.start_page.url",
-                                                 Components.interfaces.nsIPrefLocalizedString).data;
-            if (startpage != "") {
-                GetMessagePaneFrame().location = startpage;
-                //dump("start message pane with: " + startpage + "\n");
-                ClearMessageSelection();
-            }
-        }
+function loadStartPage() 
+{
+  try 
+  {
+    gMessageNotificationBar.clearMsgNotifications();
+    
+    var startpageenabled = pref.getBoolPref("mailnews.start_page.enabled");
+    if (startpageenabled) 
+    {
+      var startpage = pref.getComplexValue("mailnews.start_page.url", Components.interfaces.nsIPrefLocalizedString).data;
+      if (startpage != "") 
+      {
+        GetMessagePaneFrame().location.href = startpage;
+        //dump("start message pane with: " + startpage + "\n");
+        ClearMessageSelection();
+      }
     }
-    catch (ex) {
-        dump("Error loading start page.\n");
-        return;
-    }
+  }
+  catch (ex) 
+  {
+    dump("Error loading start page.\n");
+    return;
+  }
 }
 
-// Display AccountCentral page when users clicks on the Account Folder.
-// When AccountCentral page need to be shown, we need to hide
-// the box containing threadPane, splitter and messagePane.
-// Load iframe in the AccountCentral box with corresponding page
 function ShowAccountCentral()
+{
+  if (document.getElementById("displayDeck").selectedPanel == accountCentralBox)
+    ShowingAccountCentral(); // force us to reload account central because the user has switched accounts
+  else
+    document.getElementById("displayDeck").selectedPanel = accountCentralBox;
+}
+
+// When AccountCentral is shown via the displayDeck, we need to switch the
+// displayDeck to show the accountCentralBox, collapse all the other
+// UI elements that aren't meaningful for AccountCentral, and finally
+// load the iframe in the AccountCentral box with corresponding page.
+function ShowingAccountCentral()
 {
     try
     {
@@ -506,11 +532,8 @@ function ShowAccountCentral()
         GetMessagePane().collapsed = true;
         document.getElementById("threadpane-splitter").collapsed = true;
         gSearchBox.collapsed = true;
-        
-        GetThreadTree().collapsed = true;
-        document.getElementById("accountCentralBox").collapsed = false;
 
-        window.frames["accountCentralPane"].location = acctCentralPage;
+        window.frames["accountCentralPane"].location.href = acctCentralPage;
         
         if (!IsFolderPaneCollapsed())
             GetFolderTree().focus();        
@@ -520,32 +543,57 @@ function ShowAccountCentral()
     catch (ex)
     {
         dump("Error loading AccountCentral page -> " + ex + "\n");
-        return;
     }
 }
 
-// Display thread and message panes with splitter when user tries
-// to read messages by clicking on msgfolders. Hide AccountCentral
-// box and display message box.
-function HideAccountCentral()
+function HidingAccountCentral()
 {
     try
     {
-        window.frames["accountCentralPane"].location = "about:blank";
-        document.getElementById("accountCentralBox").collapsed = true;
-        GetThreadTree().collapsed = false;
-        gSearchBox.collapsed = false;
-        
-        var threadPaneSplitter = document.getElementById("threadpane-splitter");
-        threadPaneSplitter.collapsed = false;
-        GetMessagePane().collapsed = threadPaneSplitter.getAttribute("state") == "collapsed";
-        gAccountCentralLoaded = false;
+        window.frames["accountCentralPane"].location.href = "about:blank";
     }
     catch (ex)
     {
         dump("Error hiding AccountCentral page -> " + ex + "\n");
-        return;
     }
+    gAccountCentralLoaded = false;
+}
+
+function ShowThreadPane()
+{
+    document.getElementById("displayDeck").selectedPanel = 
+        document.getElementById("threadPaneBox");
+}
+
+function ShowingThreadPane()
+{
+    gSearchBox.collapsed = false;
+    var threadPaneSplitter = document.getElementById("threadpane-splitter");
+    threadPaneSplitter.collapsed = false;
+    GetMessagePane().collapsed =
+        (threadPaneSplitter.getAttribute("state") == "collapsed");
+}
+
+function HidingThreadPane()
+{
+    ClearThreadPane();
+}
+
+function ObserveDisplayDeckChange(event)
+{
+    var deck = document.getElementById("displayDeck");
+    var nowSelected = null;
+    try { nowSelected = deck.selectedPanel.id; } catch (ex) { }
+
+    if (nowSelected == "threadPaneBox")
+        ShowingThreadPane();
+    else
+        HidingThreadPane();
+    
+    if (nowSelected == "accountCentralBox")
+        ShowingAccountCentral();
+    else
+        HidingAccountCentral();
 }
 
 // Given the server, open the twisty and the set the selection
@@ -554,7 +602,7 @@ function HideAccountCentral()
 function OpenInboxForServer(server)
 {
     try {
-        HideAccountCentral();
+        ShowThreadPane();
         var inboxFolder = GetInboxFolder(server);
         SelectFolder(inboxFolder.URI);
 

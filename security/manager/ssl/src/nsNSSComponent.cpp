@@ -1,21 +1,24 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
  *
- * The contents of this file are subject to the Mozilla Public
- * License Version 1.1 (the "License"); you may not use this file
- * except in compliance with the License. You may obtain a copy of
- * the License at http://www.mozilla.org/MPL/
+ * ***** BEGIN LICENSE BLOCK *****
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * Software distributed under the License is distributed on an "AS
- * IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
- * implied. See the License for the specific language governing
- * rights and limitations under the License.
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
+ *
+ * Software distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
+ * for the specific language governing rights and limitations under the
+ * License.
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is Netscape
- * Communications Corporation.  Portions created by Netscape are
- * Copyright (C) 1998 Netscape Communications Corporation. All
- * Rights Reserved.
+ * The Initial Developer of the Original Code is
+ * Netscape Communications Corporation.
+ * Portions created by the Initial Developer are Copyright (C) 1998
+ * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
  *   Hubbie Shaw
@@ -23,7 +26,20 @@
  *   Mitch Stoltz <mstoltz@netscape.com>
  *   Brian Ryner <bryner@brianryner.com>
  *   Kai Engert <kaie@netscape.com>
- */
+ *
+ * Alternatively, the contents of this file may be used under the terms of
+ * either the GNU General Public License Version 2 or later (the "GPL"), or
+ * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * in which case the provisions of the GPL or the LGPL are applicable instead
+ * of those above. If you wish to allow use of your version of this file only
+ * under the terms of either the GPL or the LGPL, and not to allow others to
+ * use your version of this file under the terms of the MPL, indicate your
+ * decision by deleting the provisions above and replace them with the notice
+ * and other provisions required by the GPL or the LGPL. If you do not delete
+ * the provisions above, a recipient may use your version of this file under
+ * the terms of any one of the MPL, the GPL or the LGPL.
+ *
+ * ***** END LICENSE BLOCK ***** */
 
 #include "nsNSSComponent.h"
 #include "nsNSSCallbacks.h"
@@ -44,7 +60,9 @@
 #include "nsNSSCertificate.h"
 #include "nsNSSHelper.h"
 #include "prlog.h"
-#include "nsIPref.h"
+#include "nsIPrefService.h"
+#include "nsIPrefBranch.h"
+#include "nsIPrefBranch2.h"
 #include "nsIDateTimeFormat.h"
 #include "nsDateTimeFormatCID.h"
 #include "nsAutoLock.h"
@@ -272,7 +290,7 @@ nsNSSComponent::~nsNSSComponent()
 #endif /*DEBUG*/ 
 #endif /*XP_MAC*/
 
-static void setOCSPOptions(nsIPref * pref);
+static void setOCSPOptions(nsIPrefBranch * pref);
 
 NS_IMETHODIMP
 nsNSSComponent::PIPBundleFormatStringFromName(const char *name,
@@ -328,7 +346,7 @@ nsNSSComponent::SkipOcsp()
 NS_IMETHODIMP
 nsNSSComponent::SkipOcspOff()
 {
-  setOCSPOptions(mPref);
+  setOCSPOptions(mPrefBranch);
   return NS_OK;
 }
 
@@ -590,7 +608,7 @@ nsresult nsNSSComponent::GetNSSCipherIDFromPrefString(const nsACString &aPrefStr
   return NS_ERROR_NOT_AVAILABLE;
 }
 
-static void setOCSPOptions(nsIPref * pref)
+static void setOCSPOptions(nsIPrefBranch * pref)
 {
   nsNSSShutDownPreventionLock locker;
   // Set up OCSP //
@@ -610,8 +628,8 @@ static void setOCSPOptions(nsIPref * pref)
       char *url = nsnull;
 
       // Get the signing CA and service url //
-      pref->CopyCharPref("security.OCSP.signingCA", &signingCA);
-      pref->CopyCharPref("security.OCSP.URL", &url);
+      pref->GetCharPref("security.OCSP.signingCA", &signingCA);
+      pref->GetCharPref("security.OCSP.URL", &url);
 
       // Set OCSP up
       CERT_EnableOCSPChecking(CERT_GetDefaultCertDB());
@@ -696,7 +714,7 @@ nsresult nsNSSComponent::getParamsForNextCrlToDownload(nsAutoString *url, PRTime
   char *tempUrl;
   nsresult rv;
   
-  nsCOMPtr<nsIPref> pref = do_GetService(NS_PREF_CONTRACTID,&rv);
+  nsCOMPtr<nsIPrefBranch> pref = do_GetService(NS_PREFSERVICE_CONTRACTID,&rv);
   if(NS_FAILED(rv)){
     return rv;
   }
@@ -1095,7 +1113,7 @@ nsNSSComponent::InitializeNSS(PRBool showWarningBox)
   #endif
 
     PRBool supress_warning_preference = PR_FALSE;
-    rv = mPref->GetBoolPref("security.suppress_nss_rw_impossible_warning", &supress_warning_preference);
+    rv = mPrefBranch->GetBoolPref("security.suppress_nss_rw_impossible_warning", &supress_warning_preference);
 
     if (NS_FAILED(rv)) {
       supress_warning_preference = PR_FALSE;
@@ -1148,16 +1166,16 @@ nsNSSComponent::InitializeNSS(PRBool showWarningBox)
 
       PK11_SetPasswordFunc(PK11PasswordPrompt);
 
-      // Register a callback so we can inform NSS when these prefs change
-      mPref->RegisterCallback("security.", nsNSSComponent::PrefChangedCallback,
-                              (void*) this);
+      // Register an observer so we can inform NSS when these prefs change
+      nsCOMPtr<nsIPrefBranch2> pbi = do_QueryInterface(mPrefBranch);
+      pbi->AddObserver("security.", this, PR_FALSE);
 
       PRBool enabled;
-      mPref->GetBoolPref("security.enable_ssl2", &enabled);
+      mPrefBranch->GetBoolPref("security.enable_ssl2", &enabled);
       SSL_OptionSetDefault(SSL_ENABLE_SSL2, enabled);
-      mPref->GetBoolPref("security.enable_ssl3", &enabled);
+      mPrefBranch->GetBoolPref("security.enable_ssl3", &enabled);
       SSL_OptionSetDefault(SSL_ENABLE_SSL3, enabled);
-      mPref->GetBoolPref("security.enable_tls", &enabled);
+      mPrefBranch->GetBoolPref("security.enable_tls", &enabled);
       SSL_OptionSetDefault(SSL_ENABLE_TLS, enabled);
 
       // Disable any ciphers that NSS might have enabled by default
@@ -1169,7 +1187,7 @@ nsNSSComponent::InitializeNSS(PRBool showWarningBox)
 
       // Now only set SSL/TLS ciphers we knew about at compile time
       for (CipherPref* cp = CipherPrefs; cp->pref; ++cp) {
-        mPref->GetBoolPref(cp->pref, &enabled);
+        mPrefBranch->GetBoolPref(cp->pref, &enabled);
 
         SSL_CipherPrefSetDefault(cp->id, enabled);
       }
@@ -1185,7 +1203,7 @@ nsNSSComponent::InitializeNSS(PRBool showWarningBox)
       PORT_SetUCS2_ASCIIConversionFunction(pip_ucs2_ascii_conversion_fn);
 
       // Set up OCSP //
-      setOCSPOptions(mPref);
+      setOCSPOptions(mPrefBranch);
 
       InstallLoadableRoots();
 
@@ -1230,9 +1248,9 @@ nsNSSComponent::ShutdownNSS()
 
     PK11_SetPasswordFunc((PK11PasswordFunc)nsnull);
 
-    if (mPref) {
-      mPref->UnregisterCallback("security.", nsNSSComponent::PrefChangedCallback,
-                                (void*) this);
+    if (mPrefBranch) {
+      nsCOMPtr<nsIPrefBranch2> pbi = do_QueryInterface(mPrefBranch);
+      pbi->RemoveObserver("security.", this);
     }
 
     SSL_ClearSessionCache();
@@ -1265,9 +1283,9 @@ nsNSSComponent::Init()
     return rv;
   }      
 
-  if (!mPref) {
-    mPref = do_GetService(NS_PREF_CONTRACTID);
-    NS_ASSERTION(mPref, "Unable to get pref service");
+  if (!mPrefBranch) {
+    mPrefBranch = do_GetService(NS_PREFSERVICE_CONTRACTID);
+    NS_ASSERTION(mPrefBranch, "Unable to get pref service");
   }
 
   // Do that before NSS init, to make sure we won't get unloaded.
@@ -1377,31 +1395,26 @@ nsNSSComponent::VerifySignature(const char* aRSABuf, PRUint32 aRSABufLen,
   *aPrincipal = nsnull;
 
   nsNSSShutDownPreventionLock locker;
-  SEC_PKCS7DecoderContext * p7_ctxt = nsnull;
   SEC_PKCS7ContentInfo * p7_info = nsnull; 
   unsigned char hash[SHA1_LENGTH]; 
-  PRBool rv;
 
-  p7_ctxt = SEC_PKCS7DecoderStart(ContentCallback,
-                        nsnull,
-                        GetPasswordKeyCallback,
-                        nsnull,
-                        GetDecryptKeyCallback,
-                        nsnull,
-                        DecryptionAllowedCallback);
-  if (!p7_ctxt) {
-    return NS_ERROR_FAILURE;
-  }
+  SECItem item;
+  item.type = siEncodedCertBuffer;
+  item.data = (unsigned char*)aRSABuf;
+  item.len = aRSABufLen;
+  p7_info = SEC_PKCS7DecodeItem(&item,
+                                ContentCallback, nsnull,
+                                GetPasswordKeyCallback, nsnull,
+                                GetDecryptKeyCallback, nsnull,
+                                DecryptionAllowedCallback);
 
-  if (SEC_PKCS7DecoderUpdate(p7_ctxt,aRSABuf, aRSABufLen) != SECSuccess) {
-    return NS_ERROR_FAILURE;
-  }
-
-  p7_info = SEC_PKCS7DecoderFinish(p7_ctxt); 
   if (!p7_info) {
     return NS_ERROR_FAILURE;
   }
 
+  // Make sure we call SEC_PKCS7DestroyContentInfo after this point;
+  // otherwise we leak data in p7_info
+  
   //-- If a plaintext was provided, hash it.
   SECItem digest;
   digest.data = nsnull;
@@ -1422,54 +1435,69 @@ nsNSSComponent::VerifySignature(const char* aRSABuf, PRUint32 aRSABufLen,
   }
 
   //-- Verify signature
-  rv = SEC_PKCS7VerifyDetachedSignature(p7_info, certUsageObjectSigner, &digest, HASH_AlgSHA1, PR_TRUE);
+  PRBool rv = SEC_PKCS7VerifyDetachedSignature(p7_info, certUsageObjectSigner,
+                                               &digest, HASH_AlgSHA1, PR_FALSE);
   if (rv != PR_TRUE) {
     *aErrorCode = PR_GetError();
   }
 
   // Get the signing cert //
   CERTCertificate *cert = p7_info->content.signedData->signerInfos[0]->cert;
+  nsresult rv2 = NS_OK;
   if (cert) {
-    nsCOMPtr<nsIX509Cert> pCert = new nsNSSCertificate(cert);
-    if (!pCert) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
-
-    nsresult rv2;
-    if (!mScriptSecurityManager) {
-      nsAutoLock lock(mutex);
-      // re-test the condition to prevent double initialization
-      if (!mScriptSecurityManager) {
-        mScriptSecurityManager = 
-           do_GetService(NS_SCRIPTSECURITYMANAGER_CONTRACTID, &rv2);
-        if (NS_FAILED(rv2)) return rv2;
+    // Use |do { } while (0);| as a "more C++-ish" thing than goto;
+    // this way we don't have to worry about goto across variable
+    // declarations.  We have no loops in this code, so it's OK.
+    do {
+      nsCOMPtr<nsIX509Cert> pCert = new nsNSSCertificate(cert);
+      if (!pCert) {
+        rv2 = NS_ERROR_OUT_OF_MEMORY;
+        break;
       }
-    }
 
-    //-- Create a certificate principal with id and organization data
-    nsAutoString fingerprint;
-    rv2 = pCert->GetSha1Fingerprint(fingerprint);
-    if (NS_FAILED(rv2)) return rv2;
-    nsCOMPtr<nsIPrincipal> certPrincipal;
-    rv2 = mScriptSecurityManager->
-      GetCertificatePrincipal(NS_LossyConvertUTF16toASCII(fingerprint).get(),
-                              nsnull, getter_AddRefs(certPrincipal));
-    if (NS_FAILED(rv2) || !certPrincipal) return rv2;
+      if (!mScriptSecurityManager) {
+        nsAutoLock lock(mutex);
+        // re-test the condition to prevent double initialization
+        if (!mScriptSecurityManager) {
+          mScriptSecurityManager = 
+            do_GetService(NS_SCRIPTSECURITYMANAGER_CONTRACTID, &rv2);
+          if (NS_FAILED(rv2)) {
+            break;
+          }
+        }
+      }
 
-    nsAutoString orgName;
-    rv2 = pCert->GetOrganization(orgName);
-    if (NS_FAILED(rv2)) return rv2;
-    rv2 = certPrincipal->SetCommonName(NS_ConvertUTF16toUTF8(orgName).get());
-    if (NS_FAILED(rv2)) return rv2;
-
-    NS_ADDREF(*aPrincipal = certPrincipal);
+      //-- Create a certificate principal with id and organization data
+      nsAutoString fingerprint;
+      rv2 = pCert->GetSha1Fingerprint(fingerprint);
+      if (NS_FAILED(rv2)) {
+        break;
+      }
+      nsCOMPtr<nsIPrincipal> certPrincipal;
+      rv2 = mScriptSecurityManager->
+        GetCertificatePrincipal(NS_ConvertUTF16toUTF8(fingerprint).get(),
+                                nsnull, getter_AddRefs(certPrincipal));
+      if (NS_FAILED(rv2) || !certPrincipal) {
+        break;
+      }
+      
+      nsAutoString orgName;
+      rv2 = pCert->GetOrganization(orgName);
+      if (NS_FAILED(rv2)) {
+        break;
+      }
+      rv2 = certPrincipal->SetCommonName(NS_ConvertUTF16toUTF8(orgName).get());
+      if (NS_FAILED(rv2)) {
+        break;
+      }
+    
+      NS_ADDREF(*aPrincipal = certPrincipal);
+    } while (0);
   }
 
-  if (p7_info) {
-    SEC_PKCS7DestroyContentInfo(p7_info);
-  }
+  SEC_PKCS7DestroyContentInfo(p7_info);
 
-  return NS_OK;
+  return rv2;
 }
 
 NS_IMETHODIMP
@@ -1487,44 +1515,6 @@ nsNSSComponent::RandomUpdate(void *entropy, PRInt32 bufLen)
 
   PK11_RandomUpdate(entropy, bufLen);
   return NS_OK;
-}
-
-int PR_CALLBACK
-nsNSSComponent::PrefChangedCallback(const char* aPrefName, void* data)
-{
-  nsNSSComponent* nss = NS_STATIC_CAST(nsNSSComponent*, data);
-  if (nss)
-    nss->PrefChanged(aPrefName);
-  return 0;
-}
-
-void
-nsNSSComponent::PrefChanged(const char* prefName)
-{
-  nsNSSShutDownPreventionLock locker;
-  PRBool enabled;
-
-  if (!nsCRT::strcmp(prefName, "security.enable_ssl2")) {
-    mPref->GetBoolPref("security.enable_ssl2", &enabled);
-    SSL_OptionSetDefault(SSL_ENABLE_SSL2, enabled);
-  } else if (!nsCRT::strcmp(prefName, "security.enable_ssl3")) {
-    mPref->GetBoolPref("security.enable_ssl3", &enabled);
-    SSL_OptionSetDefault(SSL_ENABLE_SSL3, enabled);
-  } else if (!nsCRT::strcmp(prefName, "security.enable_tls")) {
-    mPref->GetBoolPref("security.enable_tls", &enabled);
-    SSL_OptionSetDefault(SSL_ENABLE_TLS, enabled);
-  } else if (!nsCRT::strcmp(prefName, "security.OCSP.enabled")) {
-    setOCSPOptions(mPref);
-  } else {
-    /* Look through the cipher table and set according to pref setting */
-    for (CipherPref* cp = CipherPrefs; cp->pref; ++cp) {
-      if (!nsCRT::strcmp(prefName, cp->pref)) {
-        mPref->GetBoolPref(cp->pref, &enabled);
-        SSL_CipherPrefSetDefault(cp->id, enabled);
-        break;
-      }
-    }
-  }
 }
 
 #define DEBUG_PSM_PROFILE
@@ -1672,7 +1662,33 @@ nsNSSComponent::Observe(nsISupports *aSubject, const char *aTopic,
     PK11_LogoutAll();
     LogoutAuthenticatedPK11();
   }
+  else if (nsCRT::strcmp(aTopic, NS_PREFBRANCH_PREFCHANGE_TOPIC_ID) == 0) { 
+    nsNSSShutDownPreventionLock locker;
+    PRBool enabled;
+    NS_ConvertUCS2toUTF8  prefName(someData);
 
+    if (prefName.Equals("security.enable_ssl2")) {
+      mPrefBranch->GetBoolPref("security.enable_ssl2", &enabled);
+      SSL_OptionSetDefault(SSL_ENABLE_SSL2, enabled);
+    } else if (prefName.Equals("security.enable_ssl3")) {
+      mPrefBranch->GetBoolPref("security.enable_ssl3", &enabled);
+      SSL_OptionSetDefault(SSL_ENABLE_SSL3, enabled);
+    } else if (prefName.Equals("security.enable_tls")) {
+      mPrefBranch->GetBoolPref("security.enable_tls", &enabled);
+      SSL_OptionSetDefault(SSL_ENABLE_TLS, enabled);
+    } else if (prefName.Equals("security.OCSP.enabled")) {
+      setOCSPOptions(mPrefBranch);
+    } else {
+      /* Look through the cipher table and set according to pref setting */
+      for (CipherPref* cp = CipherPrefs; cp->pref; ++cp) {
+        if (prefName.Equals(cp->pref)) {
+          mPrefBranch->GetBoolPref(cp->pref, &enabled);
+          SSL_CipherPrefSetDefault(cp->id, enabled);
+          break;
+        }
+      }
+    }
+  }
 
 #ifdef DEBUG
   else if (nsCRT::strcmp(aTopic, PROFILE_CHANGE_NET_TEARDOWN_TOPIC) == 0) {
@@ -1860,29 +1876,19 @@ nsresult
 getNSSDialogs(void **_result, REFNSIID aIID, const char *contract)
 {
   nsresult rv;
-  nsCOMPtr<nsISupports> result;
-  nsCOMPtr<nsISupports> proxiedResult;
 
-  rv = nsServiceManager::GetService(contract, 
-                                    aIID,
-                                    getter_AddRefs(result));
+  nsCOMPtr<nsISupports> svc = do_GetService(contract, &rv);
   if (NS_FAILED(rv)) 
     return rv;
 
-  nsCOMPtr<nsIProxyObjectManager> proxyman(do_GetService(NS_XPCOMPROXY_CONTRACTID));
-  if (!proxyman)
-    return NS_ERROR_FAILURE;
+  nsCOMPtr<nsIProxyObjectManager> proxyman =
+      do_GetService(NS_XPCOMPROXY_CONTRACTID, &rv);
+  if (NS_FAILED(rv))
+    return rv;
  
-  proxyman->GetProxyForObject(NS_UI_THREAD_EVENTQ,
-                              aIID, result, PROXY_SYNC,
-                              getter_AddRefs(proxiedResult));
-
-  if (!proxiedResult) {
-    return NS_ERROR_FAILURE;
-  }
-
-  rv = proxiedResult->QueryInterface(aIID, _result);
-
+  rv = proxyman->GetProxyForObject(NS_UI_THREAD_EVENTQ,
+                                   aIID, svc, PROXY_SYNC,
+                                   _result);
   return rv;
 }
 
@@ -2086,7 +2092,7 @@ PSMContentDownloader::handleContentDownloadError(nsresult errCode)
       nsCString errMsg;
       PRInt32 errCnt;
 
-      nsCOMPtr<nsIPref> pref = do_GetService(NS_PREF_CONTRACTID,&rv);
+      nsCOMPtr<nsIPrefBranch> pref = do_GetService(NS_PREFSERVICE_CONTRACTID,&rv);
       if(NS_FAILED(rv)){
         return rv;
       }
@@ -2103,7 +2109,8 @@ PSMContentDownloader::handleContentDownloadError(nsresult errCode)
         pref->SetIntPref(updateErrCntPrefStr.get(),errCnt+1);
       }
       pref->SetCharPref(updateErrDetailPrefStr.get(),errMsg.get());
-      pref->SavePrefFile(nsnull);
+      nsCOMPtr<nsIPrefService> prefSvc(do_QueryInterface(pref));
+      prefSvc->SavePrefFile(nsnull);
     }else{
       nsString message;
       nsCOMPtr<nsIWindowWatcher> wwatch(do_GetService(NS_WINDOWWATCHER_CONTRACTID));

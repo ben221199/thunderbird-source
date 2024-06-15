@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,25 +14,24 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
  *
- *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 #ifndef nsDocument_h___
@@ -65,6 +64,7 @@
 #include "nsGenericDOMNodeList.h"
 #include "nsIDOM3Node.h"
 #include "nsIPrincipal.h"
+#include "nsIParser.h"
 #include "nsIBindingManager.h"
 #include "nsINodeInfo.h"
 #include "nsIDOMDocumentEvent.h"
@@ -80,11 +80,16 @@
 #include "nsIDOMXPathEvaluator.h"
 #include "nsIRadioGroupContainer.h"
 #include "nsIScriptEventManager.h"
+#include "nsILayoutHistoryState.h"
+#include "nsIRequest.h"
+#include "nsILoadGroup.h"
 
 // Put these here so all document impls get them automatically
-#include "nsIHTMLStyleSheet.h"
+#include "nsHTMLStyleSheet.h"
 #include "nsIHTMLCSSStyleSheet.h"
 
+#include "nsStyleSet.h"
+#include "nsXMLEventsManager.h"
 #include "pldhash.h"
 
 
@@ -102,8 +107,8 @@ class nsIDTD;
 class nsXPathDocumentTearoff;
 class nsIRadioVisitor;
 class nsIFormControl;
-class nsStyleSet;
 struct nsRadioGroupStruct;
+class nsOnloadBlocker;
 
 
 class nsDocHeaderData
@@ -158,9 +163,11 @@ public:
   // nsIDocumentObserver
   virtual void DocumentWillBeDestroyed(nsIDocument *aDocument);
   virtual void StyleSheetAdded(nsIDocument *aDocument,
-                               nsIStyleSheet* aStyleSheet);
+                               nsIStyleSheet* aStyleSheet,
+                               PRBool aDocumentSheet);
   virtual void StyleSheetRemoved(nsIDocument *aDocument,
-                                 nsIStyleSheet* aStyleSheet);
+                                 nsIStyleSheet* aStyleSheet,
+                                 PRBool aDocumentSheet);
 
 protected:
   PRInt32       mLength;
@@ -168,6 +175,17 @@ protected:
   void*         mScriptObject;
 };
 
+class nsOnloadBlocker : public nsIRequest
+{
+public:
+  nsOnloadBlocker() {}
+
+  NS_DECL_ISUPPORTS
+  NS_DECL_NSIREQUEST
+
+private:
+  ~nsOnloadBlocker() {}
+};
 
 // Base class for our document implementations.
 //
@@ -278,7 +296,7 @@ public:
    * it's presentation context (presentation context's <b>must not</b> be
    * shared among multiple presentation shell's).
    */
-  virtual nsresult CreateShell(nsIPresContext* aContext,
+  virtual nsresult CreateShell(nsPresContext* aContext,
                                nsIViewManager* aViewManager,
                                nsStyleSet* aStyleSet,
                                nsIPresShell** aInstancePtrResult);
@@ -291,7 +309,7 @@ public:
   virtual nsIDocument* GetSubDocumentFor(nsIContent *aContent) const;
   virtual nsIContent* FindContentForSubDocument(nsIDocument *aDocument) const;
 
-  virtual void SetRootContent(nsIContent* aRoot);
+  virtual nsresult SetRootContent(nsIContent* aRoot);
 
   /**
    * Get the direct children of the document - content in
@@ -305,11 +323,10 @@ public:
    * Get the style sheets owned by this document.
    * These are ordered, highest priority last
    */
-  virtual PRInt32 GetNumberOfStyleSheets(PRBool aIncludeSpecialSheets) const;
-  virtual nsIStyleSheet* GetStyleSheetAt(PRInt32 aIndex,
-                                         PRBool aIncludeSpecialSheets) const;
+  virtual PRInt32 GetNumberOfStyleSheets() const;
+  virtual nsIStyleSheet* GetStyleSheetAt(PRInt32 aIndex) const;
   virtual PRInt32 GetIndexOfStyleSheet(nsIStyleSheet* aSheet) const;
-  virtual void AddStyleSheet(nsIStyleSheet* aSheet, PRUint32 aFlags);
+  virtual void AddStyleSheet(nsIStyleSheet* aSheet);
   virtual void RemoveStyleSheet(nsIStyleSheet* aSheet);
 
   virtual void UpdateStyleSheets(nsCOMArray<nsIStyleSheet>& aOldSheets,
@@ -321,11 +338,17 @@ public:
   virtual void SetStyleSheetApplicableState(nsIStyleSheet* aSheet,
                                             PRBool aApplicable);
 
+  virtual PRInt32 GetNumberOfCatalogStyleSheets() const;
+  virtual nsIStyleSheet* GetCatalogStyleSheetAt(PRInt32 aIndex) const;
+  virtual void AddCatalogStyleSheet(nsIStyleSheet* aSheet);
+  virtual void EnsureCatalogStyleSheet(const char *aStyleSheetURI);
+
+
   /**
    * Get this document's attribute stylesheet.  May return null if
    * there isn't one.
    */
-  nsIHTMLStyleSheet* GetAttributeStyleSheet() const {
+  nsHTMLStyleSheet* GetAttributeStyleSheet() const {
     return mAttrStyleSheet;
   }
 
@@ -387,10 +410,6 @@ public:
   virtual void ContentInserted(nsIContent* aContainer,
                                nsIContent* aChild,
                                PRInt32 aIndexInContainer);
-  virtual void ContentReplaced(nsIContent* aContainer,
-                               nsIContent* aOldChild,
-                               nsIContent* aNewChild,
-                               PRInt32 aIndexInContainer);
   virtual void ContentRemoved(nsIContent* aContainer,
                               nsIContent* aChild,
                               PRInt32 aIndexInContainer);
@@ -403,20 +422,17 @@ public:
   virtual void StyleRuleRemoved(nsIStyleSheet* aStyleSheet,
                                 nsIStyleRule* aStyleRule);
 
-  virtual void FlushPendingNotifications(PRBool aFlushReflows = PR_TRUE,
-                                         PRBool aUpdateViews = PR_FALSE);
-  virtual void AddReference(void *aKey, nsISupports *aReference);
-  virtual already_AddRefed<nsISupports> RemoveReference(void *aKey);
+  virtual void FlushPendingNotifications(mozFlushType aType);
   virtual nsIScriptEventManager* GetScriptEventManager();
-  virtual void SetXMLDeclaration(const nsAString& aVersion,
-                               const nsAString& aEncoding,
-                               const nsAString& Standalone);
+  virtual void SetXMLDeclaration(const PRUnichar *aVersion,
+                                 const PRUnichar *aEncoding,
+                                 const PRInt32 aStandalone);
   virtual void GetXMLDeclaration(nsAString& aVersion,
                                  nsAString& aEncoding,
                                  nsAString& Standalone);
   virtual PRBool IsScriptEnabled();
 
-  virtual nsresult HandleDOMEvent(nsIPresContext* aPresContext,
+  virtual nsresult HandleDOMEvent(nsPresContext* aPresContext,
                                   nsEvent* aEvent, nsIDOMEvent** aDOMEvent,
                                   PRUint32 aFlags,
                                   nsEventStatus* aEventStatus);
@@ -428,6 +444,13 @@ public:
                                    nsIDOMHTMLInputElement* aRadio);
   NS_IMETHOD GetCurrentRadioButton(const nsAString& aName,
                                    nsIDOMHTMLInputElement** aRadio);
+  NS_IMETHOD GetPositionInGroup(nsIDOMHTMLInputElement *aRadio,
+                                PRInt32 *aPositionIndex,
+                                PRInt32 *aItemsInGroup);
+  NS_IMETHOD GetNextRadioButton(const nsAString& aName,
+                                const PRBool aPrevious,
+                                nsIDOMHTMLInputElement*  aFocusedRadio,
+                                nsIDOMHTMLInputElement** aRadioOut);
   NS_IMETHOD AddToRadioGroup(const nsAString& aName,
                              nsIFormControl* aRadio);
   NS_IMETHOD RemoveFromRadioGroup(const nsAString& aName,
@@ -498,19 +521,43 @@ public:
   NS_DECL_NSIDOMNSEVENTTARGET
 
   // nsIScriptObjectPrincipal
-  NS_IMETHOD GetPrincipalObsolete(nsIPrincipalObsolete **aPrincipal);
-  NS_IMETHOD GetPrincipal(nsIPrincipal **aPrincipal);
+  // virtual nsIPrincipal* GetPrincipal();
+  // Already declared in nsIDocument
 
   virtual nsresult Init();
+  
+  virtual nsresult AddXMLEventsContent(nsIContent * aXMLEventsElement);
+
+  virtual nsresult CreateElem(nsIAtom *aName, nsIAtom *aPrefix,
+                              PRInt32 aNamespaceID,
+                              PRBool aDocumentDefaultType,
+                              nsIContent **aResult);
+
+  virtual NS_HIDDEN_(void*) GetProperty(nsIAtom  *aPropertyName,
+                                        nsresult *aStatus = nsnull) const;
+
+  virtual NS_HIDDEN_(nsresult) SetProperty(nsIAtom            *aPropertyName,
+                                           void               *aValue,
+                                           NSPropertyDtorFunc  aDtor = nsnull);
+
+  virtual NS_HIDDEN_(nsresult) DeleteProperty(nsIAtom *aPropertyName);
+
+  virtual NS_HIDDEN_(void*) UnsetProperty(nsIAtom  *aPropertyName,
+                                          nsresult *aStatus = nsnull);
+
+  virtual NS_HIDDEN_(nsresult) Sanitize();
+
+  virtual NS_HIDDEN_(void) EnumerateSubDocuments(nsSubDocEnumFunc aCallback,
+                                                 void *aData);
+
+  virtual NS_HIDDEN_(PRBool) CanSavePresentation(nsIRequest *aNewRequest);
+  virtual NS_HIDDEN_(void) Destroy();
+  virtual NS_HIDDEN_(already_AddRefed<nsILayoutHistoryState>) GetLayoutHistoryState() const;
+
+  virtual NS_HIDDEN_(void) BlockOnload();
+  virtual NS_HIDDEN_(void) UnblockOnload();
 
 protected:
-  // subclass hooks for sheet ordering
-  virtual void InternalAddStyleSheet(nsIStyleSheet* aSheet,
-                                     PRUint32 aFlags);
-  virtual void InternalInsertStyleSheetAt(nsIStyleSheet* aSheet,
-                                          PRInt32 aIndex);
-  virtual nsIStyleSheet* InternalGetStyleSheetAt(PRInt32 aIndex) const;
-  virtual PRInt32 InternalGetNumberOfStyleSheets() const;
 
   void RetrieveRelevantHeaders(nsIChannel *aChannel);
 
@@ -518,21 +565,24 @@ protected:
                                   PRInt32& aCharsetSource,
                                   nsACString& aCharset);
   
-  nsresult doCreateShell(nsIPresContext* aContext,
+  nsresult doCreateShell(nsPresContext* aContext,
                          nsIViewManager* aViewManager, nsStyleSet* aStyleSet,
                          nsCompatibility aCompatMode,
                          nsIPresShell** aInstancePtrResult);
 
   nsresult ResetStylesheetsToURI(nsIURI* aURI);
+  virtual nsStyleSet::sheetType GetAttrSheetType();
+  void FillStyleSet(nsStyleSet* aStyleSet);
 
-  nsresult CreateElement(nsINodeInfo *aNodeInfo, nsIDOMElement** aResult);
+  nsresult CreateElement(nsINodeInfo *aNodeInfo, PRInt32 aElementType,
+                         nsIContent** aResult);
 
   virtual PRInt32 GetDefaultNamespaceID() const
   {
     return kNameSpaceID_None;
   };
 
-  nsDocument();
+  nsDocument() : nsIDocument() {}
   virtual ~nsDocument();
 
   nsCString mReferrer;
@@ -548,7 +598,12 @@ protected:
   // Array of owning references to all children
   nsCOMArray<nsIContent> mChildren;
 
+  // Pointer to our parser if we're currently in the process of being
+  // parsed into.
+  nsCOMPtr<nsIParser> mParser;
+
   nsCOMArray<nsIStyleSheet> mStyleSheets;
+  nsCOMArray<nsIStyleSheet> mCatalogSheets;
 
   // Basically always has at least 1 entry
   nsAutoVoidArray mObservers;
@@ -564,7 +619,7 @@ protected:
 
   nsHashtable mRadioGroups;
 
-  // True if the document is being destroyed.
+  // True if the document has been detached from its content viewer.
   PRPackedBool mIsGoingAway;
 
   // True if the document is being destroyed.
@@ -572,13 +627,13 @@ protected:
 
   PRUint8 mXMLDeclarationBits;
 
+  PRUint8 mDefaultElementType;
+
   nsSupportsHashtable* mBoxObjectTable;
 
-  nsSupportsHashtable mContentWrapperHash;
-
-  nsCOMPtr<nsICSSLoader> mCSSLoader;
-  nsCOMPtr<nsIHTMLStyleSheet> mAttrStyleSheet;
+  nsRefPtr<nsHTMLStyleSheet> mAttrStyleSheet;
   nsCOMPtr<nsIHTMLCSSStyleSheet> mStyleAttrStyleSheet;
+  nsRefPtr<nsXMLEventsManager> mXMLEventsManager;
 
   nsCOMPtr<nsIScriptEventManager> mScriptEventManager;
 
@@ -592,6 +647,15 @@ private:
   nsDocument& operator=(const nsDocument& aOther);
 
   nsXPathDocumentTearoff* mXPathDocument;
+
+  // The layout history state that should be used by nodes in this
+  // document.  We only actually store a pointer to it when:
+  // 1)  We have no script global object.
+  // 2)  We haven't had Destroy() called on us yet.
+  nsCOMPtr<nsILayoutHistoryState> mLayoutHistoryState;
+
+  PRUint32 mOnloadBlockCount;
+  nsCOMPtr<nsIRequest> mOnloadBlocker;
 };
 
 

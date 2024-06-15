@@ -1,10 +1,10 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* ----- BEGIN LICENSE BLOCK -----
+/* ***** BEGIN LICENSE BLOCK *****
  * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Mozilla Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
  * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
@@ -14,27 +14,27 @@
  *
  * The Original Code is the Mozilla SVG project.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Crocodile Clips Ltd..
  * Portions created by the Initial Developer are Copyright (C) 2001
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
- *    Alex Fritze <alex.fritze@crocodile-clips.com> (original author)
+ *   Alex Fritze <alex.fritze@crocodile-clips.com> (original author)
  *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
  * the terms of any one of the MPL, the GPL or the LGPL.
  *
- * ----- END LICENSE BLOCK ----- */
+ * ***** END LICENSE BLOCK ***** */
 
 #include "nsSVGGraphicElement.h"
 #include "nsSVGTransformList.h"
@@ -63,10 +63,16 @@ NS_INTERFACE_MAP_END_INHERITING(nsSVGGraphicElementBase)
 //----------------------------------------------------------------------
 // Implementation
 
-nsresult
-nsSVGGraphicElement::Init(nsINodeInfo* aNodeInfo)
+nsSVGGraphicElement::nsSVGGraphicElement(nsINodeInfo *aNodeInfo)
+  : nsSVGGraphicElementBase(aNodeInfo)
 {
-  nsresult rv = nsSVGGraphicElementBase::Init(aNodeInfo);
+
+}
+
+nsresult
+nsSVGGraphicElement::Init()
+{
+  nsresult rv = nsSVGGraphicElementBase::Init();
   NS_ENSURE_SUCCESS(rv,rv);
 
   // Create mapped properties:
@@ -82,8 +88,8 @@ nsSVGGraphicElement::Init(nsINodeInfo* aNodeInfo)
     rv = AddMappedSVGValue(nsSVGAtoms::transform, mTransforms);
     NS_ENSURE_SUCCESS(rv,rv);
   }
-  
-  return NS_OK;
+
+  return rv;
 }
 
 //----------------------------------------------------------------------
@@ -107,9 +113,10 @@ NS_IMETHODIMP nsSVGGraphicElement::GetFarthestViewportElement(nsIDOMSVGElement *
 NS_IMETHODIMP nsSVGGraphicElement::GetBBox(nsIDOMSVGRect **_retval)
 {
   *_retval = nsnull;
-  
-  if (!mDocument) return NS_ERROR_FAILURE;
-  nsIPresShell *presShell = mDocument->GetShellAt(0);
+
+  nsIDocument* doc = GetCurrentDoc();
+  if (!doc) return NS_ERROR_FAILURE;
+  nsIPresShell *presShell = doc->GetShellAt(0);
   NS_ASSERTION(presShell, "no presShell");
   if (!presShell) return NS_ERROR_FAILURE;
 
@@ -123,7 +130,12 @@ NS_IMETHODIMP nsSVGGraphicElement::GetBBox(nsIDOMSVGRect **_retval)
     frame->QueryInterface(NS_GET_IID(nsISVGChildFrame),(void**)&svgframe);
     NS_ASSERTION(svgframe, "wrong frame type");
     if (svgframe) {
-      return svgframe->GetBBox(_retval);
+      svgframe->SetMatrixPropagation(PR_FALSE);
+      svgframe->NotifyCanvasTMChanged();
+      nsresult rv = svgframe->GetBBox(_retval);
+      svgframe->SetMatrixPropagation(PR_TRUE);
+      svgframe->NotifyCanvasTMChanged();
+      return rv;
     }
   }
   return NS_ERROR_FAILURE;
@@ -135,8 +147,13 @@ NS_IMETHODIMP nsSVGGraphicElement::GetCTM(nsIDOMSVGMatrix **_retval)
   nsCOMPtr<nsIDOMSVGMatrix> CTM;
 
   nsIBindingManager *bindingManager = nsnull;
-  if (mDocument) {
-    bindingManager = mDocument->GetBindingManager();
+  // XXXbz I _think_ this is right.  We want to be using the binding manager
+  // that would have attached the binding that gives us our anonymous parent.
+  // That's the binding manager for the document we actually belong to, which
+  // is our owner doc.
+  nsIDocument* ownerDoc = GetOwnerDoc();
+  if (ownerDoc) {
+    bindingManager = ownerDoc->BindingManager();
   }
 
   nsCOMPtr<nsIContent> parent;
@@ -191,7 +208,7 @@ NS_IMETHODIMP nsSVGGraphicElement::GetCTM(nsIDOMSVGMatrix **_retval)
     // We either didn't find an SVG parent, or our parent failed in
     // giving us a CTM. In either case:
     NS_WARNING("Couldn't get CTM");
-    nsSVGMatrix::Create(getter_AddRefs(CTM));
+    NS_NewSVGMatrix(getter_AddRefs(CTM));
   }
 
   // append our local transformations:
@@ -199,7 +216,7 @@ NS_IMETHODIMP nsSVGGraphicElement::GetCTM(nsIDOMSVGMatrix **_retval)
   mTransforms->GetAnimVal(getter_AddRefs(transforms));
   NS_ENSURE_TRUE(transforms, NS_ERROR_FAILURE);
   nsCOMPtr<nsIDOMSVGMatrix> matrix;
-  transforms->GetConsolidation(getter_AddRefs(matrix));
+  transforms->GetConsolidationMatrix(getter_AddRefs(matrix));
 
   return CTM->Multiply(matrix, _retval);
 }
@@ -210,8 +227,13 @@ NS_IMETHODIMP nsSVGGraphicElement::GetScreenCTM(nsIDOMSVGMatrix **_retval)
   nsCOMPtr<nsIDOMSVGMatrix> screenCTM;
 
   nsIBindingManager *bindingManager = nsnull;
-  if (mDocument) {
-    bindingManager = mDocument->GetBindingManager();
+  // XXXbz I _think_ this is right.  We want to be using the binding manager
+  // that would have attached the binding that gives us our anonymous parent.
+  // That's the binding manager for the document we actually belong to, which
+  // is our owner doc.
+  nsIDocument* ownerDoc = GetOwnerDoc();
+  if (ownerDoc) {
+    bindingManager = ownerDoc->BindingManager();
   }
 
   nsCOMPtr<nsIContent> parent;
@@ -270,7 +292,7 @@ NS_IMETHODIMP nsSVGGraphicElement::GetScreenCTM(nsIDOMSVGMatrix **_retval)
     // We either didn't find an SVG parent, or our parent failed in
     // giving us a CTM. In either case:
     NS_ERROR("couldn't get ctm");
-    nsSVGMatrix::Create(getter_AddRefs(screenCTM));
+    NS_NewSVGMatrix(getter_AddRefs(screenCTM));
   }
 
   // append our local transformations:
@@ -278,7 +300,7 @@ NS_IMETHODIMP nsSVGGraphicElement::GetScreenCTM(nsIDOMSVGMatrix **_retval)
   mTransforms->GetAnimVal(getter_AddRefs(transforms));
   NS_ENSURE_TRUE(transforms, NS_ERROR_FAILURE);
   nsCOMPtr<nsIDOMSVGMatrix> matrix;
-  transforms->GetConsolidation(getter_AddRefs(matrix));
+  transforms->GetConsolidationMatrix(getter_AddRefs(matrix));
 
   return screenCTM->Multiply(matrix, _retval);
 }
@@ -286,6 +308,10 @@ NS_IMETHODIMP nsSVGGraphicElement::GetScreenCTM(nsIDOMSVGMatrix **_retval)
 /* nsIDOMSVGMatrix getTransformToElement (in nsIDOMSVGElement element); */
 NS_IMETHODIMP nsSVGGraphicElement::GetTransformToElement(nsIDOMSVGElement *element, nsIDOMSVGMatrix **_retval)
 {
+  // null check when implementing - this method can be used by scripts!
+  // if (!element)
+  //   return NS_ERROR_DOM_SVG_WRONG_TYPE_ERR;
+
   NS_NOTYETIMPLEMENTED("write me!");
   return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -311,9 +337,18 @@ nsSVGGraphicElement::IsAttributeMapped(const nsIAtom* name) const
   static const MappedAttributeEntry* const map[] = {
     sFillStrokeMap,
     sGraphicsMap,
+    sColorMap
   };
   
   return FindAttributeDependence(name, map, NS_ARRAY_LENGTH(map)) ||
     nsSVGGraphicElementBase::IsAttributeMapped(name);
 }
 
+//----------------------------------------------------------------------
+// nsSVGElement overrides
+
+PRBool
+nsSVGGraphicElement::IsEventName(nsIAtom* aName)
+{
+  return IsGraphicElementEventName(aName);
+}

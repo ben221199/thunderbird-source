@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,25 +14,24 @@
  *
  * The Original Code is mozilla.org code.
  *
- * The Initial Developer of the Original Code is 
+ * The Initial Developer of the Original Code is
  * Netscape Communications Corporation.
  * Portions created by the Initial Developer are Copyright (C) 1998
  * the Initial Developer. All Rights Reserved.
  *
  * Contributor(s):
  *
- *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
@@ -44,47 +43,50 @@
 #include "nsVoidArray.h"
 
 class nsIContent;
-class nsIPresContext;
+class nsPresContext;
 class nsIDOMEvent;
 class nsIFrame;
 class nsIView;
 class nsIWidget;
+class imgIContainer;
 
 /*
- * Event listener manager interface.
+ * Event state manager interface.
  */
+// {5D47ACA5-B50B-479b-A1C6-2A90C0B8095F}
 #define NS_IEVENTSTATEMANAGER_IID \
-{ /* 80a98c80-2036-11d2-bd89-00805f8ae3f4 */ \
-0x80a98c80, 0x2036, 0x11d2, \
-{0xbd, 0x89, 0x00, 0x80, 0x5f, 0x8a, 0xe3, 0xf4} }
+{ 0x5d47aca5, 0xb50b, 0x479b, { 0xa1, 0xc6, 0x2a, 0x90, 0xc0, 0xb8, 0x9, 0x5f } };
 
 #define NS_EVENT_NEEDS_FRAME(event) (!NS_IS_FOCUS_EVENT(event))
 
 class nsIEventStateManager : public nsISupports {
 
 public:
+  enum EFocusedWithType {
+    eEventFocusedByUnknown,     // focus gained via unknown method
+    eEventFocusedByMouse,       // focus gained via mouse
+    eEventFocusedByKey,         // focus gained via key press (like tab)
+    eEventFocusedByContextMenu, // focus gained via context menu
+    eEventFocusedByApplication  // focus gained via Application (like script)
+  };
+
   NS_DEFINE_STATIC_IID_ACCESSOR(NS_IEVENTSTATEMANAGER_IID)
 
   NS_IMETHOD Init() = 0;
 
-  NS_IMETHOD PreHandleEvent(nsIPresContext* aPresContext, 
+  NS_IMETHOD PreHandleEvent(nsPresContext* aPresContext, 
                             nsEvent *aEvent, 
                             nsIFrame* aTargetFrame,
                             nsEventStatus* aStatus,
                             nsIView* aView) = 0;
 
-  NS_IMETHOD PostHandleEvent(nsIPresContext* aPresContext, 
+  NS_IMETHOD PostHandleEvent(nsPresContext* aPresContext, 
                              nsEvent *aEvent, 
                              nsIFrame* aTargetFrame,
                              nsEventStatus* aStatus,
                              nsIView* aView) = 0;
 
-  // optional notification methods so downstream clients can know
-  // what event is being processed
-  NS_IMETHOD SetCurrentEvent(nsEvent *aEvent) = 0;
-  NS_IMETHOD GetCurrentEvent(nsEvent **aEvent) = 0; // 0 if none
-
-  NS_IMETHOD SetPresContext(nsIPresContext* aPresContext) = 0;
+  NS_IMETHOD SetPresContext(nsPresContext* aPresContext) = 0;
   NS_IMETHOD ClearFrameRefs(nsIFrame* aFrame) = 0;
 
   NS_IMETHOD GetEventTarget(nsIFrame **aFrame) = 0;
@@ -102,14 +104,17 @@ public:
   NS_IMETHOD ContentRemoved(nsIContent* aContent) = 0;
   NS_IMETHOD EventStatusOK(nsGUIEvent* aEvent, PRBool *aOK) = 0;
 
-  // This is called when browse with caret changes on the fly
-  NS_IMETHOD GetBrowseWithCaret(PRBool *aBrowseWithCaret) = 0;
-  NS_IMETHOD ResetBrowseWithCaret(PRBool *aBrowseWithCaret) = 0;
+  // Return whether browse with caret is enabled or not
+  virtual PRBool GetBrowseWithCaret() = 0;
 
   // This is called after find text or when a cursor movement key is pressed
   // If aCanFocusDoc == PR_TRUE, the current document will be focused if caret is not on a focusable element
   NS_IMETHOD MoveFocusToCaret(PRBool aCanFocusDoc, PRBool *aIsSelectionWithFocus) = 0;
   NS_IMETHOD MoveCaretToFocus() = 0;
+
+  // Set focus on any element that can receive focus, or on document via aFocusContent == nsnull
+  // Must supply method that focus is being set with
+  NS_IMETHOD ChangeFocusWith(nsIContent *aFocusContent, EFocusedWithType aFocusedWith) = 0;
 
   // This is an experiment and may be temporary
   NS_IMETHOD ConsumeFocusEvents(PRBool aDoConsume) = 0;
@@ -118,14 +123,13 @@ public:
   NS_IMETHOD RegisterAccessKey(nsIContent* aContent, PRUint32 aKey) = 0;
   NS_IMETHOD UnregisterAccessKey(nsIContent* aContent, PRUint32 aKey) = 0;
 
-  NS_IMETHOD SetCursor(PRInt32 aCursor, nsIWidget* aWidget, PRBool aLockCursor) = 0;
+  NS_IMETHOD SetCursor(PRInt32 aCursor, imgIContainer* aContainer, nsIWidget* aWidget, PRBool aLockCursor) = 0;
 
   //Method for centralized distribution of new DOM events
-  NS_IMETHOD DispatchNewEvent(nsISupports* aTarget, nsIDOMEvent* aEvent, PRBool* aPreventDefault) = 0;
+  NS_IMETHOD DispatchNewEvent(nsISupports* aTarget, nsIDOMEvent* aEvent, PRBool* aDefaultActionEnabled) = 0;
 
   // Method for moving the focus forward/back.
   NS_IMETHOD ShiftFocus(PRBool aDirection, nsIContent* aStart)=0;
-
 };
 
 #define NS_EVENT_STATE_UNSPECIFIED  0x0000
@@ -136,13 +140,5 @@ public:
 #define NS_EVENT_STATE_URLTARGET    0x0010 // content is URL's target (ref)
 // The following states are used only for ContentStatesChanged
 #define NS_EVENT_STATE_CHECKED      0x0020
-
-enum EFocusedWithType {
-  eEventFocusedByUnknown,     // focus gained via unknown method
-  eEventFocusedByMouse,       // focus gained via mouse
-  eEventFocusedByKey,         // focus gained via key press (like tab)
-  eEventFocusedByContextMenu, // focus gained via context menu
-  eEventFocusedByApplication  // focus gained via Application (like script)
-};
 
 #endif // nsIEventStateManager_h__

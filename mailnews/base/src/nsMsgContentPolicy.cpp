@@ -1,11 +1,11 @@
 /* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
- * Version: NPL 1.1/GPL 2.0/LGPL 2.1
+ * Version: MPL 1.1/GPL 2.0/LGPL 2.1
  *
- * The contents of this file are subject to the Netscape Public License
- * Version 1.1 (the "License"); you may not use this file except in
- * compliance with the License. You may obtain a copy of the License at
- * http://www.mozilla.org/NPL/
+ * The contents of this file are subject to the Mozilla Public License Version
+ * 1.1 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
  *
  * Software distributed under the License is distributed on an "AS IS" basis,
  * WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License
@@ -14,29 +14,32 @@
  *
  * The Original Code is mozilla.org code.
  *
+ * The Initial Developer of the Original Code is
+ * Netscape Communications Corporation.
+ * Portions created by the Initial Developer are Copyright (C) 2001
+ * the Initial Developer. All Rights Reserved.
+ *
  * Contributor(s):
  *   Scott MacGregor <scott@scott-macgregor.org>
  *
- *
  * Alternatively, the contents of this file may be used under the terms of
- * either the GNU General Public License Version 2 or later (the "GPL"), or 
- * the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
+ * either of the GNU General Public License Version 2 or later (the "GPL"),
+ * or the GNU Lesser General Public License Version 2.1 or later (the "LGPL"),
  * in which case the provisions of the GPL or the LGPL are applicable instead
  * of those above. If you wish to allow use of your version of this file only
  * under the terms of either the GPL or the LGPL, and not to allow others to
- * use your version of this file under the terms of the NPL, indicate your
+ * use your version of this file under the terms of the MPL, indicate your
  * decision by deleting the provisions above and replace them with the notice
  * and other provisions required by the GPL or the LGPL. If you do not delete
  * the provisions above, a recipient may use your version of this file under
- * the terms of any one of the NPL, the GPL or the LGPL.
+ * the terms of any one of the MPL, the GPL or the LGPL.
  *
  * ***** END LICENSE BLOCK ***** */
 
 #include "nsMsgContentPolicy.h"
 #include "nsIServiceManager.h"
 #include "nsIPrefService.h"
-#include "nsIPrefBranch.h"
-#include "nsIPrefBranchInternal.h"
+#include "nsIPrefBranch2.h"
 #include "nsIURI.h"
 #include "nsCOMPtr.h"
 #include "nsCRT.h"
@@ -58,6 +61,10 @@
 // needed by the content load policy manager
 #include "nsIExternalProtocolService.h"
 #include "nsCExternalHandlerService.h"
+
+// needed for the cookie policy manager
+#include "nsICookie2.h"
+#include "nsICookieManager2.h"
 
 static const char kBlockRemoteImages[] = "mailnews.message_display.disable_remote_image";
 static const char kRemoteImagesUseWhiteList[] = "mailnews.message_display.disable_remote_images.useWhitelist";
@@ -92,18 +99,14 @@ nsMsgContentPolicy::nsMsgContentPolicy()
 nsMsgContentPolicy::~nsMsgContentPolicy()
 {
   // hey, we are going away...clean up after ourself....unregister our observer
-  nsresult rv = NS_OK;
-  nsCOMPtr<nsIPrefBranch> prefBranch = do_GetService(NS_PREFSERVICE_CONTRACTID, &rv);
+  nsresult rv;
+  nsCOMPtr<nsIPrefBranch2> prefInternal = do_GetService(NS_PREFSERVICE_CONTRACTID, &rv);
   if (NS_SUCCEEDED(rv))
   {
-    nsCOMPtr<nsIPrefBranchInternal> prefInternal = do_QueryInterface(prefBranch, &rv);
-    if (NS_SUCCEEDED(rv))
-    {
-      prefInternal->RemoveObserver(kBlockRemoteImages, this);
-      prefInternal->RemoveObserver(kRemoteImagesUseWhiteList, this);
-      prefInternal->RemoveObserver(kRemoteImagesWhiteListURI, this);
-      prefInternal->RemoveObserver(kAllowPlugins, this);
-    }
+    prefInternal->RemoveObserver(kBlockRemoteImages, this);
+    prefInternal->RemoveObserver(kRemoteImagesUseWhiteList, this);
+    prefInternal->RemoveObserver(kRemoteImagesWhiteListURI, this);
+    prefInternal->RemoveObserver(kAllowPlugins, this);
   }
 }
 
@@ -112,20 +115,18 @@ nsresult nsMsgContentPolicy::Init()
   nsresult rv;
 
   // register ourself as an observer on the mail preference to block remote images
-  nsCOMPtr<nsIPrefBranch> prefBranch = do_GetService(NS_PREFSERVICE_CONTRACTID, &rv);
+  nsCOMPtr<nsIPrefBranch2> prefInternal = do_GetService(NS_PREFSERVICE_CONTRACTID, &rv);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsCOMPtr<nsIPrefBranchInternal> prefInternal = do_QueryInterface(prefBranch, &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
   prefInternal->AddObserver(kBlockRemoteImages, this, PR_TRUE);
   prefInternal->AddObserver(kRemoteImagesUseWhiteList, this, PR_TRUE);
   prefInternal->AddObserver(kRemoteImagesWhiteListURI, this, PR_TRUE);
   prefInternal->AddObserver(kAllowPlugins, this, PR_TRUE);
 
-  prefBranch->GetBoolPref(kAllowPlugins, &mAllowPlugins);
-  prefBranch->GetBoolPref(kRemoteImagesUseWhiteList, &mUseRemoteImageWhiteList);
-  prefBranch->GetCharPref(kRemoteImagesWhiteListURI, getter_Copies(mRemoteImageWhiteListURI));
-  return prefBranch->GetBoolPref(kBlockRemoteImages, &mBlockRemoteImages);
+  prefInternal->GetBoolPref(kAllowPlugins, &mAllowPlugins);
+  prefInternal->GetBoolPref(kRemoteImagesUseWhiteList, &mUseRemoteImageWhiteList);
+  prefInternal->GetCharPref(kRemoteImagesWhiteListURI, getter_Copies(mRemoteImageWhiteListURI));
+  return prefInternal->GetBoolPref(kBlockRemoteImages, &mBlockRemoteImages);
 }
 
 nsresult nsMsgContentPolicy::IsSenderInWhiteList(nsIMsgDBHdr * aMsgHdr, PRBool * aWhiteListed)
@@ -159,7 +160,7 @@ nsresult nsMsgContentPolicy::IsSenderInWhiteList(nsIMsgDBHdr * aMsgHdr, PRBool *
 
     rv = addressBook->HasCardForEmailAddress(emailAddress, aWhiteListed);
   }
-
+  
   return rv;
 }
 
@@ -180,9 +181,9 @@ nsMsgContentPolicy::ShouldLoad(PRUint32          aContentType,
 
   if (aContentType == nsIContentPolicy::TYPE_OBJECT)
   {
-      // only allow the plugin to load if the allow plugins pref has been set
-      *aDecision = mAllowPlugins ? nsIContentPolicy::ACCEPT :
-                                   nsIContentPolicy::REJECT_TYPE;
+    // only allow the plugin to load if the allow plugins pref has been set
+    *aDecision = mAllowPlugins ? nsIContentPolicy::ACCEPT :
+                                 nsIContentPolicy::REJECT_TYPE;
   }
   else 
   {
@@ -194,7 +195,7 @@ nsMsgContentPolicy::ShouldLoad(PRUint32          aContentType,
     rv = aRequestingLocation->SchemeIs("chrome", &isChrome);
     rv |= aRequestingLocation->SchemeIs("resource", &isRes);
     rv |= aRequestingLocation->SchemeIs("about", &isAbout);
-
+      
     if (NS_SUCCEEDED(rv) && (isChrome || isRes || isAbout))
     {
       *aDecision = nsIContentPolicy::ACCEPT;
@@ -205,18 +206,18 @@ nsMsgContentPolicy::ShouldLoad(PRUint32          aContentType,
     nsCAutoString contentScheme;
     PRBool isExposedProtocol = PR_FALSE;
     rv = aContentLocation->GetScheme(contentScheme);
-      NS_ENSURE_SUCCESS(rv,rv);
+    NS_ENSURE_SUCCESS(rv, rv);
 
     nsCOMPtr<nsIExternalProtocolService> extProtService = do_GetService(NS_EXTERNALPROTOCOLSERVICE_CONTRACTID);
     rv = extProtService->IsExposedProtocol(contentScheme.get(), &isExposedProtocol);
-        NS_ENSURE_SUCCESS(rv,rv);
+    NS_ENSURE_SUCCESS(rv, rv);
     aContentLocation->SchemeIs("chrome", &isChrome);    
     
     if (isExposedProtocol || isChrome)
     {
       *aDecision = nsIContentPolicy::ACCEPT;
       return rv;
-      }
+    }
 
     // for unexposed protocols, we never try to load any of them with the exception of http and https. 
     // this means we never even try to load urls that we don't handle ourselves like ftp and gopher.
@@ -228,80 +229,71 @@ nsMsgContentPolicy::ShouldLoad(PRUint32          aContentType,
 
     // Look into http and https more closely to determine if the load should be allowed
     if (NS_SUCCEEDED(rv) && (isHttp || isHttps)) 
+    {
+      // default to blocking remote content 
+      *aDecision = mBlockRemoteImages ? nsIContentPolicy::REJECT_REQUEST : nsIContentPolicy::ACCEPT;
+
+      // now do some more detective work to better refine our decision...
+      // (1) examine the msg hdr value for the remote content policy on this particular message to
+      //     see if this particular message has special rights to bypass the remote content check
+      // (2) special case RSS urls, always allow them to load remote images since the user explicitly
+      //     subscribed to the feed.
+      // (3) Check the personal address book and use it as a white list for senders 
+      //     who are allowed to send us remote images 
+        
+      // get the msg hdr for the message URI we are actually loading
+      NS_ENSURE_TRUE(aRequestingLocation, NS_OK);
+      nsCOMPtr<nsIMsgMessageUrl> msgUrl = do_QueryInterface(aRequestingLocation, &rv);
+      NS_ENSURE_SUCCESS(rv, rv);
+
+      nsXPIDLCString resourceURI;
+      msgUrl->GetUri(getter_Copies(resourceURI));
+        
+      // get the msg service for this URI
+      nsCOMPtr<nsIMsgMessageService> msgService;
+      rv = GetMessageServiceFromURI(resourceURI.get(), getter_AddRefs(msgService));
+      NS_ENSURE_SUCCESS(rv, rv);
+        
+      nsCOMPtr<nsIMsgDBHdr> msgHdr;
+      rv = msgService->MessageURIToMsgHdr(resourceURI, getter_AddRefs(msgHdr));
+      NS_ENSURE_SUCCESS(rv, rv);
+
+      nsCOMPtr<nsIMsgMailNewsUrl> mailnewsUrl = do_QueryInterface(aRequestingLocation, &rv);
+      NS_ENSURE_SUCCESS(rv, rv);
+
+      // Case #1, check the db hdr for the remote content policy on this particular message
+      PRUint32 remoteContentPolicy = kNoRemoteContentPolicy;
+      msgHdr->GetUint32Property("remoteContentPolicy", &remoteContentPolicy); 
+
+      // Case #2, check if the message is in an RSS folder
+      PRBool isRSS = PR_FALSE;
+      IsRSSArticle(aRequestingLocation, &isRSS);
+    
+      // Case #3, author is in our white list..
+      PRBool authorInWhiteList = PR_FALSE;
+      IsSenderInWhiteList(msgHdr, &authorInWhiteList);
+        
+      // Case #1 and #2: special case RSS. Allow urls that are RSS feeds to show remote image (Bug #250246)
+      // Honor the message specific remote content policy
+      if (isRSS || remoteContentPolicy == kAllowRemoteContent || authorInWhiteList)
+        *aDecision = nsIContentPolicy::ACCEPT;
+      else if (mBlockRemoteImages) 
       {
-        // default to blocking remote content 
-        *aDecision = mBlockRemoteImages ? nsIContentPolicy::REJECT_REQUEST : nsIContentPolicy::ACCEPT;
+        if (!remoteContentPolicy) // kNoRemoteContentPolicy means we have never set a value on the message
+          msgHdr->SetUint32Property("remoteContentPolicy", kBlockRemoteContent); 
+            
+        // now we need to call out the msg sink informing it that this message has remote content      
+        nsCOMPtr<nsIMsgWindow> msgWindow;
+        rv = mailnewsUrl->GetMsgWindow(getter_AddRefs(msgWindow)); // it's not an error for the msg window to be null
+        NS_ENSURE_TRUE(msgWindow, NS_ERROR_FAILURE);
 
-        // now do some more detective work to better refine our decision...
-        // (1) examine the msg hdr value for the remote content policy on this particular message to
-        //     see if this particular message has special rights to bypass the remote content check
-        // (2) special case RSS urls, always allow them to load remote images since the user explicitly
-        //     subscribed to the feed.
-        // (3) Check the personal address book and use it as a white list for senders 
-        //     who are allowed to send us remote images 
-
-        // get the msg hdr for the message URI we are actually loading
-        NS_ENSURE_TRUE(aRequestingLocation, NS_OK);
-        nsCOMPtr<nsIMsgMessageUrl> msgUrl = do_QueryInterface(aRequestingLocation, &rv);
-        NS_ENSURE_SUCCESS(rv, rv);
-
-        nsXPIDLCString resourceURI;
-        msgUrl->GetUri(getter_Copies(resourceURI));
-        
-        // get the msg service for this URI
-        nsCOMPtr<nsIMsgMessageService> msgService;
-        rv = GetMessageServiceFromURI(resourceURI.get(), getter_AddRefs(msgService));
-        NS_ENSURE_SUCCESS(rv, rv);
-        
-        nsCOMPtr<nsIMsgDBHdr> msgHdr;
-        rv = msgService->MessageURIToMsgHdr(resourceURI, getter_AddRefs(msgHdr));
-        NS_ENSURE_SUCCESS(rv, rv);
-
-        nsCOMPtr<nsIMsgMailNewsUrl> mailnewsUrl = do_QueryInterface(aRequestingLocation, &rv);
-        NS_ENSURE_SUCCESS(rv, rv);
-
-        // Case #1, check the db hdr for the remote content policy on this particular message
-        PRUint32 remoteContentPolicy = kNoRemoteContentPolicy;
-        msgHdr->GetUint32Property("remoteContentPolicy", &remoteContentPolicy); 
-
-        // get the folder and the server from the msghdr
-        // an error trying to get the folder shouldn't make us quit...
-        nsCOMPtr<nsIRssIncomingServer> rssServer;
-        nsCOMPtr<nsIMsgFolder> folder;
-        rv = msgHdr->GetFolder(getter_AddRefs(folder));
-        if (NS_SUCCEEDED(rv) && folder)
-        {
-          nsCOMPtr<nsIMsgIncomingServer> server;
-          folder->GetServer(getter_AddRefs(server));
-          rssServer = do_QueryInterface(server);
-        }
-
-        // Case #3, author is in our white list..
-        PRBool authorInWhiteList = PR_FALSE;
-        IsSenderInWhiteList(msgHdr, &authorInWhiteList);
-        
-        // Case #1 and #2: special case RSS. Allow urls that are RSS feeds to show remote image (Bug #250246)
-        // Honor the message specific remote content policy
-        if (rssServer || remoteContentPolicy == kAllowRemoteContent || authorInWhiteList)
-          *aDecision = nsIContentPolicy::ACCEPT;
-        else if (mBlockRemoteImages) 
-        {
-          if (!remoteContentPolicy) // kNoRemoteContentPolicy means we have never set a value on the message
-            msgHdr->SetUint32Property("remoteContentPolicy", kBlockRemoteContent); 
-
-          // now we need to call out the msg sink informing it that this message has remote content
-          nsCOMPtr<nsIMsgWindow> msgWindow;
-          rv = mailnewsUrl->GetMsgWindow(getter_AddRefs(msgWindow)); // it's not an error for the msg window to be null
-          NS_ENSURE_TRUE(msgWindow, NS_OK);
-
-          nsCOMPtr<nsIMsgHeaderSink> msgHdrSink;
-          rv = msgWindow->GetMsgHeaderSink(getter_AddRefs(msgHdrSink));
-          NS_ENSURE_SUCCESS(rv, rv);
-
-          msgHdrSink->OnMsgHasRemoteContent(msgHdr); // notify the UI to show the remote content hdr bar so the user can overide
-      } // if need to check the url for a remote image policy
-    }  // if isHttp
-  }
+        nsCOMPtr<nsIMsgHeaderSink> msgHdrSink;
+        rv = msgWindow->GetMsgHeaderSink(getter_AddRefs(msgHdrSink));
+        NS_ENSURE_TRUE(msgHdrSink, rv);
+        msgHdrSink->OnMsgHasRemoteContent(msgHdr); // notify the UI to show the remote content hdr bar so the user can overide
+      } // if mBlockRemoteImages
+    } // if isHttp
+  } 
 
   return rv;
 }
@@ -321,22 +313,61 @@ nsMsgContentPolicy::ShouldProcess(PRUint32          aContentType,
 
 NS_IMETHODIMP nsMsgContentPolicy::Observe(nsISupports *aSubject, const char *aTopic, const PRUnichar *aData)
 {
-  nsresult rv;
-   
   if (!nsCRT::strcmp(NS_PREFBRANCH_PREFCHANGE_TOPIC_ID, aTopic)) 
   {
-    nsCOMPtr<nsIPrefBranch> prefBranch = do_GetService(NS_PREFSERVICE_CONTRACTID, &rv);
-    NS_ENSURE_SUCCESS(rv, rv);
-
     NS_LossyConvertUCS2toASCII pref(aData);
 
+    nsresult rv;
+
+    nsCOMPtr<nsIPrefBranch2> prefBranchInt = do_QueryInterface(aSubject, &rv);
+    NS_ENSURE_SUCCESS(rv, rv);
+
     if (pref.Equals(kBlockRemoteImages))
-      rv = prefBranch->GetBoolPref(kBlockRemoteImages, &mBlockRemoteImages);
+      prefBranchInt->GetBoolPref(kBlockRemoteImages, &mBlockRemoteImages);
     else if (pref.Equals(kRemoteImagesUseWhiteList))
-      prefBranch->GetBoolPref(kRemoteImagesUseWhiteList, &mUseRemoteImageWhiteList);
+      prefBranchInt->GetBoolPref(kRemoteImagesUseWhiteList, &mUseRemoteImageWhiteList);
     else if (pref.Equals(kRemoteImagesWhiteListURI))
-      prefBranch->GetCharPref(kRemoteImagesWhiteListURI, getter_Copies(mRemoteImageWhiteListURI));
+      prefBranchInt->GetCharPref(kRemoteImagesWhiteListURI, getter_Copies(mRemoteImageWhiteListURI));
   }
   
+  return NS_OK;
+}
+
+NS_IMPL_ISUPPORTS1(nsMsgCookiePolicy, nsICookiePermission)
+
+
+NS_IMETHODIMP nsMsgCookiePolicy::SetAccess(nsIURI         *aURI,
+                                           nsCookieAccess  aAccess)
+{
+  // we don't support cookie access lists for mail
+  return NS_OK;
+}
+
+NS_IMETHODIMP nsMsgCookiePolicy::CanAccess(nsIURI         *aURI,
+                                            nsIURI         *aFirstURI,
+                                            nsIChannel     *aChannel,
+                                            nsCookieAccess *aResult)
+{
+  // by default we deny all cookies in mail
+  *aResult = ACCESS_DENY;
+  
+  // If aFirstURI is an RSS article, then we do allow cookies. 
+  NS_ENSURE_TRUE(aFirstURI, NS_OK);  
+  PRBool isRSS = PR_FALSE;
+  IsRSSArticle(aFirstURI, &isRSS);
+  if (isRSS)
+    *aResult = ACCESS_DEFAULT;
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP nsMsgCookiePolicy::CanSetCookie(nsIURI     *aURI,
+                                              nsIChannel *aChannel,
+                                              nsICookie2 *aCookie,
+                                              PRBool     *aIsSession,
+                                              PRInt64    *aExpiry,
+                                              PRBool     *aResult)
+{
+  *aResult = PR_TRUE;
   return NS_OK;
 }

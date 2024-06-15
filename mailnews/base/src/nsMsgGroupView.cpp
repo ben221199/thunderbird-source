@@ -14,6 +14,11 @@
  *
  * The Original Code is mozilla.org code.
  *
+ * The Initial Developer of the Original Code is
+ * David Bienvenu.
+ * Portions created by the Initial Developer are Copyright (C) 2004
+ * the Initial Developer. All Rights Reserved.
+ *
  * Contributor(s):
  *
  * Alternatively, the contents of this file may be used under the terms of
@@ -37,6 +42,7 @@
 #include "nsIDBFolderInfo.h"
 #include "nsIMsgSearchSession.h"
 #include "nsMsgGroupThread.h"
+#include "nsITreeColumns.h"
 
 #define MSGHDR_CACHE_LOOK_AHEAD_SIZE  25    // Allocate this more to avoid reallocation on new mail.
 #define MSGHDR_CACHE_MAX_SIZE         8192  // Max msghdr cache entries.
@@ -359,7 +365,7 @@ NS_IMETHODIMP nsMsgGroupView::OpenWithHdrs(nsISimpleEnumerator *aHeaders, nsMsgV
     nsCOMPtr <nsIDBFolderInfo> dbFolderInfo;
     nsresult rv = m_db->GetDBFolderInfo(getter_AddRefs(dbFolderInfo));
     if (dbFolderInfo)
-      dbFolderInfo->GetUint32Property("dateGroupFlags", &expandFlags, 0);
+      dbFolderInfo->GetUint32Property("dateGroupFlags",  0, &expandFlags);
 
   }
   // go through the view updating the flags for threads with more than one message...
@@ -414,7 +420,6 @@ nsresult nsMsgGroupView::OnNewHeader(nsIMsgDBHdr *newHdr, nsMsgKey aParentKey, P
         m_flags[threadIndex] |= MSG_VIEW_FLAG_HASCHILDREN | MSG_VIEW_FLAG_ISTHREAD;
 
       PRInt32 numRowsToInvalidate = 1;
-
       if (! (m_flags[threadIndex] & MSG_FLAG_ELIDED))
       {
         PRUint32 msgIndexInThread = thread->m_keys.IndexOf(msgKey);
@@ -457,7 +462,6 @@ nsresult nsMsgGroupView::OnNewHeader(nsIMsgDBHdr *newHdr, nsMsgKey aParentKey, P
         // as NoteChange() will call RowCountChanged() which will call our GetRowCount()
         NoteChange((insertedAtThreadRoot && GroupViewUsesDummyRow()) ? threadIndex + msgIndexInThread - 1 : threadIndex + msgIndexInThread,
                       numRowsInserted, nsMsgViewNotificationCode::insertOrDelete);
-
         numRowsToInvalidate = msgIndexInThread;
       }
       NoteChange(threadIndex, numRowsToInvalidate, nsMsgViewNotificationCode::changed);
@@ -531,16 +535,18 @@ NS_IMETHODIMP nsMsgGroupView::GetRowProperties(PRInt32 aRow, nsISupportsArray *a
   return nsMsgDBView::GetRowProperties(aRow, aProperties);
 }
 
-NS_IMETHODIMP nsMsgGroupView::GetCellProperties(PRInt32 aRow, const PRUnichar *aColID, nsISupportsArray *aProperties)
+NS_IMETHODIMP nsMsgGroupView::GetCellProperties(PRInt32 aRow, nsITreeColumn *aCol, nsISupportsArray *aProperties)
 {
   if (m_flags[aRow] & MSG_VIEW_FLAG_DUMMY)
     return aProperties->AppendElement(kDummyMsgAtom);
-  return nsMsgDBView::GetCellProperties(aRow, aColID, aProperties);
+  return nsMsgDBView::GetCellProperties(aRow, aCol, aProperties);
 }
 
-NS_IMETHODIMP nsMsgGroupView::GetCellText(PRInt32 aRow, const PRUnichar *aColID, nsAString& aValue)
+NS_IMETHODIMP nsMsgGroupView::GetCellText(PRInt32 aRow, nsITreeColumn* aCol, nsAString& aValue)
 {
-  if (m_flags[aRow] & MSG_VIEW_FLAG_DUMMY && aColID[0] != 'u')
+  const PRUnichar* colID;
+  aCol->GetIdConst(&colID);
+  if (m_flags[aRow] & MSG_VIEW_FLAG_DUMMY && colID[0] != 'u')
   {
     nsCOMPtr <nsIMsgDBHdr> msgHdr;
     nsresult rv = GetMsgHdrForViewIndex(aRow, getter_AddRefs(msgHdr));
@@ -550,7 +556,7 @@ NS_IMETHODIMP nsMsgGroupView::GetCellText(PRInt32 aRow, const PRUnichar *aColID,
       return NS_OK;
 
     nsMsgGroupThread *groupThread = (nsMsgGroupThread *) m_groupsTable.Get(hashKey);
-    if (aColID[0] == 's'  && aColID[1] == 'u' )
+    if (colID[0] == 's'  && colID[1] == 'u' )
     {
       aValue.SetCapacity(0);
       nsXPIDLString valueText;
@@ -616,7 +622,7 @@ NS_IMETHODIMP nsMsgGroupView::GetCellText(PRInt32 aRow, const PRUnichar *aColID,
           break;
       }
     }
-    else if (aColID[0] == 't')
+    else if (colID[0] == 't')
     {
       nsAutoString formattedCountString;
       PRUint32 numChildren = (groupThread) ? groupThread->NumRealChildren() : 0;
@@ -626,7 +632,7 @@ NS_IMETHODIMP nsMsgGroupView::GetCellText(PRInt32 aRow, const PRUnichar *aColID,
     delete hashKey;
     return NS_OK;
   }
-  return nsMsgDBView::GetCellText(aRow, aColID, aValue);
+  return nsMsgDBView::GetCellText(aRow, aCol, aValue);
 }
 
 NS_IMETHODIMP nsMsgGroupView::LoadMessageByViewIndex(nsMsgViewIndex aViewIndex)

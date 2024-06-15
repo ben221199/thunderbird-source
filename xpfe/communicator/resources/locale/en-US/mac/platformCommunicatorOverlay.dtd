@@ -19,3 +19,11 @@
 <!ENTITY findTypeLinksCmd.key       "">
 
 <!ENTITY accel.emacs_conflict       "accel">
+
+<!ENTITY minimizeWindowCmd.label    "Minimize">
+<!ENTITY minimizeWindowCmd.key      "M">
+<!ENTITY zoomWindowCmd.label        "Zoom">
+
+<!-- Help viewer -->
+<!ENTITY openHelpCmd.label          "&brandShortName; Help">
+<!ENTITY openHelpCmd.accesskey      "H">

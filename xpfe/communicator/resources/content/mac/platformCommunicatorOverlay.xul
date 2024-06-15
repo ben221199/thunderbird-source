@@ -3,8 +3,8 @@
 
 <!DOCTYPE overlay [
 
-<!ENTITY % platformCommunicationDTD SYSTEM "chrome://communicator-platform/locale/platformCommunicatorOverlay.dtd">
-%platformCommunicationDTD;
+<!ENTITY % platformCommunicatorDTD SYSTEM "chrome://communicator-platform/locale/platformCommunicatorOverlay.dtd">
+%platformCommunicatorDTD;
 <!ENTITY % utilityDTD SYSTEM "chrome://communicator/locale/utilityOverlay.dtd">
 %utilityDTD;
 
@@ -20,12 +20,6 @@
   <key id="key_gotoHistory"  key="&historyCmd.key;" oncommand="toHistory();" modifiers="accel,shift"/>
 
   <menupopup id="menu_FilePopup">
-    <!-- Page setup -->
-    <menuitem id="printSetupMenuItem"
-         insertbefore="printMenuItem"
-         label="&printSetupCmd.label;"
-         accesskey="&printSetupCmd.accesskey;"
-         command="cmd_printSetup"/>
     <!-- quit -->
     <menuseparator id="menu_FileQuitSeparator"/>
     <menuitem label="&quitApplicationCmd.label;" id="menu_FileQuitItem"
@@ -65,5 +59,31 @@
   <menuitem id="printPreviewAddressBook" hidden="true"/>
   <menuitem id="threadPaneContext-printpreview" hidden="true"/>
   <menuitem id="messagePaneContext-printpreview" hidden="true"/>
+
+  <!-- Tasks Commands -->
+  <commandset id="tasksCommands"> 
+    <command id="cmd_minimizeWindow" oncommand="window.minimize();"/>
+    <command id="cmd_zoomWindow" oncommand="ZoomCurrentWindow();"/>
+  </commandset>
+
+  <!-- Tasks Keys -->
+  <keyset id="tasksKeys">
+    <key id="key_minimizeWindow"
+         command="cmd_minimizeWindow"
+         key="&minimizeWindowCmd.key;"
+         modifiers="accel"/>
+  </keyset>
+
+  <!-- Window menu -->
+  <menupopup id="windowPopup">
+    <menuitem command="cmd_minimizeWindow"
+              label="&minimizeWindowCmd.label;"
+              key="key_minimizeWindow"
+              position="1"/>
+    <menuitem command="cmd_zoomWindow"
+              label="&zoomWindowCmd.label;"
+              position="2"/>
+    <menuseparator position="3"/>
+  </menupopup>
 
 </overlay>    
