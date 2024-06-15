@@ -1,3 +1,8 @@
-/.cvsignore/1.1/Sat Dec  5 09:02:56 1998//TTHUNDERBIRD_0_7_RELEASE
-/Makefile.in/1.10/Mon Feb 19 21:49:27 2001//TTHUNDERBIRD_0_7_RELEASE
-D
+/.cvsignore/1.1/Sat Dec  5 09:02:56 1998//TFIREFOX_0_9_1_RELEASE
+/Makefile.in/1.10/Mon Feb 19 21:49:27 2001//TFIREFOX_0_9_1_RELEASE
+D/base////
+D/document////
+D/forms////
+D/style////
+D/table////
+D/tests////

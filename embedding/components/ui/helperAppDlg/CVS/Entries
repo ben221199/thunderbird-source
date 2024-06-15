@@ -1,6 +1,6 @@
-/.cvsignore/1.1/Fri Jul  6 02:35:23 2001//TTHUNDERBIRD_0_7_RELEASE
-/Makefile.in/1.6/Thu Apr 25 02:51:27 2002//TTHUNDERBIRD_0_7_RELEASE
-/nsHelperAppDlg.js/1.55/Wed Jan 28 23:18:20 2004//TTHUNDERBIRD_0_7_RELEASE
-/nsHelperAppDlg.xul/1.22/Wed Sep 17 07:56:37 2003//TTHUNDERBIRD_0_7_RELEASE
-/nsIHelperAppLauncherDialog.idl/1.7/Mon Aug  4 22:30:39 2003//TTHUNDERBIRD_0_7_RELEASE
-D
+/.cvsignore/1.1/Fri Jul  6 02:35:23 2001//TFIREFOX_0_9_1_RELEASE
+/Makefile.in/1.6/Thu Apr 25 02:51:27 2002//TFIREFOX_0_9_1_RELEASE
+/nsHelperAppDlg.js/1.55/Wed Jan 28 23:18:20 2004//TFIREFOX_0_9_1_RELEASE
+/nsHelperAppDlg.xul/1.22/Wed Sep 17 07:56:37 2003//TFIREFOX_0_9_1_RELEASE
+/nsIHelperAppLauncherDialog.idl/1.7/Mon Aug  4 22:30:39 2003//TFIREFOX_0_9_1_RELEASE
+D/locale////

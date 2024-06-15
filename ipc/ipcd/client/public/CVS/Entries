@@ -1,8 +1,8 @@
-/.cvsignore/1.2/Fri Nov  7 13:50:16 2003//TTHUNDERBIRD_0_7_RELEASE
-/Makefile.in/1.2/Fri Nov  7 13:50:16 2003//TTHUNDERBIRD_0_7_RELEASE
-/ipcCID.h/1.2/Fri Nov  7 13:50:16 2003//TTHUNDERBIRD_0_7_RELEASE
-/ipcIClientObserver.idl/1.2/Fri Nov  7 13:50:16 2003//TTHUNDERBIRD_0_7_RELEASE
-/ipcIClientQueryHandler.idl/1.2/Fri Nov  7 13:50:16 2003//TTHUNDERBIRD_0_7_RELEASE
-/ipcIMessageObserver.idl/1.2/Fri Nov  7 13:50:16 2003//TTHUNDERBIRD_0_7_RELEASE
-/ipcIService.idl/1.2/Fri Nov  7 13:50:16 2003//TTHUNDERBIRD_0_7_RELEASE
+/.cvsignore/1.2/Fri Nov  7 13:50:16 2003//TFIREFOX_0_9_1_RELEASE
+/Makefile.in/1.2/Fri Nov  7 13:50:16 2003//TFIREFOX_0_9_1_RELEASE
+/ipcCID.h/1.2/Fri Nov  7 13:50:16 2003//TFIREFOX_0_9_1_RELEASE
+/ipcIClientObserver.idl/1.2/Fri Nov  7 13:50:16 2003//TFIREFOX_0_9_1_RELEASE
+/ipcIClientQueryHandler.idl/1.2/Fri Nov  7 13:50:16 2003//TFIREFOX_0_9_1_RELEASE
+/ipcIMessageObserver.idl/1.2/Fri Nov  7 13:50:16 2003//TFIREFOX_0_9_1_RELEASE
+/ipcIService.idl/1.2/Fri Nov  7 13:50:16 2003//TFIREFOX_0_9_1_RELEASE
 D

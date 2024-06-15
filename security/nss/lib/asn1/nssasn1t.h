@@ -35,7 +35,7 @@
 #define NSSASN1T_H
 
 #ifdef DEBUG
-static const char NSSASN1T_CVS_ID[] = "@(#) $RCSfile: nssasn1t.h,v $ $Revision: 1.1 $ $Date: 2000/03/31 19:57:16 $ $Name: THUNDERBIRD_0_7_RELEASE $";
+static const char NSSASN1T_CVS_ID[] = "@(#) $RCSfile: nssasn1t.h,v $ $Revision: 1.1 $ $Date: 2000/03/31 19:57:16 $ $Name: FIREFOX_0_9_1_RELEASE $";
 #endif /* DEBUG */
 
 /*

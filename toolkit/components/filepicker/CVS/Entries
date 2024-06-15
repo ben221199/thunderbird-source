@@ -1,4 +1,6 @@
-/.cvsignore/1.1/Sun Mar  2 21:20:01 2003//TTHUNDERBIRD_0_7_RELEASE
-/Makefile.in/1.1.30.1/Mon Jun  7 05:17:49 2004//TTHUNDERBIRD_0_7_RELEASE
-/jar.mn/1.2.30.1/Mon Jun  7 05:17:49 2004//TTHUNDERBIRD_0_7_RELEASE
-D
+/.cvsignore/1.1/Sun Mar  2 21:20:01 2003//TFIREFOX_0_9_1_RELEASE
+/Makefile.in/1.1.30.1/Mon Jun  7 05:17:49 2004//TFIREFOX_0_9_1_RELEASE
+/jar.mn/1.2.30.1/Mon Jun  7 05:17:49 2004//TFIREFOX_0_9_1_RELEASE
+D/content////
+D/locale////
+D/skin////

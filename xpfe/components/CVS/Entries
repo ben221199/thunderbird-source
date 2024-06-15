@@ -1,4 +1,29 @@
-/.cvsignore/1.1/Thu Apr 22 00:49:00 1999//TTHUNDERBIRD_0_7_RELEASE
-/Makefile.in/1.53.6.1/Sun May 16 18:16:47 2004//TTHUNDERBIRD_0_7_RELEASE
-/jar.mn/1.65/Mon Mar 15 23:19:46 2004//TTHUNDERBIRD_0_7_RELEASE
-D
+/.cvsignore/1.1/Thu Apr 22 00:49:00 1999//TFIREFOX_0_9_1_RELEASE
+/Makefile.in/1.53.6.1/Sun May 16 18:16:47 2004//TFIREFOX_0_9_1_RELEASE
+/jar.mn/1.65/Mon Mar 15 23:19:46 2004//TFIREFOX_0_9_1_RELEASE
+D/alerts////
+D/autocomplete////
+D/bookmarks////
+D/build////
+D/build2////
+D/console////
+D/directory////
+D/download-manager////
+D/filepicker////
+D/find////
+D/history////
+D/intl////
+D/killAll////
+D/prefwindow////
+D/related////
+D/resetPref////
+D/search////
+D/shistory////
+D/sidebar////
+D/updates////
+D/urlbarhistory////
+D/urlwidget////
+D/windowds////
+D/winhooks////
+D/xfer////
+D/xremote////

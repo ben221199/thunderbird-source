@@ -1,3 +1,10 @@
-/.cvsignore/1.1/Sat Dec  5 09:06:17 1998//TTHUNDERBIRD_0_7_RELEASE
-/Makefile.in/1.15/Wed Feb 11 02:09:59 2004//TTHUNDERBIRD_0_7_RELEASE
-D
+/.cvsignore/1.1/Sat Dec  5 09:06:17 1998//TFIREFOX_0_9_1_RELEASE
+/Makefile.in/1.15/Wed Feb 11 02:09:59 2004//TFIREFOX_0_9_1_RELEASE
+D/base////
+D/build////
+D/chrome////
+D/datasource////
+D/opendir////
+D/resources////
+D/tests////
+D/util////

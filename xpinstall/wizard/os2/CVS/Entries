@@ -1,2 +1,7 @@
-/Makefile.in/1.4/Tue Sep 24 22:54:48 2002//TTHUNDERBIRD_0_7_RELEASE
-D
+/Makefile.in/1.4/Tue Sep 24 22:54:48 2002//TFIREFOX_0_9_1_RELEASE
+D/builder////
+D/nsinstall////
+D/setup////
+D/setuprsc////
+D/test////
+D/uninstall////
