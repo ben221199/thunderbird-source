@@ -50,6 +50,7 @@
 <dialog id="unknownContentType"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         onload="dialog.initDialog();" onunload="if (dialog) dialog.onCancel();"
+        onblur="dialog.onBlur(event);" onfocus="dialog.onFocus(event);"
         style="width: 34em;"
         screenX="" screenY=""
         persist="screenX screenY"
@@ -65,7 +66,7 @@
     <separator class="thin"/>
     <hbox align="center" class="small-indent">
       <image id="contentTypeImage"/>
-      <textbox id="location" class="plain" readonly="true" flex="1"/>
+      <description id="location" class="plain" crop="start" flex="1"/>
     </hbox>
     <separator class="thin"/>
     <hbox align="center">
@@ -74,7 +75,7 @@
     </hbox>
     <hbox align="center">
       <label value="&from.label;" id="from"/>
-      <textbox id="source" class="plain" readonly="true" flex="1"/>
+      <description id="source" class="plain" crop="start" flex="1"/>
     </hbox>
     
     <separator class="thin"/>

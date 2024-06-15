@@ -114,6 +114,10 @@
                   .getService(Components.interfaces.nsIPrefService)
                   .getBranch(null);
       </field>
+      <field name="mURIFixup" readonly="true">
+        Components.classes["@mozilla.org/docshell/urifixup;1"]
+                  .getService(Components.interfaces.nsIURIFixup);
+      </field>
       <field name="mTabBox">
         document.getAnonymousNodes(this)[1]
       </field>
@@ -488,21 +492,34 @@
           <![CDATA[
             var newTitle = "";
             var docTitle;
+            var docElement = this.ownerDocument.documentElement;
             if (this.docShell.contentViewer)
               docTitle = this.contentTitle;
-            
-	          if (!docTitle)
-	            docTitle = this.ownerDocument.documentElement.getAttribute("titledefault");
 
-            var modifier = this.ownerDocument.documentElement.getAttribute("titlemodifier");
+            if (!docTitle)
+              docTitle = docElement.getAttribute("titledefault");
+
+            var modifier = docElement.getAttribute("titlemodifier");
+            var sep = docElement.getAttribute("titlemenuseparator");
             if (docTitle) {
-              newTitle += this.ownerDocument.documentElement.getAttribute("titlepreface");
+              newTitle += docElement.getAttribute("titlepreface");
               newTitle += docTitle;
-              var sep = this.ownerDocument.documentElement.getAttribute("titlemenuseparator");
               if (modifier)
                 newTitle += sep;
             }
             newTitle += modifier;
+
+            // if location bar is hidden and the URL type supports a host
+            // then add the scheme and host to the title to prevent spoofing
+            try {
+              if (docElement.getAttribute("chromehidden").indexOf("location") != -1) {
+                var host = this.mURIFixup.createExposableURI(
+                             this.mCurrentBrowser.currentURI).prePath;
+                if (host)
+                  newTitle = host + sep + newTitle;
+              }
+            } catch (e) {}
+
             window.title = newTitle;
           ]]>
         </body>
@@ -778,16 +795,34 @@
           <![CDATA[
             var browser = this.getBrowserForTab(aTab);
             var crop = "end";
-            var titleViaGetter = browser.contentDocument.__proto__.__lookupGetter__('title').call(browser.contentDocument);
-            var title;
-            if (titleViaGetter)
-              title = titleViaGetter
-            else if (browser.currentURI.spec && browser.currentURI.spec != "about:blank") {
-              title = browser.currentURI.spec;
-              crop  = "center";
+            var title = browser.contentDocument.__proto__.__lookupGetter__('title').call(browser.contentDocument);
+            
+            if (!title) {
+              if (browser.currentURI.spec) {
+                try {
+                  title = this.mURIFixup.createExposableURI(browser.currentURI).spec;
+                } catch(ex) {
+                  title = browser.currentURI.spec;
+                }
+              }
+
+              if (title && title != "about:blank") {
+                // At this point, we now have a URI.
+                // Let's try to unescape it using a character set
+                // in case the URI is not ASCII.
+                try {
+                  var characterSet = Components.lookupMethod(browser.contentDocument, 'characterSet')
+                                               .call(browser.contentDocument);
+                  const textToSubURI = Components.classes["@mozilla.org/intl/texttosuburi;1"]
+                                                 .getService(Components.interfaces.nsITextToSubURI);
+                  title = textToSubURI.unEscapeNonAsciiURI(characterSet, title);
+                } catch(ex) { /* Do nothing. */ }
+
+                crop = "center";
+
+              } else // Still no title?  Fall back to our untitled string.
+                title = this.mStringBundle.getString("tabs.untitled");
             }
-            else
-              title = this.mStringBundle.getString("tabs.untitled");
 
             aTab.label = title;
             aTab.setAttribute("crop", crop);
@@ -1297,9 +1332,13 @@
           <![CDATA[
             var url = transferUtils.retrieveURLFromData(aXferData.data, aXferData.flavour.contentType);
 
-            // valid urls don't contain spaces ' '; if we have a space it isn't a valid url so bail out
-            if (!url || !url.length || url.indexOf(" ", 0) != -1)
+            // valid urls don't contain spaces ' '; if we have a space it isn't a valid url.
+            // Also disallow dropping javascript: or data: urls--bail out
+            if (!url || !url.length || url.indexOf(" ", 0) != -1 ||
+                /^\s*(javascript|data):/.test(url))
               return;
+
+            this.dragDropSecurityCheck(aEvent, aDragSession, url);
 
             var bgLoad = this.mPrefs.getBoolPref("browser.tabs.loadInBackground");
 
@@ -1558,6 +1597,40 @@
           ]]>
         </body>
       </method>
+
+      <method name="dragDropSecurityCheck">
+        <parameter name="aEvent"/>
+        <parameter name="aDragSession"/>
+        <parameter name="aUrl"/>
+        <body>
+          <![CDATA[
+            // Do a security check for drag n' drop. Make sure the
+            // source document can load the dragged link.
+            var sourceDoc = aDragSession.sourceDocument;
+
+            if (sourceDoc) {
+              var sourceURI = sourceDoc.documentURI;
+
+              const nsIScriptSecurityManager =
+                Components.interfaces.nsIScriptSecurityManager;
+              var secMan =
+                Components.classes["@mozilla.org/scriptsecuritymanager;1"]
+                .getService(nsIScriptSecurityManager);
+
+              try {
+                secMan.checkLoadURIStr(sourceURI, aUrl,
+                                       nsIScriptSecurityManager.STANDARD);
+              } catch (e) {
+                // Stop even propagation right here.
+                aEvent.stopPropagation();
+
+                throw "Drop of " + aUrl + " denied.";
+              }
+            }
+          ]]>
+        </body>
+      </method>
+
       <field name="_keyEventHandler" readonly="true">
       <![CDATA[({
         tabbrowser: this,
@@ -1649,8 +1722,10 @@
           // We're about to open a modal dialog, make sure the opening
           // tab is brought to the front.
 
+          var targetTop = new XPCNativeWrapper(event.target, "top").top;
+
           for (var i = 0; i < browsers.length; ++i) {
-            if (this.getBrowserAtIndex(i).contentWindow == event.target) {
+            if (this.getBrowserAtIndex(i).contentWindow == targetTop) {
               this.mModalDialogShowing = true;
               this.selectedTab = this.mTabContainer.childNodes[i];
 

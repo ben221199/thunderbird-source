@@ -229,7 +229,45 @@ void InitSequence(HINSTANCE hInstance)
 #endif
 
   // Start the Wizard.
-  PropertySheet(&psh);
+  if (psh.nPages > 0) {
+    PropertySheet(&psh);
+  } else {
+    // Silent install
+
+    InstallFiles(NULL);
+
+    gbIgnoreRunAppX = TRUE;
+    // Apply settings and close. 
+    if (sgProduct.bInstallFiles)
+      UpdateJSProxyInfo();
+
+    /* POST_SMARTUPDATE process file manipulation functions */
+    ProcessFileOpsForAll(T_POST_SMARTUPDATE);
+
+    if (sgProduct.bInstallFiles) {
+      /* PRE_LAUNCHAPP process file manipulation functions */
+      ProcessFileOpsForAll(T_PRE_LAUNCHAPP);
+
+      LaunchApps();
+
+      // Refresh system icons if necessary
+      if (gSystemInfo.bRefreshIcons)
+        RefreshIcons();
+
+      UnsetSetupState(); // clear setup state
+      ClearWinRegUninstallFileDeletion();
+      if (!gbIgnoreProgramFolderX)
+        ProcessProgramFolderShowCmd();
+
+      CleanupArgsRegistry();
+      CleanupPreviousVersionRegKeys();
+
+      /* POST_LAUNCHAPP process file manipulation functions */
+      ProcessFileOpsForAll(T_POST_LAUNCHAPP);
+      /* DEPEND_REBOOT process file manipulation functions */
+      ProcessFileOpsForAll(T_DEPEND_REBOOT);
+    }
+  }
 
   DeleteObject(sgInstallGui.welcomeTitleFont);
 }
@@ -2043,6 +2081,12 @@ LRESULT CALLBACK DlgProcInstallSuccessful(HWND hDlg, UINT msg, WPARAM wParam, LO
 
     launchAppChecked = diInstallSuccessful.bLaunchAppChecked;
     resetHomepageChecked = diInstallSuccessful.bResetHomepageChecked;
+
+    if (gbIgnoreRunAppX) {
+      ctrl = GetDlgItem(hDlg, IDC_START_APP);
+      ShowWindow(ctrl, SW_HIDE);
+      launchAppChecked = FALSE;
+    }
 
     // Subclass dialog to paint all static controls white.
     OldDialogWndProc = SubclassWindow(hDlg, (WNDPROC)NewDialogWndProc);

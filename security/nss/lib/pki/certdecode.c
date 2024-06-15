@@ -32,7 +32,7 @@
  */
 
 #ifdef DEBUG
-static const char CVS_ID[] = "@(#) $RCSfile: certdecode.c,v $ $Revision: 1.14 $ $Date: 2003/11/11 21:46:53 $ $Name: THUNDERBIRD_1_0_RELEASE $";
+static const char CVS_ID[] = "@(#) $RCSfile: certdecode.c,v $ $Revision: 1.14 $ $Date: 2003/11/11 21:46:53 $ $Name: THUNDERBIRD_1_0_2_RELEASE $";
 #endif /* DEBUG */
 
 #ifndef PKIT_H

@@ -21,6 +21,7 @@
 #
 # Contributor(s):
 #   Benjamin Smedberg <bsmedberg@covad.net>
+#   Arthur Wiebe <artooro@gmail.com>
 #
 # Alternatively, the contents of this file may be used under the terms of
 # either of the GNU General Public License Version 2 or later (the "GPL"),
@@ -94,9 +95,9 @@ _APPNAME	= $(MOZ_APP_DISPLAYNAME)Debug.app
 else
 _APPNAME	= $(MOZ_APP_DISPLAYNAME).app
 endif
-PKG_SUFFIX	= .dmg.gz
+PKG_SUFFIX	= .dmg
 _ABS_TOPSRCDIR	= $(shell cd $(topsrcdir) && pwd)
-MAKE_PACKAGE	= $(_ABS_TOPSRCDIR)/build/package/mac_osx/make-diskimage $(PKG_BASENAME).dmg $(MOZ_PKG_APPNAME) $(MOZ_APP_DISPLAYNAME) && gzip -vf9 $(PKG_BASENAME).dmg
+MAKE_PACKAGE	= $(_ABS_TOPSRCDIR)/build/package/mac_osx/make-diskimage $(PKG_BASENAME).dmg $(MOZ_PKG_APPNAME) $(MOZ_APP_DISPLAYNAME)
 endif
 
 # dummy macro if we don't have PSM built
@@ -105,15 +106,7 @@ ifndef CROSS_COMPILE
 ifdef MOZ_PSM
 SIGN_NSS		= @echo signing nss libraries;
 
-SIGN_ENV	= LD_LIBRARY_PATH=$(DIST)/bin:${LD_LIBRARY_PATH} \
-		LD_LIBRARYN32_PATH=$(DIST)/bin:${LD_LIBRARYN32_PATH} \
-		LD_LIBRARYN64_PATH=$(DIST)/bin:${LD_LIBRARYN64_PATH} \
-		LD_LIBRARY_PATH_64=$(DIST)/bin:${LD_LIBRARY_PATH_64} \
-		SHLIB_PATH=$(DIST)/bin:${SHLIB_PATH} LIBPATH=$(DIST)/bin:${LIBPATH} \
-		DYLD_LIBRARY_PATH=$(DIST)/bin:${DYLD_LIBRARY_PATH} \
-		LIBRARY_PATH=$(DIST)/bin:${LIBRARY_PATH}
-
-SIGN_CMD	= cd $(DIST)/$(MOZ_PKG_APPNAME) && $(SIGN_ENV) $(DIST)/bin/shlibsign -v -i
+SIGN_CMD	= $(DIST)/bin/run-mozilla.sh $(DIST)/bin/shlibsign -v -i
 
 SOFTOKN		= $(DIST)/$(MOZ_PKG_APPNAME)/$(DLL_PREFIX)softokn3$(DLL_SUFFIX)
 FREEBL_HYBRID	= $(DIST)/$(MOZ_PKG_APPNAME)/$(DLL_PREFIX)freebl_hybrid_3$(DLL_SUFFIX)
@@ -183,7 +176,7 @@ PLATFORM_EXCLUDE_LIST = ! -name "*.ico"
 endif
 
 $(PACKAGE): $(MOZILLA_BIN)
-	@rm -rf $(DIST)/$(MOZ_PKG_APPNAME) $(DIST)/$(PKG_BASENAME).tar $(DIST)/$(PKG_BASENAME).dmg $(DIST)/$(PKG_BASENAME).dmg.gz $@ $(EXCLUDE_LIST)
+	@rm -rf $(DIST)/$(MOZ_PKG_APPNAME) $(DIST)/$(PKG_BASENAME).tar $(DIST)/$(PKG_BASENAME).dmg $@ $(EXCLUDE_LIST)
 # NOTE: this must be a tar now that dist links into the tree so that we
 # do not strip the binaries actually in the tree.
 	@echo "Creating package directory..."

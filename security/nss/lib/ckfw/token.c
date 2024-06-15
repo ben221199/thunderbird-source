@@ -32,7 +32,7 @@
  */
 
 #ifdef DEBUG
-static const char CVS_ID[] = "@(#) $RCSfile: token.c,v $ $Revision: 1.8 $ $Date: 2002/10/10 22:39:23 $ $Name: THUNDERBIRD_1_0_RELEASE $";
+static const char CVS_ID[] = "@(#) $RCSfile: token.c,v $ $Revision: 1.8 $ $Date: 2002/10/10 22:39:23 $ $Name: THUNDERBIRD_1_0_2_RELEASE $";
 #endif /* DEBUG */
 
 /*

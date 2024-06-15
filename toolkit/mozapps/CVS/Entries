@@ -1,7 +1,7 @@
-/.cvsignore/1.1.2.1/Sat May 22 19:20:51 2004//TTHUNDERBIRD_1_0_RELEASE
-/Makefile.in/1.7.6.6/Thu Jun 17 08:55:52 2004//TTHUNDERBIRD_1_0_RELEASE
-/contents-content.rdf.in/1.2/Tue Dec  2 23:22:03 2003//TTHUNDERBIRD_1_0_RELEASE
-/jar.mn/1.11.6.5/Sun Sep  5 13:48:39 2004//TTHUNDERBIRD_1_0_RELEASE
+/.cvsignore/1.1.2.1/Sat May 22 19:20:51 2004//TTHUNDERBIRD_1_0_2_RELEASE
+/Makefile.in/1.7.6.6/Thu Jun 17 08:55:52 2004//TTHUNDERBIRD_1_0_2_RELEASE
+/contents-content.rdf.in/1.2/Tue Dec  2 23:22:03 2003//TTHUNDERBIRD_1_0_2_RELEASE
+/jar.mn/1.11.6.5/Sun Sep  5 13:48:39 2004//TTHUNDERBIRD_1_0_2_RELEASE
 D/downloads////
 D/extensions////
 D/installer////

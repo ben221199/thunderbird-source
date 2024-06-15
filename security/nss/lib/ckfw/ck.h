@@ -35,7 +35,7 @@
 #define CK_H
 
 #ifdef DEBUG
-static const char CK_CVS_ID[] = "@(#) $RCSfile: ck.h,v $ $Revision: 1.1 $ $Date: 2000/03/31 19:43:09 $ $Name: THUNDERBIRD_1_0_RELEASE $";
+static const char CK_CVS_ID[] = "@(#) $RCSfile: ck.h,v $ $Revision: 1.1 $ $Date: 2000/03/31 19:43:09 $ $Name: THUNDERBIRD_1_0_2_RELEASE $";
 #endif /* DEBUG */
 
 /*
