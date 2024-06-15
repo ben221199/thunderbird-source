@@ -1,6 +1,6 @@
-/.cvsignore/1.1/Tue Dec 18 09:10:34 2001//TTHUNDERBIRD_1_0_7_RELEASE
-/Makefile.in/1.6/Wed Jan  7 13:36:21 2004//TTHUNDERBIRD_1_0_7_RELEASE
-/activex.pkg/1.2/Wed Jan  7 01:21:21 2004//TTHUNDERBIRD_1_0_7_RELEASE
+/.cvsignore/1.1/Tue Dec 18 09:10:34 2001//TTHUNDERBIRD_1_0_8_RELEASE
+/Makefile.in/1.6/Wed Jan  7 13:36:21 2004//TTHUNDERBIRD_1_0_8_RELEASE
+/activex.pkg/1.2/Wed Jan  7 01:21:21 2004//TTHUNDERBIRD_1_0_8_RELEASE
 D/common////
 D/control////
 D/control_kicker////
