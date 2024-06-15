@@ -126,23 +126,25 @@ public:
 #if 0
   static nsresult GetRoot(nsIMsgFolder* *result);
 #endif
-	// nsIRDFResource methods:
-	NS_IMETHOD Init(const char *aURI);
-  
-	// nsICollection methods:
-	NS_IMETHOD Enumerate(nsIEnumerator* *result);
+  // nsIRDFResource methods:
+  NS_IMETHOD Init(const char *aURI);
+
+  // nsICollection methods:
+  NS_IMETHOD Enumerate(nsIEnumerator* *result);
 
   // nsIUrlListener methods
-	NS_IMETHOD OnStartRunningUrl(nsIURI * aUrl);
-	NS_IMETHOD OnStopRunningUrl(nsIURI * aUrl, nsresult aExitCode);
+  NS_IMETHOD OnStartRunningUrl(nsIURI * aUrl);
+  NS_IMETHOD OnStopRunningUrl(nsIURI * aUrl, nsresult aExitCode);
 
-	// nsIMsgFolder methods:
-	NS_IMETHOD GetSubFolders(nsIEnumerator* *result);
+  // nsIMsgFolder methods:
+  NS_IMETHOD GetSubFolders(nsIEnumerator* *result);
+  NS_IMETHODIMP GetMsgDatabase(nsIMsgWindow *aMsgWindow,
+                              nsIMsgDatabase** aMsgDatabase);
 
-	NS_IMETHOD GetMessages(nsIMsgWindow *aMsgWindow, nsISimpleEnumerator* *result);
-	NS_IMETHOD UpdateFolder(nsIMsgWindow *aWindow);
+  NS_IMETHOD GetMessages(nsIMsgWindow *aMsgWindow, nsISimpleEnumerator* *result);
+  NS_IMETHOD UpdateFolder(nsIMsgWindow *aWindow);
 
-	NS_IMETHOD CreateSubfolder(const PRUnichar *folderName ,nsIMsgWindow *msgWindow);
+  NS_IMETHOD CreateSubfolder(const PRUnichar *folderName ,nsIMsgWindow *msgWindow);
   NS_IMETHOD AddSubfolder(const nsAString &folderName, nsIMsgFolder** newFolder);
 
   NS_IMETHOD Compact(nsIUrlListener *aListener, nsIMsgWindow *aMsgWindow);
@@ -196,27 +198,18 @@ public:
 
 
 protected:
-	nsresult CopyFolderAcrossServer(nsIMsgFolder *srcFolder, nsIMsgWindow *msgWindow,nsIMsgCopyServiceListener* listener);
+  nsresult CopyFolderAcrossServer(nsIMsgFolder *srcFolder, nsIMsgWindow *msgWindow,nsIMsgCopyServiceListener* listener);
 
-	nsresult CreateSubFolders(nsFileSpec &path);
-	nsresult AddDirectorySeparator(nsFileSpec &path);
-	nsresult GetDatabase(nsIMsgWindow *aMsgWindow);
-    nsresult GetTrashFolder(nsIMsgFolder** trashFolder);
-    nsresult WriteStartOfNewMessage();
+  nsresult CreateSubFolders(nsFileSpec &path);
+  nsresult GetTrashFolder(nsIMsgFolder** trashFolder);
+  nsresult WriteStartOfNewMessage();
   nsresult IsChildOfTrash(PRBool *result);
   nsresult RecursiveSetDeleteIsMoveTrash(PRBool bVal);
   nsresult ConfirmFolderDeletion(nsIMsgWindow *aMsgWindow, PRBool *aResult);
 
-  nsresult CheckIfFolderExists(const PRUnichar *newFolderName, nsIMsgFolder *parentFolder, nsIMsgWindow *msgWindow);
-
-  /* Finds the directory associated with this folder.  That is if the path is
-  c:\Inbox, it will return c:\Inbox.sbd if it succeeds.  If that path doesn't
-  currently exist then it will create it
-  */
-  nsresult CreateDirectoryForFolder(nsFileSpec &path);
-
   nsresult DeleteMessage(nsISupports *message, nsIMsgWindow *msgWindow,
                    PRBool deleteStorage, PRBool commit);
+  nsresult GetDatabase(nsIMsgWindow *msgWindow);
 
   // copy message helper
   nsresult DisplayMoveCopyStatusMsg();
@@ -244,6 +237,7 @@ protected:
   PRPackedBool mCheckForNewMessagesAfterParsing;
   PRPackedBool m_parsingFolder;
   nsCOMPtr<nsIMsgStringService> mMsgStringService;
+  nsCOMPtr<nsIUrlListener> mReparseListener;
   PRInt32 mNumFilterClassifyRequests;
   nsMsgKeyArray mSpamKeysToMove;
   nsCString mSpamFolderURI;

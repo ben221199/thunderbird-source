@@ -273,7 +273,7 @@ const MsgHdrViewObserver =
 var messageHeaderSink = {
     onStartHeaders: function()
     {
-
+      mSaveHdr = null;
       // clear out any pending collected address timers...
       if (gCollectAddressTimer)
       {
@@ -281,7 +281,7 @@ var messageHeaderSink = {
         clearTimeout(gCollectAddressTimer);
         gCollectAddressTimer = null;
       }
-
+      mSaveHdr = null;
       // every time we start to redisplay a message, check the view all headers pref....
       var showAllHeadersPref = pref.getIntPref("mail.show_headers");
       if (showAllHeadersPref == 2)
@@ -359,7 +359,7 @@ var messageHeaderSink = {
           else {  
             // use the index to create a unique header name like:
             // received5, received6, etc
-            currentHeaderData[lowerCaseHeaderName + index] = header;
+            currentHeaderData[lowerCaseHeaderName + index++] = header;
           }
         }
         else
@@ -395,10 +395,13 @@ var messageHeaderSink = {
 
       if (contentType == "text/x-vcard")
       {
-      var inlineAttachments = pref.getBoolPref("mail.inline_attachments");
+        var inlineAttachments = pref.getBoolPref("mail.inline_attachments");
         var displayHtmlAs = pref.getIntPref("mailnews.display.html_as");
         if (inlineAttachments && !displayHtmlAs)
-        return;
+        {
+          mSaveHdr = messenger.messageServiceFromURI(uri).messageURIToMsgHdr(uri);
+          return;
+        }
       }
 
       currentAttachments.push (new createNewAttachmentInfo(contentType, url, displayName, uri, notDownloaded));
@@ -426,6 +429,10 @@ var messageHeaderSink = {
     
     onEndAllAttachments: function()
     {
+      // if we only got a v-card, turn off the attachments flag
+      if (!currentAttachments.length && mSaveHdr)
+        mSaveHdr.markHasAttachments(false);
+      mSaveHdr = null;
       displayAttachmentsForExpandedView();
     },
 
@@ -444,6 +451,7 @@ var messageHeaderSink = {
     },
 
     mSecurityInfo  : null,
+    mSaveHdr: null,
     getSecurityInfo: function()
     {
       return this.mSecurityInfo;
@@ -845,7 +853,7 @@ function setFromBuddyIcon(email)
          gIOService = Components.classes["@mozilla.org/network/io-service;1"].getService(Components.interfaces.nsIIOService);
          gFileHandler = gIOService.getProtocolHandler("file").QueryInterface(Components.interfaces.nsIFileProtocolHandler);
          
-         var dirService = Components.classes["@mozilla.org/directory_service;1"]
+         var dirService = Components.classes["@mozilla.org/file/directory_service;1"]
              .getService(Components.interfaces.nsIProperties);
          var profileDir = dirService.get("ProfD", Components.interfaces.nsIFile);
          gProfileDirURL = gIOService.newFileURI(profileDir);

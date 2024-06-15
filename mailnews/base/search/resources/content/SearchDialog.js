@@ -53,6 +53,8 @@ var gSearchStopButton;
 var gSearchSessionFolderListener;
 var gMailSession;
 
+var MSG_FOLDER_FLAG_VIRTUAL = 0x0020;
+
 // Controller object for search results thread pane
 var nsSearchResultsController =
 {
@@ -65,6 +67,7 @@ var nsSearchResultsController =
         case "cmd_open":
         case "file_message_button":
         case "goto_folder_button":
+        case "saveas_vf_button":
             return true;
         default:
             return false;
@@ -90,6 +93,9 @@ var nsSearchResultsController =
             if (GetNumSelectedMessages() <= 0 || isNewsURI(gSearchView.getURIForViewIndex(0)))
               enabled = false;
             break;
+          case "saveas_vf_button":
+              // need someway to see if there are any search criteria...
+              return true;
           default:
             if (GetNumSelectedMessages() <= 0)
               enabled = false;
@@ -117,6 +123,10 @@ var nsSearchResultsController =
         case "goto_folder_button":
             GoToFolder();
             return true;
+
+        case "saveas_vf_button":
+            // prompt for view name - create virtual folder in ok callback.
+          saveAsVirtualFolder();
 
         default:
             return false;
@@ -236,7 +246,7 @@ function searchOnLoad()
   setupSearchListener();
 
   if (window.arguments && window.arguments[0])
-      selectFolder(window.arguments[0].folder);
+    selectFolder(window.arguments[0].folder);
 
   onMore(null);
   UpdateMailSearch("onload");
@@ -324,7 +334,7 @@ function selectFolder(folder)
     var folderURI;
 
     // if we can't search messages on this folder, just select the first one
-    if (!folder || !folder.server.canSearchMessages) {
+    if (!folder || !folder.server.canSearchMessages || (folder.flags & MSG_FOLDER_FLAG_VIRTUAL)) {
         // walk folders to find first item
         var firstItem = getFirstItemByTag(gFolderPicker, "menu");
         folderURI = firstItem.id;
@@ -419,7 +429,7 @@ function AddSubFolders(folder) {
       if (next)
       {
         var nextFolder = next.QueryInterface(Components.interfaces.nsIMsgFolder);
-        if (nextFolder)
+        if (nextFolder && ! (nextFolder.flags & MSG_FOLDER_FLAG_VIRTUAL))
         {
           if (!nextFolder.noSelect)
             gSearchSession.addScopeTerm(GetScopeForFolder(nextFolder), nextFolder);
@@ -438,6 +448,49 @@ function AddSubFolders(folder) {
   }
 }
 
+function AddSubFoldersToURI(folder) 
+{
+  var returnString = "";
+  if (folder.hasSubFolders)
+  {
+    var subFolderEnumerator = folder.GetSubFolders();
+    var done = false;
+    while (!done)
+    {
+      var next = subFolderEnumerator.currentItem();
+      if (next)
+      {
+        var nextFolder = next.QueryInterface(Components.interfaces.nsIMsgFolder);
+        if (nextFolder && ! (nextFolder.flags & MSG_FOLDER_FLAG_VIRTUAL))
+        {
+          if (!nextFolder.noSelect && !nextFolder.isServer)
+          {
+            if (returnString.length > 0)
+              returnString += '|';
+            returnString += nextFolder.URI;
+          }
+          var subFoldersString = AddSubFoldersToURI(nextFolder);
+          if (subFoldersString.length > 0)
+          {
+            if (returnString.length > 0)
+              returnString += '|';
+            returnString += subFoldersString;
+          }
+
+        }
+      }
+      try
+      {
+        subFolderEnumerator.next();
+       }
+       catch (ex)
+       {
+          done = true;
+       }
+    }
+  }
+  return returnString;
+}
 
 function GetScopeForFolder(folder) 
 {
@@ -720,4 +773,24 @@ function BeginDragThreadPane(event)
 {
     // no search pane dnd yet
     return false;
+}
+
+function saveAsVirtualFolder()
+{
+  var preselectedURI = gCurrentFolder.URI;
+  searchFolderURIs = preselectedURI;
+
+  var searchSubfolders = document.getElementById("checkSearchSubFolders").checked;
+  if (gCurrentFolder && (searchSubfolders || gCurrentFolder.isServer || gCurrentFolder.noSelect))
+  {
+    var subFolderURIs = AddSubFoldersToURI(gCurrentFolder);
+    if (subFolderURIs.length > 0)
+      searchFolderURIs += '|' + subFolderURIs;
+  }
+
+  var dialog = window.openDialog("chrome://messenger/content/virtualFolderProperties.xul", "",
+                                 "chrome,titlebar,modal,centerscreen",
+                                 {preselectedURI:preselectedURI,
+                                  searchTerms:gSearchSession.searchTerms,
+                                  searchFolderURIs: searchFolderURIs});
 }

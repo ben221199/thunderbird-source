@@ -1095,6 +1095,9 @@ void
 nsEventStateManager::CreateClickHoldTimer(nsIPresContext* inPresContext,
                                           nsGUIEvent* inMouseDownEvent)
 {
+  if (!(inMouseDownEvent->internalAppFlags & NS_APP_EVENT_FLAG_TRUSTED))
+    return;
+
   // just to be anal (er, safe)
   if (mClickHoldTimer) {
     mClickHoldTimer->Cancel();
@@ -1202,6 +1205,7 @@ nsEventStateManager::FireContextClick()
   event.clickCount = 1;
   event.point = mEventPoint;
   event.refPoint = mEventRefPoint;
+  event.internalAppFlags |= NS_APP_EVENT_FLAG_TRUSTED;
 
   // Dispatch to the DOM. We have to fake out the ESM and tell it that the
   // current target frame is actually where the mouseDown occurred, otherwise it
@@ -1450,6 +1454,8 @@ nsEventStateManager::GenerateDragGesture(nsIPresContext* aPresContext,
       event.isControl = ((nsMouseEvent*)aEvent)->isControl;
       event.isAlt = ((nsMouseEvent*)aEvent)->isAlt;
       event.isMeta = ((nsMouseEvent*)aEvent)->isMeta;
+      event.internalAppFlags |=
+        aEvent->internalAppFlags & NS_APP_EVENT_FLAG_TRUSTED;
 
       // Dispatch to the DOM. We have to fake out the ESM and tell it that the
       // current target frame is actually where the mouseDown occurred, otherwise it
@@ -1632,6 +1638,8 @@ nsEventStateManager::DoScrollText(nsIPresContext* aPresContext,
   // scrolling, to allow tooltips to disappear, etc.
 
   nsMouseEvent mouseOutEvent(NS_MOUSE_EXIT, aEvent->widget);
+  mouseOutEvent.internalAppFlags |=
+    aEvent->internalAppFlags & NS_APP_EVENT_FLAG_TRUSTED;
 
   nsIPresShell *presShell = aPresContext->PresShell();
 
@@ -1672,9 +1680,53 @@ nsEventStateManager::DoScrollText(nsIPresContext* aPresContext,
     sv = GetNearestScrollingView(focusView);
   }
 
-  PRBool passToParent;
+  // After firing the mouse event to the content, we need to reget focusFrame,
+  // svp, focusView, and sv as they might have changed as a result of the event.
+  // This is a essentially a cut and paste of the above code and was done
+  // in light of this code already being rewritten on the trunk and therefore 
+  // any meaningful work here would be lost anyway.
+
   if (sv) {
     GenerateMouseEnterExit(aPresContext, &mouseOutEvent);
+
+    if (mCurrentFocus) {
+      GetFocusedFrame(&focusFrame);
+    }
+    else {
+      // If there is no focused content, get the document content
+      EnsureDocument(presShell);
+      focusContent = mDocument->GetRootContent();
+      if (!focusContent)
+        return NS_ERROR_FAILURE;
+    }
+    
+    if (aUseTargetFrame)
+      focusFrame = aTargetFrame;
+    else if (!focusFrame)
+      presShell->GetPrimaryFrameFor(focusContent, &focusFrame);
+  
+    if (!focusFrame)
+      return NS_ERROR_FAILURE;
+  
+    // Now check whether this frame wants to provide us with an
+    // nsIScrollableView to use for scrolling.
+
+    svp = do_QueryInterface(focusFrame);
+    if (svp) {
+      svp->GetScrollableView(aPresContext, &sv);
+      if (sv)
+        CallQueryInterface(sv, &focusView);
+    } else {
+      focusView = focusFrame->GetClosestView();
+      if (!focusView)
+        return NS_ERROR_FAILURE;
+      
+      sv = GetNearestScrollingView(focusView);
+    }
+  }
+
+  PRBool passToParent;
+  if (sv) {
 
     // If we're already at the scroll limit for this view, scroll the
     // parent view instead.
@@ -2503,6 +2555,8 @@ nsEventStateManager::DispatchMouseEvent(nsIPresContext* aPresContext,
   event.isAlt = ((nsMouseEvent*)aEvent)->isAlt;
   event.isMeta = ((nsMouseEvent*)aEvent)->isMeta;
   event.nativeMsg = ((nsMouseEvent*)aEvent)->nativeMsg;
+  event.internalAppFlags |=
+    aEvent->internalAppFlags & NS_APP_EVENT_FLAG_TRUSTED;
 
   mCurrentTargetContent = aTargetContent;
   mCurrentRelatedContent = aRelatedContent;
@@ -2559,6 +2613,8 @@ nsEventStateManager::MaybeDispatchMouseEventToIframe(
           event.isAlt = ((nsMouseEvent*)aEvent)->isAlt;
           event.isMeta = ((nsMouseEvent*)aEvent)->isMeta;
           event.nativeMsg = ((nsMouseEvent*)aEvent)->nativeMsg;
+          event.internalAppFlags |=
+            aEvent->internalAppFlags & NS_APP_EVENT_FLAG_TRUSTED;
 
           CurrentEventShepherd shepherd(this, &event);
           parentShell->HandleDOMEventWithTarget(docContent, &event, &status);
@@ -2712,6 +2768,8 @@ nsEventStateManager::GenerateDragDropEnterExit(nsIPresContext* aPresContext,
           event.isControl = ((nsMouseEvent*)aEvent)->isControl;
           event.isAlt = ((nsMouseEvent*)aEvent)->isAlt;
           event.isMeta = ((nsMouseEvent*)aEvent)->isMeta;
+          event.internalAppFlags |=
+            aEvent->internalAppFlags & NS_APP_EVENT_FLAG_TRUSTED;
 
           //The frame has change but the content may not have.  Check before dispatching to content
           mLastDragOverFrame->GetContentForEvent(aPresContext, aEvent, getter_AddRefs(lastContent));
@@ -2745,6 +2803,8 @@ nsEventStateManager::GenerateDragDropEnterExit(nsIPresContext* aPresContext,
         event.isControl = ((nsMouseEvent*)aEvent)->isControl;
         event.isAlt = ((nsMouseEvent*)aEvent)->isAlt;
         event.isMeta = ((nsMouseEvent*)aEvent)->isMeta;
+        event.internalAppFlags |=
+          aEvent->internalAppFlags & NS_APP_EVENT_FLAG_TRUSTED;
 
         mCurrentTargetContent = targetContent;
         mCurrentRelatedContent = lastContent;
@@ -2786,6 +2846,8 @@ nsEventStateManager::GenerateDragDropEnterExit(nsIPresContext* aPresContext,
         event.isControl = ((nsMouseEvent*)aEvent)->isControl;
         event.isAlt = ((nsMouseEvent*)aEvent)->isAlt;
         event.isMeta = ((nsMouseEvent*)aEvent)->isMeta;
+        event.internalAppFlags |=
+          aEvent->internalAppFlags & NS_APP_EVENT_FLAG_TRUSTED;
 
         // dispatch to content via DOM
         nsCOMPtr<nsIContent> lastContent;
@@ -2911,6 +2973,8 @@ nsEventStateManager::CheckForAndDispatchClick(nsIPresContext* aPresContext,
     event.isControl = aEvent->isControl;
     event.isAlt = aEvent->isAlt;
     event.isMeta = aEvent->isMeta;
+    event.internalAppFlags |=
+      aEvent->internalAppFlags & NS_APP_EVENT_FLAG_TRUSTED;
 
     nsCOMPtr<nsIPresShell> presShell = mPresContext->GetPresShell();
     if (presShell) {
@@ -2941,6 +3005,8 @@ nsEventStateManager::CheckForAndDispatchClick(nsIPresContext* aPresContext,
         event2.isControl = aEvent->isControl;
         event2.isAlt = aEvent->isAlt;
         event2.isMeta = aEvent->isMeta;
+        event2.internalAppFlags |=
+          aEvent->internalAppFlags & NS_APP_EVENT_FLAG_TRUSTED;
 
         ret = presShell->HandleEventWithTarget(&event2, mCurrentTarget, mouseContent, flags, aStatus);
       }
@@ -4489,27 +4555,23 @@ nsEventStateManager::DispatchNewEvent(nsISupports* aTarget, nsIDOMEvent* aEvent,
     nsCOMPtr<nsIDOMEventTarget> eventTarget(do_QueryInterface(aTarget));
     privEvt->SetTarget(eventTarget);
 
-    //Key and mouse events have additional security to prevent event spoofing
+    //Check security state to determine if dispatcher is trusted
+    nsIScriptSecurityManager *securityManager =
+      nsContentUtils::GetSecurityManager();
+
+    PRBool trusted;
+    privEvt->IsTrustedEvent(&trusted);
+
+    if (!trusted) {
+      PRBool enabled;
+      nsresult res =
+        securityManager->IsCapabilityEnabled("UniversalBrowserWrite",
+                                             &enabled);
+      privEvt->SetTrusted(NS_SUCCEEDED(res) && enabled);
+    }
+
     nsEvent * innerEvent;
     privEvt->GetInternalNSEvent(&innerEvent);
-    if (innerEvent && (innerEvent->eventStructType == NS_KEY_EVENT ||
-        innerEvent->eventStructType == NS_MOUSE_EVENT)) {
-      //Check security state to determine if dispatcher is trusted
-      nsIScriptSecurityManager *securityManager =
-        nsContentUtils::GetSecurityManager();
-
-      PRBool enabled;
-      nsresult res = securityManager->IsCapabilityEnabled("UniversalBrowserWrite", &enabled);
-      if (NS_SUCCEEDED(res) && enabled) {
-        privEvt->SetTrusted(PR_TRUE);
-      }
-      else {
-        privEvt->SetTrusted(PR_FALSE);
-      } 
-    }
-    else {
-      privEvt->SetTrusted(PR_TRUE);
-    }
 
     if (innerEvent) {
       nsEventStatus status = nsEventStatus_eIgnore;

@@ -147,7 +147,7 @@ static nsresult GetReplyHeaderInfo(PRInt32* reply_header_type,
     if (NS_FAILED(rv) || !*reply_header_authorwrote)
       *reply_header_authorwrote = nsCRT::strdup(NS_LITERAL_STRING("%s wrote").get());
 
-    rv = prefs->CopyUnicharPref("mailnews.reply_header_ondate", reply_header_ondate);
+    rv = prefs->GetLocalizedUnicharPref("mailnews.reply_header_ondate", reply_header_ondate);
     if (NS_FAILED(rv) || !*reply_header_ondate)
       *reply_header_ondate = nsCRT::strdup(NS_LITERAL_STRING("On %s").get());
 
@@ -522,7 +522,7 @@ nsMsgCompose::ConvertAndLoadComposeWindow(nsString& aPrefix,
       nsIDocShell *docshell = nsnull;
       nsCOMPtr<nsIScriptGlobalObject> globalObj = do_QueryInterface(m_window);
       if (globalObj && (docshell = globalObj->GetDocShell()))
-        docshell->SetAppType(nsIDocShell::APP_TYPE_MAIL);
+        docshell->SetAppType(nsIDocShell::APP_TYPE_EDITOR);
 
       if (aHTMLEditor && !mCiteReference.IsEmpty())
         mailEditor->InsertAsCitedQuotation(aBuf,
@@ -532,10 +532,6 @@ nsMsgCompose::ConvertAndLoadComposeWindow(nsString& aPrefix,
       else
         mailEditor->InsertAsQuotation(aBuf,
                                       getter_AddRefs(nodeInserted));
-
-      // XXX see bug #206793
-      if (docshell)
-        docshell->SetAppType(nsIDocShell::APP_TYPE_UNKNOWN);
 
       m_editor->EndOfDocument();
     }
@@ -697,6 +693,8 @@ nsMsgCompose::Initialize(nsIDOMWindowInternal *aWindow, nsIMsgComposeParams *par
     if (NS_FAILED(rv)) return rv;
 
     m_baseWindow = do_QueryInterface(treeOwner);
+
+    globalObj->GetDocShell()->SetAppType(nsIDocShell::APP_TYPE_EDITOR);
   }
   
   MSG_ComposeFormat format;
@@ -1553,6 +1551,11 @@ nsresult nsMsgCompose::CreateMessage(const char * originalMsgURI,
         if (NS_FAILED(rv)) return rv;
       }
 
+      // save the charset of a message being replied to because
+      // we need to use it when decoding RFC-2047-encoded author name
+      // with |charsetOverride == PR_TRUE|
+      nsCAutoString originCharset(charset); 
+
       // use send_default_charset if reply_in_default_charset is on.
       nsCOMPtr<nsIPref> prefs (do_GetService(NS_PREF_CONTRACTID));
       if (prefs)
@@ -1580,8 +1583,14 @@ nsresult nsMsgCompose::CreateMessage(const char * originalMsgURI,
       if (isFirstPass && !charset.IsEmpty())
         m_compFields->SetCharacterSet(charset);
 
-      rv = msgHdr->GetMime2DecodedSubject(getter_Copies(subject));
+      nsXPIDLCString subjectCStr;
+      rv = msgHdr->GetSubject(getter_Copies(subjectCStr));
+      rv = mimeConverter->DecodeMimeHeader(subjectCStr,
+                getter_Copies(decodedCString),
+                originCharset.get(), charsetOverride);
       if (NS_FAILED(rv)) return rv;
+
+      CopyUTF8toUTF16(decodedCString, subject);
 
       // Check if (was: is present in the subject
       nsAString::const_iterator wasStart, wasEnd;
@@ -1664,7 +1673,7 @@ nsresult nsMsgCompose::CreateMessage(const char * originalMsgURI,
 
             rv = mimeConverter->DecodeMimeHeader(author,
                 getter_Copies(decodedCString),
-                charset, charsetOverride);
+                originCharset.get(), charsetOverride);
             if (NS_SUCCEEDED(rv) && decodedCString)
               m_compFields->SetTo(decodedCString);
             else
@@ -2387,17 +2396,13 @@ QuotingOutputStreamListener::InsertToCompose(nsIEditor *aEditor,
       if (globalObj)
         docshell = globalObj->GetDocShell();
       if (docshell)
-        docshell->SetAppType(nsIDocShell::APP_TYPE_MAIL);
+        docshell->SetAppType(nsIDocShell::APP_TYPE_EDITOR);
       
       if (aHTMLEditor)
         mailEditor->InsertAsCitedQuotation(mMsgBody, EmptyString(), PR_TRUE,
                                            getter_AddRefs(nodeInserted));
       else
         mailEditor->InsertAsQuotation(mMsgBody, getter_AddRefs(nodeInserted));
-
-      // XXX see bug #206793
-      if (docshell)
-        docshell->SetAppType(nsIDocShell::APP_TYPE_UNKNOWN);
     }
       
   }

@@ -56,6 +56,8 @@ public:
   virtual const char * GetViewName(void) {return "SearchView"; }
   NS_IMETHOD Open(nsIMsgFolder *folder, nsMsgViewSortTypeValue sortType, nsMsgViewSortOrderValue sortOrder, 
         nsMsgViewFlagsTypeValue viewFlags, PRInt32 *pCount);
+  NS_IMETHOD CopyDBView(nsMsgDBView *aNewMsgDBView, nsIMessenger *aMessengerInstance, 
+                        nsIMsgWindow *aMsgWindow, nsIMsgDBViewCommandUpdater *aCmdUpdater);
   NS_IMETHOD Close();
   NS_IMETHOD Sort(nsMsgViewSortTypeValue sortType, nsMsgViewSortOrderValue sortOrder);
   NS_IMETHOD DoCommand(nsMsgViewCommandTypeValue command);
@@ -64,8 +66,10 @@ public:
   // override to get location
   NS_IMETHOD GetCellText(PRInt32 aRow, const PRUnichar * aColID, nsAString& aValue);
   virtual nsresult GetMsgHdrForViewIndex(nsMsgViewIndex index, nsIMsgDBHdr **msgHdr);
-  virtual nsresult OnNewHeader(nsMsgKey newKey, nsMsgKey parentKey, PRBool ensureListed);
+  virtual nsresult OnNewHeader(nsIMsgDBHdr *newHdr, nsMsgKey parentKey, PRBool ensureListed);
   NS_IMETHOD GetFolderForViewIndex(nsMsgViewIndex index, nsIMsgFolder **folder);
+
+  NS_IMETHOD OnAnnouncerGoingAway(nsIDBChangeAnnouncer *instigator);
 
   virtual nsresult GetFolders(nsISupportsArray **aFolders);
   virtual nsresult GetFolderFromMsgURI(const char *aMsgURI, nsIMsgFolder **aFolder);
@@ -76,8 +80,9 @@ protected:
   virtual nsresult RemoveByIndex(nsMsgViewIndex index);
   virtual nsresult CopyMessages(nsIMsgWindow *window, nsMsgViewIndex *indices, PRInt32 numIndices, PRBool isMove, nsIMsgFolder *destFolder);
   virtual nsresult DeleteMessages(nsIMsgWindow *window, nsMsgViewIndex *indices, PRInt32 numIndices, PRBool deleteStorage);
-  nsresult InitializeGlobalsForDeleteAndFile(nsMsgViewIndex *indices, PRInt32 numIndices);
+  nsresult GetFoldersAndHdrsForSelection(nsMsgViewIndex *indices, PRInt32 numIndices);
   nsresult GroupSearchResultsByFolder();
+  nsresult PartitionSelectionByFolder(nsMsgViewIndex *indices, PRInt32 numIndices, nsUInt32Array **indexArrays, PRInt32 *numArrays);
   
   nsCOMPtr <nsISupportsArray> m_folders; // maybe we should store ranges, or the actual headers instead.
   nsCOMPtr <nsISupportsArray> m_hdrsForEachFolder;
@@ -86,7 +91,6 @@ protected:
   PRInt32 mCurIndex;
 
   nsMsgViewIndex* mIndicesForChainedDeleteAndFile;
-  nsUInt32Array* mTestIndices;
   PRInt32 mTotalIndices;
   nsCOMArray<nsIMsgDatabase> m_dbToUseList;
   nsMsgViewCommandTypeValue mCommand;

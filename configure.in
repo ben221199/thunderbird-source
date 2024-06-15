@@ -562,6 +562,7 @@ DIRENT_INO=d_ino
 CYGWIN_WRAPPER=
 MOZ_USER_DIR=".mozilla"
 MOZ_APP_NAME=mozilla
+MOZ_APP_DISPLAYNAME=Mozilla
 
 MOZ_JPEG_CFLAGS=
 MOZ_JPEG_LIBS='-L$(DIST)/lib -lmozjpeg'
@@ -3351,11 +3352,32 @@ dnl ========================================================
 dnl = Trademarked Branding 
 dnl ========================================================
 MOZ_ARG_ENABLE_BOOL(official-branding,
-[  --enable-official-branding    Enable Official Branding],
+[  --enable-official-branding Enable Official mozilla.org Branding
+                          Do not distribute builds with
+                          --enable-official-branding unless you have
+                          permission to use trademarks per
+                          http://www.mozilla.org/foundation/trademarks/ .],
     MOZ_USE_OFFICIAL_BRANDING=1,
     MOZ_USE_OFFICIAL_BRANDING= )
 
 AC_SUBST(MOZ_USE_OFFICIAL_BRANDING)
+
+dnl ========================================================
+dnl = Distribution ID
+dnl ========================================================
+MOZ_ARG_WITH_STRING(distribution-id,
+[  --with-distribution-id=ID  Set distribution-specific id (default=org.mozilla)],
+[ val=`echo $withval`
+    MOZ_DISTRIBUTION_ID="$val"])
+
+if test -z "$MOZ_DISTRIBUTION_ID"; then
+   MOZ_DISTRIBUTION_ID=org.mozilla
+fi
+
+AC_DEFINE_UNQUOTED(MOZ_DISTRIBUTION_ID_UNQUOTED, $MOZ_DISTRIBUTION_ID)
+AC_DEFINE_UNQUOTED(MOZ_DISTRIBUTION_ID,"$MOZ_DISTRIBUTION_ID")
+AC_SUBST(MOZ_DISTRIBUTION_ID_UNQUOTED)
+AC_SUBST(MOZ_DISTRIBUTION_ID)
 
 dnl ========================================================
 dnl = Phoenix
@@ -3366,6 +3388,7 @@ if test "$MOZ_PHOENIX"; then
    MOZ_XUL_APP=1
    AC_DEFINE(MOZ_XUL_APP)
    MOZ_APP_NAME=firefox
+   MOZ_APP_DISPLAYNAME=Firefox
    MOZ_APP_VERSION=`cat $topsrcdir/browser/config/version.txt`
 fi
 
@@ -3383,6 +3406,7 @@ if test "$MOZ_THUNDERBIRD"; then
    MOZ_XUL_APP=1
    AC_DEFINE(MOZ_XUL_APP)
    MOZ_APP_NAME=thunderbird
+   MOZ_APP_DISPLAYNAME=Thunderbird
    MOZ_APP_VERSION=`cat $topsrcdir/mail/config/version.txt`
 fi
 
@@ -3398,6 +3422,7 @@ if test "$MOZ_STANDALONE_COMPOSER"; then
    MOZ_XUL_APP=1
    AC_DEFINE(MOZ_XUL_APP)
    MOZ_APP_NAME=nvu
+   MOZ_APP_DISPLAYNAME=NVU
    MOZ_APP_VERSION=0.17+
 fi
 
@@ -3606,6 +3631,15 @@ MOZ_ARG_DISABLE_BOOL(jsd,
     MOZ_JSDEBUGGER=,
     MOZ_JSDEBUGGER=1)
 
+
+dnl ========================================================
+dnl = Disable plugin support
+dnl ========================================================
+MOZ_PLUGINS=1
+MOZ_ARG_DISABLE_BOOL(plugins,
+[  --disable-plugins       Disable plugins support],
+    MOZ_PLUGINS=,
+    MOZ_PLUGINS=1)
 
 dnl ========================================================
 dnl = Open JVM Interface (OJI) support
@@ -4606,6 +4640,14 @@ MOZ_ARG_WITH_STRING(insure-exclude-dirs,
     MOZ_INSURE_EXCLUDE_DIRS="config $withval" )
 
 dnl ========================================================
+dnl = Support for Quantify (Windows)
+dnl ========================================================
+MOZ_ARG_ENABLE_BOOL(quantify,
+[  --enable-quantify      Enable Quantify support (Windows only) ],
+    MOZ_QUANTIFY=1,
+    MOZ_QUANTIFY= )
+
+dnl ========================================================
 dnl = Support for demangling undefined symbols
 dnl ========================================================
 if test -z "$SKIP_LIBRARY_CHECKS"; then
@@ -5459,6 +5501,7 @@ AC_SUBST(MOZ_EXTENSIONS)
 AC_SUBST(MOZ_IMG_DECODERS)
 AC_SUBST(MOZ_JSDEBUGGER)
 AC_SUBST(MOZ_OJI)
+AC_SUBST(MOZ_PLUGINS)
 AC_SUBST(ENABLE_EAZEL_PROFILER)
 AC_SUBST(EAZEL_PROFILER_CFLAGS)
 AC_SUBST(EAZEL_PROFILER_LIBS)
@@ -5474,6 +5517,7 @@ AC_SUBST(MOZ_USE_NATIVE_UCONV)
 AC_SUBST(MOZ_INSURE)
 AC_SUBST(MOZ_INSURE_DIRS)
 AC_SUBST(MOZ_INSURE_EXCLUDE_DIRS)
+AC_SUBST(MOZ_QUANTIFY)
 AC_SUBST(MOZ_INSURIFYING)
 AC_SUBST(MOZ_LDAP_XPCOM)
 AC_SUBST(MOZ_LDAP_XPCOM_EXPERIMENTAL)
@@ -5534,9 +5578,11 @@ AC_SUBST(MOZ_TIMELINE)
 
 AC_SUBST(MOZ_APP_NAME)
 AC_SUBST(MOZ_APP_VERSION)
+AC_SUBST(MOZ_APP_DISPLAYNAME)
 
 dnl win32 options
 AC_SUBST(MOZ_PROFILE)
+AC_SUBST(MOZ_DEBUG_SYMBOLS)
 AC_SUBST(MOZ_COVERAGE)
 AC_SUBST(MOZ_MAPINFO)
 AC_SUBST(MOZ_BROWSE_INFO)

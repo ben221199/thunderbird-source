@@ -77,6 +77,7 @@ static GtkShadowType gMenuBarShadowType;
 static GtkShadowType gToolbarShadowType;
 
 static style_prop_t style_prop_func;
+static gboolean have_menu_shadow_type;
 
 gint
 moz_gtk_enable_style_props(style_prop_t styleGetProp)
@@ -335,9 +336,13 @@ moz_gtk_button_paint(GdkDrawable* drawable, GdkRectangle* rect,
 {
     GtkShadowType shadow_type;
     GtkStyle* style = widget->style;
-    gint default_spacing = 7; /* xxx fix me */
     GtkStateType button_state = ConvertGtkState(state);
     gint x = rect->x, y=rect->y, width=rect->width, height=rect->height;
+
+    gboolean interior_focus;
+    gint focus_width, focus_pad;
+
+    moz_gtk_button_get_focus(&interior_focus, &focus_width, &focus_pad);
 
     if (WINDOW_IS_MAPPED(drawable)) {
         gdk_window_set_back_pixmap(drawable, NULL, TRUE);
@@ -347,6 +352,8 @@ moz_gtk_button_paint(GdkDrawable* drawable, GdkRectangle* rect,
 
     gtk_widget_set_state(widget, button_state);
 
+    /*
+     * XXX fix this code when we have default state working.
     if (state->isDefault) {
         TSOffsetStyleGCs(style, x, y);
         gtk_paint_box(style, drawable, GTK_STATE_NORMAL, GTK_SHADOW_IN,
@@ -363,12 +370,13 @@ moz_gtk_button_paint(GdkDrawable* drawable, GdkRectangle* rect,
         x += (1 + default_spacing) / 2;
         y += (1 + default_spacing) / 2;
     }
-       
-    if (state->focused) {
-        x += 1;
-        y += 1;
-        width -= 2;
-        height -= 2;
+    */
+
+    if (!interior_focus && state->focused) {
+        x += focus_width + focus_pad;
+        y += focus_width + focus_pad;
+        width -= 2 * (focus_width + focus_pad);
+        height -= 2 * (focus_width + focus_pad);
     }
 
     shadow_type = button_state == GTK_STATE_ACTIVE ? GTK_SHADOW_IN : GTK_SHADOW_OUT;
@@ -384,11 +392,18 @@ moz_gtk_button_paint(GdkDrawable* drawable, GdkRectangle* rect,
     }
 
     if (state->focused) {
-        x -= 1;
-        y -= 1;
-        width += 2;
-        height += 2;
-    
+        if (interior_focus) {
+            x += widget->style->xthickness + focus_pad;
+            y += widget->style->ythickness + focus_pad;
+            width -= 2 * (widget->style->xthickness + focus_pad);
+            height -= 2 * (widget->style->ythickness + focus_pad);
+        } else {
+            x -= focus_width + focus_pad;
+            y -= focus_width + focus_pad;
+            width += 2 * (focus_width + focus_pad);
+            height += 2 * (focus_width + focus_pad);
+        }
+
         TSOffsetStyleGCs(style, x, y);
         gtk_paint_focus(style, drawable, button_state, cliprect,
                         widget, "button", x, y, width, height);
@@ -400,6 +415,10 @@ moz_gtk_button_paint(GdkDrawable* drawable, GdkRectangle* rect,
 gint
 moz_gtk_init()
 {
+    have_menu_shadow_type =
+        (gtk_major_version > 2 ||
+         (gtk_major_version == 2 && gtk_minor_version >= 1));
+
     return MOZ_GTK_SUCCESS;
 }
 
@@ -451,6 +470,21 @@ moz_gtk_radio_get_focus(gboolean* interior_focus,
     ensure_radiobutton_widget();
 
     gtk_widget_style_get (gRadiobuttonWidget,
+                          "interior-focus", interior_focus,
+                          "focus-line-width", focus_width,
+                          "focus-padding", focus_pad,
+                          NULL);
+
+    return MOZ_GTK_SUCCESS;
+}
+
+gint
+moz_gtk_button_get_focus(gboolean* interior_focus,
+                         gint* focus_width, gint* focus_pad)
+{
+    ensure_button_widget();
+
+    gtk_widget_style_get (gButtonWidget,
                           "interior-focus", interior_focus,
                           "focus-line-width", focus_width,
                           "focus-padding", focus_pad,
@@ -1113,8 +1147,13 @@ moz_gtk_menu_item_paint(GdkDrawable* drawable, GdkRectangle* rect,
 
         style = gMenuItemWidget->style;
         TSOffsetStyleGCs(style, rect->x, rect->y);
-        gtk_widget_style_get(gMenuItemWidget, "selected_shadow_type",
-                             &shadow_type, NULL);
+        if (have_menu_shadow_type) {
+            gtk_widget_style_get(gMenuItemWidget, "selected_shadow_type",
+                                 &shadow_type, NULL);
+        } else {
+            shadow_type = GTK_SHADOW_OUT;
+        }
+
         gtk_paint_box(style, drawable, GTK_STATE_PRELIGHT, shadow_type,
                       cliprect, gMenuItemWidget, "menuitem", rect->x, rect->y,
                       rect->width, rect->height);
@@ -1148,9 +1187,26 @@ moz_gtk_get_widget_border(GtkThemeWidgetType widget, gint* xthickness,
 
     switch (widget) {
     case MOZ_GTK_BUTTON:
-        ensure_button_widget();
-        w = gButtonWidget;
-        break;
+        {
+            /* Constant in gtkbutton.c */
+            static const gint child_spacing = 1;
+            gboolean interior_focus;
+            gint focus_width, focus_pad;
+
+            ensure_button_widget();
+
+            moz_gtk_button_get_focus(&interior_focus,
+                                     &focus_width, &focus_pad);
+
+            *xthickness = *ythickness =
+                GTK_CONTAINER(gButtonWidget)->border_width + child_spacing
+                + focus_width + focus_pad;
+
+            *xthickness += gButtonWidget->style->xthickness;
+            *ythickness += gButtonWidget->style->ythickness;
+            return MOZ_GTK_SUCCESS;
+        }
+
     case MOZ_GTK_TOOLBAR:
         ensure_toolbar_widget();
         w = gToolbarWidget;

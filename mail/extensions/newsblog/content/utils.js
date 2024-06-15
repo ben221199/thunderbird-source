@@ -92,18 +92,16 @@ function updateFolderFeedUrl(aFolder, aFeedUrl, aRemoveUrl)
 {
   var msgdb = aFolder.QueryInterface(Components.interfaces.nsIMsgFolder).getMsgDatabase(null);
   var folderInfo = msgdb.dBFolderInfo;
-  var oldFeedUrl = {};
-  folderInfo.GetCharPtrProperty("feedUrl", oldFeedUrl);
-  oldFeedUrl = oldFeedUrl.value;
+  var oldFeedUrl = folderInfo.getCharPtrProperty("feedUrl");
 
   if (aRemoveUrl)
   { 
     // remove our feed url string from the list of feed urls
     var newFeedUrl = oldFeedUrl.replace(kFeedUrlDelimiter + aFeedUrl, "");
-    folderInfo.SetCharPtrProperty("feedUrl", newFeedUrl);
+    folderInfo.setCharPtrProperty("feedUrl", newFeedUrl);
   }  
   else 
-    folderInfo.SetCharPtrProperty("feedUrl", oldFeedUrl + kFeedUrlDelimiter + aFeedUrl);  
+    folderInfo.setCharPtrProperty("feedUrl", oldFeedUrl + kFeedUrlDelimiter + aFeedUrl);  
 
   // commit the db to preserve our changes
   msgdb.Close(true);

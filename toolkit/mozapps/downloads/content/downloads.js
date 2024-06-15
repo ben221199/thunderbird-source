@@ -1,4 +1,4 @@
-# -*- Mode: Java; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+# -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
 # Version: MPL 1.1/GPL 2.0/LGPL 2.1
 # 
 # The contents of this file are subject to the Mozilla Public License Version
@@ -20,6 +20,7 @@
 # Contributor(s):
 #   Blake Ross <blakeross@telocity.com> (Original Author) 
 #   Ben Goodger <ben@bengoodger.com> (v2.0) 
+#   Dan Mosedale <dmose@mozilla.org>
 # 
 # Alternatively, the contents of this file may be used under the terms of
 # either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -35,7 +36,6 @@
 # 
 # ***** END LICENSE BLOCK *****
 
- 
 ///////////////////////////////////////////////////////////////////////////////
 // Globals
 
@@ -248,10 +248,10 @@ function onDownloadCancel(aEvent)
   // employed by the helper app service isn't fully accessible yet... should be fixed...
   // talk to bz...)
   // the upshot is we have to delete the file if it exists. 
-  var f = Components.classes["@mozilla.org/file/local;1"].createInstance(Components.interfaces.nsILocalFile);
-  f.initWithPath(aEvent.target.id);
+  var f = getLocalFileFromNativePathOrUrl(aEvent.target.id);
+
   if (f.exists()) 
-    f.remove(true);
+    f.remove(false);
 
   gDownloadViewController.onCommandUpdate();
 }
@@ -280,27 +280,20 @@ function onDownloadRemove(aEvent)
 
 function onDownloadShow(aEvent)
 {
-  var f = Components.classes["@mozilla.org/file/local;1"].createInstance(Components.interfaces.nsILocalFile);
-  f.initWithPath(aEvent.target.id);
+  var f = getLocalFileFromNativePathOrUrl(aEvent.target.id);
 
   if (f.exists()) {
-#ifdef XP_UNIX
-#ifndef XP_MACOSX
-    // on unix, open a browser window rooted at the parent
-    var parent = f.parent;
-    if (parent) {
-      var pref = Components.classes["@mozilla.org/preferences-service;1"]
-                          .getService(Components.interfaces.nsIPrefBranch);
-      var browserURL = pref.getCharPref("browser.chromeURL");                          
-      window.openDialog(browserURL, "_blank", "chrome,all,dialog=no", parent.path);
+    try {
+      f.reveal();
+    } catch (ex) {
+      // if reveal failed for some reason (eg on unix it's not currently
+      // implemented), send the file: URL  window rooted at the parent to 
+      // the OS handler for that protocol
+      var parent = f.parent;
+      if (parent) {
+        openExternal(parent.path);
+      }
     }
-#else
-    // MacOS X identifies as Unix.
-    f.reveal();
-#endif
-#else
-    f.reveal();
-#endif
   }
   else {
     var brandStrings = document.getElementById("brandStrings");
@@ -323,9 +316,7 @@ function onDownloadOpen(aEvent)
   var download = aEvent.target;
   if (download.localName == "download") {
     if (download.openable) {
-      var f = Components.classes["@mozilla.org/file/local;1"].createInstance(Components.interfaces.nsILocalFile);
-      f.initWithPath(aEvent.target.id);
-
+      var f = getLocalFileFromNativePathOrUrl(aEvent.target.id);
       if (f.exists()) {
         if (f.isExecutable()) {
           var dontAsk = false;
@@ -354,7 +345,13 @@ function onDownloadOpen(aEvent)
               pref.setBoolPref(PREF_BDM_ALERTONEXEOPEN, !checkbox.value);              
           }        
         }
-        f.launch();
+        try {
+          f.launch();
+        } catch (ex) {
+          // if launch fails, try sending it through the system's external
+          // file: URL handler
+          openExternal(f.path);
+        }
       }
       else {
         var brandStrings = document.getElementById("brandStrings");
@@ -399,8 +396,7 @@ function onDownloadRetry(aEvent)
   var download = aEvent.target;
   if (download.localName == "download") {
     var src = getRDFProperty(download.id, "URL");
-    var f = Components.classes["@mozilla.org/file/local;1"].createInstance(Components.interfaces.nsILocalFile);
-    f.initWithPath(aEvent.target.id);
+    var f = getLocalFileFromNativePathOrUrl(aEvent.target.id);
     saveURL(src, f, null, true, true);
   }
   
@@ -815,11 +811,56 @@ var gDownloadPrefObserver = {
 function onDownloadShowFolder()
 {
   var folderName = document.getElementById("saveToFolder");
-  var dir = Components.classes["@mozilla.org/file/local;1"]
-                      .createInstance(Components.interfaces.nsILocalFile);
-  dir.initWithPath(folderName.getAttribute("path"));
+  var dir = getLocalFileFromNativePathOrUrl(folderName.getAttribute("path"));
   if (!dir.exists())
    dir.create(Components.interfaces.nsIFile.DIRECTORY_TYPE, 0755);
-  
-  dir.reveal();
+
+  try {
+    dir.reveal();
+  } catch (ex) {
+    // if nsILocalFile::Reveal failed (eg it currently just returns an
+    // error on unix), just open the folder in a browser window
+    openExternal(dir.path);
+  }
+}
+
+function openExternal(aPath)
+{
+  var uri = Components.classes["@mozilla.org/network/standard-url;1"]
+    .createInstance(Components.interfaces.nsIURI);
+  uri.spec = "file:///" + aPath;
+
+  var protocolSvc = Components.classes
+    ["@mozilla.org/uriloader/external-protocol-service;1"]
+    .getService(Components.interfaces.nsIExternalProtocolService);
+  protocolSvc.loadUrl(uri);
+
+  return;
+}
+
+// we should be using real URLs all the time, but until 
+// bug 239948 is fully fixed, this will do...
+function getLocalFileFromNativePathOrUrl(aPathOrUrl)
+{
+  if (aPathOrUrl.substring(0,7) == "file://") {
+
+    // if this is a URL, get the file from that
+    ioSvc = Components.classes["@mozilla.org/network/io-service;1"]
+      .getService(Components.interfaces.nsIIOService);
+
+    // XXX it's possible that using a null char-set here is bad
+    const fileUrl = ioSvc.newURI(aPathOrUrl, null, null).
+      QueryInterface(Components.interfaces.nsIFileURL);
+    return fileUrl.file.clone().
+      QueryInterface(Components.interfaces.nsILocalFile);
+
+  } else {
+
+    // if it's a pathname, create the nsILocalFile directly
+    f = Components.classes["@mozilla.org/file/local;1"].
+      createInstance(Components.interfaces.nsILocalFile);
+    f.initWithPath(aPathOrUrl);
+
+    return f;
+  }
 }

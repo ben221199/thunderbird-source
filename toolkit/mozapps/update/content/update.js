@@ -73,6 +73,10 @@ var gUpdateWizard = {
   remainingExtensionUpdateCount: 0,
   
   succeeded: true,
+  
+#ifdef MOZ_PHOENIX
+  offeredResetHomepage: false,
+#endif
 
   appComps: {
     upgraded: { 
@@ -114,11 +118,10 @@ var gUpdateWizard = {
   
   onWizardFinish: function ()
   {
-    if (this.shouldSuggestAutoChecking) {
-      var pref = Components.classes["@mozilla.org/preferences-service;1"]
-                           .getService(Components.interfaces.nsIPrefBranch);
+    var pref = Components.classes["@mozilla.org/preferences-service;1"]
+                         .getService(Components.interfaces.nsIPrefBranch);
+    if (this.shouldSuggestAutoChecking)
       pref.setBoolPref("update.extensions.enabled", this.shouldAutoCheck); 
-    }
     
     if (this.succeeded) {
       if (this.updatingApp) {
@@ -132,6 +135,13 @@ var gUpdateWizard = {
         this.clearExtensionUpdatePrefs();
       }
     }
+
+#ifdef MOZ_PHOENIX
+    if (this.offeredResetHomepage) {
+      pref.setBoolPref("browser.update.resetHomepage", 
+                       document.getElementById("resetHomepage").checked); 
+    }
+#endif
     
     // Send an event to refresh any FE notification components. 
     var os = Components.classes["@mozilla.org/observer-service;1"]
@@ -628,11 +638,12 @@ var gFoundPage = {
           var patches = this._currentInfo.getCollection("patches", { });
           if (patches.length > 0 && !updatePerformed)
             this.buildPatches(patches);
-            
-          var components = this._currentInfo.getCollection("optional", { });
-          if (components.length > 0)
-            this.buildOptional(components);
 
+          // Turning this off until we can better determine what is and is not installed. 
+          // var components = this._currentInfo.getCollection("optional", { });
+          // if (components.length > 0)
+          //   this.buildOptional(components);
+ 
           var languages = this._currentInfo.getCollection("languages", { });
           if (languages.length > 0)
             this.buildLanguages(languages);
@@ -651,8 +662,10 @@ var gFoundPage = {
           }
 
           var files = this._newestInfo.getCollection("files", { });
+#ifndef XP_MACOSX
           if (files.length > 0 && haveLanguage && !updatePerformed) 
             this.buildApp(files);
+#endif
             
           // When the user upgrades the application, any optional components that
           // they have installed are automatically installed. If there are remaining
@@ -763,7 +776,7 @@ var gOptionalPage = {
       optionalItemsList.appendChild(checkbox);
     }
     
-    document.documentElement.getButton("accept").focus(); 
+    document.documentElement.getButton("next").focus(); 
   },
   
   onCommand: function (aEvent)
@@ -965,6 +978,12 @@ var gRestartPage = {
     gUpdateWizard.setButtonLabels(null, true, null, true, null, true);
     
     // XXXben - we should really have a way to restart the app now from here!
+    
+#ifdef MOZ_PHOENIX
+    gUpdateWizard.offeredResetHomepage = true;
+#endif
+
+    document.documentElement.getButton("finish").focus();
   }
 };
 

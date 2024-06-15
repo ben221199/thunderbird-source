@@ -37,7 +37,7 @@
  * may use your version of this file under either the MPL or the
  * GPL.
  *
- * $Id: blapit.h,v 1.12 2003/11/07 03:36:33 relyea%netscape.com Exp $
+ * $Id: blapit.h,v 1.12.22.1 2004/10/15 21:13:53 wchang0222%aol.com Exp $
  */
 
 #ifndef _BLAPIT_H_
@@ -113,7 +113,7 @@
  */
 #define RSA_MIN_MODULUS_BITS   128
 #define DH_MIN_P_BITS	       128
-#define DH_MAX_P_BITS         1024
+#define DH_MAX_P_BITS         2236
 
 /*
  * The FIPS 186 algorithm for generating primes P and Q allows only 9

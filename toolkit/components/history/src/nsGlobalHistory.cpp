@@ -3892,7 +3892,7 @@ nsGlobalHistory::RowMatches(nsIMdbRow *aRow,
       PRInt32 yarnLength = yarn.mYarn_Fill;;
       nsCAutoString titleStr;
       if (property_column == kToken_NameColumn) {
-        titleStr =  NS_ConvertUCS2toUTF8((const PRUnichar*)yarn.mYarn_Buf, yarnLength);
+        titleStr =  NS_ConvertUCS2toUTF8((const PRUnichar*)yarn.mYarn_Buf, yarnLength / 2);
         startPtr = titleStr.get();
         yarnLength = titleStr.Length();
       }
@@ -4209,10 +4209,10 @@ nsGlobalHistory::AutoCompleteSearch(const nsAString &aSearchString,
     // Store hits in an nsIArray initially
     nsCOMArray<nsIMdbRow> resultArray;
 
-    nsIMdbRow *row = nsnull;
+    nsCOMPtr<nsIMdbRow> row;
     mdb_pos pos;
     do {
-      rowCursor->NextRow(mEnv, &row, &pos);
+      rowCursor->NextRow(mEnv, getter_AddRefs(row), &pos);
       if (!row) break;
       
       if (!HasCell(mEnv, row, kToken_TypedColumn))

@@ -60,6 +60,15 @@ enum PopupControlState {
   openOverridden    // disallow window open
 };
 
+// permissible values for GetOpenAllow
+enum OpenAllowValue {
+  allowNot = 0,     // the window opening is denied
+  allowNoAbuse,     // allowed: not a popup
+  allowSelf,        // allowed: it's the same window (_self, _top, et.al.)
+  allowExtant,      // allowed: an already open window
+  allowWhitelisted  // allowed: it's whitelisted or popup blocking is disabled
+};
+
 class nsIDocShell;
 class nsIDOMWindowInternal;
 class nsIChromeEventHandler;
@@ -113,12 +122,15 @@ public:
   virtual PopupControlState PushPopupControlState(PopupControlState aState) const = 0;
   virtual void PopPopupControlState(PopupControlState state) const = 0;
   virtual PopupControlState GetPopupControlState() const = 0;
+  virtual OpenAllowValue GetOpenAllow(const nsAString &aName) = 0;
+
+  virtual PRBool IsHandlingResizeEvent() const = 0;
 };
 
 
 #ifdef _IMPL_NS_LAYOUT
 PopupControlState
-PushPopupControlState(PopupControlState aState);
+PushPopupControlState(PopupControlState aState, PRBool aForce);
 
 void
 PopPopupControlState(PopupControlState aState);
@@ -132,8 +144,8 @@ class nsAutoPopupStatePusher
 {
 public:
 #ifdef _IMPL_NS_LAYOUT
-  nsAutoPopupStatePusher(PopupControlState aState)
-    : mOldState(::PushPopupControlState(aState))
+  nsAutoPopupStatePusher(PopupControlState aState, PRBool aForce = PR_FALSE)
+    : mOldState(::PushPopupControlState(aState, aForce))
   {
   }
 

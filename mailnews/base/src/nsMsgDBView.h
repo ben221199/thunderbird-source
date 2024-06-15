@@ -76,6 +76,7 @@ enum eFieldType {
 // reserve the top 8 bits in the msg flags for the view-only flags.
 #define MSG_VIEW_FLAGS 0xEE000000
 #define MSG_VIEW_FLAG_HASCHILDREN 0x40000000
+#define MSG_VIEW_FLAG_DUMMY 0x20000000
 #define MSG_VIEW_FLAG_ISTHREAD 0x8000000
 
 /* There currently only 5 labels defined */
@@ -141,6 +142,8 @@ protected:
   static nsIAtom* kJunkMsgAtom;
   static nsIAtom* kNotJunkMsgAtom;
 
+  static nsIAtom* kDummyMsgAtom;
+
   static PRUnichar* kReadString;
   static PRUnichar* kRepliedString;
   static PRUnichar* kForwardedString;
@@ -153,7 +156,7 @@ protected:
   PRPackedBool   mSuppressCommandUpdating;
   PRPackedBool   mRemovingRow; // set when we're telling the outline a row is being removed. used to suppress msg loading.
                         // during delete/move operations.
-  PRPackedBool  mCommandsNeedDisablingBecauseOffline;
+  PRPackedBool  mCommandsNeedDisablingBecauseOfSelection;
   PRPackedBool  mSuppressChangeNotification;
   virtual const char * GetViewName(void) {return "MsgDBView"; }
   nsresult FetchAuthor(nsIMsgHdr * aHdr, PRUnichar ** aAuthorString);
@@ -190,7 +193,7 @@ protected:
   virtual PRBool WantsThisThread(nsIMsgThread * thread);
   virtual nsresult	AddHdr(nsIMsgDBHdr *msgHdr);
   PRBool GetShowingIgnored() {return (m_viewFlags & nsMsgViewFlagsType::kShowIgnored) != 0;}
-  virtual nsresult OnNewHeader(nsMsgKey newKey, nsMsgKey parentKey, PRBool ensureListed);
+  virtual nsresult OnNewHeader(nsIMsgDBHdr *aNewHdr, nsMsgKey parentKey, PRBool ensureListed);
   virtual nsMsgViewIndex GetInsertIndex(nsIMsgDBHdr *msgHdr);
   nsMsgViewIndex GetIndexForThread(nsIMsgDBHdr *hdr);
   virtual nsresult GetThreadContainingIndex(nsMsgViewIndex index, nsIMsgThread **thread);
@@ -207,20 +210,23 @@ protected:
   nsresult		GetThreadCount(nsMsgKey messageKey, PRUint32 *pThreadCount);
   nsMsgViewIndex GetIndexOfFirstDisplayedKeyInThread(nsIMsgThread *threadHdr);
   nsresult GetFirstMessageHdrToDisplayInThread(nsIMsgThread *threadHdr, nsIMsgDBHdr **result);
-  nsMsgViewIndex ThreadIndexOfMsg(nsMsgKey msgKey, 
-											  nsMsgViewIndex msgIndex = nsMsgViewIndex_None,
-											  PRInt32 *pThreadCount = nsnull,
-											  PRUint32 *pFlags = nsnull);
+  virtual nsMsgViewIndex ThreadIndexOfMsg(nsMsgKey msgKey, 
+				  nsMsgViewIndex msgIndex = nsMsgViewIndex_None,
+				  PRInt32 *pThreadCount = nsnull,
+				  PRUint32 *pFlags = nsnull);
+  virtual nsresult GetThreadContainingMsgHdr(nsIMsgDBHdr *msgHdr, nsIMsgThread **pThread);
   nsMsgKey GetKeyOfFirstMsgInThread(nsMsgKey key);
   PRInt32 CountExpandedThread(nsMsgViewIndex index);
   nsresult ExpansionDelta(nsMsgViewIndex index, PRInt32 *expansionDelta);
   nsresult ReverseSort();
   nsresult ReverseThreads();
   nsresult SaveSortInfo(nsMsgViewSortTypeValue sortType, nsMsgViewSortOrderValue sortOrder);
+  nsresult PersistFolderInfo(nsIDBFolderInfo **dbFolderInfo);
 
   nsMsgKey		GetAt(nsMsgViewIndex index) ;
   nsMsgViewIndex	FindViewIndex(nsMsgKey  key) 
-					  {return (nsMsgViewIndex) (m_keys.FindIndex(key));}
+					  {return FindKey(key, PR_FALSE);}
+  nsMsgViewIndex        FindHdr(nsIMsgDBHdr *msgHdr);
   virtual nsMsgViewIndex	FindKey(nsMsgKey key, PRBool expand);
   virtual nsresult GetDBForViewIndex(nsMsgViewIndex index, nsIMsgDatabase **db);
   virtual nsresult GetFolders(nsISupportsArray **folders);
@@ -228,7 +234,7 @@ protected:
 
   nsresult ListIdsInThread(nsIMsgThread *threadHdr, nsMsgViewIndex viewIndex, PRUint32 *pNumListed);
   nsresult ListUnreadIdsInThread(nsIMsgThread *threadHdr, nsMsgViewIndex startOfThreadViewIndex, PRUint32 *pNumListed);
-  PRInt32  FindLevelInThread(nsIMsgDBHdr *msgHdr, nsMsgViewIndex startOfThreadViewIndex);
+  nsMsgViewIndex FindParentInThread(nsMsgKey parentKey, nsMsgViewIndex startOfThreadViewIndex);
   nsresult ListIdsInThreadOrder(nsIMsgThread *threadHdr, nsMsgKey parentKey, PRInt32 level, nsMsgViewIndex *viewIndex, PRUint32 *pNumListed);
   PRInt32  GetSize(void) {return(m_keys.GetSize());}
 
@@ -295,6 +301,7 @@ protected:
   PRBool IsValidIndex(nsMsgViewIndex index);
   nsresult ToggleIgnored(nsMsgViewIndex * indices, PRInt32 numIndices, PRBool *resultToggleState);
   PRBool OfflineMsgSelected(nsMsgViewIndex * indices, PRInt32 numIndices);
+  PRBool NonDummyMsgSelected(nsMsgViewIndex * indices, PRInt32 numIndices);
   PRUnichar * GetString(const PRUnichar *aStringName);
   nsresult AddLabelPrefObservers();
   nsresult RemoveLabelPrefObservers();
@@ -305,10 +312,10 @@ protected:
   nsresult InitLabelPrefs(void);
   nsresult CopyDBView(nsMsgDBView *aNewMsgDBView, nsIMessenger *aMessengerInstance, nsIMsgWindow *aMsgWindow, nsIMsgDBViewCommandUpdater *aCmdUpdater);
   void InitializeAtomsAndLiterals();
-  PRInt32 GetLevelInUnreadView(nsIMsgDBHdr *msgHdr, nsMsgViewIndex startOfThread, nsMsgViewIndex viewIndex);
+  virtual PRInt32 FindLevelInThread(nsIMsgDBHdr *msgHdr, nsMsgViewIndex startOfThread, nsMsgViewIndex viewIndex);
   nsresult GetImapDeleteModel(nsIMsgFolder *folder);
-  nsresult UpdateDisplayMessage(nsMsgKey aMsgKey);
-  nsresult LoadMessageByMsgKeyHelper(nsMsgKey aMsgKey, PRBool forceAllParts);
+  nsresult UpdateDisplayMessage(nsMsgViewIndex viewPosition);
+  nsresult LoadMessageByViewIndexHelper(nsMsgViewIndex aViewIndex, PRBool forceAllParts);
   nsresult ReloadMessageHelper(PRBool forceAllParts);
 
   PRBool AdjustReadFlag(nsIMsgDBHdr *msgHdr, PRUint32 *msgFlags);
@@ -326,6 +333,8 @@ protected:
   // we need to store the message key for the message we are currenty displaying to ensure we
   // don't try to redisplay the same message just because the selection changed (i.e. after a sort)
   nsMsgKey                m_currentlyDisplayedMsgKey;
+  nsCString               m_currentlyDisplayedMsgUri;
+  nsMsgViewIndex          m_currentlyDisplayedViewIndex;
   // if we're deleting messages, we want to hold off loading messages on selection changed until the delete is done
   // and we want to batch notifications.
   PRPackedBool m_deletingRows;
@@ -340,6 +349,7 @@ protected:
 
   nsCOMPtr <nsIMsgDatabase> m_db;
   nsCOMPtr <nsIMsgFolder> m_folder;
+  nsCOMPtr <nsIMsgFolder> m_viewFolder; // for virtual folders, the VF db.
   nsCOMPtr <nsIAtom> mRedirectorTypeAtom;
   nsCOMPtr <nsIAtom> mMessageTypeAtom; // news, rss, mail, etc. 
   nsMsgViewSortTypeValue  m_sortType;

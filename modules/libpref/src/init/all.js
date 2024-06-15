@@ -148,6 +148,12 @@ pref("browser.tabs.loadGroup", 1);
 pref("browser.tabs.loadOnNewTab", 0);
 pref("browser.windows.loadOnNewWindow", 1);
 
+// link handling in tabbed browsers. values from nsIBrowserDOMWindow.
+pref("browser.link.open_external", 1);
+pref("browser.link.open_newwindow", 2);
+pref("browser.link.open_newwindow.ui", 3); // prefs UI version
+pref("browser.link.open_newwindow.restriction", 0); // values from GlobalWindow
+
 // view source
 pref("view_source.syntax_highlight", true);
 pref("view_source.wrap_long_lines", false);
@@ -392,7 +398,6 @@ pref("capability.policy.default.Clipboard.cutcopy", "noAccess");
 pref("capability.policy.default.Clipboard.paste", "noAccess");
 
 // Scripts & Windows prefs
-pref("browser.block.target_new_window",     false);
 pref("dom.disable_image_src_set",           false);
 pref("dom.disable_window_flip",             false);
 pref("dom.disable_window_move_resize",      false);
@@ -437,10 +442,15 @@ pref("image.animation_mode",                "normal");
 // prevents necko connecting to ports 1-5 unless the protocol
 // overrides.
 
+// Default action for unlisted external protocol handlers
+pref("network.protocol-handler.external-default", true);      // OK to load
+pref("network.protocol-handler.warn-external-default", true); // warn before load
+
 // Prevent using external protocol handlers for these schemes
 pref("network.protocol-handler.external.hcp", false);
 pref("network.protocol-handler.external.vbscript", false);
 pref("network.protocol-handler.external.javascript", false);
+pref("network.protocol-handler.external.data", false);
 pref("network.protocol-handler.external.ms-help", false);
 pref("network.protocol-handler.external.shell", false);
 pref("network.protocol-handler.external.vnd.ms.radio", false);
@@ -448,10 +458,6 @@ pref("network.protocol-handler.external.help", false);
 pref("network.protocol-handler.external.disk", false);
 pref("network.protocol-handler.external.disks", false);
 pref("network.protocol-handler.external.afp", false);
-
-// Default action for unlisted external protocol handlers
-// 0 == never load, 1 == always load, 2 == ask the user
-pref("network.protocol-handler.external-default", 2);
 
 // An exposed protocol handler is one that can be used in all contexts.  A
 // non-exposed protocol handler is one that can only be used internally by the
@@ -922,19 +928,22 @@ pref("font.name-list.serif.zh-CN", "MS Song, 宋体, SimSun");
 pref("font.name-list.sans-serif.zh-CN", "MS Song, 宋体, SimSun");
 pref("font.name-list.monospace.zh-CN", "MS Song, 宋体, SimSun");
 
-pref("font.name.serif.zh-TW", "細明體"); // "MingLiU" 
-pref("font.name.sans-serif.zh-TW", "細明體"); // "MingLiU" 
-pref("font.name.monospace.zh-TW", "細明體"); // "MingLiU" 
-pref("font.name-list.serif.zh-TW", "MingLiU, 細明體"); 
-pref("font.name-list.sans-serif.zh-TW", "MingLiU, 細明體");
-pref("font.name-list.monospace.zh-TW", "MingLiU, 細明體");
+// Per Taiwanese users' demand. They don't want to use TC fonts for
+// rendering Latin letters. (bug 88579)
+pref("font.name.serif.zh-TW", "Times New Roman"); 
+pref("font.name.sans-serif.zh-TW", "Arial"); 
+pref("font.name.monospace.zh-TW", "細明體");  // MingLiU
+pref("font.name-list.serif.zh-TW", "新細明體,PMingLiu,細明體,MingLiU"); 
+pref("font.name-list.sans-serif.zh-TW", "新細明體,PMingLiU,細明體,MingLiU");
+pref("font.name-list.monospace.zh-TW", "MingLiU,細明體");
 
-// hkscsm3u.ttf (HKSCS-2001) :  http://www.microsoft.com/hk/hkscs
-pref("font.name.serif.zh-HK", "細明體_HKSCS"); 
-pref("font.name.sans-serif.zh-HK", "細明體_HKSCS"); 
+// hkscsm3u.ttf (HKSCS-2001) :  http://www.microsoft.com/hk/hkscs 
+// Hong Kong users have the same demand about glyphs for Latin letters (bug 88579) 
+pref("font.name.serif.zh-HK", "Times New Roman"); 
+pref("font.name.sans-serif.zh-HK", "Arial"); 
 pref("font.name.monospace.zh-HK", "細明體_HKSCS"); 
-pref("font.name-list.serif.zh-HK", "MingLiu_HKSCS, 細明體_HKSCS, Ming(for ISO10646), MingLiU, 細明體"); 
-pref("font.name-list.sans-serif.zh-HK", "MingLiU_HKSCS, 細明體_HKSCS, Ming(for ISO10646), MingLiU, 細明體");  
+pref("font.name-list.serif.zh-HK", "細明體_HKSCS, MingLiu_HKSCS, Ming(for ISO10646), MingLiU, 細明體"); 
+pref("font.name-list.sans-serif.zh-HK", "細明體_HKSCS, MingLiU_HKSCS, Ming(for ISO10646), MingLiU, 細明體");  
 pref("font.name-list.monospace.zh-HK", "MingLiU_HKSCS,  細明體_HKSCS, Ming(for ISO10646), MingLiU, 細明體");
 
 pref("font.name.serif.x-devanagari", "Mangal");
@@ -1059,9 +1068,6 @@ pref("intl.jis0208.map", "CP932");
 // Mac specific preference defaults
 pref("browser.drag_out_of_frame_style", 1);
 pref("ui.key.saveLink.shift", false); // true = shift, false = meta
-
-// should a GURL event open a new window or re-use (4.x compat)
-pref("browser.always_reuse_window", false);
 
 // default font name (in UTF8)
 
@@ -1474,6 +1480,7 @@ pref("browser.download.dir", "/boot/home/Downloads");
 // Handled differently under Mac/Windows
 pref("network.hosts.smtp_server", "localhost");
 pref("network.hosts.pop_server", "pop");
+pref("network.protocol-handler.warn-external.file", false);
 pref("browser.display.screen_resolution", 0); // System setting
 pref("browser.drag_out_of_frame_style", 1);
 pref("editor.singleLine.pasteNewlines", 0);

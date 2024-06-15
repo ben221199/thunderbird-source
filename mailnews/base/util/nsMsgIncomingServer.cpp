@@ -91,7 +91,7 @@ nsMsgIncomingServer::nsMsgIncomingServer():
     m_prefBranch(0),
     m_biffState(nsIMsgFolder::nsMsgBiffState_NoMail),
     m_serverBusy(PR_FALSE),
-    m_canHaveFilters(PR_FALSE),
+    m_canHaveFilters(PR_TRUE),
     m_displayStartupPage(PR_TRUE),
     mPerformingBiff(PR_FALSE)
 {
@@ -1725,6 +1725,7 @@ NS_IMPL_SERVERPREF_STR(nsMsgIncomingServer, Username, "userName")
 NS_IMPL_SERVERPREF_STR(nsMsgIncomingServer, PrefPassword, "password")
 NS_IMPL_SERVERPREF_BOOL(nsMsgIncomingServer, IsSecure, "isSecure")
 NS_IMPL_SERVERPREF_BOOL(nsMsgIncomingServer, UseSecAuth, "useSecAuth")
+NS_IMPL_SERVERPREF_BOOL(nsMsgIncomingServer, LogonFallback, "logon_fallback")
 NS_IMPL_SERVERPREF_INT(nsMsgIncomingServer, BiffMinutes, "check_time")
 NS_IMPL_SERVERPREF_STR(nsMsgIncomingServer, Type, "type")
 // in 4.x, this was "mail.pop3_gets_new_mail" for pop and 

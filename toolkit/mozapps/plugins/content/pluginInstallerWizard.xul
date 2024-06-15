@@ -39,6 +39,7 @@
 
 <?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
 <?xml-stylesheet href="chrome://mozapps/content/plugins/pluginInstallerWizard.css"?>
+<?xml-stylesheet href="chrome://mozapps/skin/plugins/pluginInstallerWizard.css"?>
 
 <!DOCTYPE wizard [
 <!ENTITY % brandDTD SYSTEM "chrome://global/locale/brand.dtd">
@@ -49,7 +50,8 @@
 
 <wizard id="plugin-installer-wizard" title="&pluginWizard.title;"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
-        buttons="accept,cancel"
+        persist="width height screenX screenY sizeMode"
+        style="width: 50em; min-height: 40em;"
         onload="wizardInit()"
         onwizardfinish="return wizardFinish();">
 
@@ -74,14 +76,7 @@
 
     <description value="&pluginWizard.availablePluginsPage.description.label;"/>
 
-    <grid class="indent">
-      <columns>
-        <column />
-      </columns>
-
-      <rows id="pluginList">
-      </rows>
-    </grid>
+    <vbox id="pluginList" flex="1" align="left" style="overflow: auto;"/>
 
     <vbox id="installerUI" hidden="true">
       <separator />
@@ -92,17 +87,21 @@
     <description value="&pluginWizard.availablePluginsPage.continueMsg.label;"/>
   </wizardpage>
 
-  <wizardpage label="Plugin Licenses" 
+  <wizardpage label="&pluginWizard.licensePage.title;" 
               onpageshow="gPluginInstaller.showLicenses()"
               onpageadvanced="return gPluginInstaller.showNextLicense();"
               onpagerewound="return gPluginInstaller.showPreviousLicense();">
     <description id="pluginLicenseLabel"> </description>
 
-    <iframe id="licenseIFrame" flex="1" src="" />
+    <vbox id="licenseContainer" flex="1">
+      <iframe id="licenseIFrame" flex="1" src="" />
+    </vbox>
 
     <radiogroup id="licenseRadioGroup">
-      <radio label="&pluginWizard.licensePage.accept.label;"/>
-      <radio selected="true" label="&pluginWizard.licensePage.deny.label;"/>
+      <radio id="licenseRadioGroup1" disabled="true"
+             label="&pluginWizard.licensePage.accept.label;"/>
+      <radio id="licenseRadioGroup2" disabled="true" selected="true"
+             label="&pluginWizard.licensePage.deny.label;"/>
     </radiogroup>    
   </wizardpage>
 
@@ -135,6 +134,14 @@
       <rows id="pluginResultList">
       </rows>
     </grid>
+
+    <description id="pluginSummaryRestartNeeded" style="padding-top:10px;"
+                 value="&pluginWizard.finalPage.restart.label;"/>
+    <spacer flex="1" />
+    <description id="moreInfoLink" 
+      onclick="gPluginInstaller.loadURL('https://update.mozilla.org/plugins/')"
+      style="color:rgb(0, 0, 255); cursor:pointer; text-decoration:underline;"
+      value="&pluginWizard.finalPage.moreInfo.label;"/>
   </wizardpage>
 
 </wizard>

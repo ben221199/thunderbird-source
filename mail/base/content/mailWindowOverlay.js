@@ -24,11 +24,13 @@
 #               Seth Spitzer <sspitzer@netscape.com>
 #               David Bienvenu <bienvenu@netscape.com>
 
+const MSG_FLAG_READ              = 0x000001;
 const MSG_FLAG_IMAP_DELETED      = 0x200000;
 const MSG_FLAG_MDN_REPORT_NEEDED = 0x400000;
 const MSG_FLAG_MDN_REPORT_SENT   = 0x800000;
 const MDN_DISPOSE_TYPE_DISPLAYED = 0;
 const ADDR_DB_LARGE_COMMIT       = 1;
+const MSG_DB_LARGE_COMMIT        = 1;
 
 const kClassicMailLayout = 0;
 const kWideMailLayout = 1;
@@ -99,16 +101,12 @@ function menu_new_init()
                          .getService(Components.interfaces.nsIIOService);
   var showNew = ((serverType != 'nntp') && canCreateNew) || isInbox;
   ShowMenuItem("menu_newFolder", showNew);
+  ShowMenuItem("menu_newVirtualFolder", showNew);
+
   EnableMenuItem("menu_newFolder", !isIMAPFolder || !ioService.offline);
+  EnableMenuItem("menu_newVirtualFolder", true);
   if (showNew)
-  {
-    if (isServer || isInbox)
-      SetMenuItemLabel("menu_NewFolder",
-        gMessengerBundle.getString("newFolder"));
-    else
-      SetMenuItemLabel("menu_NewFolder",
-        gMessengerBundle.getString("newSubfolder"));
-  }
+    SetMenuItemLabel("menu_newFolder", gMessengerBundle.getString((isServer || isInbox) ? "newFolder" : "newSubfolder"));
 }
 
 function goUpdateMailMenuItems(commandset)
@@ -227,19 +225,30 @@ function InitViewSortByMenu()
     setSortByMenuItemCheckState("sortByAttachmentsMenuitem", (sortType == nsMsgViewSortType.byAttachments)); 	
 
     var sortOrder = gDBView.sortOrder;
+    var sortTypeSupportsGrouping = (sortType == nsMsgViewSortType.byAuthor 
+        || sortType == nsMsgViewSortType.byDate || sortType == nsMsgViewSortType.byPriority
+        || sortType == nsMsgViewSortType.bySubject || sortType == nsMsgViewSortType.byLabel
+        || sortType == nsMsgViewSortType.byRecipient || sortType == nsMsgViewSortType.byAccount
+        || sortType == nsMsgViewSortType.byStatus);
 
     setSortByMenuItemCheckState("sortAscending", (sortOrder == nsMsgViewSortOrder.ascending));
     setSortByMenuItemCheckState("sortDescending", (sortOrder == nsMsgViewSortOrder.descending));
 
-    var threaded = ((gDBView.viewFlags & nsMsgViewFlagsType.kThreadedDisplay) != 0);
+    var grouped = ((gDBView.viewFlags & nsMsgViewFlagsType.kGroupBySort) != 0);
+    var threaded = ((gDBView.viewFlags & nsMsgViewFlagsType.kThreadedDisplay) != 0 && !grouped);
     var sortThreadedMenuItem = document.getElementById("sortThreaded");
     var sortUnthreadedMenuItem = document.getElementById("sortUnthreaded");
 
     sortThreadedMenuItem.setAttribute("checked", threaded);
-    sortUnthreadedMenuItem.setAttribute("checked", !threaded);
+    sortUnthreadedMenuItem.setAttribute("checked", !threaded && !grouped);
 
     sortThreadedMenuItem.setAttribute("disabled", !gDBView.supportsThreading);
     sortUnthreadedMenuItem.setAttribute("disabled", !gDBView.supportsThreading);
+
+    var groupBySortOrderMenuItem = document.getElementById("groupBySort");
+
+    groupBySortOrderMenuItem.setAttribute("disabled", !gDBView.supportsThreading || !sortTypeSupportsGrouping);
+    groupBySortOrderMenuItem.setAttribute("checked", grouped);
 }
 
 function InitViewMessagesMenu()
@@ -335,7 +344,7 @@ function ViewMessagesBy(id)
 {
   var viewPicker = document.getElementById('viewPicker');
   viewPicker.selectedItem = document.getElementById(id);
-  viewChange(viewPicker);
+  viewChange(viewPicker, viewPicker.value);
 }
 
 function InitMessageMenu()
@@ -737,11 +746,12 @@ function MsgGetMessagesForAllServers(defaultServer)
     try
     {
         var allServers = accountManager.allServers;
-        var firstPop3DownloadServer;
 
-        // these arrays are parallel
-        var pop3DownloadServersArray = new Array; // array of isupportsarrays of servers for a particular folder
-        var localFoldersToDownloadTo; // isupports array of folders to download to...
+        // array of isupportsarrays of servers for a particular folder
+        var pop3DownloadServersArray = new Array; 
+        // parallel isupports array of folders to download to...
+        var localFoldersToDownloadTo = Components.classes["@mozilla.org/supports-array;1"].createInstance(Components.interfaces.nsISupportsArray);
+        var pop3Server;
 
         for (var i=0;i<allServers.Count();i++)
         {
@@ -749,32 +759,18 @@ function MsgGetMessagesForAllServers(defaultServer)
             var protocolinfo = Components.classes["@mozilla.org/messenger/protocol/info;1?type=" + currentServer.type].getService(Components.interfaces.nsIMsgProtocolInfo);
             if (protocolinfo.canLoginAtStartUp && currentServer.loginAtStartUp)
             {
-                if (defaultServer && defaultServer.equals(currentServer))
+                if (defaultServer && defaultServer.equals(currentServer) && 
+                  !defaultServer.isDeferredTo &&
+                  defaultServer.msgFolder == defaultServer.rootMsgFolder)
                 {
-                    //dump(currentServer.serverURI + "...skipping, already opened\n");
+                    dump(currentServer.serverURI + "...skipping, already opened\n");
                 }
                 else
                 {
                     if (currentServer.type == "pop3" && currentServer.downloadOnBiff)
                     {
-                      var outNumFolders = new Object();
-                      var inboxFolder = currentServer.rootMsgFolder.getFoldersWithFlag(0x1000, 1, outNumFolders); 
+                      CoalesceGetMsgsForPop3ServersByDestFolder(currentServer, pop3DownloadServersArray, localFoldersToDownloadTo);
                       pop3Server = currentServer.QueryInterface(Components.interfaces.nsIPop3IncomingServer);
-                      if (!localFoldersToDownloadTo)
-                        localFoldersToDownloadTo = Components.classes["@mozilla.org/supports-array;1"].createInstance(Components.interfaces.nsISupportsArray);
-                      // coalesce the servers that download into the same folder...
-                      var index = localFoldersToDownloadTo.GetIndexOf(inboxFolder);
-                      if (index == -1)
-                      {
-                        localFoldersToDownloadTo.AppendElement(inboxFolder);
-                        index = pop3DownloadServersArray.length
-                        pop3DownloadServersArray[index] = Components.classes["@mozilla.org/supports-array;1"].createInstance(Components.interfaces.nsISupportsArray);
-                        pop3DownloadServersArray[index].AppendElement(currentServer);
-                      }
-                      else
-                      {
-                        pop3DownloadServersArray[index].AppendElement(currentServer);
-                      }
                     }
                     else
                     // Check to see if there are new messages on the server
@@ -1932,22 +1928,69 @@ function SendUnsentMessages()
   }
 }
 
+function CoalesceGetMsgsForPop3ServersByDestFolder(currentServer, pop3DownloadServersArray, localFoldersToDownloadTo)
+{
+  var outNumFolders = new Object();
+  var inboxFolder = currentServer.rootMsgFolder.getFoldersWithFlag(0x1000, 1, outNumFolders); 
+  pop3Server = currentServer.QueryInterface(Components.interfaces.nsIPop3IncomingServer);
+  // coalesce the servers that download into the same folder...
+  var index = localFoldersToDownloadTo.GetIndexOf(inboxFolder);
+  if (index == -1)
+  {
+    if(inboxFolder) 
+    {
+      inboxFolder.biffState =  Components.interfaces.nsIMsgFolder.nsMsgBiffState_NoMail;
+      inboxFolder.clearNewMessages();
+    }
+    localFoldersToDownloadTo.AppendElement(inboxFolder);
+    index = pop3DownloadServersArray.length
+    pop3DownloadServersArray[index] = Components.classes["@mozilla.org/supports-array;1"].createInstance(Components.interfaces.nsISupportsArray);
+    pop3DownloadServersArray[index].AppendElement(currentServer);
+  }
+  else
+  {
+    pop3DownloadServersArray[index].AppendElement(currentServer);
+  }
+}
+
 function GetMessagesForAllAuthenticatedAccounts()
 {
-   try {
+  // now log into any server
+  try
+  {
     var allServers = accountManager.allServers;
-    for (var i=0;i<allServers.Count();i++) {
+
+    // array of isupportsarrays of servers for a particular folder
+    var pop3DownloadServersArray = new Array; 
+    // parallel isupports array of folders to download to...
+    var localFoldersToDownloadTo = Components.classes["@mozilla.org/supports-array;1"].createInstance(Components.interfaces.nsISupportsArray);
+    var pop3Server;
+
+    for (var i=0;i<allServers.Count();i++)
+    {
       var currentServer = allServers.GetElementAt(i).QueryInterface(Components.interfaces.nsIMsgIncomingServer);
-      var protocolinfo = Components.classes["@mozilla.org/messenger/protocol/info;1?type=" +
-                           currentServer.type].getService(Components.interfaces.nsIMsgProtocolInfo);
-      if (protocolinfo.canGetMessages && !currentServer.passwordPromptRequired) {
-        // Get new messages now
-        GetMessagesForInboxOnServer(currentServer);
+      var protocolinfo = Components.classes["@mozilla.org/messenger/protocol/info;1?type=" + currentServer.type].getService(Components.interfaces.nsIMsgProtocolInfo);
+      if (protocolinfo.canGetMessages && !currentServer.passwordPromptRequired)
+      {
+        if (currentServer.type == "pop3")
+        {
+          CoalesceGetMsgsForPop3ServersByDestFolder(currentServer, pop3DownloadServersArray, localFoldersToDownloadTo);
+          pop3Server = currentServer.QueryInterface(Components.interfaces.nsIPop3IncomingServer);
+        }
+        else
+        // get new messages on the server for imap or rss
+          GetMessagesForInboxOnServer(currentServer);
       }
     }
+    for (var i = 0; i < pop3DownloadServersArray.length; i++)
+    {
+      // any ol' pop3Server will do - the serversArray specifies which servers to download from
+      pop3Server.downloadMailFromServers(pop3DownloadServersArray[i], msgWindow, localFoldersToDownloadTo.GetElementAt(i), null);
+    }
   }
-  catch(ex) {
-    dump(ex + "\n");
+  catch(ex)
+  {
+      dump(ex + "\n");
   }
 }
 
@@ -2051,10 +2094,19 @@ function HandleJunkStatusChanged(folder)
         var sanitizeJunkMail = gPrefBranch.getBoolPref("mailnews.display.sanitizeJunkMail");
         if (changedJunkStatus && sanitizeJunkMail) // only bother doing this if we are modifying the html for junk mail....
         {
+          var folder = GetLoadedMsgFolder();
+          var moveJunkMail = (folder && folder.server && folder.server.spamSettings) ? folder.server.spamSettings.manualMark : false;
+
+          var junkScore = msgHdr.getStringProperty("junkscore"); 
+          var isJunk = ((junkScore != "") && (junkScore != "0"));
+
           // we used to only reload the message if we were toggling the message to NOT JUNK from junk
           // but it can be useful to see the HTML in the message get converted to sanitized form when a message
           // is marked as junk.
-          MsgReload();
+          // Furthermore, if we are about to move the message that was just marked as junk, 
+          // then don't bother reloading it.
+          if (!(isJunk && moveJunkMail)) 
+            MsgReload();
         }
       }
     }
@@ -2160,6 +2212,12 @@ function OnMsgLoaded(aUrl)
     
     if (!folder || !msgURI)
       return;
+
+    // If we are in the middle of a delete or move operation, make sure that
+    // if the user clicks on another message then that message stays selected
+    // and the selection does not "snap back" to the message chosen by
+    // SetNextMessageAfterDelete() when the operation completes (bug 243532).
+    gNextMessageViewIndexAfterDelete = -2;
 
     if (!(/type=x-message-display/.test(msgURI)))
       msgHdr = messenger.messageServiceFromURI(msgURI).messageURIToMsgHdr(msgURI);

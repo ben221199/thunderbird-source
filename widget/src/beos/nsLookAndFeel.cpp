@@ -333,7 +333,7 @@ NS_IMETHODIMP nsLookAndFeel::GetMetric(const nsMetricID aID, PRInt32 & aMetric)
       break;
       
     case eMetric_CaretBlinkTime:
-      aMetric = 100;
+      aMetric = 500;
       break;
     case eMetric_SingleLineCaretWidth:
       aMetric = 1;
@@ -396,7 +396,7 @@ NS_IMETHODIMP nsLookAndFeel::GetMetric(const nsMetricID aID, PRInt32 & aMetric)
       aMetric = 3;
       break;
     default:
-        aMetric = -1;
+        aMetric = 0;
         res = NS_ERROR_FAILURE;
     }
   return res;

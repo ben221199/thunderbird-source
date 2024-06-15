@@ -45,6 +45,7 @@ interface nsIMsgDBHdr;
 interface nsIMsgDBViewCommandUpdater;
 interface nsIMsgDatabase;
 interface nsIMsgSearchSession;
+interface nsISimpleEnumerator;
 
 typedef long nsMsgViewNotificationCodeValue;
 typedef long nsMsgViewCommandCheckStateValue;
@@ -65,6 +66,7 @@ interface nsMsgViewType {
     const nsMsgViewTypeValue eShowThreadsWithUnread = 2;
     const nsMsgViewTypeValue eShowWatchedThreadsWithUnread = 3;
     const nsMsgViewTypeValue eShowQuickSearchResults = 4;
+    const nsMsgViewTypeValue eShowVirtualFolderResults = 5;
 };
 
 [scriptable, uuid(64852276-1dd2-11b2-8103-afe12002c053)]
@@ -78,6 +80,7 @@ interface nsMsgViewFlagsType
     const nsMsgViewFlagsTypeValue kShowIgnored = 0x8;
     const nsMsgViewFlagsTypeValue kUnreadOnly = 0x10;
     const nsMsgViewFlagsTypeValue kExpandAll = 0x20;
+    const nsMsgViewFlagsTypeValue kGroupBySort = 0x40;
 };
 
 [scriptable, uuid(b2f31bca-fd18-11d4-a5be-0060b0fc04b7)]
@@ -250,6 +253,9 @@ interface nsMsgNavigationType
 interface nsIMsgDBView : nsISupports
 {
     void open(in nsIMsgFolder folder, in nsMsgViewSortTypeValue sortType, in nsMsgViewSortOrderValue sortOrder, in nsMsgViewFlagsTypeValue viewFlags, out long count);
+    void openWithHdrs(in nsISimpleEnumerator aHeaders, in nsMsgViewSortTypeValue aSortType, 
+                        in nsMsgViewSortOrderValue aSortOrder, 
+                        in nsMsgViewFlagsTypeValue aViewFlags, out long aCount);
     void close();
 
     void init(in nsIMessenger aMessengerInstance, in nsIMsgWindow aMsgWindow, in nsIMsgDBViewCommandUpdater aCommandUpdater);
@@ -263,10 +269,10 @@ interface nsIMsgDBView : nsISupports
 
     readonly attribute nsMsgViewTypeValue viewType;
     attribute nsMsgViewFlagsTypeValue viewFlags;
-    readonly attribute nsMsgViewSortTypeValue sortType;
+    attribute nsMsgViewSortTypeValue sortType;
     readonly attribute nsMsgViewSortOrderValue sortOrder;
     readonly attribute nsMsgKey keyForFirstSelectedMessage;
-
+    readonly attribute nsMsgViewIndex viewIndexForFirstSelectedMsg;
     /**
      * this method will automatically expand the destination thread, 
      * if needs be. 
@@ -279,6 +285,7 @@ interface nsIMsgDBView : nsISupports
     boolean navigateStatus(in nsMsgNavigationTypeValue motion);
 
     readonly attribute nsIMsgFolder msgFolder;
+    attribute nsIMsgFolder viewFolder; // in the case of virtual folders, the VF db.
 
     nsMsgKey getKeyAt(in nsMsgViewIndex index);
     nsIMsgFolder getFolderForViewIndex(in nsMsgViewIndex index); // mainly for search
@@ -290,6 +297,7 @@ interface nsIMsgDBView : nsISupports
     readonly attribute string URIForFirstSelectedMessage;
     readonly attribute nsIMsgDBHdr hdrForFirstSelectedMessage;
     void loadMessageByMsgKey(in nsMsgKey aMsgKey);
+    void loadMessageByViewIndex(in nsMsgViewIndex aIndex);
     void loadMessageByUrl(in string aUrl);
     void reloadMessage();
     void reloadMessageWithAllParts();

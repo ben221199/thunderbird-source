@@ -66,6 +66,7 @@
 #include "nsCategoryManagerUtils.h"
 #include "nsISpamSettings.h"
 #include "nsISignatureVerifier.h"
+#include "nsNativeCharsetUtils.h"
 
 static NS_DEFINE_CID(kImapUrlCID, NS_IMAPURL_CID);
 static NS_DEFINE_CID(kCMailboxUrl, NS_MAILBOXURL_CID);
@@ -229,31 +230,40 @@ nsresult NS_MsgGetUntranslatedPriorityName (nsMsgPriorityValue p, nsString *outN
 
 /* this used to be XP_StringHash2 from xp_hash.c */
 /* phong's linear congruential hash  */
-static PRUint32 StringHash(const char *ubuf)
+static PRUint32 StringHash(const char *ubuf, PRInt32 len = -1)
 {
   unsigned char * buf = (unsigned char*) ubuf;
   PRUint32 h=1;
-  while(*buf) {
+  unsigned char *end = buf + (len == -1 ? strlen(ubuf) : len); 
+  while(buf < end) {
     h = 0x63c63cd9*h + 0x9c39c33d + (int32)*buf;
     buf++;
   }
   return h;
 }
 
-nsresult NS_MsgHashIfNecessary(nsCAutoString &name)
+inline PRUint32 StringHash(const nsAutoString& str)
 {
+    return StringHash(NS_REINTERPRET_CAST(const char*, str.get()),
+                      str.Length() * 2);
+}
+
 #if defined(XP_MAC)
-  const PRUint32 MAX_LEN = 25;
+  const static PRUint32 MAX_LEN = 25;
 #elif defined(XP_UNIX) || defined(XP_BEOS)
-  const PRUint32 MAX_LEN = 55;
+  const static PRUint32 MAX_LEN = 55;
 #elif defined(XP_WIN32)
-  const PRUint32 MAX_LEN = 55;
+  const static PRUint32 MAX_LEN = 55;
 #elif defined(XP_OS2)
-  const PRUint32 MAX_LEN = 55;
+  const static PRUint32 MAX_LEN = 55;
 #else
   #error need_to_define_your_max_filename_length
 #endif
-  nsCAutoString illegalChars(FILE_PATH_SEPARATOR FILE_ILLEGAL_CHARACTERS);
+
+nsresult NS_MsgHashIfNecessary(nsCAutoString &name)
+{
+  NS_NAMED_LITERAL_CSTRING (illegalChars, 
+                            FILE_PATH_SEPARATOR FILE_ILLEGAL_CHARACTERS);
   nsCAutoString str(name);
 
   // Given a filename, make it safe for filesystem
@@ -289,25 +299,44 @@ nsresult NS_MsgHashIfNecessary(nsCAutoString &name)
   return NS_OK;
 }
 
-nsresult NS_MsgCreatePathStringFromFolderURI(const char *folderURI, nsCString& pathString)
+// XXX : The number of UTF-16 2byte code units are half the number of
+// bytes in legacy encodings for CJK strings and non-Latin1 in UTF-8.
+// The ratio can be 1/3 for CJK strings in UTF-8. However, we can
+// get away with using the same MAX_LEN for nsCString and nsString
+// because MAX_LEN is defined rather conservatively in the first place.
+nsresult NS_MsgHashIfNecessary(nsAutoString &name)
 {
-	// A file name has to be in native charset, convert from UTF-8.
-	nsCAutoString oldPath;
-  if (nsCRT::IsAscii(folderURI))
-    oldPath.Assign(folderURI);
-  else
+  PRInt32 illegalCharacterIndex = name.FindCharInSet(FILE_PATH_SEPARATOR FILE_ILLEGAL_CHARACTERS);
+  char hashedname[9];
+  if (illegalCharacterIndex == kNotFound) 
   {
-    char *nativeString = nsnull;
-    nsresult rv = ConvertFromUnicode(nsMsgI18NFileSystemCharset(), 
-                                     nsAutoString(NS_ConvertUTF8toUCS2(folderURI)), &nativeString);
-    if (NS_SUCCEEDED(rv) && nativeString && nativeString[0])
-      oldPath.Assign(nativeString);
-    else
-      oldPath.Assign(folderURI);
-    PR_FREEIF(nativeString);
+    if (name.Length() > MAX_LEN) 
+    {
+      PR_snprintf(hashedname, 9, "%08lx", (unsigned long) StringHash(name));
+      name.Truncate(MAX_LEN - 8); 
+      AppendASCIItoUTF16(hashedname, name);
+    }
   }
+  else 
+  {
+      PR_snprintf(hashedname, 9, "%08lx",
+                (unsigned long) StringHash(name));
+      CopyASCIItoUTF16(hashedname, name);
+  }
+  
+  return NS_OK;
+}
 
-	nsCAutoString pathPiece;
+
+nsresult NS_MsgCreatePathStringFromFolderURI(const char *folderURI, nsCString& pathCString)
+{
+  // A file name has to be in native charset. Here we convert 
+  // to UTF-16 and check for 'unsafe' characters before converting 
+  // to native charset.
+  NS_ENSURE_TRUE(IsUTF8(nsDependentCString(folderURI)), NS_ERROR_UNEXPECTED);
+  NS_ConvertUTF8toUTF16 oldPath(folderURI);
+
+  nsAutoString pathPiece, path;
 
 	PRInt32 startSlashPos = oldPath.FindChar('/');
 	PRInt32 endSlashPos = (startSlashPos >= 0) 
@@ -323,11 +352,11 @@ nsresult NS_MsgCreatePathStringFromFolderURI(const char *folderURI, nsCString& p
 
         // add .sbd onto the previous path
         if (haveFirst) {
-          pathString += ".sbd/";
+        AppendASCIItoUTF16(".sbd/", path);
         }
         
         NS_MsgHashIfNecessary(pathPiece);
-        pathString += pathPiece;
+        path += pathPiece;
         haveFirst=PR_TRUE;
       }
 	  // look for the next slash
@@ -342,7 +371,7 @@ nsresult NS_MsgCreatePathStringFromFolderURI(const char *folderURI, nsCString& p
 		  break;
     }
 
-	return NS_OK;
+  return NS_CopyUnicodeToNative(path, pathCString);
 }
 
 /* Given a string and a length, removes any "Re:" strings from the front.

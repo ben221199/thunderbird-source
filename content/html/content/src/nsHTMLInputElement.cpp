@@ -985,7 +985,7 @@ nsHTMLInputElement::MaybeSubmitForm(nsIPresContext* aPresContext)
     if (submitControl) {
       // Fire the button's onclick handler and let the button handle
       // submitting the form.
-      nsGUIEvent event(NS_MOUSE_LEFT_CLICK);
+      nsMouseEvent event(NS_MOUSE_LEFT_CLICK);
       nsEventStatus status = nsEventStatus_eIgnore;
       shell->HandleDOMEventWithTarget(submitControl, &event, &status);
     } else if (numTextControlsFound == 1) {
@@ -1066,7 +1066,9 @@ nsHTMLInputElement::Blur()
 NS_IMETHODIMP
 nsHTMLInputElement::Focus()
 {
-  SetElementFocus(PR_TRUE);
+  if (ShouldFocus(this)) {
+    SetElementFocus(PR_TRUE);
+  }
 
   return NS_OK;
 }
@@ -1191,7 +1193,9 @@ nsHTMLInputElement::Select()
     // If the DOM event was not canceled (e.g. by a JS event handler
     // returning false)
     if (status == nsEventStatus_eIgnore) {
-      if (presContext) {
+      PRBool shouldFocus = ShouldFocus(this);
+
+      if (presContext && shouldFocus) {
         nsIEventStateManager *esm = presContext->EventStateManager();
         // XXX Fix for bug 135345 - ESM currently does not check to see if we
         // have focus before attempting to set focus again and may cause
@@ -1207,7 +1211,9 @@ nsHTMLInputElement::Select()
       nsIFormControlFrame* formControlFrame = GetFormControlFrame(PR_TRUE);
 
       if (formControlFrame) {
-        formControlFrame->SetFocus(PR_TRUE, PR_TRUE);
+        if (shouldFocus) {
+          formControlFrame->SetFocus(PR_TRUE, PR_TRUE);
+        }
 
         // Now Select all the text!
         SelectAll(presContext);
@@ -1457,7 +1463,8 @@ nsHTMLInputElement::HandleDOMEvent(nsIPresContext* aPresContext,
           // child textfield or button.  If that's the case, don't focus
           // this parent file control -- leave focus on the child.
           nsIFormControlFrame* formControlFrame = GetFormControlFrame(PR_FALSE);
-          if (formControlFrame && !(aFlags & NS_EVENT_FLAG_BUBBLE))
+          if (formControlFrame && !(aFlags & NS_EVENT_FLAG_BUBBLE) &&
+              ShouldFocus(this))
             formControlFrame->SetFocus(PR_TRUE, PR_TRUE);
         }                                                                         
         break; // NS_FOCUS_CONTENT

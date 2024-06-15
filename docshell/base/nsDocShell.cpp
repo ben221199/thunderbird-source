@@ -23,6 +23,7 @@
  *   Dan Rosen <dr@netscape.com>
  */
 
+#include "nsIBrowserDOMWindow.h"
 #include "nsIComponentManager.h"
 #include "nsIContent.h"
 #include "nsIDocument.h"
@@ -45,6 +46,7 @@
 #include "nsReadableUtils.h"
 #include "nsIChromeEventHandler.h"
 #include "nsIDOMWindowInternal.h"
+#include "nsIDOMWindowUtils.h"
 #include "nsIWebBrowserChrome.h"
 #include "nsPoint.h"
 #include "nsGfxCIID.h"
@@ -240,8 +242,6 @@ nsDocShell::nsDocShell():
     mEODForCurrentDocument(PR_FALSE),
     mURIResultedInDocument(PR_FALSE),
     mIsBeingDestroyed(PR_FALSE),
-    mUseExternalProtocolHandler(PR_FALSE),
-    mDisallowPopupWindows(PR_FALSE),
     mValidateOrigin(PR_TRUE), // validate frame origins by default
     mIsExecutingOnLoadHandler(PR_FALSE),
     mIsPrintingOrPP(PR_FALSE),
@@ -557,7 +557,7 @@ NS_IMETHODIMP
 nsDocShell::LoadURI(nsIURI * aURI,
                     nsIDocShellLoadInfo * aLoadInfo,
                     PRUint32 aLoadFlags,
-                    PRBool firstParty)
+                    PRBool aFirstParty)
 {
     nsresult rv;
     nsCOMPtr<nsIURI> referrer;
@@ -565,6 +565,7 @@ nsDocShell::LoadURI(nsIURI * aURI,
     nsCOMPtr<nsIInputStream> headersStream;
     nsCOMPtr<nsISupports> owner;
     PRBool inheritOwner = PR_FALSE;
+    PRBool sendReferrer = PR_TRUE;
     nsCOMPtr<nsISHEntry> shEntry;
     nsXPIDLString target;
     PRUint32 loadType = MAKE_LOAD_TYPE(LOAD_NORMAL, aLoadFlags);    
@@ -586,6 +587,7 @@ nsDocShell::LoadURI(nsIURI * aURI,
         aLoadInfo->GetTarget(getter_Copies(target));
         aLoadInfo->GetPostDataStream(getter_AddRefs(postStream));
         aLoadInfo->GetHeadersStream(getter_AddRefs(headersStream));
+        aLoadInfo->GetSendReferrer(&sendReferrer);
     }
 
 #ifdef PR_LOGGING
@@ -723,17 +725,25 @@ nsDocShell::LoadURI(nsIURI * aURI,
             }
         }
 
+        PRUint32 flags = 0;
+
+        if (inheritOwner)
+            flags |= INTERNAL_LOAD_FLAGS_INHERIT_OWNER;
+
+        if (!sendReferrer)
+            flags |= INTERNAL_LOAD_FLAGS_DONT_SEND_REFERRER;
+
         rv = InternalLoad(aURI,
                           referrer,
                           owner,
-                          inheritOwner,
+                          flags,
                           target.get(),
                           nsnull,         // No type hint
                           postStream,
                           headersStream,
                           loadType,
                           nsnull,         // No SHEntry
-                          firstParty,
+                          aFirstParty,
                           nsnull,         // No nsIDocShell
                           nsnull);        // No nsIRequest
     }
@@ -1089,22 +1099,83 @@ nsresult nsDocShell::FindTarget(const PRUnichar *aWindowTarget,
         }
     }
 
-    if (mustMakeNewWindow)
-    {
+    PRInt32 linkPref = nsIBrowserDOMWindow::OPEN_DEFAULTWINDOW;
+    if (mustMakeNewWindow) {
+        mPrefs->GetIntPref("browser.link.open_newwindow", &linkPref);
+        if (linkPref == nsIBrowserDOMWindow::OPEN_CURRENTWINDOW) {
+            // force new window to go to _top
+            GetSameTypeRootTreeItem(getter_AddRefs(treeItem));
+            if(!treeItem)
+                *aResult = this;
+            mustMakeNewWindow = PR_FALSE;
+        }
+    }
+
+    if (mustMakeNewWindow) {
+        rv = NS_ERROR_FAILURE;
+
         nsCOMPtr<nsIDOMWindow> newWindow;
         nsCOMPtr<nsIDOMWindowInternal> parentWindow;
 
         // This DocShell is the parent window
         parentWindow = do_GetInterface(NS_STATIC_CAST(nsIDocShell*, this));
         if (!parentWindow) {
-            NS_ASSERTION(0, "Cant get nsIDOMWindowInternal from nsDocShell!");
+            NS_ERROR("Can't get nsIDOMWindowInternal from nsDocShell!");
             return NS_ERROR_FAILURE;
         }
 
-        rv = parentWindow->Open(EmptyString(),            // URL to load
-                                name,                     // Window name
-                                EmptyString(),            // Window features
-                                getter_AddRefs(newWindow));
+        if (linkPref == nsIBrowserDOMWindow::OPEN_NEWTAB) {
+
+            // is it a popup?
+
+            PRBool allowTab = PR_TRUE;
+            nsCOMPtr<nsPIDOMWindow> pWindow = do_QueryInterface(mScriptGlobal);
+            if (pWindow) {
+              // skip the window search-by-name of GetOpenAllow
+              // by using _self. we don't care about that at this point.
+              OpenAllowValue allow = pWindow->GetOpenAllow(
+                                      NS_LITERAL_STRING("_self"));
+              if (allow == allowNot || allow == allowSelf)
+                  allowTab = PR_FALSE;
+            }
+
+            // try to get our tab-opening interface
+
+            if (allowTab) {
+                nsCOMPtr<nsIBrowserDOMWindow> bwin;
+
+                nsCOMPtr<nsIDocShellTreeItem> rootItem;
+                GetRootTreeItem(getter_AddRefs(rootItem));
+                nsCOMPtr<nsIDOMWindow> rootWin(do_GetInterface(rootItem));
+
+                if (rootWin) {
+                    nsCOMPtr<nsIDOMWindowUtils> utils(do_GetInterface(rootWin));
+                    if (utils)
+                        utils->GetBrowserDOMWindow(getter_AddRefs(bwin));
+                }
+
+                // open a new tab
+                if (bwin) {
+                    rv = bwin->OpenURI(0, 0, nsIBrowserDOMWindow::OPEN_NEWTAB,
+                                      nsIBrowserDOMWindow::OPEN_NEW,
+                                      getter_AddRefs(newWindow));
+
+                    nsCOMPtr<nsIScriptGlobalObject> newObj =
+                        do_GetInterface(newWindow);
+                    if (newObj)
+                        newObj->SetOpenerWindow(parentWindow);
+                }
+            }
+            // else fall through to the normal Open method, from which
+            // the appropriate measures will be taken when the popup fails
+        }
+
+        if (!newWindow)
+          rv = parentWindow->Open(EmptyString(),            // URL to load
+                                  name,                     // Window name
+                                  EmptyString(),            // Window features
+                                  getter_AddRefs(newWindow));
+
         if (NS_FAILED(rv)) return rv;
 
         // Get the DocShell from the new window...
@@ -2808,7 +2879,7 @@ nsDocShell::Reload(PRUint32 aReloadFlags)
         rv = InternalLoad(mCurrentURI,
                           mReferrerURI,
                           nsnull,         // No owner
-                          PR_TRUE,        // Inherit owner from document
+                          INTERNAL_LOAD_FLAGS_INHERIT_OWNER, // Inherit owner from document
                           nsnull,         // No window target
                           NS_LossyConvertUCS2toASCII(contentTypeHint).get(),
                           nsnull,         // No post data
@@ -3042,17 +3113,6 @@ nsDocShell::Create()
     NS_ENSURE_SUCCESS(rv, rv);
 
     PRBool tmpbool;
-
-    // i don't want to read this pref in every time we load a url
-    // so read it in once here and be done with it...
-    rv = mPrefs->GetBoolPref("network.protocols.useSystemDefaults",
-                             &tmpbool);
-    if (NS_SUCCEEDED(rv))
-      mUseExternalProtocolHandler = tmpbool;
-
-    rv = mPrefs->GetBoolPref("browser.block.target_new_window", &tmpbool);
-    if (NS_SUCCEEDED(rv))
-      mDisallowPopupWindows = tmpbool;
 
     rv = mPrefs->GetBoolPref("browser.frames.enabled", &tmpbool);
     if (NS_SUCCEEDED(rv))
@@ -5045,14 +5105,14 @@ NS_IMETHODIMP
 nsDocShell::InternalLoad(nsIURI * aURI,
                          nsIURI * aReferrer,
                          nsISupports * aOwner,
-                         PRBool aInheritOwner,
+                         PRUint32 aFlags,
                          const PRUnichar *aWindowTarget,
                          const char* aTypeHint,
                          nsIInputStream * aPostData,
                          nsIInputStream * aHeadersData,
                          PRUint32 aLoadType,
                          nsISHEntry * aSHEntry,
-                         PRBool firstParty,
+                         PRBool aFirstParty,
                          nsIDocShell** aDocShell,
                          nsIRequest** aRequest)
 {
@@ -5130,7 +5190,7 @@ nsDocShell::InternalLoad(nsIURI * aURI,
     //
     // Get an owner from the current document if necessary
     //
-    if (!owner && aInheritOwner)
+    if (!owner && (aFlags & INTERNAL_LOAD_FLAGS_INHERIT_OWNER))
         GetCurrentDocumentOwner(getter_AddRefs(owner));
 
     //
@@ -5144,46 +5204,14 @@ nsDocShell::InternalLoad(nsIURI * aURI,
         nsAutoString name(aWindowTarget);
 
         //
-        // This is a hack for Shrimp :-(
-        //
-        // if the load cmd is a user click....and we are supposed to try using
-        // external default protocol handlers....then try to see if we have one for
-        // this protocol
-        //
-        // See bug #52182
-        //
-        if (mUseExternalProtocolHandler && aLoadType == LOAD_LINK) {
-            // don't do it for javascript urls!
-            // _main is an IE target which should be case-insensitive but isn't
-            // see bug 217886 for details            
-            if (!bIsJavascript &&
-                (name.EqualsIgnoreCase("_content") || name.Equals(NS_LITERAL_STRING("_main")) ||
-                 name.EqualsIgnoreCase("_blank"))) 
-            {
-                nsCOMPtr<nsIExternalProtocolService> extProtService;
-                nsCAutoString urlScheme;
-
-                extProtService = do_GetService(NS_EXTERNALPROTOCOLSERVICE_CONTRACTID);
-                if (extProtService) {
-                    PRBool haveHandler = PR_FALSE;
-                    aURI->GetScheme(urlScheme);
-
-                    extProtService->ExternalProtocolHandlerExists(urlScheme.get(),
-                                                                  &haveHandler);
-                    if (haveHandler) {
-                        return extProtService->LoadUrl(aURI);
-                    }
-                }
-            }
-        }
-
-        //
         // This is a hack to prevent top-level windows from ever being
         // created.  It really doesn't belong here, but until there is a
         // way for embeddors to get involved in window targeting, this is
         // as good a place as any...
         //
-        if (mDisallowPopupWindows) {
+        PRInt32 linkPref = nsIBrowserDOMWindow::OPEN_DEFAULTWINDOW;
+        mPrefs->GetIntPref("browser.link.open_newwindow", &linkPref);
+        if (linkPref == nsIBrowserDOMWindow::OPEN_CURRENTWINDOW) {
             PRBool bIsChromeOrResource = PR_FALSE;
             if (mCurrentURI)
                 mCurrentURI->SchemeIs("chrome", &bIsChromeOrResource);
@@ -5234,14 +5262,14 @@ nsDocShell::InternalLoad(nsIURI * aURI,
             rv = targetDocShell->InternalLoad(aURI,
                                               aReferrer,
                                               owner,
-                                              aInheritOwner,
+                                              aFlags,
                                               nsnull,         // No window target
                                               aTypeHint,
                                               aPostData,
                                               aHeadersData,
                                               aLoadType,
                                               aSHEntry,
-                                              firstParty,
+                                              aFirstParty,
                                               aDocShell,
                                               aRequest);
             if (rv == NS_ERROR_NO_CONTENT) {
@@ -5282,19 +5310,6 @@ nsDocShell::InternalLoad(nsIURI * aURI,
             }
         }
         return rv;
-    }
-
-    // Check if the page doesn't want to be unloaded. The javascript:
-    // protocol handler deals with this for javascript: URLs.
-    if (!bIsJavascript && mContentViewer) {
-        PRBool okToUnload;
-        rv = mContentViewer->PermitUnload(&okToUnload);
-
-        if (NS_SUCCEEDED(rv) && !okToUnload) {
-            // The user chose not to unload the page, interrupt the
-            // load.
-            return NS_OK;
-        }
     }
 
     //
@@ -5409,6 +5424,19 @@ nsDocShell::InternalLoad(nsIURI * aURI,
         }
     }
 
+    // Check if the page doesn't want to be unloaded. The javascript:
+    // protocol handler deals with this for javascript: URLs.
+    if (!bIsJavascript && mContentViewer) {
+        PRBool okToUnload;
+        rv = mContentViewer->PermitUnload(&okToUnload);
+
+        if (NS_SUCCEEDED(rv) && !okToUnload) {
+            // The user chose not to unload the page, interrupt the
+            // load.
+            return NS_OK;
+        }
+    }
+
     // Don't stop current network activity for javascript: URL's since
     // they might not result in any data, and thus nothing should be
     // stopped in those cases. In the case where they do result in
@@ -5443,8 +5471,10 @@ nsDocShell::InternalLoad(nsIURI * aURI,
     // been called. 
     mLSHE = aSHEntry;
 
-    rv = DoURILoad(aURI, aReferrer, owner, aTypeHint, aPostData, aHeadersData,
-                   firstParty, aDocShell, aRequest);
+    rv = DoURILoad(aURI, aReferrer,
+                   !(aFlags & INTERNAL_LOAD_FLAGS_DONT_SEND_REFERRER),
+                   owner, aTypeHint, aPostData, aHeadersData, aFirstParty,
+                   aDocShell, aRequest);
 
     if (NS_FAILED(rv)) {
         DisplayLoadError(rv, aURI, nsnull);
@@ -5494,11 +5524,12 @@ nsDocShell::GetCurrentDocumentOwner(nsISupports ** aOwner)
 nsresult
 nsDocShell::DoURILoad(nsIURI * aURI,
                       nsIURI * aReferrerURI,
+                      PRBool aSendReferrer,
                       nsISupports * aOwner,
                       const char * aTypeHint,
                       nsIInputStream * aPostData,
                       nsIInputStream * aHeadersData,
-                      PRBool firstParty,
+                      PRBool aFirstParty,
                       nsIDocShell ** aDocShell,
                       nsIRequest ** aRequest)
 {
@@ -5516,7 +5547,7 @@ nsDocShell::DoURILoad(nsIURI * aURI,
     if (NS_FAILED(rv)) return rv;
 
     nsLoadFlags loadFlags = nsIRequest::LOAD_NORMAL;
-    if (firstParty) {
+    if (aFirstParty) {
         // tag first party URL loads
         loadFlags |= nsIChannel::LOAD_INITIAL_DOCUMENT_URI;
     }
@@ -5556,11 +5587,19 @@ nsDocShell::DoURILoad(nsIURI * aURI,
     nsCOMPtr<nsIHttpChannel> httpChannel(do_QueryInterface(channel));
     nsCOMPtr<nsIHttpChannelInternal> httpChannelInternal(do_QueryInterface(channel));
     if (httpChannelInternal) {
-      if (firstParty) {
+      if (aFirstParty) {
         httpChannelInternal->SetDocumentURI(aURI);
       } else {
         httpChannelInternal->SetDocumentURI(aReferrerURI);
       }
+    }
+
+    nsCOMPtr<nsIProperties> props(do_QueryInterface(channel));
+    if (props)
+    {
+      // save true referrer for those who need it (e.g. xpinstall whitelisting)
+      // Not all channels support this feature, but ftp and http do.
+      props->Set("docshell.internalReferrer", aReferrerURI);
     }
 
     //
@@ -5628,8 +5667,10 @@ nsDocShell::DoURILoad(nsIURI * aURI,
             rv = AddHeadersToChannel(aHeadersData, httpChannel);
         }
         // Set the referrer explicitly
-        if (aReferrerURI)       // Referrer is currenly only set for link clicks here.
+        if (aReferrerURI && aSendReferrer) {
+            // Referrer is currenly only set for link clicks here.
             httpChannel->SetReferrer(aReferrerURI);
+        }
     }
     // We want to use the pref for directory listings
     nsCOMPtr<nsIDirectoryListing> dirList = do_QueryInterface(channel);
@@ -6464,7 +6505,7 @@ nsDocShell::LoadHistoryEntry(nsISHEntry * aEntry, PRUint32 aLoadType)
     rv = InternalLoad(uri,
                       referrerURI,
                       nsnull,            // No owner
-                      PR_FALSE,          // Do not inherit owner from document (security-critical!)
+                      INTERNAL_LOAD_FLAGS_NONE, // Do not inherit owner from document (security-critical!)
                       nsnull,            // No window target
                       contentType.get(), // Type hint
                       postData,          // Post data stream
@@ -7122,6 +7163,18 @@ nsRefreshTimer::Notify(nsITimer * aTimer)
         }
         nsCOMPtr<nsIDocShellLoadInfo> loadInfo;
         mDocShell->CreateLoadInfo(getter_AddRefs(loadInfo));
+        NS_ENSURE_TRUE(loadInfo, NS_OK);
+
+        /* We do need to pass in a referrer, but we don't want it to
+         * be sent to the server.
+         */
+        loadInfo->SetSendReferrer(PR_FALSE);
+
+        /* for most refreshes the current URI is an appropriate
+         * internal referrer
+         */
+        loadInfo->SetReferrer(currURI);
+
         /* Check if this META refresh causes a redirection
          * to another site. 
          */
@@ -7135,6 +7188,19 @@ nsRefreshTimer::Notify(nsITimer * aTimer)
              */
             if (delay <= REFRESH_REDIRECT_TIMER) {
                 loadInfo->SetLoadType(nsIDocShellLoadInfo::loadNormalReplace);
+
+                /* for redirects we mimic HTTP, which passes the
+                 *  original referrer
+                 */
+                nsCOMPtr<nsIURI> internalReferrer;
+                nsCOMPtr<nsIWebNavigation> webNav =
+                    do_QueryInterface(mDocShell);
+                if (webNav) {
+                    webNav->GetReferringURI(getter_AddRefs(internalReferrer));
+                    if (internalReferrer) {
+                        loadInfo->SetReferrer(internalReferrer);
+                    }
+                }
             }
             else
                 loadInfo->SetLoadType(nsIDocShellLoadInfo::loadRefresh);
@@ -7248,8 +7314,17 @@ nsDocShell::SetBaseUrlForWyciwyg(nsIContentViewer * aContentViewer)
 nsresult
 nsDocShell::GetAuthPrompt(PRUint32 aPromptReason, nsIAuthPrompt **aResult)
 {
+    // if this docshell is of type chrome and has a chrome URI, then do not
+    // give out an auth prompt.  NOTE: it is possible to load a non-chrome
+    // URI into a chrome docshell, so this check is important.
+    if (mCurrentURI && mItemType == typeChrome) {
+        PRBool chrome;
+        if (NS_SUCCEEDED(mCurrentURI->SchemeIs("chrome", &chrome)) && chrome)
+            return NS_ERROR_NOT_AVAILABLE;
+    }
+
     // a priority prompt request will override a false mAllowAuth setting
-    PRBool priorityPrompt = (aPromptReason == nsIAuthPromptProvider::PROMPT_PROXY);
+    PRBool priorityPrompt = (aPromptReason == PROMPT_PROXY);
 
     if (!mAllowAuth && !priorityPrompt)
         return NS_ERROR_NOT_AVAILABLE;

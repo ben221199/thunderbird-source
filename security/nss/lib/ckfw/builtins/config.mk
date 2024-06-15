@@ -30,7 +30,7 @@
 # may use your version of this file under either the MPL or the
 # GPL.
 #
-CONFIG_CVS_ID = "@(#) $RCSfile: config.mk,v $ $Revision: 1.7 $ $Date: 2003/04/20 04:23:25 $ $Name: THUNDERBIRD_0_8_RELEASE $"
+CONFIG_CVS_ID = "@(#) $RCSfile: config.mk,v $ $Revision: 1.7.22.1 $ $Date: 2004/10/15 21:13:52 $ $Name: THUNDERBIRD_0_9_RELEASE $"
 
 #
 #  Override TARGETS variable so that only shared libraries
@@ -42,8 +42,10 @@ LIBRARY        =
 IMPORT_LIBRARY =
 PROGRAM        =
 
-ifeq (,$(filter-out OS2 WIN%,$(OS_TARGET)))
+ifeq (,$(filter-out WIN%,$(OS_TARGET)))
     SHARED_LIBRARY = $(OBJDIR)/$(DLL_PREFIX)$(LIBRARY_NAME)$(LIBRARY_VERSION).$(DLL_SUFFIX)
+    RES = $(OBJDIR)/$(LIBRARY_NAME).res
+    RESNAME = $(LIBRARY_NAME).rc
 endif
 
 ifdef BUILD_IDG
@@ -56,3 +58,10 @@ endif
 ifeq ($(OS_TARGET),Darwin)
 DSO_LDOPTS = -bundle
 endif
+
+ifeq ($(OS_TARGET),SunOS)
+# The -R '$ORIGIN' linker option instructs this library to search for its
+# dependencies in the same directory where it resides.
+MKSHLIB += -R '$$ORIGIN'
+endif
+

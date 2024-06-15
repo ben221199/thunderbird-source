@@ -42,12 +42,12 @@
 #optionsButton {
   margin: 0px;
   list-style-image: url("chrome://mozapps/skin/extensions/actionbuttons.png");
-  -moz-image-region: rect(0px, 63px, 21px, 42px) !important;
+  -moz-image-region: rect(0px, 84px, 21px, 63px) !important;
 }
 
 #optionsButton[disabled="true"] {
   list-style-image: url("chrome://mozapps/skin/extensions/actionbuttons.png");
-  -moz-image-region: rect(21px, 63px, 42px, 42px) !important;
+  -moz-image-region: rect(21px, 84px, 42px, 63px) !important;
 }
 
 #useThemeButton {
@@ -77,6 +77,11 @@
   text-decoration: underline !important;
   cursor: pointer;
   text-align: right;
+  -moz-user-focus: normal;
+}
+
+#getMore:focus {
+  -moz-outline: 1px dotted invert ! important;
 }
 
 /* Extension Buttons (Iconic buttons in each extension item) */

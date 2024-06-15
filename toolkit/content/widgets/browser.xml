@@ -34,6 +34,11 @@
    - GPL.
   -->
 
+<!DOCTYPE window [
+  <!ENTITY % findBarDTD SYSTEM "chrome://global/locale/findBar.dtd" >
+  %findBarDTD;
+]>
+
 <bindings id="browserBindings"
           xmlns="http://www.mozilla.org/xbl"
           xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
@@ -144,6 +149,7 @@
         <parameter name="aFlags"/>
         <parameter name="aReferrerURI"/>
         <parameter name="aCharset"/>
+        <parameter name="aPostData"/>
         <body>
           <![CDATA[
             if (!aURI)
@@ -156,7 +162,8 @@
               catch (e) {
               }
             }
-            this.webNavigation.loadURI(aURI, aFlags, aReferrerURI, null, null);
+            this.mFavIconURL = null;
+            this.webNavigation.loadURI(aURI, aFlags, aReferrerURI, aPostData, null);
           ]]>
         </body>
       </method>
@@ -238,6 +245,13 @@
         <getter>
         <![CDATA[
           if (!this._fastFind) {
+            var n = this.parentNode;
+            while (n && n.localName != "tabbrowser")
+              n = n.parentNode;
+
+            if (n && n.mCurrentBrowser == this)
+              return this._fastFind = n.fastFind
+
             this._fastFind = Components.classes["@mozilla.org/typeaheadfind;1"]
                                        .createInstance(Components.interfaces.nsITypeAheadFind);                                
             this._fastFind.init(this.docShell);
@@ -372,12 +386,46 @@
         </body>
       </method>
       
+      <method name="findChildShell">
+        <parameter name="aDocShell"/>
+        <parameter name="aSoughtURI"/>
+        <body>
+          <![CDATA[
+            if (aDocShell.QueryInterface(Components.interfaces.nsIWebNavigation)
+                         .currentURI.spec == aSoughtURI.spec)
+              return aDocShell;
+            var node = aDocShell.QueryInterface(
+                                   Components.interfaces.nsIDocShellTreeNode);
+            for (var i = 0; i < node.childCount; ++i) {
+              var docShell = node.getChildAt(i);
+              docShell = this.findChildShell(docShell, aSoughtURI);
+              if (docShell)
+                return docShell;
+            }
+            return null;
+          ]]>
+        </body>
+      </method>
+
       <method name="onLoad">
         <parameter name="aEvent"/>
         <body>
           <![CDATA[
-            this.removeEventListener("load", this.handleEvent, true);
             this.attachFormFill();
+            if (this.pageReport) {
+              var i = 0;
+              while (i < this.pageReport.length) {
+                if (this.findChildShell(this.docShell,
+                                        this.pageReport[i].requestingWindowURI))
+                  i++;
+                else
+                  this.pageReport.splice(i, 1);
+              }
+              if (this.pageReport.length == 0) {
+                this.pageReport = null;
+                this.updatePageReport();
+              }
+            }
          ]]>
         </body>
       </method>
@@ -463,7 +511,9 @@
       
       <field name="isShowingMessage">
         false
-      </field> 
+      </field>
+
+      <field name="mFavIconURL">null</field>
 
       <constructor>
         <![CDATA[
@@ -528,6 +578,7 @@
           this.securityUI = null;
           this._fastFind = null;
 
+          this.removeEventListener("load", this.onLoad, true);
           this.removeEventListener("unload", this.onUnload, true);
           this.removeEventListener("DOMPopupBlocked", this.onPopupBlocked, true);
           ]]>
@@ -728,6 +779,9 @@
     <handlers>
       <handler event="keypress" keycode="VK_F7">
         <![CDATA[
+          if (!event.isTrusted)
+            return;
+
           // Toggle browse with caret mode
           var browseWithCaretOn = false;
           var warn = true;
@@ -816,15 +870,17 @@
   
   <binding id="browsermessage" extends="xul:hbox">
     <content align="center">
-      <xul:image        anonid="messageImage"   class="messageImage"/>
-      <xul:description  anonid="messageText"    class="messageText" flex="1"/>
+      <xul:hbox anonid="messagePopupContainer" align="center" flex="1">
+        <xul:image       anonid="messageImage"   class="messageImage"/>
+        <xul:description anonid="messageText"    class="messageText" flex="1"/>
+      </xul:hbox>
       <xul:button       anonid="messageButton"  class="messageButton"/>
       <xul:spacer class="tabs-right"/>
       <xul:hbox hidden="true" anonid="messageClose" class="tabs-closebutton-box" 
                 align="center" pack="end">
         <xul:toolbarbutton ondblclick="event.preventBubble();" 
                            class="tabs-closebutton close-button" 
-                           oncommand="this.parentNode.parentNode.hide()"/>
+                           oncommand="this.parentNode.parentNode.hide();"/>
       </xul:hbox>
     </content>
     <implementation>
@@ -858,15 +914,15 @@
         <setter>
           <![CDATA[
             if (val)
-              this.setAttribute("popup", val);
+              document.getAnonymousElementByAttribute(this, "anonid", "messagePopupContainer").setAttribute("popup", val);
             else
-              this.removeAttribute("popup");
+              document.getAnonymousElementByAttribute(this, "anonid", "messagePopupContainer").removeAttribute("popup");
             return val;
           ]]>
         </setter>
         <getter>
           <![CDATA[
-            return this.getAttribute("popup");
+            return document.getAnonymousElementByAttribute(this, "anonid", "messagePopupContainer").getAttribute("popup");
           ]]>
         </getter>
       </property>
@@ -906,11 +962,11 @@
         <setter>
           <![CDATA[
             if (val != "") {
-              this._buttonElement.hidden = false;
+              this._buttonElement.removeAttribute("style");
               this._buttonElement.setAttribute("label", val);
             }
             else
-              this._buttonElement.hidden = true;
+              this._buttonElement.setAttribute("style", "max-width: 1px; visibility: hidden;");
             return val;
           ]]>        
         </setter>

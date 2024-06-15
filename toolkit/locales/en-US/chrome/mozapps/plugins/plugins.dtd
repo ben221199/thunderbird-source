@@ -7,6 +7,7 @@
 <!ENTITY pluginWizard.availablePluginsPage.continueMsg.label "Press Next to install these plugins.">
 <!ENTITY pluginWizard.availablePluginsPage.installerUI       "Some plugins may require additional information from you during installation.">
 
+<!ENTITY pluginWizard.licensePage.title                      "Plugin Licenses">
 <!ENTITY pluginWizard.licensePage.accept.label               "I agree.">
 <!ENTITY pluginWizard.licensePage.deny.label                 "I do not agree (plugin will not be installed).">
 
@@ -14,3 +15,6 @@
 <!ENTITY pluginWizard.installPluginsPage.description.label   "&brandShortName; is installing plugins...">
 
 <!ENTITY pluginWizard.finalPage.description.label            "&brandShortName; finished installing the missing plugins:">
+
+<!ENTITY pluginWizard.finalPage.moreInfo.label               "Find out more about Plugins or manually find missing plugins.">
+<!ENTITY pluginWizard.finalPage.restart.label               "&brandShortName; needs to be restarted for the plugin(s) to work.">

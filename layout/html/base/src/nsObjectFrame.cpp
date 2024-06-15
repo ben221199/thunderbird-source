@@ -119,6 +119,7 @@
 #include "nsIImageLoadingContent.h"
 #include "nsIFocusController.h"
 #include "nsPIDOMWindow.h"
+#include "nsIStringBundle.h"
 
 // headers for plugin scriptability
 #include "nsIScriptGlobalObject.h"
@@ -738,52 +739,6 @@ nsObjectFrame::Init(nsIPresContext*  aPresContext,
       else
         aNewFrame->Destroy(aPresContext);
     }
-
-    // Return early here as we don't want to render the "default
-    // plugin" since this object tag may have children that we'll load
-    // correctly.
-    return rv;
-  }
-
-  if (!sDefaultPluginDisabled) {
-    // Nothing more to do here if the default plugin is enabled.
-    return NS_OK;
-  }
-
-  nsCAutoString type;
-
-  nsCOMPtr<nsIDOMHTMLEmbedElement> embed(do_QueryInterface(mContent));
-
-  if (embed) {
-    nsAutoString tmp;
-    embed->GetType(tmp);
-    CopyUTF16toUTF8(tmp, type);
-  } else {
-    NS_ASSERTION(aContent->Tag() == nsHTMLAtoms::applet,
-                 "Huh, aContent should be an applet tag here!");
-
-    type.Assign("application/x-java-vm");
-  }
-
-  nsCOMPtr<nsIPluginInstance> inst;
-  if (!type.IsEmpty()) {
-    nsCOMPtr<nsIPluginHost> pluginHost = do_GetService(kCPluginManagerCID);
-    if (pluginHost) {
-      if (NS_FAILED(pluginHost->IsPluginEnabledForType(type.get()))) {
-        mIsBrokenPlugin = PR_TRUE;
-
-        FirePluginNotFoundEvent(mContent);
-
-        // Our event registration code expects there to be an instance
-        // owner, create one, even though we don't really need one.
-        mInstanceOwner = new nsPluginInstanceOwner();
-        if(!mInstanceOwner)
-          return NS_ERROR_OUT_OF_MEMORY;
-
-        NS_ADDREF(mInstanceOwner);
-        mInstanceOwner->Init(aPresContext, this);
-      }
-    }
   }
 
   return rv;
@@ -1333,13 +1288,18 @@ nsObjectFrame::Reflow(nsIPresContext*          aPresContext,
   if (NS_FAILED(rv)) {
     // if we got an error, we are probably going to be replaced
 
-    // for a replaced object frame, clear our vertical alignment style info, see bug 36997
-    nsStyleTextReset* text = NS_STATIC_CAST(nsStyleTextReset*,
-      mStyleContext->GetUniqueStyleData(eStyleStruct_TextReset));
-    text->mVerticalAlign.SetNormalValue();
+    if (mContent->Tag() == nsHTMLAtoms::object) {
+      // for a replaced object frame, clear our vertical alignment
+      // style info, see bug 36997
+      nsStyleTextReset* text = NS_STATIC_CAST(nsStyleTextReset*,
+        mStyleContext->GetUniqueStyleData(eStyleStruct_TextReset));
+      text->mVerticalAlign.SetNormalValue();
 
-    //check for alternative content with CantRenderReplacedElement()
-    rv = aPresContext->PresShell()->CantRenderReplacedElement(this);
+      //check for alternative content with CantRenderReplacedElement()
+      rv = aPresContext->PresShell()->CantRenderReplacedElement(this);
+    } else {
+      rv = NS_OK;
+    }
   } else {
     NotifyContentObjectWrapper();
   }
@@ -1707,7 +1667,27 @@ nsObjectFrame::CreateDefaultFrames(nsIPresContext *aPresContext,
   nsCOMPtr<nsIImageLoadingContent> imageLoader = do_QueryInterface(img);
   imageLoader->ImageURIChanged(src);
 
-  text->SetText(NS_LITERAL_STRING("Click here to download plugin"), PR_FALSE);
+  // get the localized text
+  nsXPIDLString missingPluginLabel;
+
+  nsCOMPtr<nsIStringBundleService> stringBundleService =
+    do_GetService(NS_STRINGBUNDLE_CONTRACTID);
+
+  if (stringBundleService) {
+    nsCOMPtr<nsIStringBundle> stringBundle;
+    rv = stringBundleService->CreateBundle(
+      "chrome://mozapps/locale/plugins/plugins.properties", 
+      getter_AddRefs(stringBundle));
+
+    if (NS_SUCCEEDED(rv))
+      rv = stringBundle->GetStringFromName(NS_LITERAL_STRING("missingPlugin.label").get(), 
+                                getter_Copies(missingPluginLabel));
+  }
+
+  if (!stringBundleService || NS_FAILED(rv))
+    missingPluginLabel = NS_LITERAL_STRING("Click here to download plugin.");
+
+  text->SetText(missingPluginLabel, PR_FALSE);
 
   // Resolve style for the div, img, and text nodes.
   nsRefPtr<nsStyleContext> divStyleContext =
@@ -1976,71 +1956,10 @@ nsObjectFrame::Paint(nsIPresContext*      aPresContext,
      * printer.
      */
 
-    PR_LOG(nsObjectFrameLM, PR_LOG_DEBUG, ("nsObjectFrame::Paint() start for X11 platforms\n"));
-           
-    FILE *plugintmpfile = tmpfile();
-    if( !plugintmpfile ) {
-      PR_LOG(nsObjectFrameLM, PR_LOG_DEBUG, ("error: could not open tmp. file, errno=%d\n", errno));
-      return NS_ERROR_FAILURE;
-    }
- 
-    /* Send off print info to plugin */
-    NPPrintCallbackStruct npPrintInfo;
-    npPrintInfo.type = NP_PRINT;
-    npPrintInfo.fp   = plugintmpfile;
-    npprint.print.embedPrint.platformPrint = (void *)&npPrintInfo;
-    npprint.print.embedPrint.window        = window;
-    rv = pi->Print(&npprint);
-    if (NS_FAILED(rv)) {
-      PR_LOG(nsObjectFrameLM, PR_LOG_DEBUG, ("error: plugin returned failure %lx\n", (long)rv));
-      fclose(plugintmpfile);
-      return rv;
-    }
-
-    unsigned char *pluginbuffer;
-    long           fileLength;
-
-    /* Get file size */
-    fseek(plugintmpfile, 0, SEEK_END);
-    fileLength = ftell(plugintmpfile);
-    
-    /* Safeguard against bogus values
-     * (make sure we clamp the size to a reasonable value (say... 128 MB)) */
-    if( fileLength <= 0 || fileLength > (128 * 1024 * 1024) ) {
-      PR_LOG(nsObjectFrameLM, PR_LOG_DEBUG, ("error: file size %ld too large\n", fileLength));
-      fclose(plugintmpfile);
-      return NS_ERROR_FAILURE;
-    }
-
-    pluginbuffer = new unsigned char[fileLength+1];
-    if (!pluginbuffer) {
-      PR_LOG(nsObjectFrameLM, PR_LOG_DEBUG, ("error: no buffer memory for %ld bytes\n", fileLength+1));
-      fclose(plugintmpfile);
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
-
-    /* Read data into temp. buffer */
-    long numBytesRead = 0;
-    fseek(plugintmpfile, 0, SEEK_SET);
-    numBytesRead = fread(pluginbuffer, 1, fileLength, plugintmpfile);
-    
-    if( numBytesRead == fileLength ) {
-      PR_LOG(nsObjectFrameLM, PR_LOG_DEBUG, ("sending %ld bytes of PostScript data to printer\n", numBytesRead));
-
-      /* Send data to printer */
-      aRenderingContext.RenderPostScriptDataFragment(pluginbuffer, numBytesRead);
-    }
-    else
-    {
-      PR_LOG(nsObjectFrameLM, PR_LOG_DEBUG,
-             ("error: bytes read in buffer (%ld) does not match file length (%ld)\n",
-             numBytesRead, fileLength));
-    }
-
-    fclose(plugintmpfile);
-    delete [] pluginbuffer;
-
-    PR_LOG(nsObjectFrameLM, PR_LOG_DEBUG, ("plugin printing done, return code is %lx\n", (long)rv));
+    /* The old unix plugin printing API has been removed to avoid potential
+     * problems with plugins implementing the new API. See bug 234470 and
+     * bug 261589.
+     */
 
 #else  // Windows and non-UNIX, non-Mac(Classic) cases
 
@@ -3640,81 +3559,71 @@ nsresult nsPluginInstanceOwner::DispatchFocusToPlugin(nsIDOMEvent* aFocusEvent)
 /*=============== nsIDOMDragListener ======================*/
 nsresult nsPluginInstanceOwner::DragEnter(nsIDOMEvent* aMouseEvent)
 {
-#if defined(XP_MAC) || defined(XP_MACOSX)
   if (mInstance) {
-    // If this event is going to the plugin, we want to kill it.
-    // Not actually sending drag events to the plugin, since we didn't before.
+    // Let the plugin handle drag events.
     aMouseEvent->PreventDefault();
     nsCOMPtr<nsIDOMNSEvent> nsevent(do_QueryInterface(aMouseEvent));
     if (nsevent) {
       nsevent->PreventBubble();
     }
   }
-#endif
+
   return NS_OK;
 }
 
 nsresult nsPluginInstanceOwner::DragOver(nsIDOMEvent* aMouseEvent)
 {
-#if defined(XP_MAC) || defined(XP_MACOSX)
   if (mInstance) {
-    // If this event is going to the plugin, we want to kill it.
-    // Not actually sending drag events to the plugin, since we didn't before.
+    // Let the plugin handle drag events.
     aMouseEvent->PreventDefault();
     nsCOMPtr<nsIDOMNSEvent> nsevent(do_QueryInterface(aMouseEvent));
     if (nsevent) {
       nsevent->PreventBubble();
     }
   }
-#endif
+
   return NS_OK;
 }
 
 nsresult nsPluginInstanceOwner::DragExit(nsIDOMEvent* aMouseEvent)
 {
-#if defined(XP_MAC) || defined(XP_MACOSX)
   if (mInstance) {
-    // If this event is going to the plugin, we want to kill it.
-    // Not actually sending drag events to the plugin, since we didn't before.
+    // Let the plugin handle drag events.
     aMouseEvent->PreventDefault();
     nsCOMPtr<nsIDOMNSEvent> nsevent(do_QueryInterface(aMouseEvent));
     if (nsevent) {
       nsevent->PreventBubble();
     }
   }
-#endif
+
   return NS_OK;
 }
 
 nsresult nsPluginInstanceOwner::DragDrop(nsIDOMEvent* aMouseEvent)
 {
-#if defined(XP_MAC) || defined(XP_MACOSX)
   if (mInstance) {
-    // If this event is going to the plugin, we want to kill it.
-    // Not actually sending drag events to the plugin, since we didn't before.
+    // Let the plugin handle drag events.
     aMouseEvent->PreventDefault();
     nsCOMPtr<nsIDOMNSEvent> nsevent(do_QueryInterface(aMouseEvent));
     if (nsevent) {
       nsevent->PreventBubble();
     }
   }
-#endif
+
   return NS_OK;
 }
 
 nsresult nsPluginInstanceOwner::DragGesture(nsIDOMEvent* aMouseEvent)
 {
-#if defined(XP_MAC) || defined(XP_MACOSX)
   if (mInstance) {
-    // If this event is going to the plugin, we want to kill it.
-    // Not actually sending drag events to the plugin, since we didn't before.
+    // Let the plugin handle drag events.
     aMouseEvent->PreventDefault();
     nsCOMPtr<nsIDOMNSEvent> nsevent(do_QueryInterface(aMouseEvent));
     if (nsevent) {
       nsevent->PreventBubble();
     }
   }
-#endif
+
   return NS_OK;
 }
 
@@ -3848,12 +3757,6 @@ nsPluginInstanceOwner::MouseMove(nsIDOMEvent* aMouseEvent)
 nsresult
 nsPluginInstanceOwner::MouseDown(nsIDOMEvent* aMouseEvent)
 {
-  if (mOwner->IsBroken()) {
-    FirePluginNotFoundEvent(mOwner->GetContent());
-
-    return NS_OK;
-  }
-
 #if !(defined(XP_MAC) || defined(XP_MACOSX))
   if (!mPluginWindow || nsPluginWindowType_Window == mPluginWindow->type)
     return aMouseEvent->PreventDefault(); // consume event
@@ -3894,6 +3797,14 @@ nsPluginInstanceOwner::MouseUp(nsIDOMEvent* aMouseEvent)
 nsresult
 nsPluginInstanceOwner::MouseClick(nsIDOMEvent* aMouseEvent)
 {
+  if (mOwner->IsBroken()) {
+    FirePluginNotFoundEvent(mOwner->GetContent());
+
+    aMouseEvent->PreventDefault();
+
+    return NS_OK;
+  }
+
   return DispatchMouseToPlugin(aMouseEvent);
 }
 

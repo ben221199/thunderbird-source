@@ -45,9 +45,7 @@ function GetNewMessages(selectedFolders, server, compositeDataSource)
 		{
 			var nsIMsgFolder = Components.interfaces.nsIMsgFolder;
 			msgFolder.biffState = nsIMsgFolder.nsMsgBiffState_NoMail;
-
-			if (msgFolder.hasNewMessages)
-				msgFolder.clearNewMessages();
+			msgFolder.clearNewMessages();
 		}
 		
 		if(compositeDataSource)
@@ -194,7 +192,6 @@ function ComposeMessage(type, format, folder, messageArray)
     // the selected addresses from it
     if (document.commandDispatcher.focusedWindow.document.documentElement.hasAttribute("selectedaddresses"))
       NewMessageToSelectedAddresses(type, format, identity);
-
     else
       msgComposeService.OpenComposeWindow(null, null, type, format, identity, msgWindow);
 		return;
@@ -219,16 +216,26 @@ function ComposeMessage(type, format, folder, messageArray)
 
       var hdr = messenger.messageServiceFromURI(messageUri).messageURIToMsgHdr(messageUri);
       var hintForIdentity = (type == msgComposeType.Template) ? hdr.author : hdr.recipients + hdr.ccList;
+
+        if (folder)
+          server = folder.server;
+        if (server)
+          identity = getIdentityForServer(server, hintForIdentity);
+
+        if (!identity || hintForIdentity.search(identity.email) < 0)
+        {
       var accountKey = hdr.accountKey;
       if (accountKey.length > 0)
       {
         var account = accountManager.getAccount(accountKey);
         if (account)
+            {
           server = account.incomingServer;
-      }
-
       if (server)
         identity = getIdentityForServer(server, hintForIdentity);
+            }
+          }
+        }
 
 			if (type == msgComposeType.Reply || type == msgComposeType.ReplyAll || type == msgComposeType.ForwardInline ||
 				type == msgComposeType.ReplyToGroup || type == msgComposeType.ReplyToSender || 
@@ -247,6 +254,7 @@ function ComposeMessage(type, format, folder, messageArray)
 				uri += messageUri;
 			}
 		}
+
 		if (type == msgComposeType.ForwardAsAttachment)
 			msgComposeService.OpenComposeWindow(null, uri, type, format, identity, msgWindow);
 	}

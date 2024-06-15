@@ -103,13 +103,13 @@
 #include "nsNetCID.h"
 #include "nsNetError.h"
 #include "nsMsgUtils.h"
-#include "nsIRDFService.h"
 #include "nsIMsgMdnGenerator.h"
 #include "nsISmtpServer.h"
 #include "nsIMsgCompose.h"
 #include "nsIRDFService.h"
 #include "nsRDFCID.h"
 #include "nsIMsgAccountManager.h"
+#include "nsNativeCharsetUtils.h" 
 #include "nsIAbCard.h"
 
 static NS_DEFINE_CID(kRDFServiceCID, NS_RDFSERVICE_CID);
@@ -738,7 +738,7 @@ nsMsgComposeAndSend::GatherMimeAttachments()
       {
         nsAutoString error_msg;
         nsAutoString path;
-        nsMsgGetNativePathString(mHTMLFileSpec->GetNativePathCString(),path);
+        NS_CopyNativeToUnicode(nsDependentCString(mHTMLFileSpec->GetNativePathCString()), path);
         nsMsgBuildErrorMessageByID(NS_MSG_UNABLE_TO_OPEN_TMP_FILE, error_msg, &path, nsnull);
         mSendReport->SetMessage(nsIMsgSendReport::process_Current, error_msg.get(), PR_FALSE);
       }
@@ -822,7 +822,7 @@ nsMsgComposeAndSend::GatherMimeAttachments()
     {
       nsAutoString error_msg;
       nsAutoString path;
-      nsMsgGetNativePathString(mTempFileSpec->GetNativePathCString(),path);
+      NS_CopyNativeToUnicode(nsDependentCString(mTempFileSpec->GetNativePathCString()), path);
       nsMsgBuildErrorMessageByID(NS_MSG_UNABLE_TO_OPEN_TMP_FILE, error_msg, &path, nsnull);
       mSendReport->SetMessage(nsIMsgSendReport::process_Current, error_msg.get(), PR_FALSE);
     }
@@ -2328,6 +2328,11 @@ nsMsgComposeAndSend::AddCompFieldLocalAttachments()
                     mimeFinder->GetTypeFromExtension(fileExt.get(), &(m_attachments[newLoc].m_type));
                 }
               }
+#if !defined(XP_MAC) && !defined(XP_MACOSX)
+              if (m_attachments[newLoc].m_type && 
+                  !strcmp(m_attachments[newLoc].m_type, "multipart/appledouble"))
+                PR_FREEIF(m_attachments[newLoc].m_type);
+#endif
             }
           }
         }
@@ -4330,7 +4335,7 @@ nsMsgComposeAndSend::MimeDoFCC(nsFileSpec       *input_file,
     {
       nsAutoString error_msg;
       nsAutoString path;
-      nsMsgGetNativePathString(tFileSpec->GetNativePathCString(),path);
+      NS_CopyNativeToUnicode(nsDependentCString(tFileSpec->GetNativePathCString()), path); 
       nsMsgBuildErrorMessageByID(NS_MSG_UNABLE_TO_OPEN_TMP_FILE, error_msg, &path, nsnull);
       mSendReport->SetMessage(nsIMsgSendReport::process_Current, error_msg.get(), PR_FALSE);
     }
@@ -4350,7 +4355,7 @@ nsMsgComposeAndSend::MimeDoFCC(nsFileSpec       *input_file,
     {
       nsAutoString error_msg;
       nsAutoString path;
-      nsMsgGetNativePathString(input_file->GetNativePathCString(),path);
+      NS_CopyNativeToUnicode(nsDependentCString(input_file->GetNativePathCString()), path);
       nsMsgBuildErrorMessageByID(NS_MSG_UNABLE_TO_OPEN_FILE, error_msg, &path, nsnull);
       mSendReport->SetMessage(nsIMsgSendReport::process_Current, error_msg.get(), PR_FALSE);
     }

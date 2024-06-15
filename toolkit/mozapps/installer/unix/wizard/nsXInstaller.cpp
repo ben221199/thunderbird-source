@@ -156,7 +156,7 @@ BAIL:
 }
 
 int 
-nsXInstaller::RunWizard()
+nsXInstaller::RunWizard(int argc, char **argv)
 {
   int err = OK;
 
@@ -164,6 +164,7 @@ nsXInstaller::RunWizard()
 
   // create the dialog window
   if (gCtx->opt->mMode != nsXIOptions::MODE_SILENT) {
+    gtk_init(&argc, &argv);
     gCtx->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     XI_VERIFY(gCtx->window);
 
@@ -184,19 +185,28 @@ nsXInstaller::RunWizard()
 
     gCtx->header = gtk_event_box_new();
     if (gCtx->opt->mHeaderPixmap) {
-      GdkPixmap *pm = gdk_pixmap_create_from_xpm(GDK_ROOT_PARENT(),
-                                                 NULL, NULL,
-                                                 gCtx->opt->mHeaderPixmap);
+      GdkPixbuf *pb = gdk_pixbuf_new_from_file(gCtx->opt->mHeaderPixmap, NULL);
+      if (pb) {
+        GdkPixmap *pm = NULL;
+        gdk_pixbuf_render_pixmap_and_mask(pb, &pm, NULL, 0);
+        if (pm) {
+          GtkStyle *newStyle =
+            gtk_style_copy(gtk_widget_get_style(gCtx->header));
 
-      if (pm) {
-        GtkStyle *newStyle =
-          gtk_style_copy(gtk_widget_get_style(gCtx->header));
+          newStyle->bg_pixmap[GTK_STATE_NORMAL] = pm;
+          gtk_widget_set_style(gCtx->header, newStyle);
 
-        newStyle->bg_pixmap[GTK_STATE_NORMAL] = pm;
-        gtk_widget_set_style(gCtx->header, newStyle);
+          // newStyle now owns the pixmap, so we don't unref it.
+          g_object_unref(newStyle);
 
-        // newStyle now owns the pixmap, so we don't unref it.
-        g_object_unref(newStyle);
+          // Make the initial window width be as wide as the header.
+          gint width, height;
+          gdk_drawable_get_size(pm, &width, &height);
+          gtk_window_set_default_size(GTK_WINDOW(gCtx->window), width, -1);
+        }
+
+        // We're done with rendering the pixbuf, so destroy it.
+        gdk_pixbuf_unref(pb);
       }
     }
 
@@ -407,15 +417,13 @@ main(int argc, char **argv)
     goto out;
   }
 
-  if ((err = installer->ParseArgs(argc, argv)) != OK)
-    goto out;
-
-  gtk_init(&argc, &argv);
-
   if ((err = installer->ParseConfig()) != OK)
     goto out;
 
-  err = installer->RunWizard();
+  if ((err = installer->ParseArgs(argc, argv)) != OK)
+    goto out;
+
+  err = installer->RunWizard(argc, argv);
 
  out:
   XI_IF_DELETE(installer);
@@ -447,7 +455,9 @@ ErrorHandler(int aErr, const char* aErrMsg)
     sprintf(msg, gCtx->Res("FATAL_ERROR"), aErr, gCtx->Res(errStr));
   }
     
-  if (gCtx->opt->mMode == nsXIOptions::MODE_SILENT) {
+  // lack of gCtx->window indicates we have not yet run RunWizard
+  // and gtk_init
+  if (gCtx->opt->mMode == nsXIOptions::MODE_SILENT || !gCtx->window) {
     fprintf (stderr, "%s\n", msg);
     return aErr;
   }

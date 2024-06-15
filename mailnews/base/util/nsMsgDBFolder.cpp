@@ -54,6 +54,7 @@
 #include "nsXPIDLString.h"
 #include "nsEscape.h"
 #include "nsLocalFolderSummarySpec.h"
+#include "nsMsgI18N.h"
 #include "nsIFileStream.h"
 #include "nsIChannel.h"
 #include "nsITransport.h"
@@ -75,6 +76,7 @@
 #include "nsTextFormatter.h"
 #include "nsCPasswordManager.h"
 #include "nsMsgDBCID.h"
+#include "nsNativeCharsetUtils.h"
 
 #include <time.h>
 
@@ -100,6 +102,7 @@ nsIAtom* nsMsgDBFolder::kTotalMessagesAtom=nsnull;
 nsIAtom* nsMsgDBFolder::kFolderSizeAtom=nsnull;
 nsIAtom* nsMsgDBFolder::kBiffStateAtom=nsnull;
 nsIAtom* nsMsgDBFolder::kNewMessagesAtom=nsnull;
+nsIAtom* nsMsgDBFolder::kInVFEditSearchScopeAtom=nsnull;
 nsIAtom* nsMsgDBFolder::kNumNewBiffMessagesAtom=nsnull;
 nsIAtom* nsMsgDBFolder::kTotalUnreadMessagesAtom=nsnull;
 nsIAtom* nsMsgDBFolder::kFlaggedAtom=nsnull;
@@ -136,6 +139,7 @@ const nsStaticAtom nsMsgDBFolder::folder_atoms[] = {
   { "JunkStatusChanged", &nsMsgDBFolder::mJunkStatusChangedAtom },
   { "BiffState", &nsMsgDBFolder::kBiffStateAtom },
   { "NewMessages", &nsMsgDBFolder::kNewMessagesAtom },
+  { "inVFEditSearchScope", &nsMsgDBFolder::kInVFEditSearchScopeAtom },
   { "NumNewBiffMessages", &nsMsgDBFolder::kNumNewBiffMessagesAtom },
   { "Name", &nsMsgDBFolder::kNameAtom },
   { "TotalUnreadMessages", &nsMsgDBFolder::kTotalUnreadMessagesAtom },
@@ -168,6 +172,7 @@ nsMsgDBFolder::nsMsgDBFolder(void)
   mHaveParsedURI(PR_FALSE),
   mIsServerIsValid(PR_FALSE),
   mIsServer(PR_FALSE),
+  mInVFEditSearchScope (PR_FALSE),
   mBaseMessageURI(nsnull)
 {
   NS_NewISupportsArray(getter_AddRefs(mSubFolders));
@@ -276,22 +281,30 @@ NS_IMETHODIMP nsMsgDBFolder::StartFolderLoading(void)
 
 NS_IMETHODIMP nsMsgDBFolder::EndFolderLoading(void)
 {
-	if(mDatabase)
-		mDatabase->AddListener(this);
-	mAddListener = PR_TRUE;
-	UpdateSummaryTotals(PR_TRUE);
+  if(mDatabase)
+    mDatabase->AddListener(this);
+  mAddListener = PR_TRUE;
+  UpdateSummaryTotals(PR_TRUE);
+  
+  //GGGG check for new mail here and call SetNewMessages...?? -- ONE OF THE 2 PLACES
+  if(mDatabase)
+  {
+    nsresult rv;
+    PRBool hasNewMessages;
+    
+    rv = mDatabase->HasNew(&hasNewMessages);
+    if (!hasNewMessages)
+    {
+      for (PRUint32 keyIndex = 0; keyIndex < m_newMsgs.GetSize(); keyIndex++)
+        mDatabase->AddToNewList(m_newMsgs[keyIndex]);
 
-	//GGGG			 check for new mail here and call SetNewMessages...?? -- ONE OF THE 2 PLACES
-	if(mDatabase)
-	{
-	    nsresult rv;
-		PRBool hasNewMessages;
-
-		rv = mDatabase->HasNew(&hasNewMessages);
-		SetHasNewMessages(hasNewMessages);
-	}
-
-	return NS_OK;
+      hasNewMessages = (m_newMsgs.GetSize() > 0);
+      m_newMsgs.RemoveAll();
+    }
+    SetHasNewMessages(hasNewMessages);
+  }
+  
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -438,8 +451,15 @@ NS_IMETHODIMP nsMsgDBFolder::ClearNewMessages()
   //If there's no db then there's nothing to clear.
   if(mDatabase)
   {
+    nsMsgKeyArray *newMessageKeys = nsnull;
+    rv = mDatabase->GetNewList(&newMessageKeys);
+    if (NS_SUCCEEDED(rv) && newMessageKeys)
+      m_saveNewMsgs.CopyArray(newMessageKeys);
+    NS_DELETEXPCOM (newMessageKeys);
     rv = mDatabase->ClearNewList(PR_TRUE);
+    m_newMsgs.RemoveAll();
   }
+  mNumNewBiffMessages = 0;
   return rv;
 }
 
@@ -707,6 +727,12 @@ nsresult nsMsgDBFolder::CreateFileSpecForDB(const char *userLeafName, nsFileSpec
 {
   NS_ENSURE_ARG_POINTER(dbFileSpec);
   NS_ENSURE_ARG_POINTER(userLeafName);
+
+  // XXX : This function is only called by nsImapMailFolder which calls
+  // this function with UTF-7 (ASCII only) userLeafName so that we can
+  // use 'char' version of NS_MsgHasIfNcessary (bug 264071). 
+  // If this becomes not the case any more, we should use PRUnichar-version,
+  // instead.
   nsCAutoString proposedDBName(userLeafName);
   NS_MsgHashIfNecessary(proposedDBName);
 
@@ -757,6 +783,14 @@ nsMsgDBFolder::SetMsgDatabase(nsIMsgDatabase *aMsgDatabase)
     mDatabase->Commit(nsMsgDBCommitType::kLargeCommit);
     mDatabase->RemoveListener(this);
     mDatabase->ClearCachedHdrs();
+    if (!aMsgDatabase)
+    {
+      nsMsgKeyArray *newMessageKeys = nsnull;
+      nsresult rv = mDatabase->GetNewList(&newMessageKeys);
+      if (NS_SUCCEEDED(rv) && newMessageKeys)
+        m_newMsgs.CopyArray(newMessageKeys);
+      NS_DELETEXPCOM (newMessageKeys);
+    }
   }
   mDatabase = aMsgDatabase;
 
@@ -787,15 +821,13 @@ nsMsgDBFolder::OnJunkScoreChanged(nsIDBChangeListener * aInstigator)
 
 
 // 1.  When the status of a message changes.
-NS_IMETHODIMP nsMsgDBFolder::OnKeyChange(nsMsgKey aKeyChanged, PRUint32 aOldFlags, PRUint32 aNewFlags, 
+NS_IMETHODIMP nsMsgDBFolder::OnHdrChange(nsIMsgDBHdr *aHdrChanged, PRUint32 aOldFlags, PRUint32 aNewFlags, 
                                          nsIDBChangeListener * aInstigator)
 {
-  nsCOMPtr<nsIMsgDBHdr> pMsgDBHdr;
-  nsresult rv = mDatabase->GetMsgHdrForKey(aKeyChanged, getter_AddRefs(pMsgDBHdr));
-  if(NS_SUCCEEDED(rv) && pMsgDBHdr)
+  if(aHdrChanged)
   {
-    nsCOMPtr<nsISupports> msgSupports(do_QueryInterface(pMsgDBHdr, &rv));
-    if(NS_SUCCEEDED(rv))
+    nsCOMPtr<nsISupports> msgSupports(do_QueryInterface(aHdrChanged));
+    if(msgSupports)
       SendFlagNotifications(msgSupports, aOldFlags, aNewFlags);
     UpdateSummaryTotals(PR_TRUE);
   }
@@ -838,7 +870,7 @@ nsresult nsMsgDBFolder::CheckWithNewMessagesStatus(PRBool messageAdded)
 
 // 3.  When a message gets deleted, we need to see if it was new
 //     When we lose a new message we need to check if there are still new messages 
-NS_IMETHODIMP nsMsgDBFolder::OnKeyDeleted(nsMsgKey aKeyChanged, nsMsgKey  aParentKey, PRInt32 aFlags, 
+NS_IMETHODIMP nsMsgDBFolder::OnHdrDeleted(nsIMsgDBHdr *aHdrChanged, nsMsgKey  aParentKey, PRInt32 aFlags, 
                           nsIDBChangeListener * aInstigator)
 {
     // check to see if a new message is being deleted
@@ -846,62 +878,55 @@ NS_IMETHODIMP nsMsgDBFolder::OnKeyDeleted(nsMsgKey aKeyChanged, nsMsgKey  aParen
     // the folder newness has to be cleared.
     CheckWithNewMessagesStatus(PR_FALSE);
 
-    //Do both flat and thread notifications
-    return OnKeyAddedOrDeleted(aKeyChanged, aParentKey, aFlags, aInstigator, PR_FALSE, PR_TRUE, PR_TRUE);
+    return OnHdrAddedOrDeleted(aHdrChanged, PR_FALSE);
 }
 
 // 2.  When a new messages gets added, we need to see if it's new.
-NS_IMETHODIMP nsMsgDBFolder::OnKeyAdded(nsMsgKey aKeyChanged, nsMsgKey  aParentKey , PRInt32 aFlags, 
+NS_IMETHODIMP nsMsgDBFolder::OnHdrAdded(nsIMsgDBHdr *aHdrChanged, nsMsgKey  aParentKey , PRInt32 aFlags, 
                         nsIDBChangeListener * aInstigator)
 {
   if(aFlags & MSG_FLAG_NEW) 
     CheckWithNewMessagesStatus(PR_TRUE);
   
   //Do both flat and thread notifications
-  return OnKeyAddedOrDeleted(aKeyChanged, aParentKey, aFlags, aInstigator, PR_TRUE, PR_TRUE, PR_TRUE);
+  return OnHdrAddedOrDeleted(aHdrChanged, PR_TRUE);
 }
 
-nsresult nsMsgDBFolder::OnKeyAddedOrDeleted(nsMsgKey aKeyChanged, nsMsgKey  aParentKey , PRInt32 aFlags, 
-                        nsIDBChangeListener * aInstigator, PRBool added, PRBool doFlat, PRBool doThread)
+nsresult nsMsgDBFolder::OnHdrAddedOrDeleted(nsIMsgDBHdr *aHdrChanged, PRBool added)
 {
-  nsCOMPtr<nsIMsgDBHdr> msgDBHdr;
-  nsresult rv = mDatabase->GetMsgHdrForKey(aKeyChanged, getter_AddRefs(msgDBHdr));
-  if(NS_SUCCEEDED(rv) && msgDBHdr)
+  if(aHdrChanged)
   {
-    nsCOMPtr<nsISupports> msgSupports(do_QueryInterface(msgDBHdr));
+    nsCOMPtr<nsISupports> msgSupports(do_QueryInterface(aHdrChanged));
     nsCOMPtr<nsISupports> folderSupports;
-    rv = QueryInterface(NS_GET_IID(nsISupports), getter_AddRefs(folderSupports));
-    if(msgSupports && NS_SUCCEEDED(rv) && doFlat)
+    nsresult rv = QueryInterface(NS_GET_IID(nsISupports), getter_AddRefs(folderSupports));
+    if(msgSupports && NS_SUCCEEDED(rv))
     {
       if(added)
         NotifyItemAdded(folderSupports, msgSupports, "flatMessageView");
       else
         NotifyItemDeleted(folderSupports, msgSupports, "flatMessageView");
     }
-    if(msgSupports && folderSupports)
-    {
-      if(added)
-        NotifyItemAdded(folderSupports, msgSupports, "threadMessageView");
-      else
-        NotifyItemDeleted(folderSupports, msgSupports, "threadMessageView");
-    }
     UpdateSummaryTotals(PR_TRUE);
   }
   return NS_OK;
-  
 }
 
 
 NS_IMETHODIMP nsMsgDBFolder::OnParentChanged(nsMsgKey aKeyChanged, nsMsgKey oldParent, nsMsgKey newParent, 
 						nsIDBChangeListener * aInstigator)
 {
+  nsCOMPtr<nsIMsgDBHdr> hdrChanged;
+  mDatabase->GetMsgHdrForKey(aKeyChanged, getter_AddRefs(hdrChanged));
   //In reality we probably want to just change the parent because otherwise we will lose things like
   //selection.
-
+  
+  if (hdrChanged)
+  {
   //First delete the child from the old threadParent
-  OnKeyAddedOrDeleted(aKeyChanged, oldParent, 0, aInstigator, PR_FALSE, PR_FALSE, PR_TRUE);
+    OnHdrAddedOrDeleted(hdrChanged, PR_FALSE);
   //Then add it to the new threadParent
-  OnKeyAddedOrDeleted(aKeyChanged, newParent, 0, aInstigator, PR_TRUE, PR_FALSE, PR_TRUE);
+    OnHdrAddedOrDeleted(hdrChanged, PR_TRUE);
+  }
   return NS_OK;
 }
 
@@ -1714,6 +1739,7 @@ nsMsgDBFolder::SetDBTransferInfo(nsIDBFolderInfo *aTransferInfo)
     db->GetDBFolderInfo(getter_AddRefs(dbFolderInfo));
     if(dbFolderInfo)
       dbFolderInfo->InitFromTransferInfo(aTransferInfo);
+    db->SetSummaryValid(PR_TRUE);
   }
   return NS_OK;
 }
@@ -1815,7 +1841,8 @@ nsMsgDBFolder::CallFilterPlugins(nsIMsgWindow *aMsgWindow, PRBool *aFiltersRun)
   if (mFlags & (MSG_FOLDER_FLAG_JUNK | MSG_FOLDER_FLAG_TRASH |
                MSG_FOLDER_FLAG_SENTMAIL | MSG_FOLDER_FLAG_QUEUE |
                MSG_FOLDER_FLAG_DRAFTS | MSG_FOLDER_FLAG_TEMPLATES |
-               MSG_FOLDER_FLAG_IMAP_PUBLIC | MSG_FOLDER_FLAG_IMAP_OTHER_USER))
+               MSG_FOLDER_FLAG_IMAP_PUBLIC | MSG_FOLDER_FLAG_IMAP_OTHER_USER)
+       && !(mFlags & MSG_FOLDER_FLAG_INBOX))
     return NS_OK;
 
   nsresult rv = GetServer(getter_AddRefs(server));
@@ -1859,7 +1886,10 @@ nsMsgDBFolder::CallFilterPlugins(nsIMsgWindow *aMsgWindow, PRBool *aFiltersRun)
   nsMsgKeyArray *newMessageKeys;
   rv = mDatabase->GetNewList(&newMessageKeys);
   NS_ENSURE_SUCCESS(rv, rv);
+  if (!newMessageKeys && m_saveNewMsgs.GetSize() > 0)
+    newMessageKeys = new nsMsgKeyArray;
 
+  newMessageKeys->InsertAt(0, &m_saveNewMsgs);
   // if there weren't any, just return 
   //
   if (!newMessageKeys || !newMessageKeys->GetSize()) 
@@ -1958,6 +1988,7 @@ nsMsgDBFolder::CallFilterPlugins(nsIMsgWindow *aMsgWindow, PRBool *aFiltersRun)
     PR_Free(messageURIs);
 
   }
+  m_saveNewMsgs.RemoveAll();
   NS_DELETEXPCOM(newMessageKeys);
   return rv;
 }
@@ -2049,7 +2080,7 @@ nsresult nsMsgDBFolder::PromptForCachePassword(nsIMsgIncomingServer *server, nsI
   return (!passwordCorrect) ? NS_ERROR_FAILURE : rv;
 }
 
-
+// this gets called after the last junk mail classification has run.
 nsresult nsMsgDBFolder::PerformBiffNotifications(void)
 {
   nsCOMPtr<nsIMsgIncomingServer> server;
@@ -3125,15 +3156,225 @@ NS_IMETHODIMP nsMsgDBFolder::EmptyTrash(nsIMsgWindow *msgWindow, nsIUrlListener 
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-NS_IMETHODIMP nsMsgDBFolder::Rename(const PRUnichar *name, nsIMsgWindow *msgWindow)
+nsresult 
+nsMsgDBFolder::CheckIfFolderExists(const PRUnichar *newFolderName, nsIMsgFolder *parentFolder, nsIMsgWindow *msgWindow)
 {
-  nsresult status = NS_OK;
-  nsAutoString unicharString(name);
-  status = SetName((PRUnichar *) unicharString.get());
-  //After doing a SetName we need to make sure that broadcasting this message causes a
-  //new sort to happen.
-  return status;
+  NS_ENSURE_ARG_POINTER(newFolderName);
+  NS_ENSURE_ARG_POINTER(parentFolder);
+  nsCOMPtr<nsIEnumerator> subfolders;
+  nsresult rv = parentFolder->GetSubFolders(getter_AddRefs(subfolders));
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = subfolders->First();    //will fail if no subfolders 
+  while (NS_SUCCEEDED(rv))
+  {
+    nsCOMPtr<nsISupports> supports;
+    subfolders->CurrentItem(getter_AddRefs(supports));
+    nsCOMPtr<nsIMsgFolder> msgFolder = do_QueryInterface(supports);
+    nsAutoString folderNameString;
+    PRUnichar *folderName;
+    if (msgFolder)
+      msgFolder->GetName(&folderName);
+    folderNameString.Adopt(folderName);
+    if (folderNameString.Equals(newFolderName, nsCaseInsensitiveStringComparator()))
+    {
+      if (msgWindow)
+        ThrowAlertMsg("folderExists", msgWindow);
+      return NS_MSG_FOLDER_EXISTS;
+    }
+    rv = subfolders->Next();
+  }
+  return NS_OK;
+}
 
+
+nsresult
+nsMsgDBFolder::AddDirectorySeparator(nsFileSpec &path)
+{
+    nsAutoString sep;
+    nsresult rv = nsGetMailFolderSeparator(sep);
+    if (NS_FAILED(rv)) return rv;
+    
+    // see if there's a dir with the same name ending with .sbd
+    // unfortunately we can't just say:
+    //          path += sep;
+    // here because of the way nsFileSpec concatenates
+ 
+    nsCAutoString str(path.GetNativePathCString());
+    str.AppendWithConversion(sep);
+    path = str.get();
+
+    return rv;
+}
+
+/* Finds the directory associated with this folder.  That is if the path is
+   c:\Inbox, it will return c:\Inbox.sbd if it succeeds.  If that path doesn't
+   currently exist then it will create it
+  */
+nsresult nsMsgDBFolder::CreateDirectoryForFolder(nsFileSpec &path)
+{
+  nsresult rv = NS_OK;
+  
+  nsCOMPtr<nsIFileSpec> pathSpec;
+  rv = GetPath(getter_AddRefs(pathSpec));
+  if (NS_FAILED(rv)) return rv;
+  
+  rv = pathSpec->GetFileSpec(&path);
+  if (NS_FAILED(rv)) return rv;
+  
+  if(!path.IsDirectory())
+  {
+    //If the current path isn't a directory, add directory separator
+    //and test it out.
+    rv = AddDirectorySeparator(path);
+    if(NS_FAILED(rv))
+      return rv;
+    
+    //If that doesn't exist, then we have to create this directory
+    if(!path.IsDirectory())
+    {
+      //If for some reason there's a file with the directory separator
+      //then we are going to fail.
+      if(path.Exists())
+      {
+        return NS_MSG_COULD_NOT_CREATE_DIRECTORY;
+      }
+      //otherwise we need to create a new directory.
+      else
+      {
+        nsFileSpec tempPath(path.GetNativePathCString(), PR_TRUE); // create intermediate directories
+        path.CreateDirectory();
+        //Above doesn't return an error value so let's see if
+        //it was created.
+        if(!path.IsDirectory())
+          return NS_MSG_COULD_NOT_CREATE_DIRECTORY;
+      }
+    }
+  }
+  
+  return rv;
+}
+
+
+
+NS_IMETHODIMP nsMsgDBFolder::Rename(const PRUnichar *aNewName, nsIMsgWindow *msgWindow)
+{
+  nsCOMPtr<nsIFileSpec> oldPathSpec;
+  nsCOMPtr<nsIAtom> folderRenameAtom;
+  nsresult rv = GetPath(getter_AddRefs(oldPathSpec));
+  if (NS_FAILED(rv)) 
+    return rv;
+  nsCOMPtr<nsIMsgFolder> parentFolder;
+  rv = GetParentMsgFolder(getter_AddRefs(parentFolder));
+  if (NS_FAILED(rv)) 
+    return rv;
+  nsCOMPtr<nsISupports> parentSupport = do_QueryInterface(parentFolder);
+  
+  nsFileSpec fileSpec;
+  oldPathSpec->GetFileSpec(&fileSpec);
+  nsLocalFolderSummarySpec oldSummarySpec(fileSpec);
+  nsFileSpec dirSpec;
+  
+  PRUint32 cnt = 0;
+  if (mSubFolders)
+    mSubFolders->Count(&cnt);
+  
+  if (cnt > 0)
+    rv = CreateDirectoryForFolder(dirSpec);
+  
+  // convert from PRUnichar* to char* due to not having Rename(PRUnichar*)
+  // function in nsIFileSpec 
+
+  nsAutoString safeName(aNewName);
+  NS_MsgHashIfNecessary(safeName);
+  nsCAutoString newDiskName;
+  if (NS_FAILED(NS_CopyUnicodeToNative(safeName, newDiskName)))
+    return NS_ERROR_FAILURE;
+  
+  nsXPIDLCString oldLeafName;
+  oldPathSpec->GetLeafName(getter_Copies(oldLeafName));
+  
+  if (mName.Equals(aNewName, nsCaseInsensitiveStringComparator()))
+  {
+    if(msgWindow)
+      rv = ThrowAlertMsg("folderExists", msgWindow);
+    return NS_MSG_FOLDER_EXISTS;
+  }
+  else
+  {
+    nsCOMPtr <nsIFileSpec> parentPathSpec;
+    parentFolder->GetPath(getter_AddRefs(parentPathSpec));
+    NS_ENSURE_SUCCESS(rv,rv);
+    
+    nsFileSpec parentPath;
+    parentPathSpec->GetFileSpec(&parentPath);
+    NS_ENSURE_SUCCESS(rv,rv);
+    
+    if (!parentPath.IsDirectory())
+      AddDirectorySeparator(parentPath);
+    
+    rv = CheckIfFolderExists(aNewName, parentFolder, msgWindow);
+    if (NS_FAILED(rv)) 
+      return rv;
+  }
+  
+  ForceDBClosed();
+  
+  nsCAutoString newNameDirStr(newDiskName);  //save of dir name before appending .msf 
+  
+  if (! (mFlags & MSG_FOLDER_FLAG_VIRTUAL))
+    rv = oldPathSpec->Rename(newDiskName.get());
+  if (NS_SUCCEEDED(rv))
+  {
+    newDiskName += ".msf";
+    oldSummarySpec.Rename(newDiskName.get());
+  }
+  else
+  {
+    ThrowAlertMsg("folderRenameFailed", msgWindow);
+    return rv;
+  }
+  
+  if (NS_SUCCEEDED(rv) && cnt > 0) 
+  {
+    // rename "*.sbd" directory
+    newNameDirStr += ".sbd";
+    dirSpec.Rename(newNameDirStr.get());
+  }
+  
+  nsCOMPtr<nsIMsgFolder> newFolder;
+  if (parentSupport)
+  {
+    nsAutoString newFolderName(aNewName);
+    rv = parentFolder->AddSubfolder(newFolderName, getter_AddRefs(newFolder));
+    if (newFolder) 
+    {
+      newFolder->SetPrettyName(newFolderName.get());
+      newFolder->SetFlags(mFlags);
+      PRBool changed = PR_FALSE;
+      MatchOrChangeFilterDestination(newFolder, PR_TRUE /*caseInsenstive*/, &changed);
+      if (changed)
+        AlertFilterChanged(msgWindow);
+      
+      if (cnt > 0)
+        newFolder->RenameSubFolders(msgWindow, this);
+      
+      if (parentFolder)
+      {
+        SetParent(nsnull);
+        parentFolder->PropagateDelete(this, PR_FALSE, msgWindow);
+        
+        nsCOMPtr<nsISupports> newFolderSupports = do_QueryInterface(newFolder);
+        nsCOMPtr<nsISupports> parentSupports = do_QueryInterface(parentFolder);
+        if(newFolderSupports && parentSupports)
+        {
+          NotifyItemAdded(parentSupports, newFolderSupports, "folderView");
+        }
+      }
+      folderRenameAtom = do_GetAtom("RenameCompleted");
+      newFolder->NotifyFolderEvent(folderRenameAtom);
+    }
+  }
+  return rv;
 }
 
 NS_IMETHODIMP nsMsgDBFolder::RenameSubFolders(nsIMsgWindow *msgWindow, nsIMsgFolder *oldFolder)
@@ -3857,7 +4098,8 @@ NS_IMETHODIMP nsMsgDBFolder::GetNumNewMessages(PRBool deep, PRInt32 *aNumNewMess
 {
   NS_ENSURE_ARG_POINTER(aNumNewMessages);
 
-  PRInt32 numNewMessages = mNumNewBiffMessages;
+  PRInt32 numNewMessages = (!deep || ! (mFlags & MSG_FOLDER_FLAG_VIRTUAL))
+    ? mNumNewBiffMessages : 0;
   if (deep)
   {
     PRUint32 count;
@@ -4706,3 +4948,16 @@ NS_IMETHODIMP nsMsgDBFolder::CompareSortKeys(nsIMsgFolder *aFolder, PRInt32 *sor
   return rv;
 }
 
+NS_IMETHODIMP nsMsgDBFolder::GetInVFEditSearchScope (PRBool *aInVFEditSearchScope)
+{
+  *aInVFEditSearchScope = mInVFEditSearchScope;
+  return NS_OK;
+}
+
+NS_IMETHODIMP nsMsgDBFolder::SetInVFEditSearchScope (PRBool aInVFEditSearchScope, PRBool aSetOnSubFolders)
+{
+  PRBool oldInVFEditSearchScope = mInVFEditSearchScope;
+  mInVFEditSearchScope = aInVFEditSearchScope;
+  NotifyBoolPropertyChanged(kInVFEditSearchScopeAtom, oldInVFEditSearchScope, mInVFEditSearchScope);
+  return NS_OK;
+}

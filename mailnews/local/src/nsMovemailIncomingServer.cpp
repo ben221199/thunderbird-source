@@ -76,7 +76,7 @@ nsresult
 nsMovemailIncomingServer::GetLocalStoreType(char **type)
 {
     NS_ENSURE_ARG_POINTER(type);
-    *type = nsCRT::strdup("mailbox");
+    *type = strdup("mailbox");
     return NS_OK;
 }
 
@@ -276,6 +276,6 @@ nsMovemailIncomingServer::GetCanSearchMessages(PRBool *canSearchMessages)
 NS_IMETHODIMP 
 nsMovemailIncomingServer::GetAccountManagerChrome(nsAString& aResult)
 {
-    aResult = NS_LITERAL_STRING("am-serverwithnoidentities.xul");
+    aResult = NS_LITERAL_STRING("am-main.xul");
     return NS_OK;
 }

@@ -319,14 +319,60 @@ nsShouldIgnoreFile(nsString& name)
     return PR_TRUE;
 }
 
+// this is only called for virtual folders, currently.
 NS_IMETHODIMP nsImapMailFolder::AddSubfolder(const nsAString &aName,
                                    nsIMsgFolder** aChild)
 {
-  nsresult rv = nsMsgDBFolder::AddSubfolder(aName, aChild);
-  NS_ENSURE_SUCCESS(rv, rv);
+  NS_ENSURE_ARG_POINTER(aChild);
+  
+  PRInt32 flags = 0;
+  nsresult rv;
+  nsCOMPtr<nsIRDFService> rdf = do_GetService("@mozilla.org/rdf/rdf-service;1", &rv);
+  NS_ENSURE_SUCCESS(rv,rv);
+  
+  nsCAutoString uri(mURI);
+  uri.Append('/');
+  
+  // convert name to imap modified utf7, like an imap server would
+  nsCAutoString utfFolderName;
+  utfFolderName.Assign(CreateUtf7ConvertedStringFromUnicode(PromiseFlatString(aName).get()));
+  
+  uri += utfFolderName.get();
+  
+  nsCOMPtr <nsIMsgFolder> msgFolder;
+  rv = GetChildWithURI(uri.get(), PR_FALSE/*deep*/, PR_TRUE /*case Insensitive*/, getter_AddRefs(msgFolder));  
+  if (NS_SUCCEEDED(rv) && msgFolder)
+    return NS_MSG_FOLDER_EXISTS;
+  
+  nsCOMPtr<nsIRDFResource> res;
+  rv = rdf->GetResource(uri, getter_AddRefs(res));
+  if (NS_FAILED(rv))
+    return rv;
+  
+  nsCOMPtr<nsIMsgFolder> folder(do_QueryInterface(res, &rv));
+  if (NS_FAILED(rv))
+    return rv;
+  
+  folder->GetFlags((PRUint32 *)&flags);
+  
+  flags |= MSG_FOLDER_FLAG_MAIL;
+  
+  folder->SetParent(this);
+  
+  folder->SetFlags(flags);
+  
+  nsCOMPtr<nsISupports> supports = do_QueryInterface(folder);
+  if(folder)
+    mSubFolders->AppendElement(supports);
+  NS_ADDREF(*aChild = folder);
+  
   nsCOMPtr <nsIMsgImapMailFolder> imapChild = do_QueryInterface(*aChild);
   if (imapChild)
+  {
+    NS_LossyConvertUTF16toASCII folderCName(aName);
+    imapChild->SetOnlineName(folderCName.get());
     imapChild->SetHierarchyDelimiter(m_hierarchyDelimiter);
+  }
   return rv;
 }
 
@@ -482,6 +528,14 @@ nsresult nsImapMailFolder::CreateSubFolders(nsFileSpec &path)
         nsXPIDLString unicodeName;
         nsXPIDLCString onlineFullUtf7Name;
 
+        PRUint32 folderFlags;
+        rv = cacheElement->GetInt32Property("flags", (PRInt32 *) &folderFlags);
+        if (NS_SUCCEEDED(rv) && folderFlags & MSG_FOLDER_FLAG_VIRTUAL) //ignore virtual folders
+          continue;
+        PRInt32 hierarchyDelimiter;
+        rv = cacheElement->GetInt32Property("hierDelim", &hierarchyDelimiter);
+        if (NS_SUCCEEDED(rv) && hierarchyDelimiter == kOnlineHierarchySeparatorUnknown)
+          continue; // ignore .msf files for folders with unknown delimiter.
         rv = cacheElement->GetStringProperty("onlineName", getter_Copies(onlineFullUtf7Name));
         if (NS_SUCCEEDED(rv) && onlineFullUtf7Name.get() && strlen(onlineFullUtf7Name.get()))
         {
@@ -843,7 +897,11 @@ NS_IMETHODIMP nsImapMailFolder::CreateClientSubfolderInfo(const char *folderName
         parentName.Truncate(folderStart);
 
 	// the parentName might be too long or have some illegal chars
-        // so we make it safe
+    // so we make it safe.
+    // XXX Here it's assumed that IMAP folder names are stored locally 
+    // in UTF-7 (ASCII-only) as is stored remotely.  If we ever change
+    // this, we have to work with nsString instead of nsCString 
+    // (ref. bug 264071)
         nsCAutoString safeParentName;
         safeParentName.AssignWithConversion(parentName);
         NS_MsgHashIfNecessary(safeParentName);
@@ -1447,6 +1505,8 @@ NS_IMETHODIMP nsImapMailFolder::Delete ()
 
 NS_IMETHODIMP nsImapMailFolder::Rename (const PRUnichar *newName, nsIMsgWindow *msgWindow )
 {
+    if (mFlags & MSG_FOLDER_FLAG_VIRTUAL)
+      return nsMsgDBFolder::Rename(newName, msgWindow);
     nsresult rv = NS_ERROR_FAILURE;
     nsAutoString newNameStr(newName);
     if (newNameStr.FindChar(m_hierarchyDelimiter,0) != -1)
@@ -1537,6 +1597,10 @@ NS_IMETHODIMP nsImapMailFolder::PrepareToRename()
 
 NS_IMETHODIMP nsImapMailFolder::RenameLocal(const char *newName, nsIMsgFolder *parent)
 {
+    // XXX Here it's assumed that IMAP folder names are stored locally 
+    // in UTF-7 (ASCII-only) as is stored remotely.  If we ever change
+    // this, we have to work with nsString instead of nsCString 
+    // (ref. bug 264071)
     nsCAutoString leafname(newName);
     nsCAutoString parentName;
     // newName always in the canonical form "greatparent/parentname/leafname"
@@ -1772,7 +1836,9 @@ nsImapMailFolder::MarkMessagesRead(nsISupportsArray *messages, PRBool markRead)
     rv = BuildIdsAndKeyArray(messages, messageIds, keysToMarkRead);
     if (NS_FAILED(rv)) return rv;
 
-    rv = StoreImapFlags(kImapMsgSeenFlag, markRead,  keysToMarkRead.GetArray(), keysToMarkRead.GetSize());
+    StoreImapFlags(kImapMsgSeenFlag, markRead,  keysToMarkRead.GetArray(), keysToMarkRead.GetSize());
+    rv = GetDatabase(nsnull);
+    if (NS_SUCCEEDED(rv))
     mDatabase->Commit(nsMsgDBCommitType::kLargeCommit);
   }
   return rv;
@@ -2657,7 +2723,8 @@ NS_IMETHODIMP nsImapMailFolder::UpdateImapMailboxInfo(
     SyncFlags(flagState);
     PRInt32 numUnreadFromServer;
     aSpec->GetNumUnseenMessages(&numUnreadFromServer);
-    if (mNumUnreadMessages + keysToFetch.GetSize() > numUnreadFromServer)
+    if (mNumUnreadMessages + keysToFetch.GetSize() > numUnreadFromServer
+      && mDatabase)
       mDatabase->SyncCounts();
 
     if (keysToFetch.GetSize())
@@ -3973,6 +4040,12 @@ nsImapMailFolder::ParseAdoptedMsgLine(const char *adoptedMessageLine, nsMsgKey u
   }
   if (m_tempMessageStream)
   {
+      nsCOMPtr <nsISeekableStream> seekable;
+
+      seekable = do_QueryInterface(m_tempMessageStream);
+
+      if (seekable)
+        seekable->Seek(PR_SEEK_END, 0);
      rv = m_tempMessageStream->Write(adoptedMessageLine, 
                   PL_strlen(adoptedMessageLine), &count);
      NS_ASSERTION(NS_SUCCEEDED(rv), "failed to write to stream");
@@ -5941,56 +6014,22 @@ nsImapMailFolder::SetUrlState(nsIImapProtocol* aProtocol,
   {
     ProgressStatus(aProtocol, IMAP_DONE, nsnull);
     m_urlRunning = PR_FALSE;
-    EndOfflineDownload();
-    if (m_downloadingFolderForOfflineUse)
+    // if no protocol, then we're reading from the mem or disk cache
+    // and we don't want to end the offline download just yet.
+    if (aProtocol)
     {
-      ReleaseSemaphore(NS_STATIC_CAST(nsIMsgImapMailFolder*, this));
-      m_downloadingFolderForOfflineUse = PR_FALSE;
+      EndOfflineDownload();
+      if (m_downloadingFolderForOfflineUse)
+      {
+        ReleaseSemaphore(NS_STATIC_CAST(nsIMsgImapMailFolder*, this));
+        m_downloadingFolderForOfflineUse = PR_FALSE;
+      }
     }
   }
 
     if (aUrl)
         return aUrl->SetUrlState(isRunning, statusCode);
     return statusCode;
-}
-
-nsresult
-nsImapMailFolder::CreateDirectoryForFolder(nsFileSpec &path) //** dup
-{
-  nsresult rv = NS_OK;
-
-  if(!path.IsDirectory())
-  {
-    //If the current path isn't a directory, add directory separator
-    //and test it out.
-    rv = AddDirectorySeparator(path);
-    if(NS_FAILED(rv))
-      return rv;
-
-    nsFileSpec tempPath(path.GetNativePathCString(), PR_TRUE);  // create incoming directories.
-
-    //If that doesn't exist, then we have to create this directory
-    if(!path.IsDirectory())
-    {
-      //If for some reason there's a file with the directory separator
-      //then we are going to fail.
-      if(path.Exists())
-      {
-        return NS_MSG_COULD_NOT_CREATE_DIRECTORY;
-      }
-      //otherwise we need to create a new directory.
-      else
-      {
-        path.CreateDirectory();
-        //Above doesn't return an error value so let's see if
-        //it was created.
-        if(!path.IsDirectory())
-          return NS_MSG_COULD_NOT_CREATE_DIRECTORY;
-      }
-    }
-  }
-
-  return rv;
 }
 
 // used when copying from local mail folder, or other imap server)
@@ -6634,29 +6673,124 @@ nsImapMailFolder::CopyFolder(nsIMsgFolder* srcFolder,
 
   if (isMoveFolder)   //move folder permitted when dstFolder and the srcFolder are on same server
   {
-    nsCOMPtr <nsIImapService> imapService = do_GetService (NS_IMAPSERVICE_CONTRACTID, &rv);
-    if (NS_SUCCEEDED(rv))
+    PRUint32 folderFlags = 0;    
+    if (srcFolder)
+      srcFolder->GetFlags(&folderFlags);
+    
+    // if our source folder is a virtual folder
+    if (folderFlags & MSG_FOLDER_FLAG_VIRTUAL) 
     {
-      nsCOMPtr <nsIUrlListener> urlListener = do_QueryInterface(srcFolder);
-      PRBool match = PR_FALSE;
-      PRBool confirmed = PR_FALSE;
-      if (mFlags & MSG_FOLDER_FLAG_TRASH)
+      nsCOMPtr<nsIMsgFolder> newMsgFolder;
+      nsXPIDLString folderName;
+      srcFolder->GetName(getter_Copies(folderName));
+      
+      nsCAutoString tempSafeFolderName;
+      tempSafeFolderName.AssignWithConversion(folderName.get());
+      NS_MsgHashIfNecessary(tempSafeFolderName);
+      
+      nsAutoString safeFolderName;
+      safeFolderName.AssignWithConversion(tempSafeFolderName);  
+      srcFolder->ForceDBClosed();   
+  
+      nsCOMPtr<nsIFileSpec> oldPathSpec;
+      rv = srcFolder->GetPath(getter_AddRefs(oldPathSpec));
+      NS_ENSURE_SUCCESS(rv,rv);
+  
+      nsFileSpec oldPath;
+      rv = oldPathSpec->GetFileSpec(&oldPath);
+      NS_ENSURE_SUCCESS(rv,rv);
+  
+      nsLocalFolderSummarySpec  summarySpec(oldPath);
+  
+      nsCOMPtr<nsIFileSpec> newPathSpec;
+      rv = GetPath(getter_AddRefs(newPathSpec));
+      NS_ENSURE_SUCCESS(rv,rv);
+  
+      nsFileSpec newPath;
+      rv = newPathSpec->GetFileSpec(&newPath);
+      NS_ENSURE_SUCCESS(rv,rv);
+  
+      if (!newPath.IsDirectory())
       {
-        rv = srcFolder->MatchOrChangeFilterDestination(nsnull, PR_FALSE, &match);
-        if (match)
-        {
-          srcFolder->ConfirmFolderDeletionForFilter(msgWindow, &confirmed);
-          if (!confirmed) return NS_OK;
-        }
+        AddDirectorySeparator(newPath);
+        newPath.CreateDirectory();
       }
-      rv = imapService->MoveFolder(m_eventQueue,
-                                   srcFolder,
-                                   this,
-                                   urlListener,
-                                   msgWindow,
-                                   nsnull);
-    }
+  
+      rv = CheckIfFolderExists(folderName.get(), this, msgWindow);
+      if(NS_FAILED(rv)) 
+        return rv;
+  
+      rv = summarySpec.CopyToDir(newPath);
+      NS_ENSURE_SUCCESS(rv, rv);
+  
+      rv = AddSubfolder(safeFolderName, getter_AddRefs(newMsgFolder));  
+      NS_ENSURE_SUCCESS(rv, rv);
 
+      newMsgFolder->SetPrettyName(folderName.get());
+  
+      PRUint32 flags;
+      srcFolder->GetFlags(&flags);
+      newMsgFolder->SetFlags(flags);
+      
+      // NotifyItemAdded(newMsgFolder);
+      nsCOMPtr<nsISupports> childSupports(do_QueryInterface(newMsgFolder));
+      nsCOMPtr<nsISupports> parentSupports;
+      rv = QueryInterface(NS_GET_IID(nsISupports), getter_AddRefs(parentSupports));
+
+      if(childSupports && NS_SUCCEEDED(rv))
+        NotifyItemAdded(parentSupports, childSupports, "folderView");
+
+      // now remove the old folder
+      nsCOMPtr<nsIMsgFolder> msgParent;
+      srcFolder->GetParentMsgFolder(getter_AddRefs(msgParent));
+      srcFolder->SetParent(nsnull);
+      if (msgParent) 
+      {
+        msgParent->PropagateDelete(srcFolder, PR_FALSE, msgWindow);  // The files have already been moved, so delete storage PR_FALSE 
+        oldPath.Delete(PR_FALSE);  //berkeley mailbox
+        nsCOMPtr <nsIMsgDatabase> srcDB; // we need to force closed the source db
+        srcFolder->Delete();
+
+        nsCOMPtr<nsIFileSpec> parentPathSpec;
+        rv = msgParent->GetPath(getter_AddRefs(parentPathSpec));
+        NS_ENSURE_SUCCESS(rv,rv);
+  
+        nsFileSpec parentPath;
+        rv = parentPathSpec->GetFileSpec(&parentPath);
+        NS_ENSURE_SUCCESS(rv,rv);
+
+        AddDirectorySeparator(parentPath); 
+        nsDirectoryIterator i(parentPath, PR_FALSE);
+        // i.Exists() checks if the directory is empty or not 
+        if (parentPath.IsDirectory() && !i.Exists())
+          parentPath.Delete(PR_TRUE);
+      }
+    }
+    else
+    {
+      nsCOMPtr <nsIImapService> imapService = do_GetService (NS_IMAPSERVICE_CONTRACTID, &rv);
+      if (NS_SUCCEEDED(rv))
+      {
+        nsCOMPtr <nsIUrlListener> urlListener = do_QueryInterface(srcFolder);
+        PRBool match = PR_FALSE;
+        PRBool confirmed = PR_FALSE;
+        if (mFlags & MSG_FOLDER_FLAG_TRASH)
+        {
+          rv = srcFolder->MatchOrChangeFilterDestination(nsnull, PR_FALSE, &match);
+          if (match)
+          {
+            srcFolder->ConfirmFolderDeletionForFilter(msgWindow, &confirmed);
+            if (!confirmed) return NS_OK;
+          }
+        }
+        rv = imapService->MoveFolder(m_eventQueue,
+                                     srcFolder,
+                                     this,
+                                     urlListener,
+                                     msgWindow,
+                                     nsnull);
+      }
+    }
   }
   else
 	  NS_ASSERTION(0,"isMoveFolder is false. Trying to copy to a different server.");

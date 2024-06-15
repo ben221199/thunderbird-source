@@ -74,6 +74,7 @@
 #include "nsIMsgMdnGenerator.h"
 #include "nsMsgSearchCore.h"
 #include "nsMailHeaders.h"
+#include "nsIMsgMailSession.h"
 
 static NS_DEFINE_CID(kCMailDB, NS_MAILDB_CID);
 static NS_DEFINE_CID(kIOServiceCID,              NS_IOSERVICE_CID);
@@ -172,20 +173,17 @@ NS_IMETHODIMP nsMsgMailboxParser::OnStopRequest(nsIRequest *request, nsISupports
 
 
 
-/* void OnKeyChange (in nsMsgKey aKeyChanged, in unsigned long aOldFlags, in unsigned long aNewFlags, in nsIDBChangeListener aInstigator); */
-NS_IMETHODIMP nsMsgMailboxParser::OnKeyChange(nsMsgKey aKeyChanged, PRUint32 aOldFlags, PRUint32 aNewFlags, nsIDBChangeListener *aInstigator)
+NS_IMETHODIMP nsMsgMailboxParser::OnHdrChange(nsIMsgDBHdr *aHdrChanged, PRUint32 aOldFlags, PRUint32 aNewFlags, nsIDBChangeListener *aInstigator)
 {
     return NS_OK;
 }
 
-/* void OnKeyDeleted (in nsMsgKey aKeyChanged, in nsMsgKey aParentKey, in long aFlags, in nsIDBChangeListener aInstigator); */
-NS_IMETHODIMP nsMsgMailboxParser::OnKeyDeleted(nsMsgKey aKeyChanged, nsMsgKey aParentKey, PRInt32 aFlags, nsIDBChangeListener *aInstigator)
+NS_IMETHODIMP nsMsgMailboxParser::OnHdrDeleted(nsIMsgDBHdr *aHdrChanged, nsMsgKey aParentKey, PRInt32 aFlags, nsIDBChangeListener *aInstigator)
 {
     return NS_OK;
 }
 
-/* void OnKeyAdded (in nsMsgKey aKeyChanged, in nsMsgKey aParentKey, in long aFlags, in nsIDBChangeListener aInstigator); */
-NS_IMETHODIMP nsMsgMailboxParser::OnKeyAdded(nsMsgKey aKeyChanged, nsMsgKey aParentKey, PRInt32 aFlags, nsIDBChangeListener *aInstigator)
+NS_IMETHODIMP nsMsgMailboxParser::OnHdrAdded(nsIMsgDBHdr *aHdrAdded, nsMsgKey aParentKey, PRInt32 aFlags, nsIDBChangeListener *aInstigator)
 {
     return NS_OK;
 }
@@ -1401,6 +1399,12 @@ int nsParseMailMessageState::FinalizeHeaders()
               }
             }
           }
+          substring = PL_strcasestr(content_type->value, "multipart/mixed");
+          if (substring)
+          {
+            PRUint32 newFlags;
+            m_newMsgHdr->OrFlags(MSG_FLAG_ATTACHMENT, &newFlags);
+          }
         }
       }
     } 
@@ -1784,6 +1788,32 @@ int nsParseNewMailState::MarkFilteredMessageRead(nsIMsgDBHdr *msgHdr)
   return 0;
 }
 
+nsresult nsParseNewMailState::EndMsgDownload()
+{
+  // need to do this for all folders that had messages filtered into them
+  PRUint32 serverCount = m_filterTargetFolders.Count();
+  nsresult rv;
+  nsCOMPtr<nsIMsgMailSession> session = 
+           do_GetService(NS_MSGMAILSESSION_CONTRACTID, &rv); 
+  if (NS_SUCCEEDED(rv) && session) // don't use NS_ENSURE_SUCCESS here - we need to release semaphore below
+  {
+    for (PRUint32 index = 0; index < serverCount; index++)
+    {
+      PRBool folderOpen;
+      session->IsFolderOpenInWindow(m_filterTargetFolders[index], &folderOpen);
+      if (!folderOpen)
+      {
+        PRUint32 folderFlags;
+        m_filterTargetFolders[index]->GetFlags(&folderFlags);
+        if (! (folderFlags & (MSG_FOLDER_FLAG_TRASH | MSG_FOLDER_FLAG_INBOX)))
+          m_filterTargetFolders[index]->SetMsgDatabase(nsnull);
+      }
+    }
+  }
+  m_filterTargetFolders.Clear();
+  return rv;
+}
+
 nsresult nsParseNewMailState::MoveIncorporatedMessage(nsIMsgDBHdr *mailHdr, 
                                                       nsIMsgDatabase *sourceDB, 
                                                       const nsACString& destFolderUri,
@@ -1958,6 +1988,9 @@ nsresult nsParseNewMailState::MoveIncorporatedMessage(nsIMsgDBHdr *mailHdr,
   }
   if (movedMsgIsNew)
     destIFolder->SetHasNewMessages(PR_TRUE);
+
+  m_filterTargetFolders.AppendObject(destIFolder);
+
   destFile->close();
   delete destFile;
   m_inboxFileStream->close();

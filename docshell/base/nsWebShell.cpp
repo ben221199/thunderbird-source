@@ -536,7 +536,6 @@ nsWebShell::OnLinkClickSync(nsIContent *aContent,
                             nsIDocShell** aDocShell,
                             nsIRequest** aRequest)
 {
-  PRBool earlyReturn = PR_FALSE;
   {
     // defer to an external protocol handler if necessary...
     nsCOMPtr<nsIExternalProtocolService> extProtService = do_GetService(NS_EXTERNALPROTOCOLSERVICE_CONTRACTID);
@@ -549,17 +548,11 @@ nsWebShell::OnLinkClickSync(nsIContent *aContent,
         PRBool isExposed;
         nsresult rv = extProtService->IsExposedProtocol(scheme.get(), &isExposed);
         if (NS_SUCCEEDED(rv) && !isExposed) {
-          rv = extProtService->LoadUrl(aURI);
-          if (NS_SUCCEEDED(rv))
-            earlyReturn = PR_TRUE;
-          else
-            NS_WARNING("failed to launch external protocol handler");
+          return extProtService->LoadUrl(aURI);
         }
       }
     }
   }
-  if (earlyReturn)
-    return NS_OK;
 
   nsCOMPtr<nsIDOMNode> node(do_QueryInterface(aContent));
   NS_ENSURE_TRUE(node, NS_ERROR_UNEXPECTED);
@@ -640,7 +633,7 @@ nsWebShell::OnLinkClickSync(nsIContent *aContent,
         return InternalLoad(aURI,               // New URI
                             referer,            // Referer URI
                             nsnull,             // No onwer
-                            PR_TRUE,            // Inherit owner from document
+                            INTERNAL_LOAD_FLAGS_INHERIT_OWNER, // Inherit owner from document
                             target.get(),       // Window target
                             NS_LossyConvertUCS2toASCII(typeHint).get(),
                             aPostDataStream,    // Post data stream
@@ -1015,7 +1008,7 @@ nsresult nsWebShell::EndPageLoad(nsIWebProgress *aProgress,
             InternalLoad(url,                               // URI
                          referrer,                          // Referring URI
                          nsnull,                            // Owner
-                         PR_TRUE,                           // Inherit owner
+                         INTERNAL_LOAD_FLAGS_INHERIT_OWNER, // Inherit owner
                          nsnull,                            // No window target
                          nsnull,                            // No type hint
                          inputStream,                       // Post data stream

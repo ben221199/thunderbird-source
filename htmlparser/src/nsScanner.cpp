@@ -49,6 +49,7 @@
 #include "nsNetUtil.h"
 #include "nsUTF8Utils.h" // for LossyConvertEncoding
 #include "nsCRT.h"
+#include "nsParser.h"
 
 static NS_DEFINE_CID(kCharsetAliasCID, NS_CHARSETALIAS_CID);
 
@@ -93,18 +94,20 @@ MOZ_DECL_CTOR_COUNTER(nsScanner)
  *  @param   aMode represents the parser mode (nav, other)
  *  @return  
  */
-nsScanner::nsScanner(const nsAString& anHTMLString, const nsACString& aCharset, PRInt32 aSource)
+nsScanner::nsScanner(const nsAString& anHTMLString, const nsACString& aCharset,
+                     PRInt32 aSource)
+  : mParser(nsnull)
 {
   MOZ_COUNT_CTOR(nsScanner);
 
   mTotalRead = anHTMLString.Length();
   mSlidingBuffer = nsnull;
   mCountRemaining = 0;
+  mFirstNonWhitespacePosition = -1;
   AppendToBuffer(anHTMLString);
   mSlidingBuffer->BeginReading(mCurrentPosition);
   mMarkPosition = mCurrentPosition;
   mIncremental = PR_FALSE;
-  mFirstNonWhitespacePosition = -1;
   mUnicodeDecoder = 0;
   mCharsetSource = kCharsetUninitialized;
   SetDocumentCharset(aCharset, aSource);
@@ -119,8 +122,9 @@ nsScanner::nsScanner(const nsAString& anHTMLString, const nsACString& aCharset, 
  *  @param   aFilename --
  *  @return  
  */
-nsScanner::nsScanner(nsString& aFilename,PRBool aCreateStream, const nsACString& aCharset, PRInt32 aSource) : 
-    mFilename(aFilename)
+nsScanner::nsScanner(nsString& aFilename,PRBool aCreateStream,
+                     const nsACString& aCharset, PRInt32 aSource)
+  : mFilename(aFilename), mParser(nsnull)
 {
   MOZ_COUNT_CTOR(nsScanner);
 
@@ -163,8 +167,9 @@ nsScanner::nsScanner(nsString& aFilename,PRBool aCreateStream, const nsACString&
  *  @param   aFilename --
  *  @return  
  */
-nsScanner::nsScanner(const nsAString& aFilename,nsIInputStream* aStream,const nsACString& aCharset, PRInt32 aSource) :
-    mFilename(aFilename)
+nsScanner::nsScanner(const nsAString& aFilename, nsIInputStream* aStream,
+                     const nsACString& aCharset, PRInt32 aSource)
+  : mFilename(aFilename), mParser(nsnull)
 {  
   MOZ_COUNT_CTOR(nsScanner);
 
@@ -770,30 +775,33 @@ nsresult nsScanner::GetIdentifier(nsString& aString,PRBool allowPunct) {
   while(current != end) {
  
     theChar=*current;
-    if(theChar) {
-      found=PR_FALSE;
-      switch(theChar) {
-        case ':':
-        case '_':
-        case '-':
-        case '.':
-          found=allowPunct;
-          break;
-        default:
-          found = ('a'<=theChar && theChar<='z') ||
-                  ('A'<=theChar && theChar<='Z') ||
-                  ('0'<=theChar && theChar<='9');
-          break;
-      }
-
-      if(!found) {
-        // If we the current character isn't a valid character for
-        // the identifier, we're done. Copy the results into
-        // the string passed in.
-        CopyUnicodeTo(mCurrentPosition, current, aString);
+    found=PR_FALSE;
+    switch(theChar) {
+      case ':':
+      case '_':
+      case '-':
+      case '.':
+        found=allowPunct;
         break;
-      }
+      default:
+        found = ('a'<=theChar && theChar<='z') ||
+                ('A'<=theChar && theChar<='Z') ||
+                ('0'<=theChar && theChar<='9');
+        break;
     }
+
+    if(!found) {
+      // If the current character isn't a valid character for
+      // the identifier, we're done. Copy the results into
+      // the string passed in.
+      CopyUnicodeTo(mCurrentPosition, current, aString);
+      break;
+    }
+    ++current;
+  }
+
+  // Drop NULs on the floor since nobody really likes them.
+  while (current != end && !*current) {
     ++current;
   }
 
@@ -833,30 +841,34 @@ nsresult nsScanner::ReadIdentifier(nsString& aString,PRBool allowPunct) {
   while(current != end) {
  
     theChar=*current;
-    if(theChar) {
-      found=PR_FALSE;
-      switch(theChar) {
-        case ':':
-        case '_':
-        case '-':
-        case '.':
-          found=allowPunct;
-          break;
-        default:
-          found = ('a'<=theChar && theChar<='z') ||
-                  ('A'<=theChar && theChar<='Z') ||
-                  ('0'<=theChar && theChar<='9');
-          break;
-      }
-
-      if(!found) {
-        AppendUnicodeTo(mCurrentPosition, current, aString);
+    found=PR_FALSE;
+    switch(theChar) {
+      case ':':
+      case '_':
+      case '-':
+      case '.':
+        found=allowPunct;
         break;
-      }
+      default:
+        found = ('a'<=theChar && theChar<='z') ||
+                ('A'<=theChar && theChar<='Z') ||
+                ('0'<=theChar && theChar<='9');
+        break;
     }
+
+    if(!found) {
+      AppendUnicodeTo(mCurrentPosition, current, aString);
+      break;
+    }
+    
     ++current;
   }
   
+  // Drop NULs on the floor since nobody really likes them
+  while (current != end && !*current) {
+    ++current;
+  }
+
   SetPosition(current);
   if (current == end) {
     AppendUnicodeTo(origin, current, aString);
@@ -1358,6 +1370,14 @@ void nsScanner::ReplaceCharacter(nsScannerIterator& aPosition,
 
 void nsScanner::AppendToBuffer(nsScannerString::Buffer* aBuf)
 {
+  if (nsParser::sParserDataListeners && mParser &&
+      NS_FAILED(mParser->DataAdded(Substring(aBuf->DataStart(),
+                                             aBuf->DataEnd())))) {
+    // Don't actually append on failure.
+
+    return;
+  }
+
   if (!mSlidingBuffer) {
     mSlidingBuffer = new nsScannerString(aBuf);
     mSlidingBuffer->BeginReading(mCurrentPosition);

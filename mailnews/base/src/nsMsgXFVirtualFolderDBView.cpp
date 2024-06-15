@@ -42,7 +42,6 @@
 #include "nsIMsgCopyService.h"
 #include "nsICopyMsgStreamListener.h"
 #include "nsMsgUtils.h"
-#include "nsITreeColumns.h"
 #include "nsIMsgSearchSession.h"
 
 nsMsgXFVirtualFolderDBView::nsMsgXFVirtualFolderDBView()
@@ -57,7 +56,7 @@ nsMsgXFVirtualFolderDBView::~nsMsgXFVirtualFolderDBView()
 
 NS_IMETHODIMP nsMsgXFVirtualFolderDBView::Open(nsIMsgFolder *folder, nsMsgViewSortTypeValue sortType, nsMsgViewSortOrderValue sortOrder, nsMsgViewFlagsTypeValue viewFlags, PRInt32 *pCount)
 {
-  m_virtualFolder = folder;
+  m_viewFolder = folder;
   return nsMsgSearchDBView::Open(folder, sortType, sortOrder, viewFlags, pCount);
 }
 
@@ -70,6 +69,39 @@ NS_IMETHODIMP nsMsgXFVirtualFolderDBView::Close()
 
   return NS_OK;
 }
+
+NS_IMETHODIMP
+nsMsgXFVirtualFolderDBView::CloneDBView(nsIMessenger *aMessengerInstance, nsIMsgWindow *aMsgWindow, 
+                                        nsIMsgDBViewCommandUpdater *aCmdUpdater, nsIMsgDBView **_retval)
+{
+  nsMsgXFVirtualFolderDBView* newMsgDBView;
+  NS_NEWXPCOM(newMsgDBView, nsMsgXFVirtualFolderDBView);
+
+  if (!newMsgDBView)
+    return NS_ERROR_OUT_OF_MEMORY;
+
+  nsresult rv = CopyDBView(newMsgDBView, aMessengerInstance, aMsgWindow, aCmdUpdater);
+  NS_ENSURE_SUCCESS(rv,rv);
+
+  NS_IF_ADDREF(*_retval = newMsgDBView);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsMsgXFVirtualFolderDBView::CopyDBView(nsMsgDBView *aNewMsgDBView, nsIMessenger *aMessengerInstance, 
+                                       nsIMsgWindow *aMsgWindow, nsIMsgDBViewCommandUpdater *aCmdUpdater)
+{
+  nsMsgSearchDBView::CopyDBView(aNewMsgDBView, aMessengerInstance, aMsgWindow, aCmdUpdater);
+
+  nsMsgXFVirtualFolderDBView* newMsgDBView = (nsMsgXFVirtualFolderDBView *) aNewMsgDBView;
+
+  newMsgDBView->m_viewFolder = m_viewFolder;
+  newMsgDBView->m_numUnread = m_numUnread;
+  newMsgDBView->m_numTotal = m_numTotal;
+
+  return NS_OK;
+}
+
 
 NS_IMETHODIMP nsMsgXFVirtualFolderDBView::GetViewType(nsMsgViewTypeValue *aViewType)
 {
@@ -155,11 +187,11 @@ nsMsgXFVirtualFolderDBView::OnSearchDone(nsresult status)
   nsCOMPtr <nsIMsgDatabase> virtDatabase;
   nsCOMPtr <nsIDBFolderInfo> dbFolderInfo;
 
-  nsresult rv = m_virtualFolder->GetDBFolderInfoAndDB(getter_AddRefs(dbFolderInfo), getter_AddRefs(virtDatabase));
+  nsresult rv = m_viewFolder->GetDBFolderInfoAndDB(getter_AddRefs(dbFolderInfo), getter_AddRefs(virtDatabase));
   NS_ENSURE_SUCCESS(rv, rv);
   dbFolderInfo->SetNumUnreadMessages(m_numUnread);
   dbFolderInfo->SetNumMessages(m_numTotal);
-  m_virtualFolder->UpdateSummaryTotals(true); // force update from db.
+  m_viewFolder->UpdateSummaryTotals(true); // force update from db.
   virtDatabase->Commit(nsMsgDBCommitType::kLargeCommit);
   return rv;
 }
@@ -200,6 +232,6 @@ NS_IMETHODIMP nsMsgXFVirtualFolderDBView::DoCommand(nsMsgViewCommandTypeValue co
 NS_IMETHODIMP nsMsgXFVirtualFolderDBView::GetMsgFolder(nsIMsgFolder **aMsgFolder)
 {
   NS_ENSURE_ARG_POINTER(aMsgFolder);
-  NS_IF_ADDREF(*aMsgFolder = m_virtualFolder);
+  NS_IF_ADDREF(*aMsgFolder = m_viewFolder);
   return NS_OK;
 }

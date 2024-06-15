@@ -19,8 +19,9 @@
 # the Initial Developer. All Rights Reserved.
 #
 # Contributor(s):
-#      brantgurganus2001@cherokeescouting.org
-#      rlk@trfenv.com
+#      Brant Gurganus <brantgurganus2001@cherokeescouting.org>
+#      R.J. Keller <rlk@trfenv.com>
+#      Steffen Wilberg <steffen.wilberg@web.de>
 #
 # Alternatively, the contents of this file may be used under the terms of
 # either the GNU General Public License Version 2 or later (the "GPL"), or
@@ -122,6 +123,8 @@ function init() {
     helpIndexPanel = document.getElementById("help-index-panel");
     helpGlossaryPanel = document.getElementById("help-glossary-panel");
     helpBrowser = document.getElementById("help-content");
+    
+    initFindBar();
 
     // Get the content pack, base URL, and help topic
     var helpTopic = defaultTopic;
@@ -305,6 +308,10 @@ function getHelpFileURI() {
     return helpFileURI;
 }
 
+function getBrowser() {
+  return helpBrowser;
+}
+
 function getWebNavigation() {
   try {
     return helpBrowser.webNavigation;
@@ -329,6 +336,28 @@ function goBack() {
   } catch (e)
   {
   }
+}
+
+/* copied from browser.js */
+function BrowserReloadWithFlags(reloadFlags) {
+    /* First, we'll try to use the session history object to reload so 
+     * that framesets are handled properly. If we're in a special 
+     * window (such as view-source) that has no session history, fall 
+     * back on using the web navigation's reload method.
+     */
+
+    var webNav = getWebNavigation();
+    try {
+      var sh = webNav.sessionHistory;
+      if (sh)
+        webNav = sh.QueryInterface(Components.interfaces.nsIWebNavigation);
+    } catch (e) {
+    }
+
+    try {
+      webNav.reload(reloadFlags);
+    } catch (e) {
+    }
 }
 
 function reload() {
@@ -540,6 +569,10 @@ function showPanel(panelId) {
     document.getElementById("help-toc-btn").removeAttribute("selected");
     //add the selected style to the correct panel.
     theButton.setAttribute("selected", "true");
+
+    //focus the searchbox if the search sidebar panel is shown.
+    if (panelId == "help-search")
+      document.getElementById("findText").focus();
 }
 
 function findParentNode(node, parentNode)

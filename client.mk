@@ -54,19 +54,19 @@
 #
 # For branches, uncomment the MOZ_CO_TAG line with the proper tag,
 # and commit this file on that tag.
-MOZ_CO_TAG =  THUNDERBIRD_0_8_RELEASE
-NSPR_CO_TAG =  THUNDERBIRD_0_8_RELEASE
-PSM_CO_TAG =  THUNDERBIRD_0_8_RELEASE
-NSS_CO_TAG =  THUNDERBIRD_0_8_RELEASE
-LDAPCSDK_CO_TAG =  THUNDERBIRD_0_8_RELEASE
-ACCESSIBLE_CO_TAG =  THUNDERBIRD_0_8_RELEASE
-IMGLIB2_CO_TAG =  THUNDERBIRD_0_8_RELEASE
-IPC_CO_TAG =  THUNDERBIRD_0_8_RELEASE
-TOOLKIT_CO_TAG = THUNDERBIRD_0_8_RELEASE
-BROWSER_CO_TAG = THUNDERBIRD_0_8_RELEASE
-MAIL_CO_TAG = THUNDERBIRD_0_8_RELEASE
-STANDALONE_COMPOSER_CO_TAG = THUNDERBIRD_0_8_RELEASE
-LOCALES_CO_TAG = THUNDERBIRD_0_8_RELEASE
+MOZ_CO_TAG = THUNDERBIRD_0_9_RELEASE
+NSPR_CO_TAG = THUNDERBIRD_0_9_RELEASE
+PSM_CO_TAG = THUNDERBIRD_0_9_RELEASE
+NSS_CO_TAG = THUNDERBIRD_0_9_RELEASE
+LDAPCSDK_CO_TAG = THUNDERBIRD_0_9_RELEASE
+ACCESSIBLE_CO_TAG = THUNDERBIRD_0_9_RELEASE
+IMGLIB2_CO_TAG = THUNDERBIRD_0_9_RELEASE
+IPC_CO_TAG = THUNDERBIRD_0_9_RELEASE
+TOOLKIT_CO_TAG = THUNDERBIRD_0_9_RELEASE
+BROWSER_CO_TAG = THUNDERBIRD_0_9_RELEASE
+MAIL_CO_TAG = THUNDERBIRD_0_9_RELEASE
+STANDALONE_COMPOSER_CO_TAG = THUNDERBIRD_0_9_RELEASE
+LOCALES_CO_TAG = THUNDERBIRD_0_9_RELEASE
 BUILD_MODULES = all
 
 #######################################################################
@@ -489,33 +489,50 @@ ifdef LOCALES_CO_TAG
 endif
 
 ifndef MOZ_CO_LOCALES
+LOCK_LOCALES := true
 FASTUPDATE_LOCALES := true
 CHECKOUT_LOCALES := true
+UNLOCK_LOCALES := true
 else
 ifeq (all,$(MOZ_CO_LOCALES))
 MOZCONFIG_MODULES += $(addsuffix /all-locales,$(LOCALE_DIRS))
 
+LOCK_LOCALES := \
+  for dir in $(LOCALE_DIRS); do \
+    for locale in `cat $$dir/all-locales`; do \
+      mv $$dir/$$locale $$dir/$$locale-tmp || true; \
+    done; \
+  done
+
 FASTUPDATE_LOCALES := \
   for dir in $(LOCALE_DIRS); do \
     for locale in `cat $$dir/all-locales`; do \
-      fast_update $(CVS) $(CVS_FLAGS) -d $(LOCALES_CVSROOT) co $$dir/$$locale; \
+      fast_update $(CVS) $(CVS_FLAGS) -d $(LOCALES_CVSROOT) co $(CVS_CO_DATE_FLAGS) $$dir/$$locale; \
     done; \
   done 
 
 CHECKOUT_LOCALES := \
   for dir in $(LOCALE_DIRS); do \
     for locale in `cat $$dir/all-locales`; do \
-      cvs_co $(CVS) $(CVS_FLAGS) -d $(LOCALES_CVSROOT) co $(LOCALES_CO_FLAGS) $$dir/$$locale; \
+      cvs_co $(CVS) $(CVS_FLAGS) -d $(LOCALES_CVSROOT) co $(LOCALES_CO_FLAGS) $(CVS_CO_DATE_FLAGS) $$dir/$$locale; \
     done; \
   done
 
+UNLOCK_LOCALES := \
+  for dir in $(LOCALE_DIRS); do \
+    for locale in `cat $$dir/all-locales`; do \
+      mv $$dir/$$locale-tmp $$dir/$$locale || true; \
+    done; \
+  done
 else
 LOCALE_CO_DIRS = $(foreach locale,$(MOZ_CO_LOCALES),$(addsuffix /$(locale),$(LOCALE_DIRS)))
 
-CVSCO_LOCALES := $(CVS) $(CVS_FLAGS) -d $(LOCALES_CVSROOT) co $(LOCALES_CO_FLAGS) $(LOCALE_CO_DIRS)
+CVSCO_LOCALES := $(CVS) $(CVS_FLAGS) -d $(LOCALES_CVSROOT) co $(LOCALES_CO_FLAGS) $(CVS_CO_DATE_FLAGS) $(LOCALE_CO_DIRS)
 
+LOCK_LOCALES := for dir in $(LOCALE_CO_DIRS); do mv $$dir $$dir-tmp || true; done
 FASTUPDATE_LOCALES := fast_update $(CVSCO_LOCALES)
 CHECKOUT_LOCALES := cvs_co $(CVSCO_LOCALES)
+UNLOCK_LOCALES := for dir in $(LOCALE_CO_DIRS); do mv $$dir-tmp $$dir || true; done
 endif
 endif #MOZ_CO_LOCALES
 
@@ -575,6 +592,7 @@ real_checkout:
 	@set -e; \
 	cvs_co() { set -e; echo "$$@" ; \
 	  "$$@" 2>&1 | tee -a $(CVSCO_LOGFILE); }; \
+	$(LOCK_LOCALES); \
 	$(CHECKOUT_STANDALONE); \
 	$(CHECKOUT_STANDALONE_NOSUBDIRS); \
 	cvs_co $(CVSCO_NSPR); \
@@ -591,6 +609,7 @@ real_checkout:
 	$(CHECKOUT_THUNDERBIRD); \
 	$(CHECKOUT_STANDALONE_COMPOSER); \
 	$(CHECKOUT_CODESIGHS); \
+	$(UNLOCK_LOCALES); \
 	$(CHECKOUT_LOCALES); \
 	cvs_co $(CVSCO_SEAMONKEY);
 	@echo "checkout finish: "`date` | tee -a $(CVSCO_LOGFILE)
@@ -642,6 +661,7 @@ real_fast-update:
 	fast_update $(CVSCO_NSPR); \
 	cd $(ROOTDIR); \
 	cvs_co $(CVSCO_NSS); \
+	$(LOCK_LOCALES); \
 	cd mozilla; \
 	fast_update $(CVSCO_PSM); \
 	fast_update $(CVSCO_LDAPCSDK); \
@@ -655,6 +675,9 @@ real_fast-update:
 	$(FASTUPDATE_THUNDERBIRD); \
 	$(FASTUPDATE_STANDALONE_COMPOSER); \
 	$(FASTUPDATE_CODESIGHS); \
+	cd $(ROOTDIR); \
+	$(UNLOCK_LOCALES); \
+	cd mozilla; \
 	$(FASTUPDATE_LOCALES); \
 	fast_update $(CVSCO_SEAMONKEY);
 	@echo "fast_update finish: "`date` | tee -a $(CVSCO_LOGFILE)

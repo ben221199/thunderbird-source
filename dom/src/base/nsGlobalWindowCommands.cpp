@@ -256,15 +256,16 @@ nsSelectMoveScrollCommand::DoSelectCommand(const char *aCommandName, nsIDOMWindo
   GetSelectionControllerFromWindow(aWindow, getter_AddRefs(selCont));
   NS_ENSURE_TRUE(selCont, NS_ERROR_NOT_INITIALIZED);       
 
-  PRBool doBrowseWithCaret = PR_FALSE;
+  PRBool caretOn = PR_FALSE;
+  selCont->GetCaretEnabled(&caretOn);
 
   nsCOMPtr<nsIEventStateManager> esm;
   GetEventStateManagerForWindow(aWindow, getter_AddRefs(esm));
-  if (esm)
-    esm->GetBrowseWithCaret(&doBrowseWithCaret);
 
   nsresult rv;
-  if (doBrowseWithCaret)
+  // We allow the caret to be moved with arrow keys on any window for which
+  // the caret is enabled. In particular, this includes caret-browsing mode
+  if (caretOn)
     rv = DoCommandBrowseWithCaretOn(aCommandName, selCont, esm);
   else
     rv = DoCommandBrowseWithCaretOff(aCommandName, selCont);

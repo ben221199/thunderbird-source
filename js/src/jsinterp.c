@@ -1786,6 +1786,7 @@ js_Interpret(JSContext *cx, jsval *result)
 
 #if JS_HAS_IN_OPERATOR
           case JSOP_IN:
+            SAVE_SP(fp);
             rval = FETCH_OPND(-1);
             if (JSVAL_IS_PRIMITIVE(rval)) {
                 str = js_DecompileValueGenerator(cx, -1, rval, NULL);
@@ -1797,12 +1798,12 @@ js_Interpret(JSContext *cx, jsval *result)
                 ok = JS_FALSE;
                 goto out;
             }
-            sp--;
             obj = JSVAL_TO_OBJECT(rval);
-            FETCH_ELEMENT_ID(-1, id);
+            FETCH_ELEMENT_ID(-2, id);
             ok = OBJ_LOOKUP_PROPERTY(cx, obj, id, &obj2, &prop);
             if (!ok)
                 goto out;
+            sp--;
             STORE_OPND(-1, BOOLEAN_TO_JSVAL(prop != NULL));
             if (prop)
                 OBJ_DROP_PROPERTY(cx, obj2, prop);
@@ -1977,13 +1978,12 @@ js_Interpret(JSContext *cx, jsval *result)
             ok = OBJ_LOOKUP_PROPERTY(cx, origobj, rval, &obj2, &prop);
             if (!ok)
                 goto out;
-            if (prop) {
+            if (prop)
                 OBJ_DROP_PROPERTY(cx, obj2, prop);
 
-                /* Yes, don't enumerate again.  Go to the next property. */
-                if (obj2 != obj)
-                    goto enum_next_property;
-            }
+            /* If the id was deleted, or found in a prototype, skip it. */
+            if (!prop || obj2 != obj)
+                goto enum_next_property;
 
             /* Make sure rval is a string for uniformity and compatibility. */
             if (!JSVAL_IS_INT(rval)) {
@@ -2411,13 +2411,12 @@ js_Interpret(JSContext *cx, jsval *result)
             VALUE_TO_PRIMITIVE(cx, lval, JSTYPE_VOID, &ltmp);
             VALUE_TO_PRIMITIVE(cx, rval, JSTYPE_VOID, &rtmp);
             if ((cond = JSVAL_IS_STRING(ltmp)) || JSVAL_IS_STRING(rtmp)) {
+                SAVE_SP(fp);
                 if (cond) {
                     str = JSVAL_TO_STRING(ltmp);
-                    SAVE_SP(fp);
                     ok = (str2 = js_ValueToString(cx, rtmp)) != NULL;
                 } else {
                     str2 = JSVAL_TO_STRING(rtmp);
-                    SAVE_SP(fp);
                     ok = (str = js_ValueToString(cx, ltmp)) != NULL;
                 }
                 if (!ok)

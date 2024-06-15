@@ -48,6 +48,10 @@ function nsPluginInstallerWizard(){
   this.mPluginInfoArray = new Object();
   this.mPluginInfoArrayLength = 0;
 
+  // holds plugins w ecouldn't find
+  this.mPluginNotFoundArray = new Object();
+  this.mPluginNotFoundArrayLength = 0;
+
   // array holding pids of plugins that require a license
   this.mPluginLicenseArray = new Array();
 
@@ -69,6 +73,8 @@ function nsPluginInstallerWizard(){
 
   this.WSPluginCounter = 0;
   this.licenseAcceptCounter = 0;
+  
+  this.prefBranch = null;
 }
 
 nsPluginInstallerWizard.prototype.getPluginData = function (){
@@ -92,6 +98,9 @@ nsPluginInstallerWizard.prototype.pluginInfoReceived = function (aPluginInfo){
     // hash by id
     this.mPluginInfoArray[aPluginInfo.pid] = new PluginInfo(aPluginInfo);
     this.mPluginInfoArrayLength++;
+  } else {
+    this.mPluginNotFoundArray[aPluginInfo.requestedMimetype] = new PluginInfo(aPluginInfo);
+    this.mPluginNotFoundArrayLength++;
   }
 
   var progressMeter = document.getElementById("ws_request_progress");
@@ -126,18 +135,16 @@ nsPluginInstallerWizard.prototype.showPluginList = function (){
     // [plugin image] [Plugin_Name Plugin_Version]
 
     var pluginInfo = this.mPluginInfoArray[pluginInfoItem];
-    var myRow = document.createElement("row");
 
     // create the checkbox
     var myCheckbox = document.createElement("checkbox");
     myCheckbox.setAttribute("checked", "true");
     myCheckbox.setAttribute("oncommand", "gPluginInstaller.toggleInstallPlugin('" + pluginInfo.pid + "', this)");
-    myCheckbox.setAttribute("label", pluginInfo.name + " " + (pluginInfo.version + ""));
+    // XXXlocalize (nit)
+    myCheckbox.setAttribute("label", pluginInfo.name + " " + (pluginInfo.version ? pluginInfo.version : ""));
     myCheckbox.setAttribute("src", pluginInfo.IconUrl);
 
-    myRow.appendChild(myCheckbox);
-    
-    myPluginList.appendChild(myRow);
+    myPluginList.appendChild(myCheckbox);
     
     if (pluginInfo.InstallerShowsUI == "true")
       hasPluginWithInstallerUI = true;
@@ -195,18 +202,28 @@ nsPluginInstallerWizard.prototype.showLicenses = function (){
     this.advancePage(null, true, false, false);
   } else {
     this.licenseAcceptCounter = 0;
+    document.getElementById("licenseIFrame").contentWindow.addEventListener("load", gPluginInstaller.enableNext, false);
     this.showLicense();
   }
 } 
 
+nsPluginInstallerWizard.prototype.enableNext = function (){
+  gPluginInstaller.canAdvance(true);
+  document.getElementById("licenseRadioGroup1").disabled = false;
+  document.getElementById("licenseRadioGroup2").disabled = false;
+}
+
 nsPluginInstallerWizard.prototype.showLicense = function (){
   var pluginInfo = this.mPluginInfoArray[this.mPluginLicenseArray[this.licenseAcceptCounter]];
 
+  this.canAdvance(false);
   document.getElementById("licenseIFrame").setAttribute("src", pluginInfo.licenseURL);
 
   document.getElementById("pluginLicenseLabel").firstChild.nodeValue = 
     this.getFormattedString("pluginLicenseAgreement.label", [pluginInfo.name]);
 
+  document.getElementById("licenseRadioGroup1").disabled = true;
+  document.getElementById("licenseRadioGroup2").disabled = true;
   document.getElementById("licenseRadioGroup").selectedIndex = 
     pluginInfo.licenseAccepted ? 0 : 1;
 }
@@ -342,7 +359,52 @@ nsPluginInstallerWizard.prototype.pluginInstallationProgressMeter = function (aP
   progressElm.setAttribute("value", Math.ceil((aValue / aMaxValue) * 100) + "%")
 }
 
+nsPluginInstallerWizard.prototype.addPluginResultRow = function (aImgSrc, aName, aNameTooltip, aStatus, aStatusTooltip, aManualUrl){
+  var myRows = document.getElementById("pluginResultList");
+
+  var myRow = document.createElement("row");
+  myRow.setAttribute("align", "center");
+
+  // create the image
+  var myImage = document.createElement("image");
+  myImage.setAttribute("src", aImgSrc);
+  myImage.setAttribute("height", "16px");
+  myImage.setAttribute("width", "16px");
+  myRow.appendChild(myImage)
+
+  // create the labels
+  var myLabel = document.createElement("label");
+  myLabel.setAttribute("value", aName);
+  if (aNameTooltip)
+    myLabel.setAttribute("tooltiptext", aNameTooltip);
+  myRow.appendChild(myLabel);
+
+  if (aStatus) {
+    myLabel = document.createElement("label");
+    myLabel.setAttribute("value", aStatus);
+    myRow.appendChild(myLabel);
+  }
+
+  // manual install
+  if (aManualUrl) {
+   var myButton = document.createElement("button");
+      
+    var manualInstallLabel = this.getString("pluginInstallationSummary.manualInstall.label");
+    var manualInstallTooltip = this.getString("pluginInstallationSummary.manualInstall.tooltip");
+
+    myButton.setAttribute("label", manualInstallLabel);
+    myButton.setAttribute("tooltiptext", manualInstallTooltip);
+
+    myButton.setAttribute("oncommand","gPluginInstaller.loadURL('" + aManualUrl + "')");
+    myRow.appendChild(myButton);
+  }
+
+  myRows.appendChild(myRow);
+}
+
 nsPluginInstallerWizard.prototype.showPluginResults = function (){
+  var notInstalledList = "?action=missingplugins";
+  var needsRestart = false;
   var myRows = document.getElementById("pluginResultList");
 
   // clear children
@@ -353,58 +415,59 @@ nsPluginInstallerWizard.prototype.showPluginResults = function (){
     // [plugin image] [Plugin_Name Plugin_Version] [Success/Failed] [Manual Install (if Failed)]
 
     var myPluginItem = this.mPluginInfoArray[pluginInfoItem];
+    
+    if (myPluginItem.needsRestart)
+      needsRestart = true;
 
     if (myPluginItem.toBeInstalled) {
-
-      var myRow = document.createElement("row");
-      myRow.setAttribute("align", "center");
-
-      // create the image
-      var myImage = document.createElement("image");
-      myImage.setAttribute("src", myPluginItem.IconUrl);
-      myImage.setAttribute("height", "16px");
-      myImage.setAttribute("width", "16px");
-      myRow.appendChild(myImage)
-    
-      // create the labels
-      var myLabel = document.createElement("label");
-      myLabel.setAttribute("value", myPluginItem.name + " " + (myPluginItem.version + ""));
-      myRow.appendChild(myLabel)
-
-      myLabel = document.createElement("label");
-
       var statusMsg;
+      var statusTooltip;
       if (myPluginItem.error){
         statusMsg = this.getString("pluginInstallationSummary.failed");
-        myLabel.setAttribute("tooltiptext", myPluginItem.error);
+        statusTooltip = myPluginItem.error;
+        notInstalledList += "&mimetype=" + pluginInfoItem;
       } else if (!myPluginItem.licenseAccepted) {
         statusMsg = this.getString("pluginInstallationSummary.licenseNotAccepted");
+      } else if (!myPluginItem.XPILocation) {
+        statusMsg = this.getString("pluginInstallationSummary.notAvailable");
+        notInstalledList += "&mimetype=" + pluginInfoItem;
       } else {
         this.mSuccessfullPluginInstallation++;
         statusMsg = this.getString("pluginInstallationSummary.success");
-      }  
-
-      myLabel.setAttribute("value", statusMsg);
-      myRow.appendChild(myLabel)
+      }
 
       // manual url - either returned from the webservice or the pluginspage attribute
-      if (myPluginItem.error && (myPluginItem.manualInstallationURL || this.mPluginRequestArray[myPluginItem.requestedMimetype].pluginsPage)){
-        var myButton = document.createElement("button");
-      
-        var manualInstallLabel = this.getString("pluginInstallationSummary.manualInstall.label");
-        var manualInstallTooltip = this.getString("pluginInstallationSummary.manualInstall.tooltip");
-
-        myButton.setAttribute("label", manualInstallLabel);
-        myButton.setAttribute("tooltiptext", manualInstallTooltip);
-
-        var manualUrl = myPluginItem.manualInstallationURL ? myPluginItem.manualInstallationURL : this.mPluginRequestArray[myPluginItem.requestedMimetype].pluginsPage;
-
-        myButton.setAttribute("oncommand","gPluginInstaller.doManualPluginInstall('" + manualUrl + "')");
-        myRow.appendChild(myButton);
+      var manualUrl;
+      if ((myPluginItem.error || !myPluginItem.XPILocation) && (myPluginItem.manualInstallationURL || this.mPluginRequestArray[myPluginItem.requestedMimetype].pluginsPage)){
+        manualUrl = myPluginItem.manualInstallationURL ? myPluginItem.manualInstallationURL : this.mPluginRequestArray[myPluginItem.requestedMimetype].pluginsPage;
       }  
-    
-      myRows.appendChild(myRow);
+
+      this.addPluginResultRow(
+          myPluginItem.IconUrl, 
+          myPluginItem.name + " " + (myPluginItem.version ? myPluginItem.version : ""),
+          null,
+          statusMsg, 
+          statusTooltip, 
+          manualUrl);
     }
+  }
+
+  // handle plugins we couldn't find
+  for (pluginInfoItem in this.mPluginNotFoundArray){
+    var pluginRequest = this.mPluginRequestArray[pluginInfoItem];
+
+    // if there is a pluginspage, show UI
+    if (pluginRequest && pluginRequest.pluginsPage) {
+      this.addPluginResultRow(
+          "",
+          this.getString("pluginInstallation.unknownPlugin"),
+          pluginInfoItem,
+          null,
+          null,
+          this.mPluginRequestArray[pluginInfoItem].pluginsPage);
+    }
+
+    notInstalledList += "&mimetype=" + pluginInfoItem;
   }
 
   // no plugins were found, so change the description of the final page.
@@ -413,6 +476,18 @@ nsPluginInstallerWizard.prototype.showPluginResults = function (){
     document.getElementById("pluginSummaryDescription").setAttribute("value", noPluginsFound);
   }
 
+  document.getElementById("pluginSummaryRestartNeeded").hidden = !needsRestart;
+
+  // set the get more info link to contain the mimetypes we couldn't install.
+  notInstalledList +=
+    "&appID=" + this.getPrefBranch().getCharPref("app.id") +
+    "&appVersion=" + this.getPrefBranch().getCharPref("app.build_id") +
+    "&clientOS=" + this.getOS() +
+    "&chromeLocale=" + this.getChromeLocale();
+
+  document.getElementById("moreInfoLink").setAttribute("onclick",
+    "gPluginInstaller.loadURL('https://update.mozilla.org/plugins/"+notInstalledList+"')");
+  
   // clear the tab's plugin list
   this.mTab.missingPlugins = null;
 
@@ -421,8 +496,8 @@ nsPluginInstallerWizard.prototype.showPluginResults = function (){
   this.canCancel(false);
 } 
 
-nsPluginInstallerWizard.prototype.doManualPluginInstall = function (aUrl){
-  window.open(aUrl);
+nsPluginInstallerWizard.prototype.loadURL = function (aUrl){
+  window.opener.open(aUrl);
 }
 
 nsPluginInstallerWizard.prototype.getString = function (aName){
@@ -445,7 +520,12 @@ nsPluginInstallerWizard.prototype.getChromeLocale = function (){
   return chromeReg.getSelectedLocale("global");
 }
 
-
+nsPluginInstallerWizard.prototype.getPrefBranch = function (){
+  if (!this.prefBranch)
+    this.prefBranch = Components.classes["@mozilla.org/preferences-service;1"]
+                                .getService(Components.interfaces.nsIPrefBranch);
+  return this.prefBranch;
+}
 function nsPluginRequest(aPlugRequest){
   this.mimetype = encodeURI(aPlugRequest.mimetype);
   this.pluginsPage = aPlugRequest.pluginsPage;
@@ -461,6 +541,7 @@ function PluginInfo(aResult) {
   this.manualInstallationURL = aResult.manualInstallationURL;
   this.requestedMimetype = aResult.requestedMimetype;
   this.licenseURL = aResult.licenseURL;
+  this.needsRestart = (aResult.needsRestart == "true");
 
   this.error = null;
   this.toBeInstalled = true;

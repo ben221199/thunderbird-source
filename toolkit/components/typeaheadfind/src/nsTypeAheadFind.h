@@ -127,8 +127,10 @@ protected:
   // mAllTheSame Char starts out PR_TRUE, becomes false when 
   // at least 2 different chars typed
   PRPackedBool mAllTheSameChar;
-  PRPackedBool mIsFirstVisiblePreferred;
   PRInt32 mRepeatingMode;
+  // mLastFindLength is the character length of the last find string.  It is used for
+  // disabling the "not found" sound when using backspace or delete
+  PRUint32 mLastFindLength;
 
   // Sound is played asynchronously on some platforms.
   // If we destroy mSoundInterface before sound has played, it won't play

@@ -92,6 +92,8 @@
 #include "nsIMsgHdr.h"
 #include "nsILineInputStream.h"
 #include "nsNetUtil.h"
+#include "nsEscape.h"
+
 #define PREF_MAIL_ACCOUNTMANAGER_ACCOUNTS "mail.accountmanager.accounts"
 #define PREF_MAIL_ACCOUNTMANAGER_DEFAULTACCOUNT "mail.accountmanager.defaultaccount"
 #define PREF_MAIL_ACCOUNTMANAGER_LOCALFOLDERSSERVER "mail.accountmanager.localfoldersserver"
@@ -2495,41 +2497,53 @@ nsresult VirtualFolderChangeListener::Init()
   /**
    * nsIDBChangeListener
    */
-NS_IMETHODIMP VirtualFolderChangeListener::OnKeyChange(nsMsgKey aKeyChanged, PRUint32 aOldFlags, PRUint32 aNewFlags, nsIDBChangeListener *aInstigator)
+NS_IMETHODIMP VirtualFolderChangeListener::OnHdrChange(nsIMsgDBHdr *aHdrChanged, PRUint32 aOldFlags, PRUint32 aNewFlags, nsIDBChangeListener *aInstigator)
 {
   nsCOMPtr <nsIMsgDatabase> msgDB;
 
   nsresult rv = m_folderWatching->GetMsgDatabase(nsnull, getter_AddRefs(msgDB));
-  nsCOMPtr <nsIMsgDBHdr> msgHdr;
-  rv = msgDB->GetMsgHdrForKey(aKeyChanged, getter_AddRefs(msgHdr));
   NS_ENSURE_SUCCESS(rv, rv);
   PRBool oldMatch = PR_FALSE, newMatch = PR_FALSE;
-  rv = m_searchSession->MatchHdr(msgHdr, msgDB, &newMatch);
+  rv = m_searchSession->MatchHdr(aHdrChanged, msgDB, &newMatch);
   NS_ENSURE_SUCCESS(rv, rv);
   if (m_searchOnMsgStatus)
   {
     // if status is a search criteria, check if the header matched before
     // it changed, in order to determine if we need to bump the counts. 
-    msgHdr->SetFlags(aOldFlags);
-    rv = m_searchSession->MatchHdr(msgHdr, msgDB, &oldMatch);
-    msgHdr->SetFlags(aNewFlags); // restore new flags even on match failure.
+    aHdrChanged->SetFlags(aOldFlags);
+    rv = m_searchSession->MatchHdr(aHdrChanged, msgDB, &oldMatch);
+    aHdrChanged->SetFlags(aNewFlags); // restore new flags even on match failure.
     NS_ENSURE_SUCCESS(rv, rv);
   }
   else
     oldMatch = newMatch;
   // we don't want to change the total counts if this virtual folder is open in a view,
-  // because we won't remove the header from view while its open.
+  // because we won't remove the header from view while it's open. On the other hand,
+  // it's hard to fix the count when the user clicks away to another folder, w/o re-running
+  // the search, or setting some sort of pending count change.
+  // Maybe this needs to be handled in the view code...the view could do the same calculation
+  // and also keep track of the counts changed. Then, when the view was closed, if it's a virtual
+  // folder, it could update the counts for the db.
   if (oldMatch != newMatch || (oldMatch && (aOldFlags & MSG_FLAG_READ) != (aNewFlags & MSG_FLAG_READ)))
   {
     nsCOMPtr <nsIMsgDatabase> virtDatabase;
     nsCOMPtr <nsIDBFolderInfo> dbFolderInfo;
 
     rv = m_virtualFolder->GetDBFolderInfoAndDB(getter_AddRefs(dbFolderInfo), getter_AddRefs(virtDatabase));
+    NS_ENSURE_SUCCESS(rv, rv);
     PRInt32 totalDelta = 0,  unreadDelta = 0;
     if (oldMatch != newMatch)
-      totalDelta = (oldMatch) ? -1 : 1;
+    {
+ //     PRBool isOpen = PR_FALSE;
+//      nsCOMPtr <nsIMsgMailSession> mailSession = do_GetService(NS_MSGMAILSESSION_CONTRACTID);
+//      if (mailSession && aFolder)
+//        mailSession->IsFolderOpenInWindow(m_virtualFolder, &isOpen);
+      // we can't remove headers that no longer match - but we might add headers that newly match, someday.
+//      if (!isOpen)
+        totalDelta = (oldMatch) ? -1 : 1;
+    }
     PRBool msgHdrIsRead;
-    msgHdr->GetIsRead(&msgHdrIsRead);
+    aHdrChanged->GetIsRead(&msgHdrIsRead);
     if (oldMatch == newMatch) // read flag changed state
       unreadDelta = (msgHdrIsRead) ? -1 : 1; 
     else if (oldMatch) // else header should removed
@@ -2540,23 +2554,28 @@ NS_IMETHODIMP VirtualFolderChangeListener::OnKeyChange(nsMsgKey aKeyChanged, PRU
       dbFolderInfo->ChangeNumUnreadMessages(unreadDelta);
     if (totalDelta)
       dbFolderInfo->ChangeNumMessages(totalDelta);
+    if (unreadDelta == -1 && aOldFlags & MSG_FLAG_NEW)
+    {
+      PRInt32 numNewMessages;
+      m_virtualFolder->GetNumNewMessages(PR_FALSE, &numNewMessages);
+      m_virtualFolder->SetNumNewMessages(numNewMessages - 1);
+      if (numNewMessages == 1)
+        m_virtualFolder->SetHasNewMessages(PR_FALSE);
+    }
     m_virtualFolder->UpdateSummaryTotals(PR_TRUE); // force update from db.
     virtDatabase->Commit(nsMsgDBCommitType::kLargeCommit);
   }
   return rv;
 }
 
-NS_IMETHODIMP VirtualFolderChangeListener::OnKeyDeleted(nsMsgKey aKeyDeleted, nsMsgKey aParentKey, PRInt32 aFlags, nsIDBChangeListener *aInstigator)
+NS_IMETHODIMP VirtualFolderChangeListener::OnHdrDeleted(nsIMsgDBHdr *aHdrDeleted, nsMsgKey aParentKey, PRInt32 aFlags, nsIDBChangeListener *aInstigator)
 {
   nsCOMPtr <nsIMsgDatabase> msgDB;
 
   nsresult rv = m_folderWatching->GetMsgDatabase(nsnull, getter_AddRefs(msgDB));
   NS_ENSURE_SUCCESS(rv, rv);
-  nsCOMPtr <nsIMsgDBHdr> msgHdr;
-  rv = msgDB->GetMsgHdrForKey(aKeyDeleted, getter_AddRefs(msgHdr));
-  NS_ENSURE_SUCCESS(rv, rv);
   PRBool match = PR_FALSE;
-  rv = m_searchSession->MatchHdr(msgHdr, msgDB, &match);
+  rv = m_searchSession->MatchHdr(aHdrDeleted, msgDB, &match);
   if (match)
   {
     nsCOMPtr <nsIMsgDatabase> virtDatabase;
@@ -2564,27 +2583,34 @@ NS_IMETHODIMP VirtualFolderChangeListener::OnKeyDeleted(nsMsgKey aKeyDeleted, ns
 
     nsresult rv = m_virtualFolder->GetDBFolderInfoAndDB(getter_AddRefs(dbFolderInfo), getter_AddRefs(virtDatabase));
     PRBool msgHdrIsRead;
-    msgHdr->GetIsRead(&msgHdrIsRead);
+    aHdrDeleted->GetIsRead(&msgHdrIsRead);
     if (!msgHdrIsRead)
       dbFolderInfo->ChangeNumUnreadMessages(-1);
     dbFolderInfo->ChangeNumMessages(-1);
+    PRUint32 hdrFlags;
+    aHdrDeleted->GetFlags(&hdrFlags);
+    if (hdrFlags & MSG_FLAG_NEW)
+    {
+      PRInt32 numNewMessages;
+      m_virtualFolder->GetNumNewMessages(PR_FALSE, &numNewMessages);
+      m_virtualFolder->SetNumNewMessages(numNewMessages - 1);
+      if (numNewMessages == 1)
+        m_virtualFolder->SetHasNewMessages(PR_FALSE);
+    }
     m_virtualFolder->UpdateSummaryTotals(PR_TRUE); // force update from db.
     virtDatabase->Commit(nsMsgDBCommitType::kLargeCommit);
   }
   return rv;
 }
 
-NS_IMETHODIMP VirtualFolderChangeListener::OnKeyAdded(nsMsgKey aNewKey, nsMsgKey aParentKey, PRInt32 aFlags, nsIDBChangeListener *aInstigator)
+NS_IMETHODIMP VirtualFolderChangeListener::OnHdrAdded(nsIMsgDBHdr *aNewHdr, nsMsgKey aParentKey, PRInt32 aFlags, nsIDBChangeListener *aInstigator)
 {
   nsCOMPtr <nsIMsgDatabase> msgDB;
 
   nsresult rv = m_folderWatching->GetMsgDatabase(nsnull, getter_AddRefs(msgDB));
   NS_ENSURE_SUCCESS(rv, rv);
-  nsCOMPtr <nsIMsgDBHdr> msgHdr;
-  rv = msgDB->GetMsgHdrForKey(aNewKey, getter_AddRefs(msgHdr));
-  NS_ENSURE_SUCCESS(rv, rv);
   PRBool match = PR_FALSE;
-  rv = m_searchSession->MatchHdr(msgHdr, msgDB, &match);
+  rv = m_searchSession->MatchHdr(aNewHdr, msgDB, &match);
   if (match)
   {
     nsCOMPtr <nsIMsgDatabase> virtDatabase;
@@ -2592,9 +2618,18 @@ NS_IMETHODIMP VirtualFolderChangeListener::OnKeyAdded(nsMsgKey aNewKey, nsMsgKey
 
     rv = m_virtualFolder->GetDBFolderInfoAndDB(getter_AddRefs(dbFolderInfo), getter_AddRefs(virtDatabase));
     PRBool msgHdrIsRead;
-    msgHdr->GetIsRead(&msgHdrIsRead);
+    PRUint32 msgFlags;
+    aNewHdr->GetIsRead(&msgHdrIsRead);
+    aNewHdr->GetFlags(&msgFlags);
     if (!msgHdrIsRead)
       dbFolderInfo->ChangeNumUnreadMessages(1);
+    if (msgFlags & MSG_FLAG_NEW)
+    {
+      PRInt32 numNewMessages;
+      m_virtualFolder->GetNumNewMessages(PR_FALSE, &numNewMessages);
+      m_virtualFolder->SetHasNewMessages(PR_TRUE);
+      m_virtualFolder->SetNumNewMessages(numNewMessages + 1);
+    }
     dbFolderInfo->ChangeNumMessages(1);
     m_virtualFolder->UpdateSummaryTotals(true); // force update from db.
     virtDatabase->Commit(nsMsgDBCommitType::kLargeCommit);
@@ -2609,11 +2644,10 @@ NS_IMETHODIMP VirtualFolderChangeListener::OnParentChanged(nsMsgKey aKeyChanged,
 
 NS_IMETHODIMP VirtualFolderChangeListener::OnAnnouncerGoingAway(nsIDBChangeAnnouncer *instigator)
 {
-  nsresult rv;
-  nsCOMPtr<nsIMsgDBService> msgDBService = do_GetService(NS_MSGDB_SERVICE_CONTRACTID, &rv);
-  if (msgDBService)
-    msgDBService->UnregisterPendingListener(this);
-  return rv;
+  nsCOMPtr <nsIMsgDatabase> msgDB = do_QueryInterface(instigator);
+  if (msgDB)
+    msgDB->RemoveListener(this);
+  return NS_OK;
 }
 
 NS_IMETHODIMP VirtualFolderChangeListener::OnReadChanged(nsIDBChangeListener *aInstigator)
@@ -2653,66 +2687,97 @@ nsresult nsMsgAccountManager::LoadVirtualFolders()
      nsCOMPtr<nsIFileInputStream> fileStream = do_CreateInstance(NS_LOCALFILEINPUTSTREAM_CONTRACTID, &rv);
      NS_ENSURE_SUCCESS(rv, rv);
 
-     rv = fileStream->Init(file,  PR_RDONLY, 0664, PR_FALSE);  //just have to read the messages
+     rv = fileStream->Init(file,  PR_RDONLY, 0664, PR_FALSE);  
      nsCOMPtr <nsILineInputStream> lineInputStream(do_QueryInterface(fileStream));
 
     PRBool isMore = PR_TRUE;
     nsCAutoString buffer;
+    PRInt32 version = -1;
+    nsCOMPtr <nsIMsgFolder> virtualFolder;
+    nsCOMPtr <nsIDBFolderInfo> dbFolderInfo;
+    nsCOMPtr<nsIRDFResource> resource;
+    nsCOMPtr<nsIRDFService> rdf(do_GetService("@mozilla.org/rdf/rdf-service;1", &rv));
+    NS_ENSURE_SUCCESS(rv, rv);
 
     while (isMore &&
            NS_SUCCEEDED(lineInputStream->ReadLine(buffer, &isMore)))
     {
       if (buffer.Length() > 0)
       {
-        nsCOMPtr <nsIMsgFolder> folder;
-        nsCOMPtr<nsIRDFService> rdf(do_GetService("@mozilla.org/rdf/rdf-service;1", &rv));
-        NS_ENSURE_SUCCESS(rv, rv);
-
-        nsCOMPtr<nsIRDFResource> resource;
-        rv = rdf->GetResource(buffer, getter_AddRefs(resource));
-        NS_ENSURE_SUCCESS(rv, rv);
-
-        folder = do_QueryInterface(resource, &rv);
-        NS_ENSURE_SUCCESS(rv, rv);
-        if (folder)
+        if (version == -1)
         {
-          // need to add the folder as a sub-folder of its parent.
-          PRInt32 lastSlash = buffer.RFindChar('/');
-          nsDependentCSubstring parentUri(buffer, 0, lastSlash);
-          rdf->GetResource(parentUri, getter_AddRefs(resource));
-          nsCOMPtr <nsIMsgFolder> parentFolder = do_QueryInterface(resource);
-          if (parentFolder)
-          {
-            nsCOMPtr <nsIMsgFolder> childFolder;
-            nsAutoString currentFolderNameStr;
-            CopyUTF8toUTF16(Substring(buffer,  lastSlash + 1, buffer.Length()), currentFolderNameStr);
-            rv =  parentFolder->AddSubfolder(currentFolderNameStr, getter_AddRefs(childFolder));
-            if (!childFolder)
-              childFolder = folder; // or just use folder?
+          buffer.Cut(0, 8);
+          PRInt32 irv;
+          version = buffer.ToInteger(&irv);
+          continue;
+        }
+        if (Substring(buffer, 0, 4).Equals("uri="))
+        {
+          buffer.Cut(0, 4);
 
-            nsCOMPtr <nsIMsgDatabase> db;
-            childFolder->GetMsgDatabase(nsnull, getter_AddRefs(db)); // force db to get created.
-            nsCOMPtr <nsIDBFolderInfo> dbFolderInfo;
-            rv = db->GetDBFolderInfo(getter_AddRefs(dbFolderInfo));
-            childFolder->SetFlag(MSG_FOLDER_FLAG_VIRTUAL);
-            nsXPIDLCString realFolderUri;
-            dbFolderInfo->GetCharPtrProperty("searchFolderUri", getter_Copies(realFolderUri));
-            // if we supported cross folder virtual folders, we'd have a list of folders uris,
-            // and we'd have to add a pending listener for each of them.
-            if (realFolderUri.Length())
+          rv = rdf->GetResource(buffer, getter_AddRefs(resource));
+          NS_ENSURE_SUCCESS(rv, rv);
+
+          virtualFolder = do_QueryInterface(resource, &rv);
+          NS_ENSURE_SUCCESS(rv, rv);
+          if (virtualFolder)
+          {
+            // need to add the folder as a sub-folder of its parent.
+            PRInt32 lastSlash = buffer.RFindChar('/');
+            nsDependentCSubstring parentUri(buffer, 0, lastSlash);
+            rdf->GetResource(parentUri, getter_AddRefs(resource));
+            nsCOMPtr <nsIMsgFolder> parentFolder = do_QueryInterface(resource);
+            if (parentFolder)
             {
-              // we need to load the db for the actual folder so that many hdrs to download
-              // will return false...
-              rdf->GetResource(realFolderUri, getter_AddRefs(resource));
+              nsAutoString currentFolderNameStr;
+              nsCAutoString currentFolderNameCStr(Substring(buffer, lastSlash + 1, buffer.Length()));
+              nsUnescape(currentFolderNameCStr.BeginWriting());
+              CopyUTF8toUTF16(currentFolderNameCStr, currentFolderNameStr);
+              nsCOMPtr <nsIMsgFolder> childFolder;
+              nsCOMPtr <nsIMsgDatabase> db;
+              virtualFolder->GetMsgDatabase(nsnull, getter_AddRefs(db)); // force db to get created.
+              if (db)
+              rv = db->GetDBFolderInfo(getter_AddRefs(dbFolderInfo));
+              else
+                continue;
+              rv =  parentFolder->AddSubfolder(currentFolderNameStr, getter_AddRefs(childFolder));
+
+              virtualFolder->SetFlag(MSG_FOLDER_FLAG_VIRTUAL);
+            }
+          }
+        }
+        else if (dbFolderInfo && Substring(buffer, 0, 6).Equals("scope="))
+        {
+          buffer.Cut(0, 6);
+          // if this is a cross folder virtual folder, we have a list of folders uris,
+          // and we have to add a pending listener for each of them.
+          if (buffer.Length())
+          {
+            nsCStringArray folderUris;
+            dbFolderInfo->SetCharPtrProperty("searchFolderUri", buffer.get());
+            folderUris.ParseString(buffer.get(), "|");
+            for (PRInt32 i = 0; i < folderUris.Count(); i++)
+            {
+              rdf->GetResource(*(folderUris[i]), getter_AddRefs(resource));
               nsCOMPtr <nsIMsgFolder> realFolder = do_QueryInterface(resource);
               VirtualFolderChangeListener *dbListener = new VirtualFolderChangeListener();
               m_virtualFolderListeners.AppendObject(dbListener);
-              dbListener->m_virtualFolder = childFolder;
+              dbListener->m_virtualFolder = virtualFolder;
               dbListener->m_folderWatching = realFolder;
               dbListener->Init();
               msgDBService->RegisterPendingListener(realFolder, dbListener);
             }
           }
+        }
+        else if (dbFolderInfo && Substring(buffer, 0, 6).Equals("terms="))
+        {
+          buffer.Cut(0, 6);
+          dbFolderInfo->SetCharPtrProperty("searchStr", buffer.get());
+        }
+        else if (dbFolderInfo && Substring(buffer, 0, 13).Equals("searchOnline="))
+        {
+          buffer.Cut(0, 13);
+          dbFolderInfo->SetBooleanProperty("searchOnline", buffer.Equals("true"));
         }
       }
     }
@@ -2748,8 +2813,6 @@ NS_IMETHODIMP nsMsgAccountManager::SaveVirtualFolders()
           NS_ENSURE_SUCCESS(rv, rv);
           PRUint32 vfCount;
           virtualFolders->Count(&vfCount);
-          for (PRInt32 folderIndex = 0; folderIndex < vfCount; folderIndex++)
-          {
             if (!outputStream)
             {
               GetVirtualFoldersFile(file);
@@ -2757,16 +2820,35 @@ NS_IMETHODIMP nsMsgAccountManager::SaveVirtualFolders()
                                                file,
                                                PR_CREATE_FILE | PR_WRONLY | PR_TRUNCATE,
                                                0664);
+              NS_ENSURE_SUCCESS(rv, rv);
+              WriteLineToOutputStream("version=", "1", outputStream);
+
             }
+          for (PRInt32 folderIndex = 0; folderIndex < vfCount; folderIndex++)
+          {
             nsCOMPtr <nsIRDFResource> folderRes (do_QueryElementAt(virtualFolders, folderIndex));
+            nsCOMPtr <nsIMsgFolder> msgFolder = do_QueryInterface(folderRes);
             const char *uri;
+            nsCOMPtr <nsIMsgDatabase> db;
+            nsCOMPtr <nsIDBFolderInfo> dbFolderInfo;
+            rv = msgFolder->GetDBFolderInfoAndDB(getter_AddRefs(dbFolderInfo), getter_AddRefs(db)); // force db to get created.
+            if (dbFolderInfo)
+            {
+            nsXPIDLCString srchFolderUri;
+            nsXPIDLCString searchTerms; 
+            PRBool searchOnline = PR_FALSE;
+            dbFolderInfo->GetBooleanProperty("searchOnline", &searchOnline, PR_FALSE);
+            dbFolderInfo->GetCharPtrProperty("searchFolderUri", getter_Copies(srchFolderUri));
+            dbFolderInfo->GetCharPtrProperty("searchStr", getter_Copies(searchTerms));
             folderRes->GetValueConst(&uri);
-            PRUint32 writeCount;
-            outputStream->Write(uri, strlen(uri), &writeCount);
-            outputStream->Write("\n", 1, &writeCount);
+            WriteLineToOutputStream("uri=", uri, outputStream);
+            WriteLineToOutputStream("scope=", srchFolderUri.get(), outputStream);
+            WriteLineToOutputStream("terms=", searchTerms.get(), outputStream);
+            WriteLineToOutputStream("searchOnline=", searchOnline ? "true" : "false", outputStream);
           }
         }
       }
+   }
    }
    if (outputStream)
     outputStream->Close();
@@ -2774,6 +2856,14 @@ NS_IMETHODIMP nsMsgAccountManager::SaveVirtualFolders()
   return rv;
 }
 
+nsresult nsMsgAccountManager::WriteLineToOutputStream(const char *prefix, const char * line, nsIOutputStream *outputStream)
+{
+  PRUint32 writeCount;
+  outputStream->Write(prefix, strlen(prefix), &writeCount);
+  outputStream->Write(line, strlen(line), &writeCount);
+  outputStream->Write("\n", 1, &writeCount);
+  return NS_OK;
+}
 
 NS_IMETHODIMP nsMsgAccountManager::OnItemAdded(nsISupports *parentItem, nsISupports *item, const char *viewString)
 {
@@ -2796,7 +2886,6 @@ NS_IMETHODIMP nsMsgAccountManager::OnItemAdded(nsISupports *parentItem, nsISuppo
       nsCOMPtr <nsIMsgDatabase> virtDatabase;
       nsCOMPtr <nsIDBFolderInfo> dbFolderInfo;
       m_virtualFolderListeners.AppendObject(dbListener);
-
       rv = folder->GetDBFolderInfoAndDB(getter_AddRefs(dbFolderInfo), getter_AddRefs(virtDatabase));
       NS_ENSURE_SUCCESS(rv, rv);
       nsXPIDLCString srchFolderUri;
@@ -2805,7 +2894,10 @@ NS_IMETHODIMP nsMsgAccountManager::OnItemAdded(nsISupports *parentItem, nsISuppo
       // and we'd have to add a pending listener for each of them.
       rv = GetExistingFolder(srchFolderUri.get(), getter_AddRefs(dbListener->m_folderWatching));
       if (dbListener->m_folderWatching)
+      {
+        dbListener->Init();
         msgDBService->RegisterPendingListener(dbListener->m_folderWatching, dbListener);
+      }
     }
     rv = SaveVirtualFolders();
   }

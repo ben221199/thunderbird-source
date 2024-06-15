@@ -59,6 +59,7 @@
 #include "prprf.h"
 #include "prinrval.h"
 #include "nsVoidArray.h"
+#include "nsCOMArray.h"
 #include "nsHashtable.h"
 #include "nsIPrefBranch.h"
 #include "nsIPrefService.h"
@@ -112,6 +113,7 @@
 #include "nsIObserverService.h"
 #include "nsIObserver.h"
 #include "nsIDocShell.h"        // for reflow observation
+#include "nsIBaseWindow.h"
 #include "nsLayoutErrors.h"
 #include "nsLayoutUtils.h"
 #include "nsCSSRendering.h"
@@ -1180,6 +1182,7 @@ public:
                             nsEvent* aEvent,
                             nsEventStatus* aStatus);
   NS_IMETHOD ResizeReflow(nsIView *aView, nscoord aWidth, nscoord aHeight);
+  NS_IMETHOD_(PRBool) IsVisible();
 
   //nsIFocusTracker interface
   NS_IMETHOD ScrollFrameIntoView(nsIFrame *aFrame);
@@ -1351,9 +1354,9 @@ protected:
   PRPackedBool mHaveShutDown;
 
   nsIFrame*   mCurrentEventFrame;
-  nsIContent* mCurrentEventContent;
+  nsCOMPtr<nsIContent> mCurrentEventContent;
   nsVoidArray mCurrentEventFrameStack;
-  nsVoidArray mCurrentEventContentStack;
+  nsCOMArray<nsIContent> mCurrentEventContentStack;
   nsSupportsHashtable* mAnonymousContentTable;
 
 #ifdef NS_DEBUG
@@ -1607,7 +1610,7 @@ PresShell::~PresShell()
   delete mStyleSet;
   delete mFrameConstructor;
 
-  NS_IF_RELEASE(mCurrentEventContent);
+  mCurrentEventContent = nsnull;
 
   // if we allocated any stack memory free it.
   FreeDynamicStack();
@@ -3834,9 +3837,7 @@ PresShell::ClearFrameRefs(nsIFrame* aFrame)
   }
   
   if (aFrame == mCurrentEventFrame) {
-    NS_IF_RELEASE(mCurrentEventContent);
     mCurrentEventContent = aFrame->GetContent();
-    NS_IF_ADDREF(mCurrentEventContent);
     mCurrentEventFrame = nsnull;
   }
 
@@ -3845,8 +3846,7 @@ PresShell::ClearFrameRefs(nsIFrame* aFrame)
       //One of our stack frames was deleted.  Get its content so that when we
       //pop it we can still get its new frame from its content
       nsIContent *currentEventContent = aFrame->GetContent();
-      NS_IF_ADDREF(currentEventContent);
-      mCurrentEventContentStack.ReplaceElementAt((void*)currentEventContent, i);
+      mCurrentEventContentStack.ReplaceObjectAt(currentEventContent, i);
       mCurrentEventFrameStack.ReplaceElementAt(nsnull, i);
     }
   }
@@ -4812,8 +4812,14 @@ PresShell::UnsuppressAndInvalidate()
         cv->Show();
         // Calling |Show| may destroy us.  Not sure why yet, but it's
         // a smoketest blocker.
-        if (mIsDestroying)
+        if (mIsDestroying) {
+          if (focusController) {
+            // Unsuppress focus now that we're exiting this code,
+            // otherwise we're stuck in focus suppression, which hoses most of Mozilla
+            focusController->SetSuppressFocus(PR_FALSE, "PresShell suppression on Web page loads");
+          }
           return;
+        }
       }
     }
   }
@@ -5622,24 +5628,23 @@ PresShell::PushCurrentEventInfo(nsIFrame* aFrame, nsIContent* aContent)
 {
   if (mCurrentEventFrame || mCurrentEventContent) {
     mCurrentEventFrameStack.InsertElementAt((void*)mCurrentEventFrame, 0);
-    mCurrentEventContentStack.InsertElementAt((void*)mCurrentEventContent, 0);
+    mCurrentEventContentStack.InsertObjectAt(mCurrentEventContent, 0);
   }
   mCurrentEventFrame = aFrame;
   mCurrentEventContent = aContent;
-  NS_IF_ADDREF(aContent);
 }
 
 void
 PresShell::PopCurrentEventInfo()
 {
   mCurrentEventFrame = nsnull;
-  NS_IF_RELEASE(mCurrentEventContent);
+  mCurrentEventContent = nsnull;
 
   if (0 != mCurrentEventFrameStack.Count()) {
     mCurrentEventFrame = (nsIFrame*)mCurrentEventFrameStack.ElementAt(0);
     mCurrentEventFrameStack.RemoveElementAt(0);
-    mCurrentEventContent = (nsIContent*)mCurrentEventContentStack.ElementAt(0);
-    mCurrentEventContentStack.RemoveElementAt(0);
+    mCurrentEventContent = mCurrentEventContentStack.ObjectAt(0);
+    mCurrentEventContentStack.RemoveObjectAt(0);
   }
 }
 
@@ -5780,8 +5785,7 @@ PresShell::HandleEvent(nsIView         *aView,
 
       nsIEventStateManager *esm = mPresContext->EventStateManager();
 
-      NS_IF_RELEASE(mCurrentEventContent);
-      esm->GetFocusedContent(&mCurrentEventContent);
+      esm->GetFocusedContent(getter_AddRefs(mCurrentEventContent));
 
       esm->GetFocusedFrame(&mCurrentEventFrame);
       if (!mCurrentEventFrame) {
@@ -5807,7 +5811,7 @@ PresShell::HandleEvent(nsIView         *aView,
                 focusController->GetFocusedElement(getter_AddRefs(focusedElement));
                 if (focusedElement) {
                   // get mCurrentEventContent from focusedElement
-                  CallQueryInterface(focusedElement, &mCurrentEventContent);
+                  mCurrentEventContent = do_QueryInterface(focusedElement);
                 }
               }
             }
@@ -5815,7 +5819,7 @@ PresShell::HandleEvent(nsIView         *aView,
         }
 #endif /* defined(MOZ_X11) */
         if (!mCurrentEventContent) {
-          NS_IF_ADDREF(mCurrentEventContent = mDocument->GetRootContent());
+          mCurrentEventContent = mDocument->GetRootContent();
         }
         mCurrentEventFrame = nsnull; // XXXldb Isn't it already?
       }
@@ -5903,12 +5907,10 @@ PresShell::HandleEvent(nsIView         *aView,
 
           // If we found an element, target it.  Otherwise, target *nothing*.
           if (!targetElement) {
-            NS_IF_RELEASE(mCurrentEventContent);
+            mCurrentEventContent = nsnull;
             mCurrentEventFrame = nsnull;
           } else if (targetElement != mCurrentEventContent) {
-            NS_IF_RELEASE(mCurrentEventContent);
             mCurrentEventContent = targetElement;
-            NS_ADDREF(mCurrentEventContent);
           }
         }
       }
@@ -6142,6 +6144,18 @@ NS_IMETHODIMP
 PresShell::ResizeReflow(nsIView *aView, nscoord aWidth, nscoord aHeight)
 {
   return ResizeReflow(aWidth, aHeight);
+}
+
+NS_IMETHODIMP_(PRBool)
+PresShell::IsVisible()
+{
+  nsCOMPtr<nsISupports> container = mPresContext->GetContainer();
+  nsCOMPtr<nsIBaseWindow> bw = do_QueryInterface(container);
+  if (!bw)
+    return PR_FALSE;
+  PRBool res = PR_TRUE;
+  bw->GetVisibility(&res);
+  return res;
 }
 
 nsresult

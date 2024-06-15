@@ -466,7 +466,7 @@ private:
   
   // initialization function given a new url and transport layer
   nsresult  SetupWithUrl(nsIURI * aURL, nsISupports* aConsumer);
-  void ReleaseUrlState(); // release any state that is stored on a per action basis.
+  void ReleaseUrlState(PRBool rerunningUrl); // release any state that is stored on a per action basis.
   
   ////////////////////////////////////////////////////////////////////////////////////////
   // Communication methods --> Reading and writing protocol
@@ -509,6 +509,9 @@ private:
   // each action. They are called by ProcessAuthenticatedStateUrl.
   void OnLSubFolders();
   void OnAppendMsgFromFile();
+
+  char *GetFolderPathString(); // OK to call from UI thread
+
   char * OnCreateServerSourceFolderPathString();
   char * OnCreateServerDestinationFolderPathString();
   nsresult CreateServerSourceFolderPathString(char **result);
@@ -566,6 +569,7 @@ private:
   PRBool DeleteSubFolders(const char* aMailboxName, PRBool & aDeleteSelf);
   PRBool  RenameHierarchyByHand(const char *oldParentMailboxName, 
     const char *newParentMailboxName);
+  PRBool RetryUrl();
   
   nsresult GlobalInitialization();
   nsresult Configure(PRInt32 TooFastTime, PRInt32 IdealTime,
@@ -626,6 +630,8 @@ private:
   PRInt32 m_noopCount;
   PRBool  m_autoSubscribe, m_autoUnsubscribe, m_autoSubscribeOnOpen;
   PRBool m_closeNeededBeforeSelect;
+  PRBool m_retryUrlOnError;
+
   enum EMailboxHierarchyNameState {
     kNoOperationInProgress,
       kDiscoverBaseFolderInProgress,

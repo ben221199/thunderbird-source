@@ -131,12 +131,15 @@ protected:
   virtual nsresult GetDatabase(nsIMsgWindow *aMsgWindow) = 0;
   virtual nsresult SendFlagNotifications(nsISupports *item, PRUint32 oldFlags, PRUint32 newFlags);
   nsresult CheckWithNewMessagesStatus(PRBool messageAdded);
-  nsresult OnKeyAddedOrDeleted(nsMsgKey aKeyChanged, nsMsgKey  aParentKey , PRInt32 aFlags, 
-                  nsIDBChangeListener * aInstigator, PRBool added, PRBool doFlat, PRBool doThread);
+  nsresult OnHdrAddedOrDeleted(nsIMsgDBHdr *hdrChanged, PRBool added);
   nsresult CreateFileSpecForDB(const char *userLeafName, nsFileSpec &baseDir, nsIFileSpec **dbFileSpec);
 
   nsresult GetFolderCacheKey(nsIFileSpec **aFileSpec);
   nsresult GetFolderCacheElemFromFileSpec(nsIFileSpec *fileSpec, nsIMsgFolderCacheElement **cacheElement);
+  nsresult AddDirectorySeparator(nsFileSpec &path);
+  nsresult CheckIfFolderExists(const PRUnichar *newFolderName, nsIMsgFolder *parentFolder, nsIMsgWindow *msgWindow);
+
+  nsresult CreateDirectoryForFolder(nsFileSpec &path);
 
   nsresult PromptForCachePassword(nsIMsgIncomingServer *server, nsIMsgWindow *aWindow, PRBool &passwordCorrect);
   // offline support methods.
@@ -206,6 +209,18 @@ protected:
 
   PRInt32 mNumNewBiffMessages;
   PRBool mIsCachable;
+
+  // these are previous set of new msgs, which we might
+  // want to run junk controls on. This is in addition to "new" hdrs
+  // in the db, which might get cleared because the user clicked away
+  // from the folder.
+  nsMsgKeyArray m_saveNewMsgs;
+
+  // These are the set of new messages for a folder who has had
+  // its db closed, without the user reading the folder. This 
+  // happens with pop3 mail filtered to a different local folder.
+  nsMsgKeyArray m_newMsgs;
+
   //
   // stuff from the uri
   //
@@ -215,6 +230,8 @@ protected:
   nsString mName;
   nsCOMPtr<nsIFileSpec> mPath;
   char * mBaseMessageURI; //The uri with the message scheme
+
+  PRBool mInVFEditSearchScope ; // non persistant state used by the virtual folder UI
 
   // static stuff for cross-instance objects like atoms
   static nsrefcnt gInstanceCount;
@@ -233,6 +250,7 @@ protected:
   static nsIAtom* kTotalUnreadMessagesAtom;
   static nsIAtom* kBiffStateAtom;
   static nsIAtom* kNewMessagesAtom;
+  static nsIAtom* kInVFEditSearchScopeAtom;
   static nsIAtom* kNumNewBiffMessagesAtom;
   static nsIAtom* kTotalMessagesAtom;
   static nsIAtom* kFolderSizeAtom;

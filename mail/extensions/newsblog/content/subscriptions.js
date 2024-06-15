@@ -288,9 +288,7 @@ function doRemove() {
 
     var msgdb = currentFolder.QueryInterface(Components.interfaces.nsIMsgFolder).getMsgDatabase(null);
     var folderInfo = msgdb.dBFolderInfo;
-    var oldFeedUrl = {};
-    folderInfo.GetCharPtrProperty("feedUrl", oldFeedUrl);
-    oldFeedUrl = oldFeedUrl.value;
+    var oldFeedUrl = folderInfo.getCharPtrProperty("feedUrl");
 
     if (!oldFeedUrl) // no more feeds pointing to the folder?
     {

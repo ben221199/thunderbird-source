@@ -1,16 +1,16 @@
-/.cvsignore/1.1/Tue Jun 20 20:43:54 2000//TTHUNDERBIRD_0_8_RELEASE
-/Makefile.in/1.51/Mon Feb 23 22:49:25 2004//TTHUNDERBIRD_0_8_RELEASE
-/nsCExternalHandlerService.idl/1.4/Wed Feb  7 02:00:09 2001//TTHUNDERBIRD_0_8_RELEASE
-/nsExternalHelperAppService.cpp/1.253.2.1.2.1/Thu Sep  9 17:43:48 2004//TTHUNDERBIRD_0_8_RELEASE
-/nsExternalHelperAppService.h/1.61/Mon Mar  8 20:15:09 2004//TTHUNDERBIRD_0_8_RELEASE
-/nsExternalProtocolHandler.cpp/1.19.42.2/Fri Sep 10 23:09:01 2004//TTHUNDERBIRD_0_8_RELEASE
-/nsExternalProtocolHandler.h/1.4/Fri Jan 16 18:22:55 2004//TTHUNDERBIRD_0_8_RELEASE
-/nsHelperAppRDF.h/1.5/Fri Sep 26 19:49:23 2003//TTHUNDERBIRD_0_8_RELEASE
-/nsIExternalHelperAppService.idl/1.18/Mon Feb 23 22:49:25 2004//TTHUNDERBIRD_0_8_RELEASE
-/nsIExternalProtocolService.idl/1.5/Fri Nov 21 00:09:50 2003//TTHUNDERBIRD_0_8_RELEASE
-/nsIInternetConfigService.idl/1.10/Tue Oct  1 05:25:13 2002//TTHUNDERBIRD_0_8_RELEASE
-/nsMIMEInfoImpl.cpp/1.48/Sat Mar  6 14:43:29 2004//TTHUNDERBIRD_0_8_RELEASE
-/nsMIMEInfoImpl.h/1.20/Tue Mar  9 16:42:34 2004//TTHUNDERBIRD_0_8_RELEASE
+/.cvsignore/1.1/Tue Jun 20 20:43:54 2000//TTHUNDERBIRD_0_9_RELEASE
+/Makefile.in/1.51/Mon Feb 23 22:49:25 2004//TTHUNDERBIRD_0_9_RELEASE
+/nsCExternalHandlerService.idl/1.4/Wed Feb  7 02:00:09 2001//TTHUNDERBIRD_0_9_RELEASE
+/nsExternalHelperAppService.cpp/1.253.2.1.2.8/Mon Oct 25 09:48:47 2004//TTHUNDERBIRD_0_9_RELEASE
+/nsExternalHelperAppService.h/1.61.6.3/Wed Oct 20 15:12:42 2004//TTHUNDERBIRD_0_9_RELEASE
+/nsExternalProtocolHandler.cpp/1.19.42.4/Wed Oct 20 13:32:37 2004//TTHUNDERBIRD_0_9_RELEASE
+/nsExternalProtocolHandler.h/1.4/Fri Jan 16 18:22:55 2004//TTHUNDERBIRD_0_9_RELEASE
+/nsHelperAppRDF.h/1.5/Fri Sep 26 19:49:23 2003//TTHUNDERBIRD_0_9_RELEASE
+/nsIExternalHelperAppService.idl/1.18/Mon Feb 23 22:49:25 2004//TTHUNDERBIRD_0_9_RELEASE
+/nsIExternalProtocolService.idl/1.5.18.1/Wed Oct 20 13:32:37 2004//TTHUNDERBIRD_0_9_RELEASE
+/nsIInternetConfigService.idl/1.10/Tue Oct  1 05:25:13 2002//TTHUNDERBIRD_0_9_RELEASE
+/nsMIMEInfoImpl.cpp/1.48/Sat Mar  6 14:43:29 2004//TTHUNDERBIRD_0_9_RELEASE
+/nsMIMEInfoImpl.h/1.20/Tue Mar  9 16:42:34 2004//TTHUNDERBIRD_0_9_RELEASE
 D/beos////
 D/mac////
 D/os2////

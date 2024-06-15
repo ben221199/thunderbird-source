@@ -53,6 +53,7 @@
 // Interfaces Needed
 #include "nsDOMWindowList.h"
 #include "nsIBaseWindow.h"
+#include "nsIBrowserDOMWindow.h"
 #include "nsIChromeEventHandler.h"
 #include "nsIControllers.h"
 #include "nsIObserver.h"
@@ -149,6 +150,7 @@ public:
   virtual void SetScriptsEnabled(PRBool aEnabled, PRBool aFireTimeouts);
 
   // nsIScriptObjectPrincipal
+  NS_IMETHOD GetPrincipalObsolete(nsIPrincipalObsolete **prin);
   NS_IMETHOD GetPrincipal(nsIPrincipal **prin);
 
   // nsIDOMWindow
@@ -204,6 +206,8 @@ public:
   virtual NS_HIDDEN_(PopupControlState) PushPopupControlState(PopupControlState state) const;
   virtual NS_HIDDEN_(void) PopPopupControlState(PopupControlState state) const;
   virtual NS_HIDDEN_(PopupControlState) GetPopupControlState() const;
+  virtual NS_HIDDEN_(OpenAllowValue) GetOpenAllow(const nsAString &aName);
+  virtual NS_HIDDEN_(PRBool) IsHandlingResizeEvent() const;
 
   // nsIDOMViewCSS
   NS_DECL_NSIDOMVIEWCSS
@@ -253,8 +257,11 @@ protected:
   nsresult GetScrollInfo(nsIScrollableView** aScrollableView, float* aP2T,
                          float* aT2P);
   nsresult SecurityCheckURL(const char *aURL);
+  nsresult BuildURIfromBase(const char *aURL,
+                            nsIURI **aBuiltURI,
+                            PRBool *aFreeSecurityPass, JSContext **aCXused);
   PopupControlState CheckForAbusePoint();
-  PRUint32 CheckOpenAllow(PopupControlState aAbuseLevel,
+  OpenAllowValue CheckOpenAllow(PopupControlState aAbuseLevel,
                           const nsAString &aName);
   void     FireAbuseEvents(PRBool aBlocked, PRBool aWindow,
                            const nsAString &aPopupURL,
@@ -287,7 +294,8 @@ protected:
     return GetParentInternal() != nsnull;
   }
 
-protected:
+  PRBool DispatchCustomEvent(const char *aEventName);
+
   // When adding new member variables, be careful not to create cycles
   // through JavaScript.  If there is any chance that a member variable
   // could own objects that are implemented in JavaScript, then those
@@ -311,6 +319,8 @@ protected:
   nsRefPtr<BarPropImpl>         mPersonalbar;
   nsRefPtr<BarPropImpl>         mStatusbar;
   nsRefPtr<BarPropImpl>         mScrollbars;
+  nsCOMPtr<nsIWeakReference>    mWindowUtils;
+  nsCOMPtr<nsIBrowserDOMWindow> mBrowserDOMWindow; // held for DOMWindowUtils
   nsTimeoutImpl*                mTimeouts;
   nsTimeoutImpl**               mTimeoutInsertionPoint;
   nsTimeoutImpl*                mRunningTimeout;
@@ -323,6 +333,7 @@ protected:
   PRPackedBool                  mIsClosed;
   PRPackedBool                  mOpenerWasCleared;
   PRPackedBool                  mIsPopupSpam;
+  PRPackedBool                  mIsHandlingResizeEvent;
   nsString                      mStatus;
   nsString                      mDefaultStatus;
 
@@ -348,6 +359,7 @@ protected:
   nsIDOMElement*                mFrameElement; // WEAK
 
   friend class nsDOMScriptableHelper;
+  friend class nsDOMWindowUtils;
   static nsIXPConnect *sXPConnect;
   static nsIScriptSecurityManager *sSecMan;
   static nsIFactory *sComputedDOMStyleFactory;

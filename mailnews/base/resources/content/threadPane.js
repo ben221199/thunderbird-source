@@ -267,12 +267,21 @@ function MsgSortByThread()
   if(dbview && !dbview.supportsThreading)
     return;
   dbview.viewFlags |= nsMsgViewFlagsType.kThreadedDisplay;
+  dbview.viewFlags &= ~nsMsgViewFlagsType.kGroupBySort;
   MsgSortThreadPane(nsMsgViewSortType.byId);
 }
 
 function MsgSortThreadPane(sortType)
 {
     var dbview = GetDBView();
+  var viewFlags = dbview.viewFlags;
+  dbview.viewFlags &= ~ nsMsgViewFlagsType.kGroupBySort;
+  if (viewFlags & nsMsgViewFlagsType.kGroupBySort)
+  {
+    dbview.sortType = sortType; // save sort in current view
+    viewDebug("switching view to all msgs\n");
+    return SwitchView("cmd_viewAllMsgs");
+  }
     dbview.sort(sortType, nsMsgViewSortOrder.ascending);
     UpdateSortIndicators(sortType, nsMsgViewSortOrder.ascending);
 }
@@ -291,16 +300,69 @@ function MsgReverseSortThreadPane()
 function MsgToggleThreaded()
 {
     var dbview = GetDBView();
+    var viewFlags = dbview.viewFlags;
     dbview.viewFlags ^= nsMsgViewFlagsType.kThreadedDisplay;
+    dbview.viewFlags &= ~nsMsgViewFlagsType.kGroupBySort;
+    if (viewFlags & nsMsgViewFlagsType.kGroupBySort)
+    {
+      viewDebug("switching view to all msgs\n");
+      return SwitchView("cmd_viewAllMsgs");
+    }
+
+
     dbview.sort(dbview.sortType, dbview.sortOrder);
     UpdateSortIndicators(dbview.sortType, dbview.sortOrder);
 }
 
 function MsgSortThreaded()
 {
+    var viewFlags = GetDBView().viewFlags;
+
+    if (viewFlags & nsMsgViewFlagsType.kGroupBySort)
+    {
+      GetDBView().viewFlags &= ~nsMsgViewFlagsType.kGroupBySort;
+      viewDebug("switching view to all msgs\n");
+      SwitchView("cmd_viewAllMsgs");
+    }
     // Toggle if not already threaded.
-    if ((GetDBView().viewFlags & nsMsgViewFlagsType.kThreadedDisplay) == 0)
+    else if ((viewFlags & nsMsgViewFlagsType.kThreadedDisplay) == 0)
         MsgToggleThreaded();
+}
+
+function MsgGroupBySort()
+{
+  var dbview = GetDBView();
+  var viewFlags = dbview.viewFlags;
+  var sortOrder = dbview.sortOrder;
+  var sortType = dbview.sortType;
+  var count = new Object;
+  var msgFolder = dbview.msgFolder;
+
+  var sortTypeSupportsGrouping = (sortType == nsMsgViewSortType.byAuthor 
+         || sortType == nsMsgViewSortType.byDate || sortType == nsMsgViewSortType.byPriority
+         || sortType == nsMsgViewSortType.bySubject || sortType == nsMsgViewSortType.byLabel
+         || sortType == nsMsgViewSortType.byStatus  || sortType == nsMsgViewSortType.byRecipient);
+
+  if (!dbview.supportsThreading || !sortTypeSupportsGrouping)
+    return; // we shouldn't be trying to group something we don't support grouping for...
+
+  viewFlags |= nsMsgViewFlagsType.kThreadedDisplay | nsMsgViewFlagsType.kGroupBySort;
+  // null this out, so we don't try sort.
+  if (gDBView) {
+    gDBView.close();
+    gDBView = null;
+  }
+  var dbviewContractId = "@mozilla.org/messenger/msgdbview;1?type=group";
+  gDBView = Components.classes[dbviewContractId].createInstance(Components.interfaces.nsIMsgDBView);
+
+  if (!gThreadPaneCommandUpdater)
+    gThreadPaneCommandUpdater = new nsMsgDBViewCommandUpdater();
+
+
+  gDBView.init(messenger, msgWindow, gThreadPaneCommandUpdater);
+  gDBView.open(msgFolder, sortType, sortOrder, viewFlags, count);
+  RerootThreadPane();
+  UpdateSortIndicators(sortType, nsMsgViewSortOrder.ascending);
 }
 
 function MsgSortUnthreaded()
@@ -324,42 +386,67 @@ function MsgSortDescending()
   UpdateSortIndicators(dbview.sortType, nsMsgViewSortOrder.descending);
 }
 
+function groupedBySortUsingDummyRow()
+{
+  return (gDBView.viewFlags & nsMsgViewFlagsType.kGroupBySort) && 
+         (gDBView.sortType != nsMsgViewSortType.bySubject);
+}
+
 function UpdateSortIndicators(sortType, sortOrder)
 {
   // show the twisties if the view is threaded
-  var currCol = document.getElementById("subjectCol");
-  var primary = (gDBView.viewFlags & nsMsgViewFlagsType.kThreadedDisplay) && gDBView.supportsThreading;
-  currCol.setAttribute("primary", primary);
+  var threadCol = document.getElementById("threadCol");
+  var currCol;
+  var sortedColumn;
+  // set the sort indicator on the column we are sorted by
+  var colID = ConvertSortTypeToColumnID(sortType);
+  if (colID)
+    sortedColumn = document.getElementById(colID);
+
+  currCol = gDBView.viewFlags & nsMsgViewFlagsType.kGroupBySort 
+    ? sortedColumn : document.getElementById("subjectCol");
+
+  if (gDBView.viewFlags & nsMsgViewFlagsType.kGroupBySort)
+  {
+    var threadTree = document.getElementById("threadTree");  
+    var subjectCol = document.getElementById("subjectCol");
+
+    if (groupedBySortUsingDummyRow())
+    {
+      currCol.removeAttribute("primary");
+      subjectCol.setAttribute("primary", "true");
+    }
+
+    // hide the threaded column when in grouped view since you can't do 
+    // threads inside of a group.
+    document.getElementById("threadCol").collapsed = true;
+  }
+
+  // clear primary attribute from group column if going to a non-grouped view.
+  if (!(gDBView.viewFlags & nsMsgViewFlagsType.kGroupBySort))
+    document.getElementById("threadCol").collapsed = false;
+
+  if ((GetDBView().viewFlags & nsMsgViewFlagsType.kThreadedDisplay) && !groupedBySortUsingDummyRow()) {
+    threadCol.setAttribute("sortDirection", "ascending");
+    currCol.setAttribute("primary", "true");
+  }
+  else {
+    threadCol.removeAttribute("sortDirection");
+    currCol.removeAttribute("primary");
+  }
 
   // remove the sort indicator from all the columns
-  currCol = document.getElementById("threadCol");
   while (currCol) {
     currCol.removeAttribute("sortDirection");
     currCol = currCol.nextSibling;
   }
 
-  // set the sort indicator on the column we are sorted by
-  var colID = ConvertSortTypeToColumnID(sortType);
-  if (colID) {
-    var sortedColumn = document.getElementById(colID);
-    if (sortedColumn) {
-      if (sortOrder == nsMsgViewSortOrder.ascending) {
-        sortedColumn.setAttribute("sortDirection","ascending");
-      }
-      else {
-        sortedColumn.setAttribute("sortDirection","descending");
-      }
-			if (sortedColumn != "threadCol")
-			{
-			  currCol = document.getElementById("threadCol");
-				if (currCol)
-				{
-					if (gDBView.viewFlags & nsMsgViewFlagsType.kThreadedDisplay)
-						currCol.setAttribute("sortDirection", "ascending");
-					else
-						currCol.removeAttribute("sortDirection");
-				}
-			}
+  if (sortedColumn) {
+    if (sortOrder == nsMsgViewSortOrder.ascending) {
+      sortedColumn.setAttribute("sortDirection","ascending");
+    }
+    else {
+      sortedColumn.setAttribute("sortDirection","descending");
     }
   }
 }

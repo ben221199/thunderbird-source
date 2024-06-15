@@ -71,7 +71,47 @@ NS_IMETHODIMP nsMsgSearchDBView::Open(nsIMsgFolder *folder, nsMsgViewSortTypeVal
 
     if (pCount)
       *pCount = 0;
+    m_folder = nsnull;
     return rv;
+}
+
+NS_IMETHODIMP
+nsMsgSearchDBView::CopyDBView(nsMsgDBView *aNewMsgDBView, nsIMessenger *aMessengerInstance, 
+                                       nsIMsgWindow *aMsgWindow, nsIMsgDBViewCommandUpdater *aCmdUpdater)
+{
+  nsMsgDBView::CopyDBView(aNewMsgDBView, aMessengerInstance, aMsgWindow, aCmdUpdater);
+  nsMsgSearchDBView* newMsgDBView = (nsMsgSearchDBView *) aNewMsgDBView;
+
+  // now copy all of our private member data
+  newMsgDBView->mDestFolder = mDestFolder;
+  newMsgDBView->mCommand = mCommand;
+  newMsgDBView->mTotalIndices = mTotalIndices;
+  newMsgDBView->mCurIndex = mCurIndex; 
+
+  if (m_folders)
+    m_folders->Clone(getter_AddRefs(newMsgDBView->m_folders));
+
+  if (m_hdrsForEachFolder)
+    m_hdrsForEachFolder->Clone(getter_AddRefs(newMsgDBView->m_hdrsForEachFolder));
+
+  if (m_copyListenerList)
+    m_copyListenerList->Clone(getter_AddRefs(newMsgDBView->m_copyListenerList));
+
+  if (m_uniqueFoldersSelected)
+    m_uniqueFoldersSelected->Clone(getter_AddRefs(newMsgDBView->m_uniqueFoldersSelected));
+
+
+  PRInt32 count = m_dbToUseList.Count(); 
+  for(PRInt32 i = 0; i < count; i++)
+  {
+    newMsgDBView->m_dbToUseList.AppendObject(m_dbToUseList[i]);
+    // register the new view with the database so it gets notifications
+    m_dbToUseList[i]->AddListener(newMsgDBView);
+  }
+
+  // nsUInt32Array* mTestIndices;
+
+  return NS_OK;
 }
 
 NS_IMETHODIMP nsMsgSearchDBView::Close()
@@ -80,6 +120,8 @@ NS_IMETHODIMP nsMsgSearchDBView::Close()
   
   for(PRInt32 i = 0; i < count; i++)
     m_dbToUseList[i]->RemoveListener(this);
+
+  m_dbToUseList.Clear();
 
   return NS_OK;
 }
@@ -109,7 +151,7 @@ nsresult nsMsgSearchDBView::FetchLocation(PRInt32 aRow, PRUnichar ** aLocationSt
   return NS_OK;
 }
 
-nsresult nsMsgSearchDBView::OnNewHeader(nsMsgKey newKey, nsMsgKey aParentKey, PRBool /*ensureListed*/)
+nsresult nsMsgSearchDBView::OnNewHeader(nsIMsgDBHdr *newHdr, nsMsgKey aParentKey, PRBool /*ensureListed*/)
 {
    return NS_OK;
 }
@@ -218,6 +260,12 @@ nsMsgSearchDBView::OnNewSearch()
     return NS_OK;
 }
 
+NS_IMETHODIMP nsMsgSearchDBView::OnAnnouncerGoingAway(nsIDBChangeAnnouncer *instigator)
+{
+  m_dbToUseList.RemoveObject(NS_STATIC_CAST(nsIMsgDatabase *, instigator));
+  return nsMsgDBView::OnAnnouncerGoingAway(instigator);
+}
+
 nsresult nsMsgSearchDBView::GetFolders(nsISupportsArray **aFolders)
 {
   NS_ENSURE_ARG_POINTER(aFolders);
@@ -237,7 +285,31 @@ nsMsgSearchDBView::DoCommandWithFolder(nsMsgViewCommandTypeValue command, nsIMsg
 NS_IMETHODIMP nsMsgSearchDBView::DoCommand(nsMsgViewCommandTypeValue command)
 {
     mCommand = command;
+  if (command == nsMsgViewCommandType::deleteMsg || command == nsMsgViewCommandType::deleteNoTrash
+    || command == nsMsgViewCommandType::selectAll)
     return nsMsgDBView::DoCommand(command);
+  nsresult rv = NS_OK;
+  nsUInt32Array selection;
+  GetSelectedIndices(&selection);
+
+  nsMsgViewIndex *indices = selection.GetData();
+  PRInt32 numIndices = selection.GetSize();
+
+  // we need to break apart the selection by folders, and then call
+  // ApplyCommandToIndices with the command and the indices in the
+  // selection that are from that folder.
+
+  nsUInt32Array *indexArrays;
+  PRInt32 numArrays;
+  rv = PartitionSelectionByFolder(indices, numIndices, &indexArrays, &numArrays);
+  NS_ENSURE_SUCCESS(rv, rv);
+  for (PRInt32 folderIndex = 0; folderIndex < numArrays; folderIndex++)
+  {
+    rv = ApplyCommandToIndices(command, indexArrays[folderIndex].GetData(), indexArrays[folderIndex].GetSize());
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+
+  return rv;
 }
 
 // This method just removes the specified line from the view. It does
@@ -255,7 +327,7 @@ nsresult nsMsgSearchDBView::RemoveByIndex(nsMsgViewIndex index)
 nsresult nsMsgSearchDBView::DeleteMessages(nsIMsgWindow *window, nsMsgViewIndex *indices, PRInt32 numIndices, PRBool deleteStorage)
 {
     nsresult rv;
-    InitializeGlobalsForDeleteAndFile(indices, numIndices);
+    GetFoldersAndHdrsForSelection(indices, numIndices);
     if (mDeleteModel != nsMsgImapDeleteModels::MoveToTrash)
       deleteStorage = PR_TRUE;
     if (!deleteStorage)
@@ -269,7 +341,7 @@ nsresult
 nsMsgSearchDBView::CopyMessages(nsIMsgWindow *window, nsMsgViewIndex *indices, PRInt32 numIndices, PRBool isMove, nsIMsgFolder *destFolder)
 {
     nsresult rv;
-    InitializeGlobalsForDeleteAndFile(indices, numIndices);
+    GetFoldersAndHdrsForSelection(indices, numIndices);
 
     rv = ProcessRequestsInOneFolder(window);
 
@@ -277,7 +349,43 @@ nsMsgSearchDBView::CopyMessages(nsIMsgWindow *window, nsMsgViewIndex *indices, P
 }
 
 nsresult
-nsMsgSearchDBView::InitializeGlobalsForDeleteAndFile(nsMsgViewIndex *indices, PRInt32 numIndices)
+nsMsgSearchDBView::PartitionSelectionByFolder(nsMsgViewIndex *indices, PRInt32 numIndices, nsUInt32Array **indexArrays, PRInt32 *numArrays)
+{
+  nsresult rv = NS_OK; 
+  nsCOMPtr <nsISupportsArray> uniqueFoldersSelected = do_CreateInstance(NS_SUPPORTSARRAY_CONTRACTID, &rv);
+  mCurIndex = 0;
+
+  //Build unique folder list based on headers selected by the user
+  for (nsMsgViewIndex i = 0; i < (nsMsgViewIndex) numIndices; i++)
+  {
+     nsCOMPtr <nsISupports> curSupports = getter_AddRefs(m_folders->ElementAt(indices[i]));
+     if ( uniqueFoldersSelected->IndexOf(curSupports) < 0)
+       uniqueFoldersSelected->AppendElement(curSupports); 
+  }
+
+  PRUint32 numFolders =0; 
+  rv = uniqueFoldersSelected->Count(&numFolders);   //group the headers selected by each folder 
+  *indexArrays = new nsUInt32Array[numFolders];
+  *numArrays = numFolders;
+  NS_ENSURE_TRUE(*indexArrays, NS_ERROR_OUT_OF_MEMORY);
+  for (PRUint32 folderIndex=0; folderIndex < numFolders; folderIndex++)
+  {
+     nsCOMPtr <nsIMsgFolder> curFolder =
+         do_QueryElementAt(uniqueFoldersSelected, folderIndex, &rv);
+     for (nsMsgViewIndex i = 0; i < (nsMsgViewIndex) numIndices; i++) 
+     {
+       nsCOMPtr <nsIMsgFolder> msgFolder = do_QueryElementAt(m_folders,
+                                                             indices[i], &rv);
+       if (NS_SUCCEEDED(rv) && msgFolder && msgFolder == curFolder) 
+          (*indexArrays)[folderIndex].Add(indices[i]);
+     }
+  }
+  return rv;
+
+}
+
+nsresult
+nsMsgSearchDBView::GetFoldersAndHdrsForSelection(nsMsgViewIndex *indices, PRInt32 numIndices)
 {
   nsresult rv = NS_OK; 
   mCurIndex = 0;
@@ -469,7 +577,8 @@ nsMsgSearchDBView::GetHdrForFirstSelectedMessage(nsIMsgDBHdr **hdr)
 {
   NS_ENSURE_ARG_POINTER(hdr);
   PRInt32 index;
-
+  if (!mTreeSelection)
+    return NS_ERROR_NULL_POINTER;
   nsresult rv = mTreeSelection->GetCurrentIndex(&index);
   NS_ENSURE_SUCCESS(rv,rv);
 

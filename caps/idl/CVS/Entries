@@ -1,7 +1,9 @@
-/.cvsignore/1.1/Sun Jul 18 00:26:01 1999//TTHUNDERBIRD_0_8_RELEASE
-/Makefile.in/1.16/Tue Oct 21 22:11:40 2003//TTHUNDERBIRD_0_8_RELEASE
-/nsIPrincipal.idl/1.29/Mon Nov  3 04:26:50 2003//TTHUNDERBIRD_0_8_RELEASE
-/nsIScriptSecurityManager.idl/1.61/Fri Dec 19 21:51:37 2003//TTHUNDERBIRD_0_8_RELEASE
-/nsISecurityCheckedComponent.idl/1.5/Tue Sep 25 01:03:51 2001//TTHUNDERBIRD_0_8_RELEASE
-/nsISignatureVerifier.idl/1.6/Tue Sep 25 01:03:51 2001//TTHUNDERBIRD_0_8_RELEASE
+/.cvsignore/1.1/Sun Jul 18 00:26:01 1999//TTHUNDERBIRD_0_9_RELEASE
+/Makefile.in/1.16.20.1/Sun Oct 24 12:04:32 2004//TTHUNDERBIRD_0_9_RELEASE
+/nsIPrincipal.idl/1.29.18.1/Sun Oct 24 12:04:32 2004//TTHUNDERBIRD_0_9_RELEASE
+/nsIPrincipalObsolete.idl/1.1.2.1/Sun Oct 24 12:04:32 2004//TTHUNDERBIRD_0_9_RELEASE
+/nsIScriptSecurityManager.idl/1.61.8.1/Sun Oct 24 12:04:32 2004//TTHUNDERBIRD_0_9_RELEASE
+/nsIScriptSecurityManagerObsolete.idl/1.1.2.1/Sun Oct 24 12:04:32 2004//TTHUNDERBIRD_0_9_RELEASE
+/nsISecurityCheckedComponent.idl/1.5/Tue Sep 25 01:03:51 2001//TTHUNDERBIRD_0_9_RELEASE
+/nsISignatureVerifier.idl/1.6/Tue Sep 25 01:03:51 2001//TTHUNDERBIRD_0_9_RELEASE
 D

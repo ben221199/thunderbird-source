@@ -104,6 +104,7 @@ pref("mail.default_cc",                     "");
 pref("mail.default_fcc",                    ""); // maibox:URL or Imap://Host/OnLineFolderName
 pref("mail.check_new_mail",                 false);
 pref("mail.pop3_gets_new_mail",             false);
+pref("mail.pop3_response_timeout",          45); // in seconds
 pref("mail.check_time",                     10);
 pref("mail.pop_name",                       "");
 pref("mail.remember_password",              false);
@@ -181,7 +182,8 @@ pref("mailnews.reply_header_type",          1);
 // locale which affects date format, set empty string to use application default locale
 pref("mailnews.reply_header_locale",        "");
 pref("mailnews.reply_header_authorwrote",   "chrome://messenger/locale/messengercompose/composeMsgs.properties");
-pref("mailnews.reply_header_ondate",        "On %s");
+pref("mailnews.reply_header_ondate",        "chrome://messenger/locale/messengercompose/composeMsgs.properties");
+
 // separator to separate between date and author
 pref("mailnews.reply_header_separator",     ", ");
 pref("mailnews.reply_header_colon",         ":");
@@ -375,6 +377,7 @@ pref("mail.server.default.login_at_startup", false);
 pref("mail.server.default.allows_specialfolders_usage", true);
 pref("mail.server.default.canCreateFolders", true);
 pref("mail.server.default.canFileMessages", true);
+pref("mail.server.default.logon_fallback", true);
 
 // special enhancements for IMAP servers
 pref("mail.server.default.store_read_mail_in_pfc", false);  
@@ -579,8 +582,6 @@ pref("mail.password_protect_local_cache", false);
 // to reduce forking in the js / C++
 // overridden by stand alone mail
 pref("mail.standalone", false);
-
-pref("mailnews.view.last",0); // 0 == "all" view
 
 #ifdef XP_WIN
 // Unread mail count timer. Value to be specified in seconds

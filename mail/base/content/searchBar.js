@@ -32,10 +32,11 @@ var gSearchBundle;
 var gStatusBar = null;
 var gSearchInProgress = false;
 var gSearchInput = null;
-var gClearButton = null;
 var gDefaultSearchViewTerms = null;
 var gQSViewIsDirty = false;
 var gHighlightedMessageText = false; 
+var gNumTotalMessages;
+var gNumUnreadMessages;
 
 // search criteria mode values 
 // Note: If you change these constants, please update the menuitem values in
@@ -78,6 +79,9 @@ var gSearchNotificationListener =
 {
     onSearchHit: function(header, folder)
     {
+      gNumTotalMessages++;
+      if (!header.isRead)
+        gNumUnreadMessages++;
         // XXX todo
         // update status text?
     },
@@ -88,6 +92,23 @@ var gSearchNotificationListener =
         statusFeedback.showProgress(0);
         gStatusBar.setAttribute("mode","normal");
         gSearchInProgress = false;
+        viewDebug("gSearchInput = " + gSearchInput.value + "\n");
+
+        // ### TODO need to find out if there's quick search within a virtual folder.
+        if (gCurrentVirtualFolderUri &&
+         (gSearchInput.value == "" || gSearchInput.showingSearchCriteria))
+        {
+          var vFolder = GetMsgFolderFromUri(gCurrentVirtualFolderUri, false);
+          var dbFolderInfo = vFolder.getMsgDatabase(msgWindow).dBFolderInfo;
+          dbFolderInfo.NumUnreadMessages = gNumUnreadMessages;
+          dbFolderInfo.NumMessages = gNumTotalMessages;
+          vFolder.updateSummaryTotals(true); // force update from db.
+          var msgdb = vFolder.getMsgDatabase(msgWindow);
+          msgdb.Commit(MSG_DB_LARGE_COMMIT);
+
+          // now that we have finished loading a virtual folder, scroll to the correct message
+          ScrollToMessageAfterFolderLoad(vFolder);
+        }
     },
 
     onNewSearch: function()
@@ -96,6 +117,8 @@ var gSearchNotificationListener =
       statusFeedback.showStatusString(gSearchBundle.getString("searchingMessage"));
       gStatusBar.setAttribute("mode","undetermined");
       gSearchInProgress = true;
+      gNumTotalMessages = 0; 
+      gNumUnreadMessages = 0;
     }
 }
 
@@ -103,7 +126,6 @@ function getDocumentElements()
 {
   gSearchBundle = document.getElementById("bundle_search");  
   gStatusBar = document.getElementById('statusbar-icon');
-  gClearButton = document.getElementById('clearButton');
   GetSearchInput();
 }
 
@@ -134,12 +156,20 @@ function initializeGlobalListeners()
 
 function createQuickSearchView()
 {
-  if (gDBView.viewType != nsMsgViewType.eShowQuickSearchResults)  //otherwise we are already in quick search view
+  //if not already in quick search view 
+  if (gDBView.viewType != nsMsgViewType.eShowQuickSearchResults)  
   {
     var treeView = gDBView.QueryInterface(Components.interfaces.nsITreeView);  //clear selection
-    treeView.selection.clearSelection();
+    if (treeView && treeView.selection)
+      treeView.selection.clearSelection();
     gPreQuickSearchView = gDBView;
-    CreateDBView(gDBView.msgFolder, nsMsgViewType.eShowQuickSearchResults, nsMsgViewFlagsType.kNone, gDBView.sortType, gDBView.sortOrder);
+    if (gDBView.viewType == nsMsgViewType.eShowVirtualFolderResults)
+    {
+      // remove the view as a listener on the search results
+      var saveViewSearchListener = gDBView.QueryInterface(Components.interfaces.nsIMsgSearchNotify);
+      gSearchSession.unregisterListener(saveViewSearchListener);
+    }
+    CreateDBView(gDBView.msgFolder, (gXFVirtualFolderTerms) ? nsMsgViewType.eShowVirtualFolderResults : nsMsgViewType.eShowQuickSearchResults, nsMsgViewFlagsType.kNone, gDBView.sortType, gDBView.sortOrder);
   }
 }
 
@@ -167,24 +197,31 @@ function initializeSearchBar()
 
 function onEnterInSearchBar()
 {
+   viewDebug ("onEnterInSearchBar gSearchInput.value = " + gSearchInput.value + " showing criteria = " + gSearchInput.showingSearchCriteria +"\n");
    if (gSearchInput.value == "" || gSearchInput.showingSearchCriteria) 
    {
      if (gSearchInput.searchMode == kQuickSearchHighlight)
        removeHighlighting();
      
-     if (gDBView.viewType == nsMsgViewType.eShowQuickSearchResults)
+     if (gDBView.viewType == nsMsgViewType.eShowQuickSearchResults
+        || gDBView.viewType == nsMsgViewType.eShowVirtualFolderResults)
      {
        statusFeedback.showStatusString("");
-       disableQuickSearchClearButton();
 
-       if (gDefaultSearchViewTerms)
+       viewDebug ("onEnterInSearchBar gDefaultSearchViewTerms = " + gDefaultSearchViewTerms + "gVirtualFolderTerms = " 
+        + gVirtualFolderTerms + "gXFVirtualFolderTerms = " + gXFVirtualFolderTerms + "\n");
+       var addTerms = gDefaultSearchViewTerms || gVirtualFolderTerms || gXFVirtualFolderTerms;
+       if (addTerms)
        {
-           initializeSearchBar();
-           onSearch(gDefaultSearchViewTerms);
+         viewDebug ("addTerms = " + addTerms + " count = " + addTerms.Count() + "\n");
+         initializeSearchBar();
+         onSearch(addTerms);
        }
        else
-        restorePreSearchView();
+          restorePreSearchView();
      }
+     else if (gPreQuickSearchView && !gDefaultSearchViewTerms)// may be a quick search from a cross-folder virtual folder
+       restorePreSearchView();
 
      gSearchInput.showingSearchCriteria = true;
      
@@ -197,8 +234,6 @@ function onEnterInSearchBar()
    else
    {
      initializeSearchBar();
-
-     gClearButton.setAttribute("disabled", false); //coming into search enable clear button   
 
      ClearThreadPaneSelection();
      ClearMessagePane();
@@ -231,6 +266,14 @@ function restorePreSearchView()
   if (gPreQuickSearchView)
   {
     gDBView = gPreQuickSearchView;
+    if (gDBView.viewType == nsMsgViewType.eShowVirtualFolderResults)
+    {
+      // readd the view as a listener on the search results
+      var saveViewSearchListener = gDBView.QueryInterface(Components.interfaces.nsIMsgSearchNotify);
+      if (gSearchSession)
+        gSearchSession.registerListener(saveViewSearchListener);
+    }
+//    dump ("view type = " + gDBView.viewType + "\n");
 
     if (sortType != gDBView.sortType || sortOrder != gDBView.sortOrder)
     {
@@ -262,63 +305,30 @@ function restorePreSearchView()
     else
       ClearMessagePane();
   }
-
-  // NOTE,
-  // if you change the scrolling code below,
-  // double check the scrolling logic in
-  // msgMail3PaneWindow.js, "FolderLoaded" event code
+  
   if (!scrolled)
-  {
-    // if we didn't just scroll, 
-    // scroll to the first new message
-    // but don't select it
-    scrolled = ScrollToMessage(nsMsgNavigationType.firstNew, true, false /* selectMessage */);
-    if (!scrolled) 
-    {
-      // if we still haven't scrolled,
-      // scroll to the newest, which might be the top or the bottom
-      // depending on our sort order and sort type
-      if (sortOrder == nsMsgViewSortOrder.ascending) 
-      {
-        switch (sortType) 
-        {
-          case nsMsgViewSortType.byDate: 
-          case nsMsgViewSortType.byId: 
-          case nsMsgViewSortType.byThread: 
-            scrolled = ScrollToMessage(nsMsgNavigationType.lastMessage, true, false /* selectMessage */);
-            break;
-        }
-      }
-      // if still we haven't scrolled,
-      // scroll to the top.
-      if (!scrolled)
-        EnsureRowInThreadTreeIsVisible(0);
-    }
-  }
-  // NOTE,
-  // if you change the scrolling code above,
-  // double check the scrolling logic in
-  // msgMail3PaneWindow.js, "FolderLoaded" event code
+    ScrollToMessageAfterFolderLoad(null);
 }
 
 function onSearch(aSearchTerms)
 {
-    RerootThreadPane();
+  viewDebug("in OnSearch, searchTerms = " + aSearchTerms + "\n");
+  RerootThreadPane();
 
-    if (aSearchTerms)
-      createSearchTermsWithList(aSearchTerms);
-    else
-      createSearchTerms();
+  if (aSearchTerms)
+    createSearchTermsWithList(aSearchTerms);
+  else
+    createSearchTerms();
 
-    gDBView.searchSession = gSearchSession;
-    try
-    {
-      gSearchSession.search(msgWindow);
-    }
-    catch(ex)
-    {
-      dump("Search Exception\n");
-    }
+  gDBView.searchSession = gSearchSession;
+  try
+  {
+    gSearchSession.search(msgWindow);
+  }
+  catch(ex)
+  {
+    dump("Search Exception\n");
+  }
 }
 
 function createSearchTermsWithList(aTermsArray)
@@ -336,11 +346,35 @@ function createSearchTermsWithList(aTermsArray)
   var ioService = Components.classes["@mozilla.org/network/io-service;1"]
                   .getService(Components.interfaces.nsIIOService);
 
-  gSearchSession.addScopeTerm(gSearchInput.searchMode == kQuickSearchBody && 
+  if (gXFVirtualFolderTerms)
+  {
+    var msgDatabase = selectedFolder.getMsgDatabase(msgWindow);
+    if (msgDatabase)
+    {
+      var dbFolderInfo = msgDatabase.dBFolderInfo;
+      var srchFolderUri = dbFolderInfo.getCharPtrProperty("searchFolderUri");
+      viewDebug("createSearchTermsWithList xf vf scope = " + srchFolderUri + "\n");
+      var srchFolderUriArray = srchFolderUri.split('|');
+      for (var i in srchFolderUriArray) 
+      {
+        var realFolderRes = GetResourceFromUri(srchFolderUriArray[i]);
+        var realFolder = realFolderRes.QueryInterface(Components.interfaces.nsIMsgFolder);
+        if (!realFolder.isServer)
+          gSearchSession.addScopeTerm(gSearchInput.searchMode == kQuickSearchBody && 
+                              !ioService.offline && 
+                              realFolder.server.type == 'imap' ? nsMsgSearchScope.onlineMail : nsMsgSearchScope.offlineMail, 
+                              realFolder);
+      }
+    }
+  }
+  else
+  {
+    viewDebug ("in createSearchTermsWithList, adding scope term for selected folder\n");
+    gSearchSession.addScopeTerm(gSearchInput.searchMode == kQuickSearchBody && 
                               !ioService.offline && 
                               selectedFolder.server.type == 'imap' ? nsMsgSearchScope.onlineMail : nsMsgSearchScope.offlineMail, 
                               selectedFolder);
-
+  }
   // add each item in termsArray to the search session
 
   var termsArray = aTermsArray.QueryInterface(Components.interfaces.nsISupportsArray);
@@ -420,13 +454,16 @@ function createSearchTerms()
     }
   }
 
-  // now append the default view criteria to the quick search so we don't lose any default
-  // view information
-  if (gDefaultSearchViewTerms)
+  // now append the default view or virtual folder criteria to the quick search   
+  // so we don't lose any default view information
+  viewDebug("gDefaultSearchViewTerms = " + gDefaultSearchViewTerms + "gVirtualFolderTerms = " + gVirtualFolderTerms + 
+    "gXFVirtualFolderTerms = " + gXFVirtualFolderTerms + "\n");
+  var defaultSearchTerms = (gDefaultSearchViewTerms || gVirtualFolderTerms || gXFVirtualFolderTerms);
+  if (defaultSearchTerms)
   {
     var isupports = null;
     var searchTerm; 
-    var termsArray = gDefaultSearchViewTerms.QueryInterface(Components.interfaces.nsISupportsArray);
+    var termsArray = defaultSearchTerms.QueryInterface(Components.interfaces.nsISupportsArray);
     for (i = 0; i < termsArray.Count(); i++)
     {
       isupports = termsArray.GetElementAt(i);
@@ -475,6 +512,9 @@ function onSearchInputFocus(event)
 
 function onSearchInputBlur(event)
 { 
+  if (gQuickSearchFocusEl && gQuickSearchFocusEl.id == 'searchInput') // ignore the blur if we are in the middle of processing the clear button
+    return;
+
   if (!gSearchInput.value)
     gSearchInput.showingSearchCriteria = true;
     
@@ -503,17 +543,26 @@ function onSearchInput(returnKeyHit)
   }
 }
 
+// temporary global used to make sure we restore focus to the correct element after clearing the quick search box
+// because clearing quick search means stealing focus.
+var gQuickSearchFocusEl = null; 
+
 function onClearSearch()
 {
-  var focusedElement = gLastFocusedElement;  //save of the last focused element so that focus can be restored
-  Search("");
-  focusedElement.focus();
+  if (!gSearchInput.showingSearchCriteria) // ignore the text box value if it's just showing the search criteria string
+  {
+    gQuickSearchFocusEl = gLastFocusedElement;  //save of the last focused element so that focus can be restored
+    Search("");
+    // this needs to be on a timer otherwise we end up messing up the focus while the Search("") is still happening
+    setTimeout("restoreSearchFocusAfterClear();", 0); 
+  }
 }
 
-function disableQuickSearchClearButton()
+function restoreSearchFocusAfterClear()
 {
- if (gClearButton)
-   gClearButton.setAttribute("disabled", true); //going out of search disable clear button
+  gQuickSearchFocusEl.focus();
+  gSearchInput.clearButtonHidden = 'true';
+  gQuickSearchFocusEl = null;
 }
 
 function ClearQSIfNecessary()
@@ -526,18 +575,37 @@ function ClearQSIfNecessary()
   Search("");
 }
 
+// called after the user switches folders while inside
+// of a quick search view...
+function clearQuickSearchAfterFolderChange()
+{
+  gSearchInput.setSearchCriteriaText();
+}
+
 function Search(str)
 {
+  viewDebug("in Search str = " + str + "gSearchInput.showingSearchCriteria = " + gSearchInput.showingSearchCriteria + "\n");
   if (gSearchInput.showingSearchCriteria && str != "")
     return;
 
   GetSearchInput();
 
   if (str != gSearchInput.value)
+  {
     gQSViewIsDirty = true; 
+    viewDebug("in Search(), setting gQSViewIsDirty true\n");
+  }
 
   gSearchInput.value = str;  //on input does not get fired for some reason
   onSearchInput(true);
+}
+
+// When the front end has finished loading a virtual folder, it calls openVirtualFolder
+// to actually perform the folder search. We use this method instead of calling Search("") directly
+// from FolderLoaded in order to avoid moving focus into the search bar.
+function loadVirtualFolder()
+{
+  onEnterInSearchBar();
 }
 
 // this notification gets generated from layout when it finishes laying out a message
@@ -559,19 +627,46 @@ function onQuickSearchNewMsgLoaded()
 
 function changeQuickSearchMode(aMenuItem)
 {
+  viewDebug("changing quick search mode\n");
   // extract the label and set the search input to match it
   var oldSearchMode = gSearchInput.searchMode;
   gSearchInput.searchMode = aMenuItem.value;
 
-  if (gSearchInput.value == "")
+  if (gSearchInput.value == "" || gSearchInput.showingSearchCriteria)
+  {
     gSearchInput.showingSearchCriteria = true;
+    if (gSearchInput.value) // 
+      gSearchInput.setSearchCriteriaText();
+  }
+  
+  // if the search box is empty, set showing search criteria to true so it shows up when focus moves out of the box
+  if (!gSearchInput.value)   
+    gSearchInput.showingSearchCriteria = true;
+  else if (gSearchInput.showingSearchCriteria) // if we are showing criteria text and the box isn't empty, change the criteria text
+    gSearchInput.setSearchCriteriaText();     
   else if (oldSearchMode != gSearchInput.searchMode) // the search mode just changed so we need to redo the quick search
   {
     if (gHighlightedMessageText)
-      removeHighlighting(); // remove any existing highlighting in the message before switching gears
-      
+      removeHighlighting(); // remove any existing highlighting in the message before switching gears      
     onEnterInSearchBar();
   }
+}
+
+function saveViewAsVirtualFolder()
+{
+  openNewVirtualFolderDialogWithArgs(gSearchInput.value, gSearchSession.searchTerms);
+}
+
+function InitQuickSearchPopup()
+{
+  // disable the create virtual folder menu item if the current radio
+  // value is set to Find in message since you can't really  create a VF from find
+  // in message
+
+  if (gSearchInput.searchMode == 4 /* find in page */ || gSearchInput.value == "" || gSearchInput.showingSearchCriteria)
+    document.getElementById('quickSearchSaveAsVirtualFolder').setAttribute('disabled', 'true');
+  else
+    document.getElementById('quickSearchSaveAsVirtualFolder').removeAttribute('disabled');
 }
 
 // Methods to support highlighting. Most of this was shamelessly copied from the mozdev google toolbar project

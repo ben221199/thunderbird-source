@@ -119,8 +119,7 @@ nsTypeAheadFind::nsTypeAheadFind():
   mLinksOnly(PR_FALSE), mCaretBrowsingOn(PR_FALSE),
   mLiteralTextSearchOnly(PR_FALSE), mDontTryExactMatch(PR_FALSE),
   mAllTheSameChar(PR_TRUE),
-  mIsFirstVisiblePreferred(PR_FALSE),
-  mRepeatingMode(eRepeatingNone),
+  mRepeatingMode(eRepeatingNone), mLastFindLength(0),
   mFocusLinks(PR_FALSE),
   mSoundInterface(nsnull), mIsSoundInitialized(PR_FALSE)
 {
@@ -148,10 +147,7 @@ nsTypeAheadFind::Init(nsIDocShell* aDocShell)
   if (!prefInternal || !mSearchRange || !mStartPointRange || !mEndPointRange || !mFind)
     return NS_ERROR_FAILURE;
 
-  mDocShell = do_GetWeakReference(aDocShell); 
-
-  mWebBrowserFind = do_GetInterface(aDocShell);
-  NS_ENSURE_TRUE(mWebBrowserFind, NS_ERROR_FAILURE);
+  SetDocShell(aDocShell);
 
   // ----------- Listen to prefs ------------------
   nsresult rv = prefInternal->AddObserver("accessibility.browsewithcaret", this, PR_FALSE);
@@ -195,6 +191,38 @@ nsTypeAheadFind::PrefsReset()
 }
 
 NS_IMETHODIMP
+nsTypeAheadFind::SetCaseSensitive(PRBool isCaseSensitive)
+{
+  mFind->SetCaseSensitive(isCaseSensitive);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsTypeAheadFind::GetCaseSensitive(PRBool* isCaseSensitive)
+{
+  mFind->GetCaseSensitive(isCaseSensitive);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsTypeAheadFind::SetDocShell(nsIDocShell* aDocShell)
+{
+  mDocShell = do_GetWeakReference(aDocShell);
+
+  mWebBrowserFind = do_GetInterface(aDocShell);
+  NS_ENSURE_TRUE(mWebBrowserFind, NS_ERROR_FAILURE);
+
+  nsCOMPtr<nsIPresShell> presShell;
+  aDocShell->GetPresShell(getter_AddRefs(presShell));
+  mPresShell = do_GetWeakReference(presShell);      
+
+  mStartFindRange = nsnull;
+  mStartPointRange = do_CreateInstance(kRangeCID);
+  mSearchRange = do_CreateInstance(kRangeCID);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsTypeAheadFind::Observe(nsISupports *aSubject, const char *aTopic,
                          const PRUnichar *aData)
 {
@@ -209,6 +237,9 @@ nsTypeAheadFind::SaveFind()
 {
   if (mWebBrowserFind)
     mWebBrowserFind->SetSearchString(PromiseFlatString(mTypeAheadBuffer).get());
+  
+  // save the length of this find for "not found" sound
+  mLastFindLength = mTypeAheadBuffer.Length();
 }
 
 void
@@ -312,7 +343,6 @@ nsTypeAheadFind::FindItNow(nsIPresShell *aPresShell,
 
   // ------------ Get ranges ready ----------------
   nsCOMPtr<nsIDOMRange> returnRange;
-  nsCOMPtr<nsIDOMRange> oldRange;
   nsCOMPtr<nsIPresShell> focusedPS;
   if (NS_FAILED(GetSearchContainers(currentContainer, aIsRepeatingSameChar,
                                     aIsFirstVisiblePreferred, 
@@ -325,7 +355,7 @@ nsTypeAheadFind::FindItNow(nsIPresShell *aPresShell,
   PRInt16 rangeCompareResult = 0;
   mStartPointRange->CompareBoundaryPoints(nsIDOMRange::START_TO_START, mSearchRange, &rangeCompareResult);
   // No need to wrap find in doc if starting at beginning
-  PRBool hasWrapped = (rangeCompareResult <= 0);
+  PRBool hasWrapped = (rangeCompareResult < 0);
 
   nsAutoString findBuffer;
   if (aIsRepeatingSameChar)
@@ -345,9 +375,6 @@ nsTypeAheadFind::FindItNow(nsIPresShell *aPresShell,
       
       if (!returnRange)
         break;  // Nothing found in this doc, go to outer loop (try next doc)
-
-      if (!hasWrapped)
-        oldRange = returnRange;
 
       // ------- Test resulting found range for success conditions ------
       PRBool isInsideLink = PR_FALSE, isStartingLink = PR_FALSE;
@@ -378,7 +405,8 @@ nsTypeAheadFind::FindItNow(nsIPresShell *aPresShell,
       // Make sure new document is selected
       if (presShell != startingPresShell) {
         // We are in a new document (because of frames/iframes)
-        selection->CollapseToStart(); // Hide old doc's selection
+        if (selection)
+          selection->CollapseToStart(); // Hide old doc's selection
 
         // Get selection controller and selection for new frame/iframe
         GetSelection(presShell, getter_AddRefs(selectionController), 
@@ -388,9 +416,13 @@ nsTypeAheadFind::FindItNow(nsIPresShell *aPresShell,
       }
 
       // Select the found text
-      selection->RemoveAllRanges();
-      selection->AddRange(returnRange);
-      selectionController->ScrollSelectionIntoView(nsISelectionController::SELECTION_NORMAL, 
+      if (selection) {
+        selection->RemoveAllRanges();
+        selection->AddRange(returnRange);
+      }
+
+      if (selectionController)
+        selectionController->ScrollSelectionIntoView(nsISelectionController::SELECTION_NORMAL, 
                                                    nsISelectionController::SELECTION_FOCUS_REGION, PR_TRUE);
       currentDocShell->SetHasFocus(PR_TRUE);
 
@@ -844,6 +876,8 @@ nsTypeAheadFind::Find(const nsAString& aSearchString, PRBool aLinksOnly, PRUint1
 
   mTypeAheadBuffer = aSearchString;
 
+  PRBool isFirstVisiblePreferred = PR_FALSE;
+
   // --------- Initialize find if 1st char ----------
   if (bufferLength == 0) {
     // Reset links only to default, if not manually set
@@ -862,8 +896,8 @@ nsTypeAheadFind::Find(const nsAString& aSearchString, PRBool aLinksOnly, PRUint1
 
     // If true, we will scan from top left of visible area
     // If false, we will scan from start of selection
-    mIsFirstVisiblePreferred = !atEnd && !mCaretBrowsingOn && isSelectionCollapsed;
-    if (mIsFirstVisiblePreferred) {
+    isFirstVisiblePreferred = !atEnd && !mCaretBrowsingOn && isSelectionCollapsed;
+    if (isFirstVisiblePreferred) {
       // Get focused content from esm. If it's null, the document is focused.
       // If not, make sure the selection is in sync with the focus, so we can 
       // start our search from there.
@@ -876,7 +910,7 @@ nsTypeAheadFind::Find(const nsAString& aSearchString, PRBool aLinksOnly, PRUint1
       esm->GetFocusedContent(getter_AddRefs(focusedContent));
       if (focusedContent) {
         esm->MoveCaretToFocus();
-        mIsFirstVisiblePreferred = PR_FALSE;
+        isFirstVisiblePreferred = PR_FALSE;
       }
     }
   }
@@ -888,7 +922,7 @@ nsTypeAheadFind::Find(const nsAString& aSearchString, PRBool aLinksOnly, PRUint1
     // Regular find, not repeated char find
 
     // Prefer to find exact match
-    rv = FindItNow(nsnull, PR_FALSE, mLinksOnly, mIsFirstVisiblePreferred, PR_FALSE, aResult);
+    rv = FindItNow(nsnull, PR_FALSE, mLinksOnly, isFirstVisiblePreferred, PR_FALSE, aResult);
   }
 
 #ifndef NO_LINK_CYCLE_ON_SAME_CHAR
@@ -896,7 +930,7 @@ nsTypeAheadFind::Find(const nsAString& aSearchString, PRBool aLinksOnly, PRUint1
       mTypeAheadBuffer.Length() > 1) {
     mRepeatingMode = eRepeatingChar;
     mDontTryExactMatch = PR_TRUE;  // Repeated character find mode
-    rv = FindItNow(nsnull, PR_TRUE, PR_TRUE, mIsFirstVisiblePreferred, PR_FALSE, aResult);
+    rv = FindItNow(nsnull, PR_TRUE, PR_TRUE, isFirstVisiblePreferred, PR_FALSE, aResult);
   }
 #endif
 
@@ -918,7 +952,8 @@ nsTypeAheadFind::Find(const nsAString& aSearchString, PRBool aLinksOnly, PRUint1
     mRepeatingMode = eRepeatingNone;
 
     // Error sound
-    PlayNotFoundSound();
+    if (mTypeAheadBuffer.Length() > mLastFindLength)
+      PlayNotFoundSound();
   }
 
   SaveFind();
@@ -930,6 +965,9 @@ nsTypeAheadFind::GetSelection(nsIPresShell *aPresShell,
                               nsISelectionController **aSelCon,
                               nsISelection **aDOMSel)
 {
+  if (!aPresShell)
+    return;
+
   // if aCurrentNode is nsnull, get selection for document
   *aDOMSel = nsnull;
 

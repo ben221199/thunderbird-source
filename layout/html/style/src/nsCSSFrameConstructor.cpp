@@ -1048,6 +1048,83 @@ MoveChildrenTo(nsIPresContext*          aPresContext,
 }
 
 // -----------------------------------------------------------
+// Methods for handling insertion of out-of-flows in the right places during
+// incremental frame construction.
+
+static nsresult InsertOutOfFlow(nsIPresContext* aPresContext,
+                                const nsAbsoluteItems& aFrameItems,
+                                nsIAtom* aChildListName) {
+  if (!aFrameItems.childList) {
+    return NS_OK;
+  }
+
+  nsIFrame* firstChild = aFrameItems.containingBlock->GetFirstChild(aChildListName);
+
+  // Note that whether the frame construction context is doing an append or
+  // not is not helpful here, since it could be appending to some frame in
+  // the middle of the document, which means we're not necessarily appending
+  // to the children of the containing block.
+  //
+  // We need to make sure the 'append to the end of document' case is fast.
+  // So first test the last child of the containing block
+  nsIFrame* lastChild = nsLayoutUtils::GetLastSibling(firstChild);
+  if (lastChild) {
+    if (nsLayoutUtils::CompareTreePosition(lastChild->GetContent(),
+                                           aFrameItems.childList->GetContent(),
+                                           aFrameItems.containingBlock->GetContent()) < 0) {
+      // lastChild comes before the new children, so insert after lastChild
+      return aFrameItems.containingBlock->
+        AppendFrames(aPresContext, *(aPresContext->PresShell()),
+                     aChildListName, aFrameItems.childList);
+    }
+  }
+
+  nsIFrame* insertionPoint = nsnull;
+  // try the other children
+  for (nsIFrame* f = firstChild; f != lastChild; f = f->GetNextSibling()) {
+    if (nsLayoutUtils::CompareTreePosition(f->GetContent(),
+                                           aFrameItems.childList->GetContent(),
+                                           aFrameItems.containingBlock->GetContent()) > 0) {
+      // f comes after the new children, so stop here and insert after
+      // the previous frame
+      break;
+    }
+    insertionPoint = f;
+  }
+
+  return aFrameItems.containingBlock->
+    InsertFrames(aPresContext, *(aPresContext->PresShell()),
+                 aChildListName, insertionPoint, aFrameItems.childList);
+}
+
+static nsresult
+InsertOutOfFlowFrames(nsFrameConstructorState& aState,
+                      nsIPresContext* aPresContext) {
+  // If there are new absolutely positioned child frames, then notify
+  // the parent
+  nsresult rv = InsertOutOfFlow(aPresContext, aState.mAbsoluteItems,
+                                nsLayoutAtoms::absoluteList);
+  NS_ENSURE_SUCCESS(rv, rv);
+  aState.mAbsoluteItems.childList = nsnull;
+  
+  // If there are new fixed positioned child frames, then notify
+  // the parent
+  rv = InsertOutOfFlow(aPresContext, aState.mFixedItems,
+                       nsLayoutAtoms::fixedList);
+  NS_ENSURE_SUCCESS(rv, rv);
+  aState.mAbsoluteItems.childList = nsnull;
+
+  // If there are new floating child frames, then notify
+  // the parent
+  rv = InsertOutOfFlow(aPresContext, aState.mFloatedItems,
+                       nsLayoutAtoms::floatList);
+  NS_ENSURE_SUCCESS(rv, rv);
+  aState.mFloatedItems.childList = nsnull;
+
+  return NS_OK;
+}
+
+// -----------------------------------------------------------
 
 // Structure used when creating table frames.
 struct nsTableCreator {
@@ -1354,6 +1431,12 @@ nsCSSFrameConstructor::CreateGeneratedFrameFor(nsIPresContext*       aPresContex
   nsCOMPtr<nsIContent> content;
 
   if (eStyleContentType_URL == type) {
+    if (!data.mContent.mURL) {
+      // CSS had something specified that couldn't be converted to a URI object
+      *aFrame = nsnull;
+      return NS_ERROR_FAILURE;
+    }
+    
     // Create an HTML image content object, and set the SRC.
     // XXX Check if it's an image type we can handle...
 
@@ -3018,6 +3101,14 @@ nsCSSFrameConstructor::ConstructTableForeignFrame(nsIPresShell*            aPres
   rv = ConstructFrame(aPresShell, aPresContext, aState, aContent, parentFrame, items);
   aNewFrame = items.childList;
 
+  // Now insert any floats we may have generated, before we pop our float
+  // containing block.  Note that the same pseudoframe can get reused multiple
+  // times, so we can't just SetInitialChildList().  Use InsertOutOfFlow()
+  // instead.
+  InsertOutOfFlow(aPresContext, aState.mFloatedItems,
+                  nsLayoutAtoms::floatList);
+  aState.mFloatedItems.childList = nsnull;
+  
   // restore the pseudo frame state XXX - why
   aState.mPseudoFrames = prevPseudoFrames;
 
@@ -7969,79 +8060,6 @@ GetAdjustedParentFrame(nsIPresContext* aPresContext,
   return (newParent) ? newParent : aParentFrame;
 }
 
-static nsresult InsertOutOfFlow(nsIPresContext* aPresContext,
-                                const nsAbsoluteItems& aFrameItems,
-                                nsIAtom* aChildListName) {
-  if (!aFrameItems.childList) {
-    return NS_OK;
-  }
-
-  nsIFrame* firstChild = aFrameItems.containingBlock->GetFirstChild(aChildListName);
-
-  // Note that whether the frame construction context is doing an append or
-  // not is not helpful here, since it could be appending to some frame in
-  // the middle of the document, which means we're not necessarily appending
-  // to the children of the containing block.
-  //
-  // We need to make sure the 'append to the end of document' case is fast.
-  // So first test the last child of the containing block
-  nsIFrame* lastChild = nsLayoutUtils::GetLastSibling(firstChild);
-  if (lastChild) {
-    if (nsLayoutUtils::CompareTreePosition(lastChild->GetContent(),
-                                           aFrameItems.childList->GetContent(),
-                                           aFrameItems.containingBlock->GetContent()) < 0) {
-      // lastChild comes before the new children, so insert after lastChild
-      return aFrameItems.containingBlock->
-        AppendFrames(aPresContext, *(aPresContext->PresShell()),
-                     aChildListName, aFrameItems.childList);
-    }
-  }
-
-  nsIFrame* insertionPoint = nsnull;
-  // try the other children
-  for (nsIFrame* f = firstChild; f != lastChild; f = f->GetNextSibling()) {
-    if (nsLayoutUtils::CompareTreePosition(f->GetContent(),
-                                           aFrameItems.childList->GetContent(),
-                                           aFrameItems.containingBlock->GetContent()) > 0) {
-      // f comes after the new children, so stop here and insert after
-      // the previous frame
-      break;
-    }
-    insertionPoint = f;
-  }
-
-  return aFrameItems.containingBlock->
-    InsertFrames(aPresContext, *(aPresContext->PresShell()),
-                 aChildListName, insertionPoint, aFrameItems.childList);
-}
-
-static nsresult
-InsertOutOfFlowFrames(nsFrameConstructorState& aState,
-                      nsIPresContext* aPresContext) {
-  // If there are new absolutely positioned child frames, then notify
-  // the parent
-  nsresult rv = InsertOutOfFlow(aPresContext, aState.mAbsoluteItems,
-                                nsLayoutAtoms::absoluteList);
-  NS_ENSURE_SUCCESS(rv, rv);
-  aState.mAbsoluteItems.childList = nsnull;
-  
-  // If there are new fixed positioned child frames, then notify
-  // the parent
-  rv = InsertOutOfFlow(aPresContext, aState.mFixedItems,
-                       nsLayoutAtoms::fixedList);
-  NS_ENSURE_SUCCESS(rv, rv);
-  aState.mAbsoluteItems.childList = nsnull;
-
-  // If there are new floating child frames, then notify
-  // the parent
-  rv = InsertOutOfFlow(aPresContext, aState.mFloatedItems,
-                       nsLayoutAtoms::floatList);
-  NS_ENSURE_SUCCESS(rv, rv);
-  aState.mFloatedItems.childList = nsnull;
-
-  return NS_OK;
-}
-
 nsresult
 nsCSSFrameConstructor::ContentAppended(nsIPresContext* aPresContext,
                                        nsIContent*     aContainer,
@@ -8262,44 +8280,39 @@ nsCSSFrameConstructor::ContentAppended(nsIPresContext* aPresContext,
 
   // if the container is a table and a caption was appended, it needs to be put in
   // the outer table frame's additional child list. 
-  nsFrameItems captionItems; 
-
+  nsFrameItems captionItems;
+  
+  PRBool hasCaption = PR_FALSE;
+  if (nsLayoutAtoms::tableFrame == frameType) {
+    nsIFrame* outerTable = parentFrame->GetParent();
+    if (outerTable) { 
+      if (outerTable->GetFirstChild(nsLayoutAtoms::captionList)) {
+        hasCaption = PR_TRUE;
+      }
+    }  
+  }
   PRUint32 i;
   count = aContainer->GetChildCount();
   for (i = aNewIndexInContainer; i < count; i++) {
     nsIContent *childContent = aContainer->GetChildAt(i);
-
-    // construct a child of a table frame by putting it on a temporary list and then
-    // moving it into the appropriate list. This is more efficient than checking the display
-    // type of childContent. During the construction of a caption frame, the outer 
-    // table frame will be used as its parent.
+    // lookup the table child frame type as it is much more difficult to remove a frame
+    // and all it descendants (abs. pos. for instance) than to prevent the frame creation.
     if (nsLayoutAtoms::tableFrame == frameType) {
+      if (hasCaption) {
+        // Resolve the style context and get its display
+        nsRefPtr<nsStyleContext> childStyleContext;
+        childStyleContext = ResolveStyleContext(aPresContext, parentFrame,
+                                                childContent);
+        if (childStyleContext->GetStyleDisplay()->mDisplay == NS_STYLE_DISPLAY_TABLE_CAPTION)
+          continue; //don't create a table caption frame and its descendants
+      }
       nsFrameItems tempItems;
       ConstructFrame(shell, aPresContext, state, childContent, parentFrame, tempItems);
       if (tempItems.childList) {
         if (nsLayoutAtoms::tableCaptionFrame == tempItems.childList->GetType()) {
-          PRBool abortCaption = PR_FALSE;
-          // check if a caption already exists in captionItems, and if so, abort the caption
-          if (captionItems.childList) {
-            abortCaption = PR_TRUE;
-          }
-          else {
-            // check for a caption already appended to the outer table
-            nsIFrame* outerTable = parentFrame->GetParent();
-            if (outerTable) { 
-              nsIFrame* existingCaption =
-                outerTable->GetFirstChild(nsLayoutAtoms::captionList);
-              if (existingCaption) {
-                abortCaption = PR_TRUE;
-              }
-            }
-          }
-          if (abortCaption) {
-            tempItems.childList->Destroy(aPresContext);
-          }
-          else {
-            captionItems.AddChild(tempItems.childList);
-          }
+          NS_ASSERTION(!captionItems.childList, "don't append twice a caption");
+          hasCaption = PR_TRUE; // remember that we have a caption now
+          captionItems.AddChild(tempItems.childList);        
         }
         else {
           frameItems.AddChild(tempItems.childList);

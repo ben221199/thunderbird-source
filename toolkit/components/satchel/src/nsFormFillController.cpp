@@ -77,6 +77,7 @@ NS_INTERFACE_MAP_BEGIN(nsFormFillController)
   NS_INTERFACE_MAP_ENTRY(nsIDOMKeyListener)
   NS_INTERFACE_MAP_ENTRY(nsIDOMFormListener)
   NS_INTERFACE_MAP_ENTRY(nsIDOMMouseListener)
+  NS_INTERFACE_MAP_ENTRY(nsIDOMLoadListener)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIFormFillController)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsIDOMEventListener, nsIDOMFocusListener)
 NS_INTERFACE_MAP_END
@@ -476,8 +477,9 @@ nsFormFillController::StartSearch(const nsAString &aSearchString, const nsAStrin
                                 mdbResult,
                                 getter_AddRefs(result));
 
-    NS_IF_RELEASE(history);
+    NS_RELEASE(history);
   }
+  NS_RELEASE(passMgr);
 
   aListener->OnSearchResult(this, result);  
   
@@ -515,9 +517,12 @@ nsFormFillController::Focus(nsIDOMEvent* aEvent)
     nsAutoString type;
     input->GetType(type);
 
+    PRBool isReadOnly = PR_FALSE;
+    input->GetReadOnly(&isReadOnly);
+                                  
     nsAutoString autocomplete; 
     input->GetAttribute(NS_LITERAL_STRING("autocomplete"), autocomplete);
-    if (type.Equals(NS_LITERAL_STRING("text")) &&
+    if (type.Equals(NS_LITERAL_STRING("text")) && !isReadOnly &&
         !autocomplete.EqualsIgnoreCase("off")) {
 
       nsCOMPtr<nsIDOMHTMLFormElement> form;
@@ -758,6 +763,51 @@ nsFormFillController::MouseOut(nsIDOMEvent* aMouseEvent)
 }
 
 ////////////////////////////////////////////////////////////////////////
+//// nsIDOMLoadListener
+
+NS_IMETHODIMP
+nsFormFillController::Load(nsIDOMEvent *aLoadEvent)
+{
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsFormFillController::BeforeUnload(nsIDOMEvent *aLoadEvent)
+{
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsFormFillController::Unload(nsIDOMEvent *aLoadEvent)
+{
+  if (mFocusedInput) {
+    nsCOMPtr<nsIDOMEventTarget> target;
+    aLoadEvent->GetTarget(getter_AddRefs(target));
+
+    nsCOMPtr<nsIDOMDocument> eventDoc = do_QueryInterface(target);
+    nsCOMPtr<nsIDOMDocument> inputDoc;
+    mFocusedInput->GetOwnerDocument(getter_AddRefs(inputDoc));
+
+    if (eventDoc == inputDoc)
+      StopControllingInput();
+  }
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsFormFillController::Abort(nsIDOMEvent *aLoadEvent)
+{
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsFormFillController::Error(nsIDOMEvent *aLoadEvent)
+{
+  return NS_OK;
+}
+
+////////////////////////////////////////////////////////////////////////
 //// nsFormFillController
 
 void
@@ -793,6 +843,10 @@ nsFormFillController::AddWindowListeners(nsIDOMWindow *aWindow)
 
   target->AddEventListener(NS_LITERAL_STRING("input"),
                            NS_STATIC_CAST(nsIDOMFormListener *, this),
+                           PR_TRUE);
+
+  target->AddEventListener(NS_LITERAL_STRING("unload"),
+                           NS_STATIC_CAST(nsIDOMLoadListener *, this),
                            PR_TRUE);
 }
 
@@ -831,6 +885,10 @@ nsFormFillController::RemoveWindowListeners(nsIDOMWindow *aWindow)
 
   target->RemoveEventListener(NS_LITERAL_STRING("input"),
                               NS_STATIC_CAST(nsIDOMFormListener *, this),
+                              PR_TRUE);
+
+  target->RemoveEventListener(NS_LITERAL_STRING("unload"),
+                              NS_STATIC_CAST(nsIDOMLoadListener *, this),
                               PR_TRUE);
 }
 

@@ -100,6 +100,49 @@ function SelectAndScrollToKey(aMsgKey)
   return true;
 }
 
+// A helper routine called after a folder is loaded to make sure
+// we select and scroll to the correct message (could be the first new message,
+// could be the last displayed message, etc.)
+// returns true if we ended up scrolling to a message
+function ScrollToMessageAfterFolderLoad (folder)
+{
+  var scrolled = ScrollToMessage(nsMsgNavigationType.firstNew, true, false /* selectMessage */);
+  if (!scrolled && folder && pref.getBoolPref("mailnews.remember_selected_message")) 
+  {
+    // if we failed to scroll to a new message,
+    // reselect the last selected message
+    var lastMessageLoaded = folder.lastMessageLoaded;
+         
+    if (lastMessageLoaded != nsMsgKey_None)
+      scrolled = SelectAndScrollToKey(lastMessageLoaded);
+  }
+  
+  if (!scrolled) 
+  {
+    // if we still haven't scrolled,
+    // scroll to the newest, which might be the top or the bottom
+    // depending on our sort order and sort type
+    if (gDBView.sortOrder == nsMsgViewSortOrder.ascending) 
+    {
+      switch (gDBView.sortType) 
+      {
+        case nsMsgViewSortType.byDate: 
+        case nsMsgViewSortType.byId: 
+        case nsMsgViewSortType.byThread: 
+         scrolled = ScrollToMessage(nsMsgNavigationType.lastMessage, true, false /* selectMessage */);
+         break;
+      }
+    }
+      
+    // if still we haven't scrolled,
+    // scroll to the top.
+    if (!scrolled)
+      EnsureRowInThreadTreeIsVisible(0);
+  }   
+  
+  return scrolled;
+}
+
 // the folderListener object
 var folderListener = {
     OnItemAdded: function(parentItem, item, view) { },
@@ -140,7 +183,9 @@ var folderListener = {
        if (eventType == "FolderLoaded") {
          if (folder) {
            var uri = folder.URI;
-           if (uri == gCurrentFolderToReroot) {
+           var rerootingFolder = (uri == gCurrentFolderToReroot);
+           if (rerootingFolder) {
+            viewDebug("uri = gCurrentFolderToReroot, setting gQSViewIsDirty\n");
              gQSViewIsDirty = true;
              gCurrentFolderToReroot = null;
              var msgFolder = folder.QueryInterface(Components.interfaces.nsIMsgFolder);
@@ -197,49 +242,14 @@ var folderListener = {
              // if you change the scrolling code below,
              // double check the scrolling logic in
              // searchBar.js, restorePreSearchView()
-
+             viewDebug("uri == current loading folder uri\n");
              gCurrentLoadingFolderURI = "";
 
              // if we didn't just scroll, 
              // scroll to the first new message
              // but don't select it
              if (!scrolled)
-               scrolled = ScrollToMessage(nsMsgNavigationType.firstNew, true, false /* selectMessage */);
-
-             if (!scrolled && pref.getBoolPref("mailnews.remember_selected_message")) {
-               // if we failed to scroll to a new message,
-               // reselect the last selected message
-               var lastMessageLoaded = msgFolder.lastMessageLoaded;
-                 
-               if (lastMessageLoaded != nsMsgKey_None) {
-                 scrolled = SelectAndScrollToKey(lastMessageLoaded);
-               }
-             }
-
-             if (!scrolled) {
-               // if we still haven't scrolled,
-               // scroll to the newest, which might be the top or the bottom
-               // depending on our sort order and sort type
-               if (gDBView.sortOrder == nsMsgViewSortOrder.ascending) {
-                 switch (gDBView.sortType) {
-                   case nsMsgViewSortType.byDate: 
-                   case nsMsgViewSortType.byId: 
-                   case nsMsgViewSortType.byThread: 
-                     scrolled = ScrollToMessage(nsMsgNavigationType.lastMessage, true, false /* selectMessage */);
-                     break;
-                 }
-               }
-
-               // if still we haven't scrolled,
-               // scroll to the top.
-               if (!scrolled)
-                 EnsureRowInThreadTreeIsVisible(0);
-             }            
-
-             // NOTE,
-             // if you change the scrolling code above,
-             // double check the scrolling logic in
-             // searchBar.js, restorePreSearchView()
+               scrolled = ScrollToMessageAfterFolderLoad(msgFolder);          
 
              SetBusyCursor(window, false);
            }
@@ -255,17 +265,51 @@ var folderListener = {
               }
            }
            //folder loading is over, now issue quick search if there is an email address
-           if (gSearchEmailAddress)
+           viewDebug("in folder loaded gVirtualFolderTerms = " + gVirtualFolderTerms + "\n");
+           viewDebug("in folder loaded gMsgFolderSelected = " + gMsgFolderSelected.URI + "\n");
+           if (rerootingFolder)
            {
-             Search(gSearchEmailAddress);
-             gSearchEmailAddress = null;
-           } 
-           else if (gDefaultSearchViewTerms)
-           {
-             Search("");
-           }
-           else {
-             ViewChangeByValue(pref.getIntPref("mailnews.view.last"));
+             if (gSearchEmailAddress)
+             {
+               Search(gSearchEmailAddress);
+               gSearchEmailAddress = null;
+             } 
+             else if (gVirtualFolderTerms)
+             {
+                gDefaultSearchViewTerms = null;
+                viewDebug("searching gVirtualFolderTerms\n");
+                loadVirtualFolder(); 
+             }
+             else if (gMsgFolderSelected.flags & MSG_FOLDER_FLAG_VIRTUAL)
+             {
+                viewDebug("selected folder is virtual\n");
+                gDefaultSearchViewTerms = null;
+             }
+             else
+             {               
+               // get the view value from the folder
+               var msgFolder = folder.QueryInterface(Components.interfaces.nsIMsgFolder);
+               if (msgFolder)
+               {
+                 var msgDatabase = msgFolder.getMsgDatabase(msgWindow);
+                 var dbFolderInfo = msgDatabase.dBFolderInfo; 
+                 var result = {};
+                 dbFolderInfo.GetUint32Property("current-view", result, 0);
+                 
+                 // if our new view is the same as the old view and we already have the list of search terms built up
+                 // for the old view, just re-use it
+                 if (gCurrentViewValue == result.value && gDefaultSearchViewTerms)
+                 {
+                   viewDebug("searching gDefaultSearchViewTerms and rerootingFolder\n");
+                   Search("");
+                 }
+                 else
+                 {
+                   viewDebug("changing view by value\n");
+                   ViewChangeByValue(result.value);
+                 }
+               }
+             }
            }
          }
        } 
@@ -551,20 +595,30 @@ function LoadCurrentlyDisplayedMessage()
 
 function IsCurrentLoadedFolder(folder)
 {
-	var msgfolder = folder.QueryInterface(Components.interfaces.nsIMsgFolder);
-	if(msgfolder)
-	{
-		var folderResource = msgfolder.QueryInterface(Components.interfaces.nsIRDFResource);
-		if(folderResource)
-		{
-			var folderURI = folderResource.Value;
-			var currentLoadedFolder = GetThreadPaneFolder();
-			var currentURI = currentLoadedFolder.URI;
-			return(currentURI == folderURI);
-		}
-	}
+  var msgfolder = folder.QueryInterface(Components.interfaces.nsIMsgFolder);
+  if(msgfolder)
+  {
+    var folderResource = msgfolder.QueryInterface(Components.interfaces.nsIRDFResource);
+    if(folderResource)
+    {
+      var folderURI = folderResource.Value;
+      var currentLoadedFolder = GetThreadPaneFolder();
+      if (currentLoadedFolder.flags & MSG_FOLDER_FLAG_VIRTUAL)
+      {
+        var msgDatabase = currentLoadedFolder.getMsgDatabase(msgWindow);
+        var dbFolderInfo = msgDatabase.dBFolderInfo;
+        var srchFolderUri = dbFolderInfo.getCharPtrProperty("searchFolderUri");
+        var re = new RegExp("^" + folderURI + "$|^" + folderURI + "\||\|" + folderURI + "$|\|" + folderURI +"\|");
+        var retval = (currentLoadedFolder.URI.match(re));
+        return retval;
 
-	return false;
+      }
+      var currentURI = currentLoadedFolder.URI;
+      return(currentURI == folderURI);
+    }
+  }
+
+  return false;
 }
 
 function ServerContainsFolder(server, folder)
@@ -803,11 +857,11 @@ function delayedOnLoadMessenger()
   var toolbarset = document.getElementById('customToolbars');
   toolbox.toolbarset = toolbarset;
 
-//  var updatePanel = document.getElementById("statusbar-updates");
-//  try {
-//    updatePanel.init();
-//  }
-//  catch (ex) {}
+  var updatePanel = document.getElementById("statusbar-updates");
+  try {
+    updatePanel.init();
+  }
+  catch (ex) {}
 }
 
 function OnUnloadMessenger()
@@ -901,14 +955,13 @@ function loadStartFolder(initialUri)
 
         SelectFolder(startFolder.URI);        
 
-        // only do this on startup, when we pass in null
-        if (!initialUri && isLoginAtStartUpEnabled && gLoadStartFolder)
-        {
-            // Perform biff on the server to check for new mail, except for imap
-            if (defaultServer.type != "imap")
+        // Perform biff on the server to check for new mail, except for imap
+        // or a pop3 account that is deferred or deferred to,
+        // or the case where initialUri is non-null (non-startup)
+        if (!initialUri && isLoginAtStartUpEnabled && gLoadStartFolder
+            && defaultServer.type != "imap" && !defaultServer.isDeferredTo &&
+            defaultServer.msgFolder == defaultServer.rootMsgFolder)
               defaultServer.PerformBiff(msgWindow);        
-        }
-
 
         // because the "open" state persists, we'll call
         // PerformExpand() for all servers that are open at startup.
@@ -956,14 +1009,6 @@ function loadStartFolder(initialUri)
         }
       }
     }
-}
-
-function TriggerGetMessages(server)
-{
-    // downloadMessagesAtStartup for a given server type indicates whether 
-    // or not there is a need to Trigger GetMessages action
-    if (server.downloadMessagesAtStartup)
-        MsgGetMessage();
 }
 
 function AddToSession()
@@ -1347,10 +1392,6 @@ function FolderPaneOnClick(event)
     else if (event.detail == 2) {
       FolderPaneDoubleClick(row.value, event);
     }
-    else if (gDBView && gDBView.viewType == nsMsgViewType.eShowQuickSearchResults)
-    {
-      onClearSearch();
-    }
 
 }
 
@@ -1568,15 +1609,19 @@ function EnsureFolderIndex(builder, msgFolder)
 
 function SelectFolder(folderUri)
 {
+    dump("in selectFolder, folderUri = " + folderUri + "\n");
     var folderTree = GetFolderTree();
     var folderResource = RDF.GetResource(folderUri);
     var msgFolder = folderResource.QueryInterface(Components.interfaces.nsIMsgFolder);
 
-    // before we can select a folder, we need to make sure it is "visible"
-    // in the tree.  to do that, we need to ensure that all its
-    // ancestors are expanded
-    var folderIndex = EnsureFolderIndex(folderTree.builderView, msgFolder);
-    ChangeSelection(folderTree, folderIndex);
+    if (msgFolder)
+    {
+      // before we can select a folder, we need to make sure it is "visible"
+      // in the tree.  to do that, we need to ensure that all its
+      // ancestors are expanded
+      var folderIndex = EnsureFolderIndex(folderTree.builderView, msgFolder);
+      ChangeSelection(folderTree, folderIndex);
+    }
 }
 
 function SelectMessage(messageUri)

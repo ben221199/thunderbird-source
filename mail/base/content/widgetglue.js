@@ -175,9 +175,52 @@ function MsgCompactFolder(isAll)
   }
 }
 
+function openNewVirtualFolderDialogWithArgs(defaultViewName, aSearchTerms)
+{
+  var folderURI = GetSelectedFolderURI();
+  var folderTree = GetFolderTree();
+  var name = GetFolderNameFromUri(folderURI, folderTree);
+  name += "-" + defaultViewName;
+
+  var dialog = window.openDialog("chrome://messenger/content/virtualFolderProperties.xul", "",
+                                 "chrome,titlebar,modal,centerscreen",
+                                 {preselectedURI:folderURI,
+                                  searchTerms:aSearchTerms,
+                                  newFolderName:name});
+}
+
+function MsgVirtualFolderProperties(aEditExistingVFolder)
+{
+  var preselectedFolder = GetFirstSelectedMsgFolder();
+  var preselectedURI;
+  if(preselectedFolder)
+  {
+    var preselectedFolderResource = preselectedFolder.QueryInterface(Components.interfaces.nsIRDFResource);
+    if(preselectedFolderResource)
+      preselectedURI = preselectedFolderResource.Value;
+  }
+
+  var dialog = window.openDialog("chrome://messenger/content/virtualFolderProperties.xul", "",
+                                 "chrome,titlebar,modal,centerscreen",
+                                 {preselectedURI:preselectedURI,
+                                  editExistingFolder: aEditExistingVFolder,
+                                  onOKCallback:onEditVirtualFolderPropertiesCallback,
+                                  msgWindow:msgWindow});
+}
+
+function onEditVirtualFolderPropertiesCallback(aVirtualFolderURI)
+{
+  // we need to reload the folder if it is the currently loaded folder...
+  if (gMsgFolderSelected && aVirtualFolderURI == gMsgFolderSelected.URI)
+  {
+    gMsgFolderSelected = null; // force the folder pane to reload the virtual folder
+    FolderPaneSelectionChange();
+  }
+}
+
 function MsgFolderProperties() 
 {
-	var preselectedURI = GetSelectedFolderURI();
+  var preselectedURI = GetSelectedFolderURI();
   var msgFolder = GetMsgFolderFromUri(preselectedURI, true);
 
   // if a server is selected, view settings for that account
@@ -186,20 +229,27 @@ function MsgFolderProperties()
     return;
   }
 
-	var serverType = msgFolder.server.type;
-	var folderTree = GetFolderTree();
+  var serverType = msgFolder.server.type;
+  var folderTree = GetFolderTree();
 
-	var name = GetFolderNameFromUri(preselectedURI, folderTree);
+  if (msgFolder.flags & MSG_FOLDER_FLAG_VIRTUAL)
+  { 
+    // virtual folders get there own property dialog that contains all of the
+    // search information related to the virtual folder.
+    return MsgVirtualFolderProperties(true);
+  }
 
-	var windowTitle = gMessengerBundle.getString("folderProperties");
-	var dialog = window.openDialog(
-                    "chrome://messenger/content/folderProps.xul",
-                    "",
-                    "chrome,centerscreen,titlebar,modal",
-                    {preselectedURI:preselectedURI, serverType:serverType,
-                    msgWindow:msgWindow, title:windowTitle,
-                    okCallback:FolderProperties, 
-                    tabID:"", tabIndex:0, name:name});
+  var name = GetFolderNameFromUri(preselectedURI, folderTree);
+
+  var windowTitle = gMessengerBundle.getString("folderProperties");
+  var dialog = window.openDialog(
+              "chrome://messenger/content/folderProps.xul",
+              "",
+              "chrome,centerscreen,titlebar,modal",
+              {preselectedURI:preselectedURI, serverType:serverType,
+              msgWindow:msgWindow, title:windowTitle,
+              okCallback:FolderProperties, 
+              tabID:"", tabIndex:0, name:name});
 }
 
 function FolderProperties(name, uri)

@@ -72,6 +72,7 @@
 #include "prlog.h"
 #include "prerror.h"
 #include "nsEscape.h"
+#include "nsString.h"
 
 #include "prprf.h"
 
@@ -325,33 +326,22 @@ static const char *XP_AppCodeName = "Mozilla";
 #endif
 #define NET_IS_SPACE(x) ((x)==' ' || (x)=='\t')
 
+// turn "\xx" (with xx being hex numbers) in string into chars
 char *MSG_UnEscapeSearchUrl (const char *commandSpecificData)
 {
-	char *result = (char*) PR_Malloc (PL_strlen(commandSpecificData) + 1);
-	if (result)
-	{
-		char *resultPtr = result;
-		while (1)
-		{
-			char ch = *commandSpecificData++;
-			if (!ch)
-				break;
-			if (ch == '\\')
-			{
-				char scratchBuf[3];
-				scratchBuf[0] = (char) *commandSpecificData++;
-				scratchBuf[1] = (char) *commandSpecificData++;
-				scratchBuf[2] = '\0';
-				int accum = 0;
-				PR_sscanf(scratchBuf, "%X", &accum);
-				*resultPtr++ = (char) accum;
-			}
-			else
-				*resultPtr++ = ch;
-		}
-		*resultPtr = '\0';
-	}
-	return result;
+  nsCAutoString result(commandSpecificData);
+  PRInt32 slashpos = 0;
+  while (slashpos = result.FindChar(PRUnichar('\\'), slashpos),
+         slashpos != kNotFound)
+  {
+    nsCAutoString hex;
+    hex.Assign(Substring(result, slashpos + 1, 2));
+    PRInt32 err, ch;
+    ch = hex.ToInteger(&err, 16);
+    result.Replace(slashpos, 3, err == NS_OK && ch != 0 ? (char) ch : 'X');
+    slashpos++;
+  }
+  return ToNewCString(result);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -1592,12 +1582,15 @@ PRInt32 nsNNTPProtocol::NewsResponse(nsIInputStream * inputStream, PRUint32 leng
 #endif
 	}
 
-    NS_MsgSACopy(&m_responseText, line+4);
-
-	m_previousResponseCode = m_responseCode;
+    m_previousResponseCode = m_responseCode;
 
     PR_sscanf(line, "%d", &m_responseCode);
-	
+
+    if (m_responseCode && PL_strlen(line) > 3)
+        NS_MsgSACopy(&m_responseText, line + 4);
+    else
+        NS_MsgSACopy(&m_responseText, line);
+
 	if (m_responseCode == MK_NNTP_RESPONSE_AUTHINFO_DENIED) {
 		/* login failed */
 		AlertError(MK_NNTP_AUTH_FAILED, m_responseText);

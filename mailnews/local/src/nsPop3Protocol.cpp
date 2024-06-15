@@ -60,6 +60,10 @@
 #include "nsEscape.h"
 #include "nsMsgUtils.h"
 #include "nsISignatureVerifier.h"
+#include "nsIPrefBranch.h"
+#include "nsIPrefService.h"
+#include "nsIPrefLocalizedString.h"
+#include "nsISocketTransport.h"
 
 #define EXTRA_SAFETY_SPACE 3096
 
@@ -493,7 +497,9 @@ nsPop3Protocol::nsPop3Protocol(nsIURI* aURL)
   m_totalBytesReceived(0),
   m_lineStreamBuffer(nsnull),
   m_pop3ConData(nsnull),
-  m_password_already_sent(PR_FALSE)
+  m_password_already_sent(PR_FALSE),
+  m_responseTimer(nsnull),
+  m_responseTimeout(45)
 {
   SetLookingForCRLF(MSG_LINEBREAK_LEN == 2);
   m_ignoreCRLFs = PR_TRUE;
@@ -512,6 +518,7 @@ nsresult nsPop3Protocol::Initialize(nsIURI * aURL)
   m_totalFolderSize = 0;    
   m_totalDownloadSize = 0;
   m_totalBytesReceived = 0;
+  m_responseTimeout = 45;
 
   if (aURL)
   {
@@ -569,6 +576,15 @@ nsresult nsPop3Protocol::Initialize(nsIURI * aURL)
   
   if (!POP3LOGMODULE)
       POP3LOGMODULE = PR_NewLogModule("POP3");
+
+  // Read in preferences
+  nsCOMPtr<nsIPrefBranch> prefBranch(do_GetService(NS_PREFSERVICE_CONTRACTID));
+  if (prefBranch)
+  {
+      prefBranch->GetIntPref("mail.pop3_response_timeout", &m_responseTimeout);
+      PR_LOG(POP3LOGMODULE, PR_LOG_ALWAYS,
+        ("mail.pop3_response_timeout=%d", m_responseTimeout));
+  }
 
   m_lineStreamBuffer = new nsMsgLineStreamBuffer(OUTPUT_BUFFER_SIZE, PR_TRUE);
   if(!m_lineStreamBuffer)
@@ -673,10 +689,12 @@ nsresult nsPop3Protocol::GetPassword(char ** aPassword, PRBool *okayValue)
     nsXPIDLString passwordTemplate;
     // if the last prompt got us a bad password then show a special dialog
     if (TestFlag(POP3_PASSWORD_FAILED))
-    { 
-      // if we haven't successfully logged onto the server in this session,
+    {
+      // if we haven't successfully logged onto the server in this session
+      // and tried at least twice or if the server threw the specific error,
       // forget the password.
-      if (!isAuthenticated && m_pop3ConData->logonFailureCount > 1)
+      if ((!isAuthenticated && m_pop3ConData->logonFailureCount > 1) ||
+          TestFlag(POP3_AUTH_FAILURE))
         rv = server->ForgetPassword();
       if (NS_FAILED(rv)) return rv;
       mStringService->GetStringByID(POP3_PREVIOUSLY_ENTERED_PASSWORD_IS_INVALID_ETC, getter_Copies(passwordTemplate));
@@ -701,7 +719,7 @@ nsresult nsPop3Protocol::GetPassword(char ** aPassword, PRBool *okayValue)
       nsTextFormatter::smprintf_free(passwordPromptString);
     }
     
-    ClearFlag(POP3_PASSWORD_FAILED);
+    ClearFlag(POP3_PASSWORD_FAILED|POP3_AUTH_FAILURE);
     if (NS_FAILED(rv))
       m_pop3ConData->next_state = POP3_ERROR_DONE;
   } // if we have a server
@@ -709,6 +727,15 @@ nsresult nsPop3Protocol::GetPassword(char ** aPassword, PRBool *okayValue)
     rv = NS_MSG_INVALID_OR_MISSING_SERVER;
   
   return rv;
+}
+
+NS_IMETHODIMP nsPop3Protocol::OnTransportStatus(nsITransport *transport, nsresult status, PRUint32 progress, PRUint32 progressMax)
+{
+  // When the socket connection is established, start the response timer.
+  if (status == NS_NET_STATUS_CONNECTED_TO) {
+    SetResponseTimer();
+  }
+  return nsMsgProtocol::OnTransportStatus(transport, status, progress, progressMax);
 }
 
 // stop binding is a "notification" informing us that the stream associated with aURL is going away. 
@@ -848,6 +875,7 @@ nsresult nsPop3Protocol::LoadUrl(nsIURI* aURL, nsISupports * /* aConsumer */)
   m_pop3ConData->next_state_after_response = POP3_FINISH_CONNECT;
   if (NS_SUCCEEDED(rv))
   {
+    SetResponseTimer();
     m_pop3Server->SetRunningProtocol(this);
     return nsMsgProtocol::LoadUrl(aURL);
   }
@@ -940,13 +968,14 @@ nsPop3Protocol::WaitForResponse(nsIInputStream* inputStream, PRUint32 length)
   
   if(pauseForMoreData || !line)
   {
-    m_pop3ConData->pause_for_read = PR_TRUE; /* don't pause */
+    m_pop3ConData->pause_for_read = PR_TRUE; /* pause */
+
     PR_Free(line);
     return(ln);
   }
-  
+
   PR_LOG(POP3LOGMODULE, PR_LOG_ALWAYS,("RECV: %s", line));
-  
+
   if(*line == '+')
   {
     m_pop3ConData->command_succeeded = PR_TRUE;
@@ -1334,13 +1363,31 @@ PRInt32 nsPop3Protocol::AuthFallback()
             m_pop3ConData->next_state = POP3_SEND_PASSWORD;
     else
     {
-        // response code received,
-        // login failed not because of wrong credential
-        if(TestFlag(POP3_STOPLOGIN) ||
-           TestCapFlag(POP3_HAS_AUTH_RESP_CODE) && !TestFlag(POP3_AUTH_FAILURE))
+        // response code received shows that login failed not because of
+        // wrong credential -> stop login without retry or pw dialog, only alert
+        if (TestFlag(POP3_STOPLOGIN))
             return(Error((m_password_already_sent) 
                          ? POP3_PASSWORD_FAILURE : POP3_USERNAME_FAILURE));
 
+        // response code received shows that server is certain about the
+        // credential was wrong, or fallback has been disabled by pref
+        // -> no fallback, show alert and pw dialog
+        PRBool logonFallback = PR_TRUE;
+        nsCOMPtr<nsIMsgIncomingServer> server = do_QueryInterface(m_pop3Server);
+        if (server)
+          server->GetLogonFallback(&logonFallback);
+        if (!logonFallback)
+          SetFlag(POP3_AUTH_FAILURE);
+
+        if (TestFlag(POP3_AUTH_FAILURE))
+        {
+            Error((m_password_already_sent) 
+                         ? POP3_PASSWORD_FAILURE : POP3_USERNAME_FAILURE);
+            SetFlag(POP3_PASSWORD_FAILED);
+            return 0;
+        }
+
+        // we have no certain response code -> fallback and try again
         if (m_useSecAuth)
         {
             // If one authentication failed, we're going to
@@ -1635,6 +1682,22 @@ PRInt32 nsPop3Protocol::SendPassword()
     {
         if (TestCapFlag(POP3_HAS_AUTH_PLAIN))
         {
+            // workaround for IPswitch's IMail server software
+            // this server goes into LOGIN mode even if we send "AUTH PLAIN"
+            // "VXNlc" is the begin of the base64 encoded prompt for LOGIN
+            if (m_commandResponse.Compare("VXNlc", PR_FALSE, 5) == 0)
+            {
+                // disable and enable LOGIN (in case it's not already enabled)
+                ClearCapFlag(POP3_HAS_AUTH_PLAIN);
+                SetCapFlag(POP3_HAS_AUTH_LOGIN);
+                m_pop3Server->SetPop3CapabilityFlags(m_pop3ConData->capability_flags);
+
+                // reenter authentication again at LOGIN response handler
+                m_pop3ConData->next_state = POP3_AUTH_LOGIN_RESPONSE;
+                m_pop3ConData->pause_for_read = PR_FALSE;
+                return 0;
+            }
+
             char plain_string[512];
             int len = 1; /* first <NUL> char */
 
@@ -3315,6 +3378,7 @@ nsresult nsPop3Protocol::ProcessProtocolState(nsIURI * url, nsIInputStream * aIn
   PRInt32 status = 0;
   nsCOMPtr<nsIMsgMailNewsUrl> mailnewsurl = do_QueryInterface(m_url);
   
+  CancelResponseTimer();
   PR_LOG(POP3LOGMODULE, PR_LOG_ALWAYS, ("Entering NET_ProcessPop3 %d",
     aLength));
   
@@ -3726,6 +3790,8 @@ nsresult nsPop3Protocol::ProcessProtocolState(nsIURI * url, nsIInputStream * aIn
     
   }  /* end while */
   
+  SetResponseTimer();
+
   return NS_OK;
           
 }
@@ -3764,4 +3830,39 @@ NS_IMETHODIMP nsPop3Protocol::CheckMessage(const char *aUidl, PRBool *aBool)
   
   *aBool = uidlEntry ? PR_TRUE : PR_FALSE;
   return NS_OK;
+}
+
+void OnResponseTimeout(nsITimer *timer, void *aPop3Protocol)
+{
+  nsPop3Protocol *pop3Protocol = (nsPop3Protocol *) aPop3Protocol;
+
+  PR_LOG(POP3LOGMODULE, PR_LOG_ALWAYS, 
+      ("OnResponseTimeout: username=%s", pop3Protocol->GetUsername()));
+
+  // Cancel this connection to force it to drop.
+  pop3Protocol->Cancel(NS_BINDING_FAILED);
+}
+
+void nsPop3Protocol::SetResponseTimer()
+{
+  // Cancel outstanding timer since it can't be reset.
+  CancelResponseTimer();
+
+  // Setup new response timer
+  PRUint32 timeInMSUint32 = m_responseTimeout * 1000;
+  if (m_pop3ConData->next_state == POP3_START_CONNECT)
+    timeInMSUint32 += 60000; // add 60 seconds if we're starting the connection
+  m_responseTimer = do_CreateInstance("@mozilla.org/timer;1");
+  if (m_responseTimer)
+  m_responseTimer->InitWithFuncCallback(OnResponseTimeout, (void*)this, 
+      timeInMSUint32, nsITimer::TYPE_ONE_SHOT);
+}
+
+void nsPop3Protocol::CancelResponseTimer()
+{
+  // Cancel outstanding response timer
+  if (m_responseTimer) {
+    m_responseTimer->Cancel();
+    m_responseTimer = nsnull;
+  }
 }

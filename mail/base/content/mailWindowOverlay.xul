@@ -116,6 +116,7 @@
    <commandset id="viewZoomCommands">
      <command id="cmd_textZoomReduce" oncommand="ZoomManager.prototype.getInstance().reduce();"/>
      <command id="cmd_textZoomEnlarge" oncommand="ZoomManager.prototype.getInstance().enlarge();"/>
+     <command id="cmd_textZoomReset" oncommand="ZoomManager.prototype.getInstance().reset();"/>
    </commandset>
 </commandset>
 
@@ -275,7 +276,8 @@
 #ifdef XP_MACOSX
 <commandset id="macWindowMenuItems">
   <!-- Mac Window menu -->
-  <command id="minimizeWindow" label="&minimizeWindow.label;" disabled="true"/>
+  <command id="minimizeWindow" label="&minimizeWindow.label;" oncommand="window.minimize();"/>
+  <command id="zoomWindow" label="&zoomWindow.label;" oncommand="zoomWindow();"/>
   <command id="Tasks:Mail" oncommand="toMessengerWindow();"/>
   <command id="Tasks:AddressBook" oncommand="toAddressBook();"/>
 </commandset>
@@ -309,6 +311,8 @@
   <key id="key_markJunk" key="&markAsJunkCmd.key;"                   oncommand="goDoCommand('cmd_markAsJunk');"/>
   <key id="key_markNotJunk" key="&markAsNotJunkCmd.key;"             oncommand="goDoCommand('cmd_markAsNotJunk');"
        modifiers="shift"/>
+
+  <key id="key_groupBySort" key="&groupBySortCmd.key;" oncommand="MsgGroupBySort();"/>
 
 #ifdef MOZ_WIDGET_GTK2
   <key id="key_markAllRead" key="&markAllReadCmd.key;"               oncommand="goDoCommand('cmd_markAllRead');" modifiers="shift"/>
@@ -357,7 +361,7 @@
     <key id="key_textZoomReduce" key="&textZoomReduceCmd.commandkey;" command="cmd_textZoomReduce"  modifiers="accel"/>
     <key id="key_textZoomEnlarge" key="&textZoomEnlargeCmd.commandkey;" command="cmd_textZoomEnlarge" modifiers="accel"/>
     <key key="&textZoomEnlargeCmd.commandkey2;" command="cmd_textZoomEnlarge" modifiers="accel"/>
-    <key key="&textZoomResetCmd.commandkey;" oncommand="ZoomManager.prototype.getInstance().reset();" modifiers="accel"/>
+    <key id="key_textZoomReset"   key="&textZoomResetCmd.commandkey;"    command="cmd_textZoomReset"   modifiers="accel"/>
   </keyset>
 
   <!-- Tab/F6 Keys -->
@@ -388,7 +392,7 @@
   <key id="key_mail"  key="&messengerCmd.commandkey;" oncommand="toMessengerWindow();" modifiers="accel"/>
   <key id="key_addressbook"  key="&addressBookCmd.commandkey;" oncommand="toAddressBook();" modifiers="accel"/>
 #ifdef XP_MACOSX
-  <!-- Mac Window keys -->
+  <!-- Mac Window and Help menu keys -->
   <key id="key_minimizeWindow" command="minimizeWindow" key="&minimizeWindow.key;" modifiers="accel"/>
   <key id="key_macHelp" key="&hintsAndTipsMac.commandkey;" oncommand="loadThrobberUrl('mailnews.hints_and_tips.url');" modifiers="accel"/>
 #endif
@@ -1046,6 +1050,9 @@
               <menuitem id="menu_newFolder" label="&newFolderCmd.label;"
                          oncommand="MsgNewFolder(NewFolder);"
                          accesskey="&newFolderCmd.accesskey;"/>
+              <menuitem id="menu_newVirtualFolder" label="&newVirtualFolderCmd.label;"
+                         oncommand="MsgVirtualFolderProperties(false);"
+                         accesskey="&newVirtualFolderCmd.accesskey;"/>
               <menuitem id="newAccountMenuItem" label="&newAccountCmd.label;"
                          accesskey="&newAccountCmd.accesskey;"
                          oncommand="MsgAccountWizard();"/>
@@ -1190,11 +1197,11 @@
           </menu>
           <menu id="menu_MessagePaneLayout" label="&messagePaneLayoutStyle.label;" accesskey="&messagePaneLayoutStyle.accesskey;">
             <menupopup onpopupshowing="InitViewLayoutStyleMenu()">
-              <menuitem id="messagePaneClassic" type="radio" label="&messagePaneClassic.label;"
+              <menuitem id="messagePaneClassic" type="radio" label="&messagePaneClassic.label;" name="viewlayoutgroup"
                         accesskey="&messagePaneClassic.accesskey;" oncommand="ChangeMailLayout(kClassicMailLayout);"/>
-              <menuitem id="messagePaneWide" type="radio" label="&messagePaneWide.label;"
+              <menuitem id="messagePaneWide" type="radio" label="&messagePaneWide.label;" name="viewlayoutgroup"
                         accesskey="&messagePaneWide.accesskey;" oncommand="ChangeMailLayout(kWideMailLayout);"/>
-              <menuitem id="messagePaneVertical" type="radio" label="&messagePaneVertical.label;"
+              <menuitem id="messagePaneVertical" type="radio" label="&messagePaneVertical.label;" name="viewlayoutgroup"
                         accesskey="&messagePaneVertical.accesskey;" oncommand="ChangeMailLayout(kVerticalMailLayout);"/>
               <menuseparator/>
               <menuitem id="menu_showMessage" type="checkbox" label="&showMessageCmd.label;" key="key_toggleMessagePane"
@@ -1225,6 +1232,7 @@
               <menuseparator/>
               <menuitem id="sortThreaded" type="radio" name="threaded" label="&sortThreaded.label;" accesskey="&sortThreaded.accesskey;" oncommand="MsgSortThreaded();"/>
               <menuitem id="sortUnthreaded" type="radio" name="threaded" label="&sortUnthreaded.label;" accesskey="&sortUnthreaded.accesskey;" oncommand="MsgSortUnthreaded();"/>
+              <menuitem id="groupBySort" type="radio" name="group" key="key_groupBySort" label="&groupBySort.label;" accesskey="&groupBySort.accesskey;" oncommand="MsgGroupBySort();"/>
             </menupopup>
           </menu>
 
@@ -1294,10 +1302,17 @@
             oncommand="ToggleInlineAttachment(event.target)" type="checkbox" checked="true"/>
           <menuseparator/>
 
-          <menuitem key="key_textZoomEnlarge" label="&textZoomEnlargeCmd.label;" accesskey="&textZoomEnlargeCmd.accesskey;"
-                    command="cmd_textZoomEnlarge"/>
-          <menuitem key="key_textZoomReduce" label="&textZoomReduceCmd.label;" accesskey="&textZoomReduceCmd.accesskey;"
-                    command="cmd_textZoomReduce"/>
+          <menu label="&textSize.label;" accesskey="&textSize.accesskey;">
+            <menupopup>
+              <menuitem key="key_textZoomEnlarge" label="&textZoomEnlargeCmd.label;" accesskey="&textZoomEnlargeCmd.accesskey;"
+                       command="cmd_textZoomEnlarge"/>
+              <menuitem key="key_textZoomReduce" label="&textZoomReduceCmd.label;" accesskey="&textZoomReduceCmd.accesskey;"
+                        command="cmd_textZoomReduce"/>
+              <menuseparator/>
+              <menuitem key="key_textZoomReset" label="&textZoomResetCmd.label;" accesskey="&textZoomResetCmd.accesskey;" command="cmd_textZoomReset"/>
+            </menupopup>
+          </menu>
+
           <menu id="mailviewCharsetMenu" />
           <menuseparator/>
           <menuitem id="pageSourceMenuItem" label="&pageSourceCmd.label;" key="key_viewPageSource" accesskey="&pageSourceCmd.accesskey;" observes="cmd_viewPageSource"/>
@@ -1586,7 +1601,8 @@
       <!-- Tasks -->
       <menu id="tasksMenu" label="&tasksMenu.label;" accesskey="&tasksMenu.accesskey;">
         <menupopup id="taskPopup" onpopupshowing="document.commandDispatcher.updateCommands('create-menu-tasks')">
-              
+        <menuitem id="addressBook" label="&addressBookCmd.label;" accesskey="&addressBookCmd.accesskey;"
+                  oncommand="toOpenWindowByType('mail:addressbook', 'chrome://messenger/content/addressbook/addressbook.xul');"/>
         <menuitem id="extensionsManager" label="&extensions.label;" accesskey="&extensions.accesskey;" 
                   oncommand="openExtensions('extensions');"/>
         <menuitem id="themesManager" label="&themes.label;" accesskey="&themes.accesskey;" 
@@ -1638,7 +1654,7 @@
           </template>
           <menupopup id="windowPopup">
             <menuitem command="minimizeWindow" key="key_minimizeWindow"/>
-            <menuitem label="&zoomWindow.label;" disabled="true"/>
+            <menuitem command="zoomWindow"/>
             <menuseparator/>
             <menuitem label="&bringAllToFront.label;" disabled="true"/>
             <menuseparator/>
@@ -1831,7 +1847,7 @@
 
 <hbox id="searchBox" persist="collapsed" align="center">
   <label value="&viewPicker.label;" control="viewPicker"  accesskey="&viewPicker.accesskey;"/>
-  <menulist id="viewPicker" oncreate="FillLabelValues();" oncommand="viewChange(this);">
+  <menulist id="viewPicker" oncreate="FillLabelValues();" oncommand="viewChange(this, this.value);">
     <menupopup id="viewPickerPopup">
       <menuitem value="0" id="viewPickerAll" label="&viewPickerAll.label;"/>
       <menuitem value="1" id="viewPickerUnread" label="&viewPickerUnread.label;"/>
@@ -1841,9 +1857,11 @@
       <menuitem value="4" id="labelMenuItem3"/>
       <menuitem value="5" id="labelMenuItem4"/>
       <menuitem value="6" id="labelMenuItem5"/>
+      <menuseparator/>
+      <menuitem id="saveAsVirtualFolder" value="7" label="&viewPickerSaveAsVirtualFolder.label;"/>
       <menuseparator id="lastDefaultView"/>
       <menuseparator id="createCustomViewSeparator"/>
-      <menuitem id="createCustomView" value="7" label="&viewPickerCustomView.label;"/>
+      <menuitem id="createCustomView" value="8" label="&viewPickerCustomView.label;"/>
     </menupopup>
   </menulist>
   
@@ -1851,7 +1869,7 @@
 
   <textbox id="searchInput" flex="1" onfocus="onSearchInputFocus(event);" onblur="onSearchInputBlur(event);" onclick="this.select();" oninput="onSearchInput(false);" onkeypress="onSearchKeyPress(event);">
     <button id="quick-search-button" type="menu">
-      <menupopup id="quick-search-menupopup" value="2" persist="value" popupalign="topleft" popupanchor="bottomleft">
+      <menupopup id="quick-search-menupopup" value="2" persist="value" onpopupshowing="InitQuickSearchPopup();" popupalign="topleft" popupanchor="bottomleft">
         <menuitem value="0" label="&searchSubjectMenu.label;" type="radio"  
                   oncommand="changeQuickSearchMode(this)"/>
         <menuitem value="1" label="&searchSenderMenu.label;" type="radio" 
@@ -1860,15 +1878,17 @@
                   checked="true" oncommand="changeQuickSearchMode(this)"/>
         <menuitem value="3" label="&searchMessageBody.label;" type="radio" 
                   oncommand="changeQuickSearchMode(this)"/>
-        <menuseparator/>
         <menuitem value="4" label="&findInMessageMenu.label;" type="radio" 
                   oncommand="changeQuickSearchMode(this)"/>
+        <menuseparator/>
+        <!-- if the value for the save as virtual folder menu changes, please update the 
+             vk_down key handler in searchbar.xml
+        -->
+        <menuitem value="5" id="quickSearchSaveAsVirtualFolder" label="&saveAsVirtualFolderMenu.label;" 
+                  oncommand="saveViewAsVirtualFolder()"/>
       </menupopup>
     </button>
   </textbox>
-
-  <button id="clearButton" label="&clearButton.label;" disabled="true" tooltiptext="&clearButton.tooltip;" oncommand="onClearSearch();" 
-          accesskey="&clearButton.accesskey;" hidden="true"/>
 </hbox>
 
 <hbox id="junkBar" collapsed="true" align="center">

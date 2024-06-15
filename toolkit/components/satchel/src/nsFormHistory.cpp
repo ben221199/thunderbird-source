@@ -59,6 +59,7 @@
 #include "nsIPrefBranch.h"
 #include "nsIPrefBranchInternal.h"
 #include "nsVoidArray.h"
+#include "nsCOMArray.h"
 
 #define PREF_FORMFILL_BRANCH "browser.formfill."
 #define PREF_FORMFILL_ENABLE "enable"
@@ -106,7 +107,6 @@ nsFormHistory::Init()
   return NS_OK;
 }
 
-nsIMdbFactory *nsFormHistory::gMdbFactory = nsnull;
 nsFormHistory *nsFormHistory::gFormHistory = nsnull;
 
 nsFormHistory *
@@ -143,12 +143,15 @@ nsFormHistory::FormHistoryEnabled()
 {
   if (!gPrefsInitialized) {
     nsCOMPtr<nsIPrefService> prefService = do_GetService(NS_PREFSERVICE_CONTRACTID);
-    nsCOMPtr<nsIPrefBranch> branch;
-    prefService->GetBranch(PREF_FORMFILL_BRANCH, getter_AddRefs(branch));
-    branch->GetBoolPref(PREF_FORMFILL_ENABLE, &gFormHistoryEnabled);
 
-    nsCOMPtr<nsIPrefBranchInternal> branchInternal = do_QueryInterface(branch);
-    branchInternal->AddObserver(PREF_FORMFILL_BRANCH, gFormHistory, PR_TRUE);
+    prefService->GetBranch(PREF_FORMFILL_BRANCH,
+                           getter_AddRefs(gFormHistory->mPrefBranch));
+    gFormHistory->mPrefBranch->GetBoolPref(PREF_FORMFILL_ENABLE,
+                                           &gFormHistoryEnabled);
+
+    nsCOMPtr<nsIPrefBranchInternal> branchInternal =
+      do_QueryInterface(gFormHistory->mPrefBranch);
+    branchInternal->AddObserver(PREF_FORMFILL_ENABLE, gFormHistory, PR_TRUE);
 
     gPrefsInitialized = PR_TRUE;
   }
@@ -221,6 +224,9 @@ nsFormHistory::GetValueAt(PRUint32 aIndex, nsAString &aValue)
 NS_IMETHODIMP
 nsFormHistory::AddEntry(const nsAString &aName, const nsAString &aValue)
 {
+  if (!FormHistoryEnabled())
+    return NS_OK;
+
   nsresult rv = OpenDatabase(); // lazily ensure that the database is open
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -256,7 +262,11 @@ nsFormHistory::RemoveEntriesForName(const nsAString &aName)
 NS_IMETHODIMP
 nsFormHistory::RemoveAllEntries()
 {
-  return RemoveEntriesInternal(nsnull);
+  nsresult rv = RemoveEntriesInternal(nsnull);
+  
+  rv |= Flush();
+  
+  return rv;
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -266,8 +276,7 @@ NS_IMETHODIMP
 nsFormHistory::Observe(nsISupports *aSubject, const char *aTopic, const PRUnichar *aData) 
 {
   if (!strcmp(aTopic, NS_PREFBRANCH_PREFCHANGE_TOPIC_ID)) {
-    nsCOMPtr<nsIPrefBranch> branch = do_QueryInterface(aSubject);
-    branch->GetBoolPref(PREF_FORMFILL_ENABLE, &gFormHistoryEnabled);
+    mPrefBranch->GetBoolPref(PREF_FORMFILL_ENABLE, &gFormHistoryEnabled);
   }
 
   return NS_OK;
@@ -402,11 +411,11 @@ nsFormHistory::OpenDatabase()
   nsCOMPtr<nsIMdbFactoryFactory> mdbFactory;
   rv = nsComponentManager::CreateInstance(kMorkCID, nsnull, NS_GET_IID(nsIMdbFactoryFactory), getter_AddRefs(mdbFactory));
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = mdbFactory->GetMdbFactory(&gMdbFactory);
+  rv = mdbFactory->GetMdbFactory(getter_AddRefs(mMdbFactory));
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Create the Mdb environment
-  mdb_err err = gMdbFactory->MakeEnv(nsnull, &mEnv);
+  mdb_err err = mMdbFactory->MakeEnv(nsnull, &mEnv);
   NS_ASSERTION(err == 0, "ERROR: Unable to create Form History mdb");
   mEnv->SetAutoClear(PR_TRUE);
   NS_ENSURE_TRUE(!err, NS_ERROR_FAILURE);
@@ -460,24 +469,24 @@ nsFormHistory::OpenExistingFile(const char *aPath)
 {
   nsCOMPtr<nsIMdbFile> oldFile;
   nsIMdbHeap* dbHeap = 0;
-  mdb_err err = gMdbFactory->OpenOldFile(mEnv, dbHeap, aPath, mdbBool_kFalse, getter_AddRefs(oldFile));
+  mdb_err err = mMdbFactory->OpenOldFile(mEnv, dbHeap, aPath, mdbBool_kFalse, getter_AddRefs(oldFile));
   NS_ENSURE_TRUE(!err && oldFile, NS_ERROR_FAILURE);
 
   mdb_bool canOpen = 0;
   mdbYarn outFormat = {nsnull, 0, 0, 0, 0, nsnull};
-  err = gMdbFactory->CanOpenFilePort(mEnv, oldFile, &canOpen, &outFormat);
+  err = mMdbFactory->CanOpenFilePort(mEnv, oldFile, &canOpen, &outFormat);
   NS_ENSURE_TRUE(!err && canOpen, NS_ERROR_FAILURE);
 
   nsCOMPtr<nsIMdbThumb> thumb;
   mdbOpenPolicy policy = {{0, 0}, 0, 0};
-  err = gMdbFactory->OpenFileStore(mEnv, dbHeap, oldFile, &policy, getter_AddRefs(thumb));
+  err = mMdbFactory->OpenFileStore(mEnv, dbHeap, oldFile, &policy, getter_AddRefs(thumb));
   NS_ENSURE_TRUE(!err && thumb, NS_ERROR_FAILURE);
 
   PRBool done;
   mdb_err thumbErr = UseThumb(thumb, &done);
 
   if (err == 0 && done)
-    err = gMdbFactory->ThumbToOpenStore(mEnv, thumb, &mStore);
+    err = mMdbFactory->ThumbToOpenStore(mEnv, thumb, &mStore);
   NS_ENSURE_TRUE(!err, NS_ERROR_FAILURE);
 
   nsresult rv = CreateTokens();
@@ -502,13 +511,13 @@ nsFormHistory::CreateNewFile(const char *aPath)
 {
   nsIMdbHeap* dbHeap = 0;
   nsCOMPtr<nsIMdbFile> newFile;
-  mdb_err err = gMdbFactory->CreateNewFile(mEnv, dbHeap, aPath, getter_AddRefs(newFile));
+  mdb_err err = mMdbFactory->CreateNewFile(mEnv, dbHeap, aPath, getter_AddRefs(newFile));
   NS_ENSURE_TRUE(!err && newFile, NS_ERROR_FAILURE);
 
   nsCOMPtr <nsIMdbTable> oldTable = mTable;;
   nsCOMPtr <nsIMdbStore> oldStore = mStore;
   mdbOpenPolicy policy = {{0, 0}, 0, 0};
-  err = gMdbFactory->CreateNewFileStore(mEnv, dbHeap, newFile, &policy, &mStore);
+  err = mMdbFactory->CreateNewFileStore(mEnv, dbHeap, newFile, &policy, &mStore);
   NS_ENSURE_TRUE(!err, NS_ERROR_FAILURE);
   
   nsresult rv = CreateTokens();
@@ -525,7 +534,7 @@ nsFormHistory::CreateNewFile(const char *aPath)
 
   // Force a commit now to get it written out.
   nsCOMPtr<nsIMdbThumb> thumb;
-  err = mStore->LargeCommit(mEnv, getter_AddRefs(thumb));
+  err = mStore->CompressCommit(mEnv, getter_AddRefs(thumb));
   NS_ENSURE_TRUE(!err, NS_ERROR_FAILURE);
 
   PRBool done;
@@ -587,7 +596,7 @@ nsFormHistory::Flush()
   mdb_err err;
 
   nsCOMPtr<nsIMdbThumb> thumb;
-  err = mStore->LargeCommit(mEnv, getter_AddRefs(thumb));
+  err = mStore->CompressCommit(mEnv, getter_AddRefs(thumb));
 
   if (err == 0)
     err = UseThumb(thumb, nsnull);
@@ -621,10 +630,10 @@ nsFormHistory::CopyRowsFromTable(nsIMdbTable *sourceTable)
   mdb_err err = sourceTable->GetTableRowCursor(mEnv, -1, getter_AddRefs(rowCursor));
   NS_ENSURE_TRUE(!err, NS_ERROR_FAILURE);
   
-  nsIMdbRow *row = nsnull;
+  nsCOMPtr<nsIMdbRow> row;
   mdb_pos pos;
   do {
-    rowCursor->NextRow(mEnv, &row, &pos);
+    rowCursor->NextRow(mEnv, getter_AddRefs(row), &pos);
     if (!row)
       break;
 
@@ -745,18 +754,18 @@ nsFormHistory::AutoCompleteSearch(const nsAString &aInputName,
     
     // Store only the matching values
     nsAutoVoidArray matchingValues;
-    nsAutoVoidArray matchingRows;
+    nsCOMArray<nsIMdbRow> matchingRows;
 
-    nsIMdbRow *row = nsnull;
+    nsCOMPtr<nsIMdbRow> row;
     mdb_pos pos;
     do {
-      rowCursor->NextRow(mEnv, &row, &pos);
+      rowCursor->NextRow(mEnv, getter_AddRefs(row), &pos);
       if (!row)
         break;
 
       PRUnichar *value = 0; // We will own the allocated string value
       if (RowMatch(row, aInputName, aInputValue, &value)) {
-        matchingRows.AppendElement(row);
+        matchingRows.AppendObject(row);
         matchingValues.AppendElement(value);
       }
     } while (row);
@@ -776,7 +785,7 @@ nsFormHistory::AutoCompleteSearch(const nsAString &aInputName,
 
       for (i = 0; i < count; ++i) {
         // Place the sorted result into the autocomplete result
-        result->AddRow((nsIMdbRow *)matchingRows[items[i]]);
+        result->AddRow(matchingRows[items[i]]);
 
         // Free up these strings we owned.
         delete (PRUnichar *) matchingValues[i];
@@ -850,10 +859,10 @@ nsFormHistory::EntriesExistInternal(const nsAString *aName, const nsAString *aVa
   mdb_err err = mTable->GetTableRowCursor(mEnv, -1, getter_AddRefs(rowCursor));
   NS_ENSURE_TRUE(!err, NS_ERROR_FAILURE);
   
-  nsIMdbRow *row = nsnull;
+  nsCOMPtr<nsIMdbRow> row;
   mdb_pos pos;
   do {
-    rowCursor->NextRow(mEnv, &row, &pos);
+    rowCursor->NextRow(mEnv, getter_AddRefs(row), &pos);
     if (!row)
       break;
 

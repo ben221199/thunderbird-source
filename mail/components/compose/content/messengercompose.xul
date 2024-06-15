@@ -139,7 +139,8 @@
 
 #ifdef XP_MACOSX
   <!-- Mac Window menu -->
-  <command id="minimizeWindow" label="&minimizeWindow.label;" disabled="true"/>
+  <command id="minimizeWindow" label="&minimizeWindow.label;" oncommand="window.minimize();"/>
+  <command id="zoomWindow" label="&zoomWindow.label;" oncommand="zoomWindow();"/>
   <command id="Tasks:Mail" oncommand="toMessengerWindow();"/>
   <command id="Tasks:AddressBook" oncommand="toAddressBook();"/>
 #endif
@@ -345,21 +346,6 @@
             </menupopup>
           </menu>
           <menuitem id="menu_AddressSidebar" type="checkbox" checked="false" label="&addressSidebar.label;" accesskey="&addressSidebar.accesskey;" oncommand="toggleAddressPicker();"/>
-          <menuseparator/>
-          <menu id="maileditCharsetMenu" label="&charsetMenu.label;" accesskey="&charsetMenu.accesskey;" datasources="rdf:charset-menu" ref="NC:MaileditCharsetMenuRoot" oncommand="SetDocumentCharacterSet(event.target.getAttribute('id'));" onpopupshowing="CreateMenu('mailedit');InitCharsetMenuCheckMark();" onpopupshown="CreateMenu('more-menu');">
-            <template>
-              <rule>
-                <menupopup>
-                  <menuitem type="radio" name="charsetGroup" checked="rdf:http://home.netscape.com/NC-rdf#Checked" uri="..." label="rdf:http://home.netscape.com/NC-rdf#Name"/>
-                </menupopup>
-              </rule>
-            </template>
-
-            <menupopup>
-              <menuitem name="charsetCustomize" accesskey="&charsetCustomize.accesskey;" label="&charsetCustomize.label;" oncommand="window.openDialog('chrome://global/content/customizeCharset.xul','PrefWindow', 'chrome,modal=yes,resizable=yes', 'mailedit')"/>
-              <menuseparator />
-            </menupopup>
-          </menu>
         </menupopup>
       </menu>
   
@@ -396,6 +382,20 @@
               <menuitem type="radio" name="priority" label="&normalPriorityCmd.label;" accesskey="&normalPriorityCmd.accesskey;" value="Normal" id="priority_normal" checked="true"/>
               <menuitem type="radio" name="priority" label="&lowPriorityCmd.label;" accesskey="&lowPriorityCmd.accesskey;" value="Low" id="priority_low"/>
               <menuitem type="radio" name="priority" label="&lowestPriorityCmd.label;" accesskey="&lowestPriorityCmd.accesskey;" value="Lowest"  id="priority_lowest"/>              
+            </menupopup>
+          </menu>
+          <menu id="maileditCharsetMenu" label="&charsetMenu.label;" accesskey="&charsetMenu.accesskey;" datasources="rdf:charset-menu" ref="NC:MaileditCharsetMenuRoot" oncommand="SetDocumentCharacterSet(event.target.getAttribute('id'));" onpopupshowing="CreateMenu('mailedit');InitCharsetMenuCheckMark();" onpopupshown="CreateMenu('more-menu');">
+            <template>
+              <rule>
+                <menupopup>
+                  <menuitem type="radio" name="charsetGroup" checked="rdf:http://home.netscape.com/NC-rdf#Checked" uri="..." label="rdf:http://home.netscape.com/NC-rdf#Name"/>
+                </menupopup>
+              </rule>
+            </template>
+
+            <menupopup>
+              <menuitem name="charsetCustomize" accesskey="&charsetCustomize.accesskey;" label="&charsetCustomize.label;" oncommand="window.openDialog('chrome://global/content/customizeCharset.xul','PrefWindow', 'chrome,modal=yes,resizable=yes', 'mailedit')"/>
+              <menuseparator />
             </menupopup>
           </menu>
           <menu id="fccMenu" label="&fileCarbonCopyCmd.label;" 
@@ -480,7 +480,7 @@
           </template>
           <menupopup id="windowPopup">
             <menuitem command="minimizeWindow" key="key_minimizeWindow"/>
-            <menuitem label="&zoomWindow.label;" disabled="true"/>
+            <menuitem command="zoomWindow"/>
             <menuseparator/>
             <menuitem label="&bringAllToFront.label;" disabled="true"/>
             <menuseparator/>
