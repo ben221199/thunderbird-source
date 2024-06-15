@@ -1,5 +1,6 @@
 D/mail////
 D/build////
+/client.mk/1.205.2.2.6.8.12.1.2.3/Wed Jul 13 21:10:21 2005//TAVIARY_1_0_1_20050124_BRANCH
 D/nsprpub////
 D/security////
 D/directory////
@@ -15,7 +16,6 @@ D/extensions////
 /.cvsignore/1.10/Thu Aug 22 01:14:34 2002//TAVIARY_1_0_1_20050124_BRANCH
 D/README////
 /README.txt/1.7/Sat Mar 13 06:25:28 2004//TAVIARY_1_0_1_20050124_BRANCH
-/client.mk/1.205.2.2.6.8.12.1.2.3/Wed Jul 13 21:17:03 2005//TAVIARY_1_0_1_20050124_BRANCH
 /client.mak/3.124/Fri Sep 20 09:15:50 2002//TAVIARY_1_0_1_20050124_BRANCH
 /configure/1.1304.2.5.2.16/Sun Oct 31 07:17:58 2004//TAVIARY_1_0_1_20050124_BRANCH
 /configure.in/1.1335.2.6.2.18/Sun Oct 31 07:17:58 2004//TAVIARY_1_0_1_20050124_BRANCH
