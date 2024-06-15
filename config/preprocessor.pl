@@ -2,9 +2,9 @@
 # -*- Mode: perl; tab-width: 4; indent-tabs-mode: nil; -*-
 #
 # Preprocessor
-# Version 1.0
+# Version 1.1
 #
-# Copyright (c) 2002, 2003 by Ian Hickson
+# Copyright (c) 2002, 2003, 2004 by Ian Hickson
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 # Thanks to bryner and bsmedberg for suggestions.
+# Thanks to jon rekai for a patch to not require File::Spec 0.8.
 
 use strict;
 
@@ -62,6 +63,14 @@ while ($_ = $ARGV[0], defined($_) && /^-./) {
         }
     } elsif (/^-d$/os) { 
         $stack->{'dependencies'} = 1;
+    } elsif (/^--line-endings=crlf$/os) { 
+        $stack->{'lineEndings'} = "\x0D\x0A";
+    } elsif (/^--line-endings=cr$/os) { 
+        $stack->{'lineEndings'} = "\x0D";
+    } elsif (/^--line-endings=lf$/os) { 
+        $stack->{'lineEndings'} = "\x0A";
+    } elsif (/^--line-endings=(.+)$/os) { 
+        die "$0: unrecognised line ending: $1\n";
     } else {
         die "$0: invalid argument: $_\n";
     }
@@ -76,16 +85,21 @@ exit(0);
 ########################################################################
 
 package main;
-use File::Spec 0.8;
+use File::Spec;
 use File::Spec::Unix; # on all platforms, because the #include syntax is unix-based
+
+# Note: Ideally we would use File::Spec 0.8. When this becomes
+# possible, add "0.8" to the first "use" line above, then replace
+# occurances of "::_0_8::" with "->" below. And remove the code for
+# File::Spec 0.8 much lower down the file.
 
 sub include {
     my($stack, $filename) = @_;
     my $directory = $stack->{'variables'}->{'DIRECTORY'};
     if ($filename ne '-') {
-        $filename = File::Spec->rel2abs($filename, $directory);
-        my($volume, $path) = File::Spec->splitpath($filename);
-        $directory = File::Spec->catpath($volume, $path, '');
+        $filename = File::Spec::_0_8::rel2abs($filename, $directory);
+        my($volume, $path) = File::Spec::_0_8::splitpath($filename);
+        $directory = File::Spec::_0_8::catpath($volume, $path, '');
     }
     local $stack->{'variables'}->{'DIRECTORY'} = $directory;
     local $stack->{'variables'}->{'FILE'} = $filename;
@@ -100,7 +114,7 @@ sub include {
             process($stack, $1);
         } elsif (/^\#([a-z]+)\s(.*?)\n?$/os) { # processing instruction with arguments
             process($stack, $1, $2);
-        } elsif (/^\#\n?/os) { # comment
+        } elsif (/^\#/os) { # comment
             # ignore it
         } elsif ($stack->enabled) {
             # print it, including any newlines
@@ -167,6 +181,7 @@ sub new {
         'lastPrinting' => [], # whether we were printing at the n-1th level
         'printing' => 1, # whether we are currently printing at the Nth level
         'dependencies' => 0, # whether we are showing dependencies
+        'lineEndings' => "\n", # default to platform conventions
     };
 }
 
@@ -250,14 +265,20 @@ sub expand {
 sub print {
     my $self = shift;
     return if $self->{'dependencies'};
-    CORE::print(@_);
+    foreach my $line (@_) {
+        if (chomp $line) {
+            CORE::print("$line$self->{'lineEndings'}");
+        } else {
+            CORE::print($line);
+        }
+    }
 }
 
 sub visit {
     my $self = shift;
     my($filename) = @_;
     my $directory = $stack->{'variables'}->{'DIRECTORY'};
-    $filename = File::Spec->abs2rel(File::Spec->rel2abs($filename, $directory));
+    $filename = File::Spec::_0_8::abs2rel(File::Spec::_0_8::rel2abs($filename, $directory));
     CORE::print("$filename\n");
 }
 
@@ -395,7 +416,7 @@ sub include {
     my $stack = shift;
     return if $stack->disabled;
     die "argument expected\n" unless @_;
-    my $filename = File::Spec->catpath(File::Spec::Unix->splitpath(@_));
+    my $filename = File::Spec::_0_8::catpath(File::Spec::_0_8::splitpath(@_));
     if ($stack->{'dependencies'}) {
         $stack->visit($filename);
     } else {
@@ -452,4 +473,119 @@ sub attemptSubstitution {
     return $text;
 }
 
+########################################################################
+
+########################################################################
+# This code is from File::Spec::Unix 0.8.
+# It is not considered a part of the preprocessor.pl source file
+# This code is licensed under the same license as File::Spec itself.
+
+package File::Spec::_0_8;
+
+use Cwd;
+
+sub rel2abs {
+    my ($path, $base) = @_;
+    if ( ! File::Spec->file_name_is_absolute( $path ) ) {
+        if ( !defined( $base ) || $base eq '' ) {
+            $base = cwd() ;
+        } elsif ( ! File::Spec->file_name_is_absolute( $base ) ) {
+            $base = rel2abs( $base );
+        } else {
+            $base = File::Spec->canonpath( $base );
+        }
+        $path = File::Spec->catdir( $base, $path );
+    }
+    return File::Spec->canonpath( $path );
+}
+
+sub splitdir {
+    return split m|/|, $_[1], -1;  # Preserve trailing fields
+}
+
+sub splitpath {
+    my ($path, $nofile) = @_;
+
+    my ($volume,$directory,$file) = ('','','');
+
+    if ( $nofile ) {
+        $directory = $path;
+    }
+    else {
+        $path =~ m|^ ( (?: .* / (?: \.\.?\Z(?!\n) )? )? ) ([^/]*) |xs;
+        $directory = $1;
+        $file      = $2;
+    }
+
+    return ($volume,$directory,$file);
+}
+
+sub catpath {
+    my ($volume,$directory,$file) = @_;
+
+    if ( $directory ne ''                && 
+         $file ne ''                     && 
+         substr( $directory, -1 ) ne '/' && 
+         substr( $file, 0, 1 ) ne '/' 
+    ) {
+        $directory .= "/$file" ;
+    }
+    else {
+        $directory .= $file ;
+    }
+
+    return $directory ;
+}
+
+sub abs2rel {
+    my($path,$base) = @_;
+
+    # Clean up $path
+    if ( ! File::Spec->file_name_is_absolute( $path ) ) {
+        $path = rel2abs( $path ) ;
+    }
+    else {
+        $path = File::Spec->canonpath( $path ) ;
+    }
+
+    # Figure out the effective $base and clean it up.
+    if ( !defined( $base ) || $base eq '' ) {
+        $base = cwd();
+    }
+    elsif ( ! File::Spec->file_name_is_absolute( $base ) ) {
+        $base = rel2abs( $base ) ;
+    }
+    else {
+        $base = File::Spec->canonpath( $base ) ;
+    }
+
+    # Now, remove all leading components that are the same
+    my @pathchunks = File::Spec::_0_8::splitdir( $path);
+    my @basechunks = File::Spec::_0_8::splitdir( $base);
+
+    while (@pathchunks && @basechunks && $pathchunks[0] eq $basechunks[0]) {
+        shift @pathchunks ;
+        shift @basechunks ;
+    }
+
+    $path = CORE::join( '/', @pathchunks );
+    $base = CORE::join( '/', @basechunks );
+
+    # $base now contains the directories the resulting relative path 
+    # must ascend out of before it can descend to $path_directory.  So, 
+    # replace all names with $parentDir
+    $base =~ s|[^/]+|..|g ;
+
+    # Glue the two together, using a separator if necessary, and preventing an
+    # empty result.
+    if ( $path ne '' && $base ne '' ) {
+        $path = "$base/$path" ;
+    } else {
+        $path = "$base$path" ;
+    }
+
+    return File::Spec->canonpath( $path ) ;
+}
+
+# End code from File::Spec::Unix 0.8.
 ########################################################################

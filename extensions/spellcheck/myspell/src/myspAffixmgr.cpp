@@ -60,25 +60,27 @@
 #include "nsDirectoryServiceDefs.h"
 #include "plstr.h"
 #include "nsNetUtil.h"
+#include "nsICharsetConverterManager.h"
+#include "nsUnicharUtilCIID.h"
+#include "nsUnicharUtils.h"
 
+static NS_DEFINE_CID(kCharsetConverterManagerCID, NS_ICHARSETCONVERTERMANAGER_CID);
+static NS_DEFINE_CID(kUnicharUtilCID, NS_UNICHARUTIL_CID);
 
-static PRInt32 SplitString(nsACString &in,nsSharableCString out[],PRInt32 size);
+static PRInt32 SplitString(nsACString &in,nsCString out[],PRInt32 size);
 static void doubleReverseHack(nsACString &s);
 
-myspAffixMgr::myspAffixMgr() 
+myspAffixMgr::myspAffixMgr() :
+  mReplaceTable(nsnull)
 {
-	replaceTable = NULL;
 }
 
 
 myspAffixMgr::~myspAffixMgr() 
 {
   mPersonalDictionary = nsnull;
-
-  if(replaceTable != NULL)
-  {
-   delete[] replaceTable;
-  }
+  if (mReplaceTable)
+    delete[] mReplaceTable;
 }
 
 nsresult myspAffixMgr::GetPersonalDictionary(mozIPersonalDictionary * *aPersonalDictionary)
@@ -140,17 +142,9 @@ myspAffixMgr::Load(const nsString& aDictionary)
   if(!affStream)return NS_ERROR_FAILURE;
   res = parse_file(affStream);
 
-
-  res = mPersonalDictionary->SetCharset(mEncoding.get());
-  if(NS_FAILED(res)) return res;
-
   PRInt32 pos=aDictionary.FindChar('-');
   if(pos<1) pos = 2;  // FIXME should be min of 2 and aDictionary.Length()
-  nsAutoString lang;
-  lang.Assign(Substring(aDictionary,0,pos));
-  res = mPersonalDictionary->SetLanguage(lang.get());
-  if(NS_FAILED(res)) return res;
-
+  mLanguage = Substring(aDictionary,0,pos);
 
   // load the dictionary
   nsCOMPtr<nsIInputStream> dicStream;
@@ -166,22 +160,22 @@ myspAffixMgr::Load(const nsString& aDictionary)
 // read in aff file and build up prefix and suffix data structures
 nsresult  myspAffixMgr::parse_file(nsIInputStream *strm)
 {
-  PRInt32 j, i;
+  PRInt32 j;
   PRInt32 numents;
   nsLineBuffer *lineBuffer;
-  nsresult res;
-  res= NS_InitLineBuffer(&lineBuffer);
-  nsCAutoString line;
+  nsresult rv = NS_InitLineBuffer(&lineBuffer);
   PRBool moreData=PR_TRUE;
   PRInt32 pos;
-  nsSharableCString cmds[5];
+  nsCString cmds[5];
   mozAffixMod newMod;
 
   prefixes.clear();
   suffixes.clear();
   
-  numents = 0;      // number of affentry structures to parse
+  nsCOMPtr<nsICharsetConverterManager> ccm = do_GetService(kCharsetConverterManagerCID, &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
 
+  numents = 0;      // number of affentry structures to parse
   char flag='\0';   // affix char identifier
   {  
     PRInt16 ff=0;
@@ -191,6 +185,7 @@ nsresult  myspAffixMgr::parse_file(nsIInputStream *strm)
     // read in each line ignoring any that do not
     // start with PFX or SFX
 
+    nsCAutoString line;
     while (moreData) {
       NS_ReadLine(strm,lineBuffer,line,&moreData);
       /* parse in the try string */
@@ -203,38 +198,54 @@ nsresult  myspAffixMgr::parse_file(nsIInputStream *strm)
 
       /* parse in the name of the character set used by the .dict and .aff */
       if (Substring(line,0,3).Equals("SET")) {
-
         pos = line.FindChar(' ');
         if(pos != -1){
-          nsCAutoString cencoding;
-          cencoding.Assign(Substring(line,pos+1,line.Length()-pos-1));
-          cencoding.CompressWhitespace(PR_TRUE,PR_TRUE);
-          mEncoding.AssignWithConversion(cencoding.get());
+          mEncoding.Assign(Substring(line,pos+1,line.Length()-pos-1));
+          mEncoding.CompressWhitespace(PR_TRUE,PR_TRUE);
+
+          rv = ccm->GetUnicodeDecoder(mEncoding.get(), getter_AddRefs(mDecoder));
+          NS_ENSURE_SUCCESS(rv, rv);
+          rv = ccm->GetUnicodeEncoder(mEncoding.get(), getter_AddRefs(mEncoder));
+          if (mEncoder && NS_SUCCEEDED(rv)) {
+            mEncoder->SetOutputErrorBehavior(mEncoder->kOnError_Signal, nsnull, '?');
+          }
+          NS_ENSURE_SUCCESS(rv, rv);
         } 
       }
 
       /* parse in the typical fault correcting table */
       if (Substring(line,0,3).Equals("REP")) {
-        PRInt32 numFields=SplitString(line,cmds,3);
+        PRInt32 numFields = SplitString(line,cmds,3);
 
-        if (numFields == 2) numents = atoi(cmds[1].get());
+        if (numFields == 2)
+          numents = atoi(cmds[1].get());
 
-        replaceTable = new mozReplaceTable[numents];
-        numReplaceTable = numents;
+        mReplaceTable = new mozReplaceTable[numents];
+        mReplaceTableLength = numents;
 
-        i = 0;
+        PRInt32 i = 0;
 
-        for (j=0; (j < numents) && moreData; j++) {
+        for (j = 0; (j < numents) && moreData; j++) {
           NS_ReadLine(strm,lineBuffer,line,&moreData);
-          PRInt32 numFields=SplitString(line,cmds,3);
 
-          if(!cmds[0].Equals("REP")){ //consistency check
+          numFields = SplitString(line, cmds, 3);
+
+          if(!cmds[0].Equals("REP")) { //consistency check
             //complain loudly
             continue;
           }
 
-          replaceTable[i].pattern = cmds[1].get();
-          replaceTable[i].replacement = cmds[2].get();
+          nsAutoString pattern, replacement;
+          rv = DecodeString(cmds[1], pattern);
+          NS_ENSURE_SUCCESS(rv, rv);
+          rv = DecodeString(cmds[2], replacement);
+          NS_ENSURE_SUCCESS(rv, rv);
+          // Make sure the replacements are lower case.
+          // We don't want to convert them for ecery lookup.
+          ToLowerCase(pattern);
+          ToLowerCase(replacement);
+          mReplaceTable[i].pattern = pattern.get();
+          mReplaceTable[i].replacement = replacement.get();
           
           i++;
         } 
@@ -257,7 +268,7 @@ nsresult  myspAffixMgr::parse_file(nsIInputStream *strm)
         for (j=0; (j < numents)&&moreData; j++) {
           NS_ReadLine(strm,lineBuffer,line,&moreData);
           PRInt32 numFields=SplitString(line,cmds,5);
-          nsSharableString tempStr;
+          nsString tempStr;
 
           if((numFields < 5)||(cmds[1].First()!=flag)){ //consistency check
             //complain loudly
@@ -288,7 +299,7 @@ nsresult  myspAffixMgr::parse_file(nsIInputStream *strm)
             prefixes.addMod(cmds[3].get(),&newMod);
           }
           else{ // suffix
-            nsSharableCString suffixTest;
+            nsCString suffixTest;
             if(cmds[2].Equals("0")){
               newMod.mAppend.Assign("");
               if(!cmds[4].Equals(".")){
@@ -316,6 +327,7 @@ nsresult  myspAffixMgr::parse_file(nsIInputStream *strm)
       }
     }
   }
+
   return NS_OK;
 }
 
@@ -366,30 +378,41 @@ myspAffixMgr::LoadDictionary(nsIInputStream *strm)
   return NS_OK;
 }
 
-
-
-
-
-
-
-// return text encoding of dictionary
-nsString myspAffixMgr::get_encoding()
+// return the preferred try string for suggestions
+void myspAffixMgr::get_try_string(nsAString &aTryString)
 {
-  return mEncoding;
+  PRInt32 outLength;
+  PRInt32 inLength = trystring.Length();
+  nsresult rv = mDecoder->GetMaxLength(trystring.get(), inLength, &outLength);
+
+  if (NS_SUCCEEDED(rv)) {
+    PRUnichar *tmpPtr = (PRUnichar *) malloc(sizeof(PRUnichar) * (outLength + 1));
+    if (tmpPtr) {
+      rv = mDecoder->Convert(trystring.get(), &inLength, tmpPtr, &outLength);
+      if (NS_SUCCEEDED(rv)) {
+        tmpPtr[outLength] = 0;
+        aTryString = tmpPtr;
+      }
+      free(tmpPtr);
+    }
+  }
 }
 
+mozReplaceTable *myspAffixMgr::getReplaceTable() {
+  if (!mReplaceTable)
+    return nsnull;
+  return mReplaceTable;
+}
 
-// return the preferred try string for suggestions
-nsCString myspAffixMgr::get_try_string()
-{
-  return trystring;
+PRUint32 myspAffixMgr::getReplaceTableLength() {
+  return mReplaceTableLength;
 }
 
 PRBool 
 myspAffixMgr::prefixCheck(const nsAFlatCString &word)
 {
   nsACString::const_iterator end,curr;
-  nsSharableCString tempWord;
+  nsCString tempWord;
   mozAffixState *currState= &prefixes;
   const char * he = NULL;
   PRUint32 wLength=word.Length();
@@ -427,7 +450,7 @@ myspAffixMgr::prefixCheck(const nsAFlatCString &word)
 PRBool myspAffixMgr::suffixCheck(const nsAFlatCString &word,PRBool cross,char crossID)
 {
   nsACString::const_iterator start,curr;
-  nsSharableCString tempWord;
+  nsCString tempWord;
   mozAffixState *currState= &suffixes;
   const char * he = NULL;
   PRUint32 wLength=word.Length();
@@ -462,26 +485,62 @@ PRBool myspAffixMgr::suffixCheck(const nsAFlatCString &word,PRBool cross,char cr
   return PR_FALSE;
 }
 
-PRBool myspAffixMgr::check(const nsAFlatCString &word)
+PRBool myspAffixMgr::check(const nsAFlatString &word)
 {
-  const char * he = NULL;
+  const char *he = nsnull;
 
-  he = mHashTable.Get(word.get());;
+  PRInt32 inLength = word.Length();
+  PRInt32 outLength;
+  nsresult rv = mEncoder->GetMaxLength(word.get(), inLength, &outLength);
+  // NS_ERROR_UENC_NOMAPPING is a NS_SUCCESS, no error.
+  if (NS_FAILED(rv) || rv == NS_ERROR_UENC_NOMAPPING) {
+    // not a word in the current charset, so likely not
+    // a word in the current language
+    return PR_FALSE;
+  }
+  char *charsetWord = (char *) nsMemory::Alloc(sizeof(char) * (outLength+1));
+  rv = mEncoder->Convert(word.get(), &inLength, charsetWord, &outLength);
+  charsetWord[outLength] = '\0';
+
+  he = mHashTable.Get(charsetWord);
 
   if(he != nsnull) return PR_TRUE;
-  if(prefixCheck(word))return PR_TRUE;
-  if(suffixCheck(word))return PR_TRUE;
+  if(prefixCheck(nsDependentCString(charsetWord)))
+    return PR_TRUE;
+  if(suffixCheck(nsDependentCString(charsetWord)))
+    return PR_TRUE;
 
   PRBool good=PR_FALSE;
-  nsresult res = mPersonalDictionary->Check(word.get(),&good);
-  if(NS_FAILED(res))
+  rv = mPersonalDictionary->Check(word.get(), mLanguage.get(), &good);
+  if(NS_FAILED(rv))
     return PR_FALSE;
   return good;
 }
 
+nsresult
+myspAffixMgr::DecodeString(const nsAFlatCString &aSource, nsAString &aDest)
+{
+  if (!mDecoder) {
+    aDest.Assign(NS_LITERAL_STRING(""));
+    return NS_OK;
+  }
+  PRInt32 inLength = aSource.Length();
+  PRInt32 outLength;
+  nsresult rv = mDecoder->GetMaxLength(aSource.get(), inLength, &outLength);
+  NS_ENSURE_SUCCESS(rv, rv);
+  PRUnichar *dest = (PRUnichar *)malloc(sizeof(PRUnichar) * (outLength + 1));
+  if (!dest)
+    return NS_ERROR_OUT_OF_MEMORY;
+  rv = mDecoder->Convert(aSource.get(), &inLength, dest, &outLength);
+  dest[outLength] = 0;
+  aDest = dest;
+  free(dest);
+  return rv;
+}
+
 
 static PRInt32 
-SplitString(nsACString &in,nsSharableCString out[],PRInt32 size)
+SplitString(nsACString &in,nsCString out[],PRInt32 size)
 {
   nsACString::const_iterator startWord;
   nsACString::const_iterator endWord;
@@ -540,13 +599,4 @@ static void doubleReverseHack(nsACString &s)
     if(start == end)break;
     end--;
   }
-}
-
-mozReplaceTable *myspAffixMgr::getReplaceTable() {
-  if (!replaceTable) return nsnull;
-  return replaceTable;
-}
-
-PRUint32 myspAffixMgr::getNumReplaceTable() {
-  return numReplaceTable;
 }

@@ -1,14 +1,17 @@
-/.cvsignore/1.1/Sat Sep 28 00:37:56 2002//TTHUNDERBIRD_0_5_RELEASE
-/Makefile.in/1.10/Thu Nov 27 00:51:26 2003//TTHUNDERBIRD_0_5_RELEASE
+/.cvsignore/1.1/Sat Sep 28 00:37:56 2002//TTHUNDERBIRD_0_6_RELEASE
+/Makefile.in/1.22/Wed Mar 31 08:58:19 2004//TTHUNDERBIRD_0_6_RELEASE
 D/alerts////
 D/autocomplete////
 D/build////
 D/console////
 D/downloads////
+D/extensions////
 D/filepicker////
+D/help////
 D/history////
 D/passwordmgr////
 D/printing////
+D/profile////
 D/satchel////
 D/viewconfig////
 D/viewsource////

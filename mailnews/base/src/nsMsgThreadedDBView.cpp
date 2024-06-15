@@ -49,7 +49,7 @@
 nsMsgThreadedDBView::nsMsgThreadedDBView()
 {
   /* member initializers and constructor code */
-	m_havePrevView = PR_FALSE;
+  m_havePrevView = PR_FALSE;
 }
 
 nsMsgThreadedDBView::~nsMsgThreadedDBView()
@@ -65,35 +65,35 @@ NS_IMETHODIMP nsMsgThreadedDBView::Open(nsIMsgFolder *folder, nsMsgViewSortTypeV
   if (!m_db)
     return NS_ERROR_NULL_POINTER;
   // Preset msg hdr cache size for performance reason.
-    PRInt32 totalMessages, unreadMessages;
-    nsCOMPtr <nsIDBFolderInfo> dbFolderInfo;
-    rv = m_db->GetDBFolderInfo(getter_AddRefs(dbFolderInfo));
-    NS_ENSURE_SUCCESS(rv, rv);
-    // save off sort type and order, view type and flags
-    dbFolderInfo->SetSortType(m_sortType);
-    dbFolderInfo->SetSortOrder(m_sortOrder);
-    dbFolderInfo->SetViewFlags(m_viewFlags);
+  PRInt32 totalMessages, unreadMessages;
+  nsCOMPtr <nsIDBFolderInfo> dbFolderInfo;
+  rv = m_db->GetDBFolderInfo(getter_AddRefs(dbFolderInfo));
+  NS_ENSURE_SUCCESS(rv, rv);
+  // save off sort type and order, view type and flags
+  dbFolderInfo->SetSortType(m_sortType);
+  dbFolderInfo->SetSortOrder(m_sortOrder);
+  dbFolderInfo->SetViewFlags(m_viewFlags);
   dbFolderInfo->GetNumUnreadMessages(&unreadMessages);
   dbFolderInfo->GetNumMessages(&totalMessages);
-    nsMsgViewTypeValue viewType;
-    GetViewType(&viewType);
-    dbFolderInfo->SetViewType(viewType);
-    if (m_viewFlags & nsMsgViewFlagsType::kUnreadOnly)
-    { 
-      // Set unread msg size + extra entries to avoid reallocation on new mail.
-      totalMessages = (PRUint32)unreadMessages+MSGHDR_CACHE_LOOK_AHEAD_SIZE;  
-    }
-    else
-    {
-      if (totalMessages > MSGHDR_CACHE_MAX_SIZE) 
-        totalMessages = MSGHDR_CACHE_MAX_SIZE;        // use max default
-      else if (totalMessages > 0)
-        totalMessages += MSGHDR_CACHE_LOOK_AHEAD_SIZE;// allocate extra entries to avoid reallocation on new mail.
-    }
-    // if total messages is 0, then we probably don't have any idea how many headers are in the db
-    // so we have no business setting the cache size.
-    if (totalMessages > 0)
-      m_db->SetMsgHdrCacheSize((PRUint32)totalMessages);
+  nsMsgViewTypeValue viewType;
+  GetViewType(&viewType);
+  dbFolderInfo->SetViewType(viewType);
+  if (m_viewFlags & nsMsgViewFlagsType::kUnreadOnly)
+  { 
+    // Set unread msg size + extra entries to avoid reallocation on new mail.
+    totalMessages = (PRUint32)unreadMessages+MSGHDR_CACHE_LOOK_AHEAD_SIZE;  
+  }
+  else
+  {
+    if (totalMessages > MSGHDR_CACHE_MAX_SIZE) 
+      totalMessages = MSGHDR_CACHE_MAX_SIZE;        // use max default
+    else if (totalMessages > 0)
+      totalMessages += MSGHDR_CACHE_LOOK_AHEAD_SIZE;// allocate extra entries to avoid reallocation on new mail.
+  }
+  // if total messages is 0, then we probably don't have any idea how many headers are in the db
+  // so we have no business setting the cache size.
+  if (totalMessages > 0)
+    m_db->SetMsgHdrCacheSize((PRUint32)totalMessages);
   
   if (pCount)
     *pCount = 0;
@@ -521,7 +521,7 @@ void	nsMsgThreadedDBView::OnExtraFlagChanged(nsMsgViewIndex index, PRUint32 extr
 
 void nsMsgThreadedDBView::OnHeaderAddedOrDeleted()
 {
-	ClearPrevIdArray();
+  ClearPrevIdArray();
 }
 
 void nsMsgThreadedDBView::ClearPrevIdArray()
@@ -581,7 +581,7 @@ nsresult nsMsgThreadedDBView::OnNewHeader(nsMsgKey newKey, nsMsgKey aParentKey, 
       rv = AddHdr(msgHdr);
     else	// need to find the thread we added this to so we can change the hasnew flag
       // added message to existing thread, but not to view
-    {		// Fix flags on thread header.
+    {	// Fix flags on thread header.
       PRInt32 threadCount;
       PRUint32 threadFlags;
       nsMsgViewIndex threadIndex = ThreadIndexOfMsg(newKey, nsMsgViewIndex_None, &threadCount, &threadFlags);
@@ -717,8 +717,8 @@ nsresult nsMsgThreadedDBView::AddMsgToThreadNotInView(nsIMsgThread *threadHdr, n
   nsresult rv = NS_OK;
   PRUint32 threadFlags;
   threadHdr->GetFlags(&threadFlags);
-	if (!(threadFlags & MSG_FLAG_IGNORED))
-		rv = AddHdr(msgHdr);
+  if (!(threadFlags & MSG_FLAG_IGNORED))
+    rv = AddHdr(msgHdr);
   return rv;
 }
 

@@ -78,9 +78,7 @@ function getReferrer(doc)
   var sourceURL = getContentFrameURI(focusedWindow);
 
   try {
-    var uri = Components.classes["@mozilla.org/network/standard-url;1"].createInstance(Components.interfaces.nsIURI);
-    uri.spec = sourceURL;
-    return uri;
+    return makeURL(sourceURL);
   } catch (e) {
     return null;
   }
@@ -408,7 +406,8 @@ function foundHeaderInfo(aSniffer, aData)
                          persistArgs.contentType, encodingFlags, kWrapColumn);
   } else {
     dl.init(source, persistArgs.target, null, null, null, persist);
-    persist.saveURI(source, null, null, persistArgs.postData, null, persistArgs.target);
+    var referer = getReferrer(document);
+    persist.saveURI(source, null, referer, persistArgs.postData, null, persistArgs.target);
   }
 }
 
@@ -430,6 +429,13 @@ function nsHeaderSniffer(aURL, aCallback, aData)
     flags = Components.interfaces.nsIRequest.LOAD_FROM_CACHE;
   }
   this.linkChecker.loadFlags = flags;
+
+  // Set referrer, ignore errors
+  try {
+    var referrer = getReferrer(document);
+    this.linkChecker.baseChannel.QueryInterface(Components.interfaces.nsIHttpChannel).referrer = referrer;
+  }
+  catch (ex) { }
 
   this.linkChecker.asyncCheck(this, null);
 }
@@ -556,7 +562,7 @@ nsHeaderSniffer.prototype = {
   {
     var fileName = "";
 
-    if (this.mContentDisposition) {
+    if ("mContentDisposition" in this) {
       const mhpContractID = "@mozilla.org/network/mime-hdrparam;1"
       const mhpIID = Components.interfaces.nsIMIMEHeaderParam;
       const mhp = Components.classes[mhpContractID].getService(mhpIID);
@@ -663,10 +669,10 @@ function appendFiltersForContentType(aFilePicker, aContentType, aFileExtension, 
 function getPostData()
 {
   try {
-    var sessionHistory = getWebNavigation().sessionHistory;
-    entry = sessionHistory.getEntryAtIndex(sessionHistory.index, false);
-    entry = entry.QueryInterface(Components.interfaces.nsISHEntry);
-    return entry.postData;
+    return getWebNavigation().sessionHistory
+                             .getEntryAtIndex(sessionHistory.index, false)
+                             .QueryInterface(Components.interfaces.nsISHEntry)
+                             .postData;
   }
   catch (e) {
   }
@@ -695,13 +701,6 @@ function makeWebBrowserPersist()
   return Components.classes[persistContractID].createInstance(persistIID);
 }
 
-function makeProgressDialog()
-{
-  const progressDialogContractID = "@mozilla.org/progressdialog;1";
-  const progressDialogIID = Components.interfaces.nsIProgressDialog;
-  return Components.classes[progressDialogContractID].createInstance(progressDialogIID);
-}
-
 function makeURL(aURL)
 {
   var ioService = Components.classes["@mozilla.org/network/io-service;1"]
@@ -715,17 +714,6 @@ function makeFilePicker()
   const fpContractID = "@mozilla.org/filepicker;1";
   const fpIID = Components.interfaces.nsIFilePicker;
   return Components.classes[fpContractID].createInstance(fpIID);
-}
-
-function makeTempFile()
-{
-  const mimeTypes = "TmpD";
-  const flContractID = "@mozilla.org/file/directory_service;1";
-  const flIID = Components.interfaces.nsIProperties;
-  var fileLocator = Components.classes[flContractID].getService(flIID);
-  var tempFile = fileLocator.get(mimeTypes, Components.interfaces.nsIFile);
-  tempFile.append("~sav" + Math.floor(Math.random() * 1000) + ".tmp");
-  return tempFile;
 }
 
 function getMIMEService()

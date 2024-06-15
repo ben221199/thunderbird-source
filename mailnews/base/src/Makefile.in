@@ -60,7 +60,6 @@ REQUIRES	= xpcom \
 		  msgnews \
 		  addrbook \
 		  prefmigr \
-		  chrome \
 		  mime \
 		  mimetype \
 		  windowwatcher \
@@ -120,6 +119,10 @@ endif
 
 ifeq ($(OS_ARCH),OS2)
 CPPSRCS		+= nsMessengerOS2Integration.cpp 
+endif
+
+ifneq (,$(filter cocoa mac, $(MOZ_WIDGET_TOOLKIT)))
+CPPSRCS		+= nsMessengerOSXIntegration.cpp 
 endif
 
 ifdef MOZ_LDAP_XPCOM

@@ -178,7 +178,7 @@ nsresult nsAbPalmHotSync::GetABInterface()
   nsCOMPtr <nsIAbDirectory> directory = do_QueryInterface(resource, &rv);
   if(NS_FAILED(rv)) return E_FAIL;
 
-  nsXPIDLCString fileName, uri;
+  nsXPIDLCString fileName, uri, prefName;
   nsAutoString description;
   PRUint32 dirType, palmSyncTimeStamp;
   PRInt32 palmCategoryIndex;
@@ -213,6 +213,7 @@ nsresult nsAbPalmHotSync::GetABInterface()
         if(NS_FAILED(rv)) return E_FAIL;
         rv = properties->GetCategoryId(&palmCategoryIndex);
         if(NS_FAILED(rv)) return E_FAIL;
+        rv = properties->GetPrefName(getter_Copies(prefName));
 
         // Skip/Ignore 4.X addrbooks (ie, with ".na2" extension).
         if (((fileName.Length() > kABFileName_PreviousSuffixLen) && 
@@ -232,7 +233,7 @@ nsresult nsAbPalmHotSync::GetABInterface()
         // check for matching AB+Category, and special case personal address book
         // to match "Personal" category.
         if(description == mAbName || 
-            (uri.Equals(PERSONAL_ADDRBOOK_URL, nsCaseInsensitiveCStringComparator())
+            (prefName.Equals("ldap_2.servers.pab", nsCaseInsensitiveCStringComparator())
              && mAbName.Equals(NS_LITERAL_STRING("Personal"), nsCaseInsensitiveStringComparator())))
           break;
         directory = nsnull;
@@ -593,10 +594,12 @@ nsresult nsAbPalmHotSync::LoadNewModifiedCardsSinceLastSync()
             
             //create nsAbIPCCard and assign its status based on lastModifiedDate
             nsAbIPCCard ipcCard(card);
+            ipcCard.AddRef(); // someone needs a reference to this, since we
+            // pass it around as an interface pointer
             ipcCard.SetStatus((lastModifiedDate) ? ATTR_MODIFIED : ATTR_NEW);
 
             // Check with the palm list (merging is done if required)
-            if (!CheckWithPalmRecord(&ipcCard)) 
+            if (CardExistsInPalmList(&ipcCard)) 
                 continue;
 
             rv = AddToListForPalm(ipcCard);
@@ -617,14 +620,14 @@ nsresult nsAbPalmHotSync::LoadNewModifiedCardsSinceLastSync()
 
 
 // this take care of the all cases when the state is either modified or new
-PRBool nsAbPalmHotSync::CheckWithPalmRecord(nsAbIPCCard  * aIPCCard)
+PRBool nsAbPalmHotSync::CardExistsInPalmList(nsAbIPCCard  * aIPCCard)
 {
     NS_ENSURE_ARG_POINTER(aIPCCard);
 
     if(!mInitialized) 
-        return NS_ERROR_NOT_INITIALIZED;
+        return PR_FALSE;
 
-    PRBool keep = PR_TRUE;
+    PRBool exists = PR_FALSE;
 
     for(PRInt32 i=mPalmRecords.Count()-1; i >=0;  i--) 
     {
@@ -638,14 +641,14 @@ PRBool nsAbPalmHotSync::CheckWithPalmRecord(nsAbIPCCard  * aIPCCard)
                 (aIPCCard->GetStatus() == ATTR_DELETED)) 
             {
                 mPalmRecords.RemoveElementAt(i);
-                return PR_FALSE;
+                return PR_TRUE;
             }
             // if deleted on Palm and added or modified on Moz, don't delete on Moz
             if ( (palmRec->dwStatus & ATTR_DELETED || palmRec->dwStatus & ATTR_ARCHIVED) && 
                  ((aIPCCard->GetStatus() == ATTR_NEW) || (aIPCCard->GetStatus() == ATTR_MODIFIED)) ) 
             {
                 mPalmRecords.RemoveElementAt(i);
-                return PR_TRUE;
+                return PR_FALSE;
             }
 
             // set the palm record ID in the card if not already set
@@ -660,20 +663,20 @@ PRBool nsAbPalmHotSync::CheckWithPalmRecord(nsAbIPCCard  * aIPCCard)
             if ( (aIPCCard->GetStatus() == ATTR_DELETED) && 
                  ((palmRec->dwStatus == ATTR_NEW) 
                    ||(palmRec->dwStatus == ATTR_MODIFIED)) ) 
-                return PR_FALSE;
+                return PR_TRUE;
 
             // for rest of the cases with state as either mod or new:
             nsStringArray diffAttrs;
-            PRBool isFieldsMatch=PR_FALSE;
+            PRBool fieldsMatch = PR_FALSE;
             if(mIsPalmDataUnicode)
-                isFieldsMatch = aIPCCard->Equals(palmRec, diffAttrs);
+                fieldsMatch = aIPCCard->Equals(palmRec, diffAttrs);
             else
-                isFieldsMatch = aIPCCard->EqualsAfterUnicodeConversion(palmRec, diffAttrs);
+                fieldsMatch = aIPCCard->EqualsAfterUnicodeConversion(palmRec, diffAttrs);
 
             // if fields match, no need to keep it for sync
-            if(isFieldsMatch) 
+            if(fieldsMatch) 
             {
-                keep = PR_FALSE;
+                exists = PR_TRUE;
                 // since the fields match, no need to update Moz AB with palm record
                 mPalmRecords.RemoveElementAt(i); 
             }
@@ -682,7 +685,7 @@ PRBool nsAbPalmHotSync::CheckWithPalmRecord(nsAbIPCCard  * aIPCCard)
                 // we add an additional record on both sides alike Palm Desktop sync
                 palmRec->dwStatus = ATTR_NONE;
                 aIPCCard->SetStatus(ATTR_NEW);
-                keep = PR_TRUE;
+                exists = PR_FALSE;
             }
             // since we found the same record in palm sync list
             // no need to go thru the rest of the mPalmRecords list
@@ -690,7 +693,7 @@ PRBool nsAbPalmHotSync::CheckWithPalmRecord(nsAbIPCCard  * aIPCCard)
         }
     }
 
-    return keep;
+    return exists;
 }
 
 // utility function

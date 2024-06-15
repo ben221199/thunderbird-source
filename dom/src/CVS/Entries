@@ -1,6 +1,5 @@
-/.cvsignore/1.1/Sat Dec  5 09:01:30 1998//TTHUNDERBIRD_0_5_RELEASE
-/Makefile.in/1.6/Tue May  8 17:19:15 2001//TTHUNDERBIRD_0_5_RELEASE
+/.cvsignore/1.1/Sat Dec  5 09:01:30 1998//TTHUNDERBIRD_0_6_RELEASE
+/Makefile.in/1.7/Tue Feb 24 03:22:31 2004//TTHUNDERBIRD_0_6_RELEASE
 D/base////
-D/build////
 D/events////
 D/jsurl////

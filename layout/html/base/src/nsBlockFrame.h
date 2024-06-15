@@ -44,6 +44,7 @@
 #include "nsLineBox.h"
 #include "nsReflowPath.h"
 #include "nsCSSPseudoElements.h"
+#include "nsStyleSet.h"
 
 class nsBlockReflowState;
 class nsBulletFrame;
@@ -119,14 +120,11 @@ public:
                           nsIPresShell&   aPresShell,
                           nsIAtom*        aListName,
                           nsIFrame*       aOldFrame);
-  NS_IMETHOD FirstChild(nsIPresContext* aPresContext,
-                        nsIAtom*        aListName,
-                        nsIFrame**      aFirstChild) const;
-  NS_IMETHOD GetAdditionalChildListName(PRInt32   aIndex,
-                                        nsIAtom** aListName) const;
+  virtual nsIFrame* GetFirstChild(nsIAtom* aListName) const;
+  virtual nsIAtom* GetAdditionalChildListName(PRInt32 aIndex) const;
   NS_IMETHOD Destroy(nsIPresContext* aPresContext);
   NS_IMETHOD IsSplittable(nsSplittableType& aIsSplittable) const;
-  NS_IMETHOD IsPercentageBase(PRBool& aBase) const;
+  virtual PRBool IsContainingBlock() const;
   NS_IMETHOD Paint(nsIPresContext*      aPresContext,
                    nsIRenderingContext& aRenderingContext,
                    const nsRect&        aDirtyRect,
@@ -135,9 +133,41 @@ public:
   virtual nsIAtom* GetType() const;
 #ifdef DEBUG
   NS_IMETHOD List(nsIPresContext* aPresContext, FILE* out, PRInt32 aIndent) const;
+  NS_IMETHOD_(nsFrameState) GetDebugStateBits() const;
   NS_IMETHOD GetFrameName(nsAString& aResult) const;
   NS_IMETHOD VerifyTree() const;
 #endif
+
+  // line cursor methods to speed up searching for the line(s)
+  // containing a point. The basic idea is that we set the cursor
+  // property if the lines' combinedArea.ys and combinedArea.yMosts
+  // are non-decreasing (considering only non-empty combinedAreas;
+  // empty combinedAreas never participate in event handling or
+  // painting), and the block has sufficient number of lines. The
+  // cursor property points to a "recently used" line. If we get a
+  // series of GetFrameForPoint or Paint requests that work on lines
+  // "near" the cursor, then we can find those nearby lines quickly by
+  // starting our search at the cursor.
+
+  // Clear out line cursor because we're disturbing the lines (i.e., Reflow)
+  void ClearLineCursor();
+  // Get the first line that might contain y-coord 'y', or nsnull if you must search
+  // all lines. If nonnull is returned then we guarantee that the lines'
+  // combinedArea.ys and combinedArea.yMosts are non-decreasing.
+  // The actual line returned might not contain 'y', but if not, it is guaranteed
+  // to be before any line which does contain 'y'.
+  nsLineBox* GetFirstLineContaining(nscoord y);
+  // Set the line cursor to our first line. Only call this if you
+  // guarantee that the lines' combinedArea.ys and combinedArea.yMosts
+  // are non-decreasing.
+  void SetupLineCursor();
+
+  nsresult GetFrameForPointUsing(nsIPresContext* aPresContext,
+                                 const nsPoint& aPoint,
+                                 nsIAtom*       aList,
+                                 nsFramePaintLayer aWhichLayer,
+                                 PRBool         aConsiderSelf,
+                                 nsIFrame**     aFrame);
   NS_IMETHOD GetFrameForPoint(nsIPresContext* aPresContext, const nsPoint& aPoint, nsFramePaintLayer aWhichLayer, nsIFrame** aFrame);
   NS_IMETHOD HandleEvent(nsIPresContext* aPresContext, 
                          nsGUIEvent*     aEvent,
@@ -202,15 +232,25 @@ public:
   void UndoSplitPlaceholders(nsBlockReflowState& aState,
                              nsIFrame*           aLastPlaceholder);
   
+  virtual void PaintChild(nsIPresContext*      aPresContext,
+                          nsIRenderingContext& aRenderingContext,
+                          const nsRect&        aDirtyRect,
+                          nsIFrame*            aFrame,
+                          nsFramePaintLayer    aWhichLayer,
+                          PRUint32             aFlags = 0) {
+    nsContainerFrame::PaintChild(aPresContext, aRenderingContext,
+                                 aDirtyRect, aFrame, aWhichLayer, aFlags);
+  }
+
 protected:
   nsBlockFrame();
   virtual ~nsBlockFrame();
 
   already_AddRefed<nsStyleContext> GetFirstLetterStyle(nsIPresContext* aPresContext)
   {
-    return aPresContext->ProbePseudoStyleContextFor(mContent,
-                                                    nsCSSPseudoElements::firstLetter,
-                                                    mStyleContext);
+    return aPresContext->StyleSet()->
+      ProbePseudoStyleFor(mContent,
+                          nsCSSPseudoElements::firstLetter, mStyleContext);
   }
 
   /*

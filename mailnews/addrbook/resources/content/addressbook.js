@@ -144,6 +144,12 @@ function OnLoadAddressBook()
 
   UpgradeAddressBookResultsPaneUI("mailnews.ui.addressbook_results.version");
 
+  //This migrates the LDAPServer Preferences from 4.x to mozilla format.
+  try {
+      gLDAPPrefsService = Components.classes["@mozilla.org/ldapprefs-service;1"].getService();       
+      gLDAPPrefsService = gLDAPPrefsService.QueryInterface( Components.interfaces.nsILDAPPrefsService);                  
+  } catch (ex) {dump ("ERROR: Cannot get the LDAP service\n" + ex + "\n");}
+
   GetCurrentPrefs();
 
   AddPrefObservers();
@@ -564,8 +570,17 @@ function SetStatusText(total)
   try {
     var statusText;
 
-    if (gSearchInput.value) 
-      statusText = gAddressBookBundle.getFormattedString("matchesFound", [total]);   
+    if (gSearchInput.value) {
+      if (total == 0)
+        statusText = gAddressBookBundle.getString("noMatchFound");
+      else
+      {
+        if (total == 1)
+          statusText = gAddressBookBundle.getString("matchFound");
+        else  
+          statusText = gAddressBookBundle.getFormattedString("matchesFound", [total]);
+      }
+    } 
     else
       statusText = gAddressBookBundle.getFormattedString("totalCardStatus", [gAbView.directory.dirName, total]);   
 
@@ -615,7 +630,7 @@ function onEnterInSearchBar()
     searchURI += gQueryURIFormat.replace(/@V/g, encodeURIComponent(gSearchInput.value));
   }
 
-  SetAbView(searchURI, sortColumn, sortDirection);
+  SetAbView(searchURI, gSearchInput.value != "", sortColumn, sortDirection);
   
   // XXX todo 
   // this works for synchronous searches of local addressbooks, 

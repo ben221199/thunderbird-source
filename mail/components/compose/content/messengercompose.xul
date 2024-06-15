@@ -126,6 +126,7 @@
   <command id="cmd_rewrap" oncommand="goDoCommand('cmd_rewrap')"/>
   <command id="cmd_delete" oncommand="goDoCommand('cmd_delete')" valueDefault="&deleteCmd.label;" disabled="true"/>
   <command id="cmd_selectAll" oncommand="goDoCommand('cmd_selectAll')" disabled="true"/>
+  <command id="cmd_openAttachment" oncommand="goDoCommand('cmd_openAttachment')" disabled="true"/>  
   <command id="cmd_account" oncommand="goDoCommand('cmd_account')"/>
 
   <!-- View Menu -->
@@ -155,9 +156,11 @@
 <keyset id="tasksKeys">
   <!-- File Menu -->
 #ifdef XP_MACOSX
-  <key id="key_newMessage" key="&newMessage.key;" modifiers="accel,shift"/>
+  <key id="key_newMessage" key="&newMessage.key;" oncommand="goOpenNewMessage();" modifiers="accel,shift"/>
+  <key id="key_newMessage2" key="&newMessageCmd2.key;" oncommand="goOpenNewMessage();" modifiers="accel,shift"/>
 #else
-  <key id="key_newMessage" key="&newMessage.key;" modifiers="accel"/>
+  <key id="key_newMessage" key="&newMessage.key;" oncommand="goOpenNewMessage();" modifiers="accel"/>
+  <key id="key_newMessage2" key="&newMessageCmd2.key;" oncommand="goOpenNewMessage();" modifiers="accel"/>
 #endif
   <key id="key_close" key="&closeCmd.key;" modifiers="accel"/>
   <key id="key_save" key="&saveCmd.key;" command="cmd_saveDefault" modifiers="accel"/>
@@ -172,7 +175,6 @@
   <key id="key_cut" key="&cutCmd.key;" modifiers="accel"/>
   <key id="key_copy" key="&copyCmd.key;" modifiers="accel"/>
   <key id="key_paste" key="&pasteCmd.key;" modifiers="accel"/>
-  <key id="pastequotationkb"/>
   <key id="key_delete" keycode="VK_DELETE"/>
   <key id="key_selectAll" key="&selectAllCmd.key;" modifiers="accel"/>
   <key id="key_find" key="&findCmd.key;" command="cmd_find" modifiers="accel"/>
@@ -227,6 +229,7 @@
 </popup>
 
 <popup id="msgComposeAttachmentContext" onpopupshowing="updateEditItems();">
+  <menuitem label="&openAttachment.label;" accesskey="&openAttachment.accesskey;" command="cmd_openAttachment"/>
   <menuitem label="&delete.label;" accesskey="&delete.accesskey;" command="cmd_delete"/>
   <menuitem label="&selectAll.label;" accesskey="&selectAll.accesskey;" command="cmd_selectAll"/>
   <menuseparator/>
@@ -387,11 +390,11 @@
           </menu>
           <menu id="priorityMenu" label="&priorityMenu.label;" accesskey="&priorityMenu.accesskey;" onpopupshowing="updatePriorityMenu();" oncommand="PriorityMenuSelect(event.target);">
             <menupopup>
-              <menuitem type="radio" name="priority" label="&highestPriorityCmd.label;" accesskey="&highestPriorityCmd.accesskey;" value="highest" id="priority_highest"/>
-              <menuitem type="radio" name="priority" label="&highPriorityCmd.label;" accesskey="&highPriorityCmd.accesskey;" value="high" id="priority_high"/>
-              <menuitem type="radio" name="priority" label="&normalPriorityCmd.label;" accesskey="&normalPriorityCmd.accesskey;" value="normal" id="priority_normal" checked="true"/>
-              <menuitem type="radio" name="priority" label="&lowPriorityCmd.label;" accesskey="&lowPriorityCmd.accesskey;" value="low" id="priority_low"/>
-              <menuitem type="radio" name="priority" label="&lowestPriorityCmd.label;" accesskey="&lowestPriorityCmd.accesskey;" value="lowest"  id="priority_lowest"/>              
+              <menuitem type="radio" name="priority" label="&highestPriorityCmd.label;" accesskey="&highestPriorityCmd.accesskey;" value="Highest" id="priority_highest"/>
+              <menuitem type="radio" name="priority" label="&highPriorityCmd.label;" accesskey="&highPriorityCmd.accesskey;" value="High" id="priority_high"/>
+              <menuitem type="radio" name="priority" label="&normalPriorityCmd.label;" accesskey="&normalPriorityCmd.accesskey;" value="Normal" id="priority_normal" checked="true"/>
+              <menuitem type="radio" name="priority" label="&lowPriorityCmd.label;" accesskey="&lowPriorityCmd.accesskey;" value="Low" id="priority_low"/>
+              <menuitem type="radio" name="priority" label="&lowestPriorityCmd.label;" accesskey="&lowestPriorityCmd.accesskey;" value="Lowest"  id="priority_lowest"/>              
             </menupopup>
           </menu>
           <menu id="fccMenu" label="&fileCarbonCopyCmd.label;" 
@@ -570,18 +573,18 @@
 
     <toolbaritem id="priority-button" align="center" pack="center">
       <label value="&priorityButton.label;"/>
-      <menulist id="priorityMenu-button" value="normal" oncommand="PriorityMenuSelect(event.target);">
+      <menulist id="priorityMenu-button" value="Normal" oncommand="PriorityMenuSelect(event.target);">
         <menupopup>
-          <menuitem name="priority" label="&highestPriorityCmd.label;" value="highest"  id="list_priotity_highest"/>
-          <menuitem name="priority" label="&highPriorityCmd.label;"    value="high"     id="list_priority_high"/>
-          <menuitem name="priority" label="&normalPriorityCmd.label;"  value="normal"   id="list_priority_normal"/>
-          <menuitem name="priority" label="&lowPriorityCmd.label;"     value="low"      id="list_priority_low"/>
-          <menuitem name="priority" label="&lowestPriorityCmd.label;"  value="lowest"   id="list_priority_lowest"/>
+          <menuitem name="priority" label="&highestPriorityCmd.label;" value="Highest"  id="list_priotity_highest"/>
+          <menuitem name="priority" label="&highPriorityCmd.label;"    value="High"     id="list_priority_high"/>
+          <menuitem name="priority" label="&normalPriorityCmd.label;"  value="Normal"   id="list_priority_normal"/>
+          <menuitem name="priority" label="&lowPriorityCmd.label;"     value="Low"      id="list_priority_low"/>
+          <menuitem name="priority" label="&lowestPriorityCmd.label;"  value="Lowest"   id="list_priority_lowest"/>
         </menupopup>
       </menulist>
     </toolbaritem>
 
-    <toolbaritem id="throbber-box" align="center" pack="center">
+    <toolbaritem id="throbber-box" title="&throbberItem.title;" align="center" pack="center">
       <button id="navigator-throbber" oncommand="loadThrobberUrl('compose.throbber.url')" tooltiptext="&throbber.tooltip;">
           <observes element="broadcaster_throbber" attribute="busy"/>
       </button>

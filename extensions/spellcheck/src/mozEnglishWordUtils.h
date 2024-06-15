@@ -65,8 +65,6 @@ protected:
 
   nsString mLanguage;
   nsString mCharset;
-  nsCOMPtr<nsIUnicodeEncoder> mEncoder; 
-  nsCOMPtr<nsIUnicodeDecoder> mDecoder; 
   nsCOMPtr<nsICaseConversion> mCaseConv;
   nsCOMPtr<mozITXTToHTMLConv> mURLDetector; // used to detect urls so the spell checker can skip them.
 };

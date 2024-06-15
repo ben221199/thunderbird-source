@@ -844,9 +844,14 @@ function awRecipientErrorCommand(errItem, element)
 function awRecipientKeyPress(event, element)
 {
   switch(event.keyCode) {
+  case KeyEvent.DOM_VK_UP:
+    awArrowHit(element, -1);
+    break;
+  case KeyEvent.DOM_VK_DOWN:
+    awArrowHit(element, 1);
+    break;
   case KeyEvent.DOM_VK_RETURN:
   case KeyEvent.DOM_VK_TAB:
-  {
     // if the user text contains a comma or a line return, ignore 
     if (element.value.search(',') != -1)
     {
@@ -854,10 +859,23 @@ function awRecipientKeyPress(event, element)
       element.value = ""; // clear out the current line so we don't try to autocomplete it..
       parseAndAddAddresses(addresses, awGetPopupElement(awGetRowByInputElement(element)).selectedItem.getAttribute("value"));
     }
-      else if (event.keyCode == KeyEvent.DOM_VK_TAB)
-    awTabFromRecipient(element, event);
+    else if (event.keyCode == KeyEvent.DOM_VK_TAB)
+      awTabFromRecipient(element, event);
+    
     break;
-    }
+  }
+}
+
+function awArrowHit(inputElement, direction)
+{
+  var row = awGetRowByInputElement(inputElement) + direction;
+  if (row) {
+    var nextInput = awGetInputElement(row);
+
+    if (nextInput)
+      awSetFocus(row, nextInput);
+    else if (inputElement.value)
+      awAppendNewRow(true);
   }
 }
 
@@ -1020,6 +1038,12 @@ function awDocumentKeyPress(event)
   } catch (e) { }
 }
 
+function awRecipientInputCommand(event, inputElement)
+{
+  gContentChanged=true; 
+  setupAutocomplete(); 
+}
+
 // Given an arbitrary block of text like a comma delimited list of names or a names separated by spaces,
 // we will try to autocomplete each of the names and then take the FIRST match for each name, adding it the
 // addressing widget on the compose window.
@@ -1028,7 +1052,8 @@ var gAutomatedAutoCompleteListener = null;
 
 function parseAndAddAddresses(addressText, recipientType)
 {
-  var strippedAddresses = addressText.replace(/.* >> (.*)/, "$1"); // strip any leading >> characters inserted by the autocomplete widget
+  // strip any leading >> characters inserted by the autocomplete widget
+  var strippedAddresses = addressText.replace(/.* >> /, "");
 
   var hdrParser = Components.classes["@mozilla.org/messenger/headerparser;1"].getService(Components.interfaces.nsIMsgHeaderParser);
   var addresses = {};
@@ -1109,7 +1134,8 @@ AutomatedAutoCompleteHandler.prototype =
 
            if (gLDAPSession && gCurrentAutocompleteDirectory && this.searchResults[0] && this.searchResults[0].defaultItemIndex != -1)
            {
-             return this.processAllResults();
+             this.processAllResults();
+             return;
            }
         }
 
@@ -1147,9 +1173,11 @@ AutomatedAutoCompleteHandler.prototype =
     // loop through the results looking for the non default case (default case is the address book with only one match, the default domain)
     var sessionIndex; 
 
+    var searchResultsForSession;
+
     for (sessionIndex in this.searchResults)
     {
-      var searchResultsForSession = this.searchResults[sessionIndex];
+      searchResultsForSession = this.searchResults[sessionIndex];
       if (searchResultsForSession && searchResultsForSession.defaultItemIndex > -1)
       {
         addressToAdd = searchResultsForSession.items.QueryElementAt(searchResultsForSession.defaultItemIndex, Components.interfaces.nsIAutoCompleteItem).value;
@@ -1162,7 +1190,7 @@ AutomatedAutoCompleteHandler.prototype =
     {
       for (sessionIndex in this.searchResults)
       {
-        var searchResultsForSession = this.searchResults[sessionIndex];
+        searchResultsForSession = this.searchResults[sessionIndex];
         if (searchResultsForSession && searchResultsForSession.defaultItemIndex == -1)
         {
           addressToAdd = searchResultsForSession.items.QueryElementAt(0, Components.interfaces.nsIAutoCompleteItem).value;

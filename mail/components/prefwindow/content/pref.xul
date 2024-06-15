@@ -5,10 +5,6 @@
 
 <!DOCTYPE dialog SYSTEM "chrome://messenger/locale/mailPrefsOverlay.dtd" >
 
-<!-- This dialog has a fixed size and is not resizable. 
-     You MAY NOT increase the size of this dialog. 
-     Questions, Comments -> ben@netscape.com -->
-
 <dialog id="prefDialog" 
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         title="&prefWindow.title;" 
@@ -17,7 +13,7 @@
         windowtype="Mail:Options"
         ondialogaccept="return hPrefWindow.onOK(event);"
         ondialogcancel="return hPrefWindow.onCancel(event);"
-        persist="screenX screenY"> 
+        persist="width height screenX screenY"> 
 
   <script>
   <![CDATA[
@@ -74,7 +70,7 @@
 
   <hbox flex="1">
 
-    <vbox id="prefsCategories" class="listBox buttonBox" oncommand="switchPage(event);" orient="vertical" lastpanel="0">
+    <vbox id="prefsCategories" class="listBox buttonBox" oncommand="switchPage(event);" orient="vertical" lastpanel="0" onmouseover="focus();">
       <button id="mailnews"  orient="vertical" class="buttonBoxButton" type="radio" group="categories" url="chrome://messenger/content/pref-mailnews.xul" label="&mailonly.label;"/>
       <button id="display" orient="vertical" class="buttonBoxButton" type="radio" group="categories" url="chrome://messenger/content/pref-viewing_messages.xul" label="&viewingMessages.label;"/>
       <button id="mailcomposepref" orient="vertical" class="buttonBoxButton" type="radio" group="categories" url="chrome://messenger/content/messengercompose/pref-composing_messages.xul" label="&composingMessages.label;"/>
@@ -91,6 +87,4 @@
    </vbox>
   </hbox>
 
-  <separator/>
-     
 </dialog>

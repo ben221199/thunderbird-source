@@ -60,6 +60,8 @@
 #include "mozCStr2CStrHashtable.h"
 #include "mozAffixMod.h"
 #include "nsNetUtil.h"
+#include "nsIUnicodeEncoder.h"
+#include "nsIUnicodeDecoder.h"
 
 /* Modifications for mozilla Copyright 2001 David Einstein Deinst@world.std.com  */
 
@@ -78,8 +80,8 @@
 #define XPRODUCT        1
 
 struct mozReplaceTable {
-  nsCString pattern;
-  nsCString replacement;
+  nsString pattern;
+  nsString replacement;
 };
 
 class myspPrefix;
@@ -93,12 +95,11 @@ public:
   ~myspAffixMgr();
   nsresult GetPersonalDictionary(mozIPersonalDictionary * *aPersonalDictionary);
   nsresult SetPersonalDictionary(mozIPersonalDictionary * aPersonalDictionary);
-  PRBool check(const nsAFlatCString &word);
-  nsString get_encoding();
-  nsCString get_try_string();
-  nsresult Load(const nsString& aDictionary);
   mozReplaceTable *getReplaceTable();
-  PRUint32 getNumReplaceTable();
+  PRUint32 getReplaceTableLength();
+  PRBool check(const nsAFlatString &word);
+  void get_try_string(nsAString &aTryString);
+  nsresult Load(const nsString &aDictionary);
 
 protected:
 
@@ -108,16 +109,20 @@ protected:
   nsresult LoadDictionary(nsIInputStream *strm);
   nsresult  parse_file(nsIInputStream *strm);
 
+  nsresult DecodeString(const nsAFlatCString &aSource, nsAString &aDest);
+
   mozAffixState prefixes;
   mozAffixState suffixes;
 
-  mozReplaceTable *replaceTable;
-  PRUint32 numReplaceTable;
-
-  nsCString               trystring;
-  nsString                mEncoding;
+  nsCString             trystring;
+  nsCString             mEncoding;
+  nsString              mLanguage;
   mozCStr2CStrHashtable mHashTable;
+  mozReplaceTable      *mReplaceTable;
+  PRUint32              mReplaceTableLength;
   nsCOMPtr<mozIPersonalDictionary> mPersonalDictionary;
+  nsCOMPtr<nsIUnicodeEncoder>      mEncoder; 
+  nsCOMPtr<nsIUnicodeDecoder>      mDecoder; 
 };
 
 #endif

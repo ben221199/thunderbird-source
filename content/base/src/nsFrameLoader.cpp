@@ -58,6 +58,7 @@
 #include "nsIBaseWindow.h"
 #include "nsIWebShell.h"
 #include "nsContentUtils.h"
+#include "nsUnicharUtils.h"
 
 #include "nsIScriptSecurityManager.h"
 
@@ -173,7 +174,7 @@ nsFrameLoader::LoadFrame()
   }
 
   // Make an absolute URI
-  nsIURI *base_uri = doc->GetBaseURL();
+  nsIURI *base_uri = doc->GetBaseURI();
 
   const nsACString &doc_charset = doc->GetDocumentCharacterSet();
 
@@ -411,8 +412,7 @@ nsFrameLoader::EnsureDocShell()
   // Bug 8065: Don't exceed some maximum depth in content frames
   // (MAX_DEPTH_CONTENT_FRAMES)
   PRInt32 depth = 0;
-  nsCOMPtr<nsISupports> parentAsSupports;
-  presContext->GetContainer(getter_AddRefs(parentAsSupports));
+  nsCOMPtr<nsISupports> parentAsSupports = presContext->GetContainer();
 
   if (parentAsSupports) {
     nsCOMPtr<nsIDocShellTreeItem> parentAsItem =
@@ -459,8 +459,7 @@ nsFrameLoader::EnsureDocShell()
   // child. If it's not a web-shell then some things will not operate
   // properly.
 
-  nsCOMPtr<nsISupports> container;
-  presContext->GetContainer(getter_AddRefs(container));
+  nsCOMPtr<nsISupports> container = presContext->GetContainer();
 
   nsCOMPtr<nsIDocShellTreeNode> parentAsNode(do_QueryInterface(container));
   if (parentAsNode) {

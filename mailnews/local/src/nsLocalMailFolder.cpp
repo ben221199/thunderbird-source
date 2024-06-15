@@ -42,7 +42,8 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-#include "nsIPref.h"
+#include "nsIPrefService.h"
+#include "nsIPrefBranch.h"
 #include "prlog.h"
 
 #include "msgCore.h"    // precompiled header...
@@ -1221,9 +1222,9 @@ nsresult nsMsgLocalMailFolder::ConfirmFolderDeletion(nsIMsgWindow *aMsgWindow, P
   {
     PRBool confirmDeletion = PR_TRUE;
     nsresult rv;
-    nsCOMPtr<nsIPref> prefs(do_GetService(NS_PREF_CONTRACTID, &rv));
-    if (NS_SUCCEEDED(rv))
-       prefs->GetBoolPref("mailnews.confirm.moveFoldersToTrash", &confirmDeletion);
+    nsCOMPtr<nsIPrefBranch> pPrefBranch(do_GetService(NS_PREFSERVICE_CONTRACTID, &rv));
+    if (pPrefBranch)
+       pPrefBranch->GetBoolPref("mailnews.confirm.moveFoldersToTrash", &confirmDeletion);
     if (confirmDeletion)
     {
       if (!mMsgStringService)
@@ -1461,7 +1462,7 @@ NS_IMETHODIMP nsMsgLocalMailFolder::ReadFromFolderCacheElem(nsIMsgFolderCacheEle
   nsXPIDLCString utf8Name;
   rv = element->GetStringProperty("folderName", getter_Copies(utf8Name));
   NS_ENSURE_SUCCESS(rv, rv);
-  mName = NS_ConvertUTF8toUCS2(utf8Name.get());
+  CopyUTF8toUTF16(utf8Name, mName);
   return rv;
 }
 
@@ -2138,6 +2139,20 @@ nsMsgLocalMailFolder::CopyFolderLocal(nsIMsgFolder *srcFolder, PRBool isMoveFold
         if (oldPath.IsDirectory())
           oldPath.Delete(PR_TRUE);   //delete the .sbd directory and it's content. All subfolders have been moved
       }
+
+      nsCOMPtr<nsIFileSpec> parentPathSpec;
+      rv = msgParent->GetPath(getter_AddRefs(parentPathSpec));
+      NS_ENSURE_SUCCESS(rv,rv);
+  
+      nsFileSpec parentPath;
+      rv = parentPathSpec->GetFileSpec(&parentPath);
+      NS_ENSURE_SUCCESS(rv,rv);
+
+      AddDirectorySeparator(parentPath);
+      nsDirectoryIterator i(parentPath, PR_FALSE);
+      // i.Exists() checks if the directory is empty or not 
+      if (parentPath.IsDirectory() && !i.Exists())
+        parentPath.Delete(PR_TRUE);
     }
   }
   return NS_OK;
@@ -2948,7 +2963,6 @@ nsMsgLocalMailFolder::MarkMsgsOnPop3Server(nsISupportsArray *aMessages, PRBool a
   nsCOMPtr <nsIMsgDBHdr> hdr;
   PRBool leaveOnServer = PR_FALSE;
   PRBool deleteMailLeftOnServer = PR_FALSE;
-  PRBool changed = PR_FALSE;
   nsCOMPtr<nsIPop3IncomingServer> pop3MailServer;
   nsCOMPtr<nsIFileSpec> localPath;
   nsCOMPtr<nsIFileSpec> mailboxSpec;
@@ -3084,13 +3098,13 @@ nsMsgLocalMailFolder::GetIncomingServerType()
   rv = url->GetUserPass(userPass);
   if (NS_FAILED(rv)) return "";
   if (!userPass.IsEmpty())
-    nsUnescape(NS_CONST_CAST(char*,userPass.get()));
+    nsUnescape(userPass.BeginWriting());
 
   nsCAutoString hostName;
   rv = url->GetAsciiHost(hostName);
   if (NS_FAILED(rv)) return "";
   if (!hostName.IsEmpty())
-	nsUnescape(NS_CONST_CAST(char*,hostName.get()));
+	nsUnescape(hostName.BeginWriting());
 
   nsCOMPtr<nsIMsgAccountManager> accountManager = 
            do_GetService(NS_MSGACCOUNTMANAGER_CONTRACTID, &rv);
@@ -3520,4 +3534,3 @@ nsMsgLocalMailFolder::OnMessageClassified(const char *aMsgURI, nsMsgJunkStatus a
 
   return NS_OK;
 }
-

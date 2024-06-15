@@ -42,8 +42,6 @@
         titlemenuseparator="&titleSeparator.label;"
         onload="OnLoadMessenger()"
         onunload="OnUnloadMessenger()"
-        width="750"
-        height="500"
         screenX="10" screenY="10"
         persist="width height screenX screenY sizemode"
         windowtype="mail:3pane">
@@ -115,7 +113,10 @@
 <popup id="toolbar-context-menu"/>
 <tooltip id="attachmentListTooltip"/>
 
-<popup id="emailAddressPopup" popupanchor="bottomleft" onpopupshowing="goUpdateCommand('cmd_createFilterFromPopup')">
+<popup id="emailAddressPopup" popupanchor="bottomleft" onpopupshowing="fillEmailAddressPopup(document.popupNode); goUpdateCommand('cmd_createFilterFromPopup')">
+    <menuitem id="emailAddressPlaceHolder" label=""
+              disabled="true"/>
+    <menuseparator/>
     <menuitem label="&AddToAddressBook.label;"
               accesskey="&AddToAddressBook.accesskey;"
               oncommand="AddNodeToAddressBook(document.popupNode)"/>
@@ -125,6 +126,7 @@
     <menuitem label="&CopyEmailAddress.label;"
               accesskey="&CopyEmailAddress.accesskey;"
               oncommand="CopyEmailAddress(document.popupNode)"/>  
+    <menuseparator/> 
     <menuitem label="&CreateFilter.label;"
               accesskey="&CreateFilter.accesskey;"
               oncommand="CreateFilter(document.popupNode)"
@@ -357,11 +359,11 @@
         <splitter id="threadpane-splitter" collapse="after" persist="state"
                   onmouseup="OnMouseUpThreadAndMessagePaneSplitter()"/>
 
-        <vbox id="messagepanebox" height="200" persist="collapsed height width">
+        <vbox id="messagepanebox" flex="1" minheight="100" height="200" minwidth="100" width="200" persist="collapsed height width">
           <hbox id="junkBar"/>
           <hbox id="msgHeaderView"/>
           <browser id="messagepane" context="messagePaneContext" autofind="false"
-                   minheight="1" height="0" flex="1" name="messagepane"
+                   minheight="1" flex="1" name="messagepane"
                   disablehistory="true" type="content-primary" src="about:blank"
                    disablesecurity="true" onclick="contentAreaClick(event);"/>
           <hbox id="attachmentView"/>

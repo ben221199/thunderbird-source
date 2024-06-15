@@ -54,6 +54,8 @@
 #include "nsICacheEntryDescriptor.h"
 #include "nsICacheSession.h"
 #include "nsISupportsArray.h"
+#include "nsIMimeMiscStatus.h"
+
 ///////////////////////////////////////////////////////////////////////////////////
 // Okay, I found that all of the mail and news url interfaces needed to support
 // several common interfaces (in addition to those provided through nsIURI). 
@@ -61,6 +63,9 @@
 // duplicate the code.
 //
 //////////////////////////////////////////////////////////////////////////////////
+
+#undef  IMETHOD_VISIBILITY
+#define IMETHOD_VISIBILITY NS_VISIBILITY_DEFAULT
 
 class NS_MSG_BASE nsMsgMailNewsUrl : public nsIMsgMailNewsUrl
 {
@@ -87,6 +92,7 @@ protected:
   nsCOMPtr<nsICacheEntryDescriptor> m_memCacheEntry;
   nsCOMPtr<nsICacheSession> m_imageCacheSession;
   nsCOMPtr<nsISupportsArray> m_cachedMemCacheEntries;
+  nsCOMPtr<nsIMsgHeaderSink> mMsgHeaderSink;
 	char		*m_errorMessage;
 	PRBool	m_runningUrl;
 	PRBool	m_updatingFolder;
@@ -105,5 +111,8 @@ protected:
 	// manager of all of current url listeners....
 	nsCOMPtr<nsIUrlListenerManager> m_urlListeners;
 };
+
+#undef  IMETHOD_VISIBILITY
+#define IMETHOD_VISIBILITY NS_VISIBILITY_HIDDEN
 
 #endif /* nsMsgMailNewsUrl_h___ */

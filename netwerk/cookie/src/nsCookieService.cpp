@@ -334,7 +334,7 @@ nsCookieService::GetSingleton()
     return gCookieService;
   }
 
-  // Create a new singleton nsCookieService (note: the ctor AddRefs for us).
+  // Create a new singleton nsCookieService.
   // We AddRef only once since XPCOM has rules about the ordering of module
   // teardowns - by the time our module destructor is called, it's too late to
   // Release our members (e.g. nsIObserverService and nsIPrefBranch), since GC
@@ -379,13 +379,9 @@ nsCookieService::Init()
   }
 
   // init our pref and observer
-  nsCOMPtr<nsIPrefBranch> prefBranch = do_GetService(NS_PREFSERVICE_CONTRACTID);
+  nsCOMPtr<nsIPrefBranchInternal> prefBranch = do_GetService(NS_PREFSERVICE_CONTRACTID);
   if (prefBranch) {
-    // add observers
-    nsCOMPtr<nsIPrefBranchInternal> prefInternal = do_QueryInterface(prefBranch);
-    if (prefInternal)
-      prefInternal->AddObserver(kCookiesPermissions, this, PR_TRUE);
-
+    prefBranch->AddObserver(kCookiesPermissions, this, PR_TRUE);
     PrefChanged(prefBranch);
   }
 
@@ -1351,8 +1347,8 @@ static inline PRBool istokenseparator (char c) { return isvalueseparator(c) || c
 PRBool
 nsCookieService::GetTokenValue(nsASingleFragmentCString::const_char_iterator &aIter,
                                nsASingleFragmentCString::const_char_iterator &aEndIter,
-                               nsDependentSingleFragmentCSubstring           &aTokenString,
-                               nsDependentSingleFragmentCSubstring           &aTokenValue,
+                               nsDependentCSubstring                         &aTokenString,
+                               nsDependentCSubstring                         &aTokenValue,
                                PRBool                                        &aEqualsFound)
 {
   nsASingleFragmentCString::const_char_iterator start, lastSpace;
@@ -1450,8 +1446,8 @@ nsCookieService::ParseAttributes(nsDependentCString &aCookieHeader,
 
   aCookieAttributes.isSecure = PR_FALSE;
 
-  nsDependentSingleFragmentCSubstring tokenString(cookieStart, cookieStart);
-  nsDependentSingleFragmentCSubstring tokenValue (cookieStart, cookieStart);
+  nsDependentCSubstring tokenString(cookieStart, cookieStart);
+  nsDependentCSubstring tokenValue (cookieStart, cookieStart);
   PRBool newCookie, equalsFound;
 
   // extract cookie <NAME> & <VALUE> (first attribute), and copy the strings.

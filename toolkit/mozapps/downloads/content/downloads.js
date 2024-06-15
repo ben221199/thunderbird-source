@@ -126,6 +126,18 @@ function downloadCompleted(aDownload)
     rdfc.Init(db, rdf.GetResource("NC:DownloadsRoot"));
 
     var id = aDownload.target.path;
+    
+    // Refresh the icon, so that executable icons are shown.
+    var mimeService = Components.classes["@mozilla.org/uriloader/external-helper-app-service;1"].getService(Components.interfaces.nsIMIMEService);
+    var contentType = mimeService.getTypeFromFile(aDownload.target);
+    
+    var listItem = document.getElementById(id);
+    var oldImage = listItem.getAttribute("image");
+    // I tack on the content-type here as a hack to bypass the cache which seems
+    // to be interfering despite the fact the image has 'validate="always"' set
+    // on it. 
+    listItem.setAttribute("image", oldImage + "&contentType=" + contentType);
+    
     var dlRes = rdf.GetUnicodeResource(id);
   
     var insertIndex = gDownloadManager.activeDownloadCount + 1;
@@ -407,6 +419,7 @@ function onUpdateProgress()
   var numActiveDownloads = gActiveDownloads.length;
   if (numActiveDownloads == 0) {
     window.title = document.documentElement.getAttribute("statictitle");
+    gLastComputedMean = 0;
     return;
   }
     
@@ -419,6 +432,15 @@ function onUpdateProgress()
   }
 
   mean = Math.round(mean / numActiveDownloads);
+  
+  // At the end of a download, progress is set from 100% to 0% for 
+  // some reason. We can identify this case because at this point the
+  // mean progress will be zero but the last computed mean will be
+  // greater than zero. 
+  if (mean == 0 && gLastComputedMean > 0) {
+    window.title = document.documentElement.getAttribute("statictitle");
+    return;
+  }
   if (mean != gLastComputedMean) {
     gLastComputedMean = mean;
     var strings = document.getElementById("downloadStrings");
@@ -551,7 +573,11 @@ var XPInstallDownloadManager = {
       xpiString += localTarget.path + ",";
       
       // MIME Info
-      var mimeInfo = mimeService.getFromTypeAndExtension(null, url.fileExtension);
+      var mimeInfo = null;
+      try {
+        mimeInfo = mimeService.getFromTypeAndExtension(null, url.fileExtension);
+      }
+      catch (e) { }
       
       if (!iconURL) 
         iconURL = "chrome://mozapps/skin/xpinstall/xpinstallItemGeneric.png";

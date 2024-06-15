@@ -99,15 +99,10 @@ function showMailIntegrationDialog() {
         mapiRegistry = null;
     }
 
-    var prefLocked = false;
-    if (mapiRegistry) { 
-
-      mapiRegistry.registerMailAndNewsClient(); // when verifying the accounts, make sure we have registered our app
-                                                // as a mail and news reader with the OS.
-
     // showDialog is TRUE only if we did not bring up this dialog already
     // and we are not the default mail client
-      if (mapiRegistry.showDialog) {
+    var prefLocked = false;
+    if (mapiRegistry && mapiRegistry.showDialog) {
         const prefbase = "system.windows.lock_ui.";
         try {
             var prefService = Components.classes["@mozilla.org/preferences-service;1"]
@@ -128,7 +123,6 @@ function showMailIntegrationDialog() {
         catch (ex) {
           dump("mapi code failed:  " + ex + "\n");
         }
-      }
     }
 }
 
@@ -169,7 +163,7 @@ function verifyAccounts(wizardcallback) {
           var pref = Components.classes["@mozilla.org/preferences-service;1"]
                                  .getService(Components.interfaces.nsIPrefBranch);
           try {
-            adminUrl = pref.GetCharPref("autoadmin.global_config_url");
+            adminUrl = pref.getCharPref("autoadmin.global_config_url");
           }
           catch (ex) {}
           if (!adminUrl)
@@ -272,15 +266,24 @@ function msgOpenAccountWizard()
 // 'am-addressing.xul','am-advanced.xul', 'am-smtp.xul'
 function MsgAccountManager(selectPage)
 {
-    var server;
-    try {
-        var folderURI = GetSelectedFolderURI();
-        server = GetServer(folderURI);
-    } catch (ex) { /* functions might not be defined */}
-    
-    window.openDialog("chrome://messenger/content/AccountManager.xul",
-                      "AccountManager", "chrome,centerscreen,modal,resizable,titlebar",
-                      { server: server, selectPage: selectPage });
+    var windowManager = Components.classes['@mozilla.org/appshell/window-mediator;1'].
+                            getService(Components.interfaces.nsIWindowMediator);
+
+    var existingAccountManager = windowManager.getMostRecentWindow("mailnews:accountmanager");
+
+    if (existingAccountManager)
+        existingAccountManager.focus();
+    else {
+        var server;
+        try {
+            var folderURI = GetSelectedFolderURI();
+            server = GetServer(folderURI);
+        } catch (ex) { /* functions might not be defined */}
+        
+        window.openDialog("chrome://messenger/content/AccountManager.xul",
+                          "AccountManager", "chrome,centerscreen,modal,titlebar",
+                          { server: server, selectPage: selectPage });
+    }
 }
 
 function loadInboxForNewAccount() 

@@ -271,7 +271,11 @@ public:
     // rhp: For character set handling
     PRBool        m_doCharsetConversion;
     nsString      m_charset;
-    nsString      m_outputFormat;
+    enum {
+	    eUnknown,
+	    ePlainText,
+	    eHTML
+    }             m_outputFormat;
     nsString      m_msgBuffer;
 
     nsCString     m_contentType;    // used only when saving attachment
@@ -370,9 +374,8 @@ nsMessenger::SetWindow(nsIDOMWindowInternal *aWin, nsIMsgWindow *aMsgWindow)
   
   nsCOMPtr<nsIScriptGlobalObject> globalObj( do_QueryInterface(aWin) );
   NS_ENSURE_TRUE(globalObj, NS_ERROR_FAILURE);
-  
-  nsCOMPtr<nsIDocShell> docShell;
-  globalObj->GetDocShell(getter_AddRefs(docShell));
+
+  nsIDocShell *docShell = globalObj->GetDocShell();
   nsCOMPtr<nsIDocShellTreeItem> docShellAsItem(do_QueryInterface(docShell));
   NS_ENSURE_TRUE(docShellAsItem, NS_ERROR_FAILURE);
   
@@ -517,7 +520,10 @@ nsMessenger::PromptIfFileExists(nsFileSpec &fileSpec)
             nsCOMPtr<nsIFilePicker> filePicker =
                 do_CreateInstance("@mozilla.org/filepicker;1", &rv);
             if (NS_FAILED(rv)) return rv;
-            filePicker->Init(nsnull, GetString(NS_LITERAL_STRING("SaveAttachment").get()), nsIFilePicker::modeSave);
+
+            filePicker->Init(nsnull,
+                             GetString(NS_LITERAL_STRING("SaveAttachment")).get(),
+                             nsIFilePicker::modeSave);
             filePicker->SetDefaultString(path.get());
             filePicker->AppendFilters(nsIFilePicker::filterAll);
             
@@ -538,7 +544,7 @@ nsMessenger::PromptIfFileExists(nsFileSpec &fileSpec)
 
             nsCOMPtr<nsILocalFile> localFile;
             nsCAutoString filePath;
-            
+
             rv = filePicker->GetFile(getter_AddRefs(localFile));
             if (NS_FAILED(rv)) return rv;
 
@@ -741,6 +747,41 @@ nsMessenger::OpenAttachment(const char * aContentType, const char * aURL, const
 }
 
 NS_IMETHODIMP
+nsMessenger::SaveAttachmentToFolder(const char * contentType, const char * url, const char * displayName, 
+                                    const char * messageUri, nsILocalFile * aDestFolder, nsILocalFile ** aOutFile)
+{
+  nsresult rv = NS_OK;
+  nsXPIDLCString unescapedFileName;
+  
+  rv = ConvertAndSanitizeFileName(displayName, nsnull, getter_Copies(unescapedFileName));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsCOMPtr<nsIFileSpec> fileSpec;
+
+  rv = NS_NewFileSpecFromIFile(aDestFolder, getter_AddRefs(fileSpec));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  fileSpec->SetLeafName(unescapedFileName);
+
+  // ok now we have a file spec for the destination
+  nsCAutoString unescapedUrl;
+  unescapedUrl.Assign(url);
+
+  nsUnescape(unescapedUrl.BeginWriting());
+  rv = SaveAttachment(fileSpec, unescapedUrl.get(), messageUri, contentType, nsnull);
+
+  // before we return, we need to convert our file spec back to a nsIFile to return to the caller
+  nsCOMPtr<nsILocalFile> outputFile;
+  nsFileSpec actualSpec;
+  fileSpec->GetFileSpec(&actualSpec);
+  NS_FileSpecToIFile(&actualSpec, getter_AddRefs(outputFile));
+
+  NS_IF_ADDREF(*aOutFile = outputFile);
+
+  return rv;
+}
+
+NS_IMETHODIMP
 nsMessenger::SaveAttachment(const char * contentType, const char * url,
                             const char * displayName, const char * messageUri)
 {
@@ -772,11 +813,8 @@ nsMessenger::SaveAttachment(const char * contentType, const char * url,
   rv = ConvertAndSanitizeFileName(displayName, getter_Copies(defaultDisplayString), nsnull);
   if (NS_FAILED(rv)) goto done;
 
-  filePicker->Init(
-      nsnull, 
-      GetString(NS_LITERAL_STRING("SaveAttachment").get()),
-      nsIFilePicker::modeSave
-      );
+  filePicker->Init(nsnull, GetString(NS_LITERAL_STRING("SaveAttachment")).get(),
+                   nsIFilePicker::modeSave);
   filePicker->SetDefaultString(defaultDisplayString.get());
   filePicker->AppendFilters(nsIFilePicker::filterAll);
   
@@ -824,11 +862,10 @@ nsMessenger::SaveAllAttachments(PRUint32 count,
     PRInt16 dialogResult;
 
     if (NS_FAILED(rv)) goto done;
-    filePicker->Init(
-        nsnull, 
-        GetString(NS_LITERAL_STRING("SaveAllAttachments").get()),
-        nsIFilePicker::modeGetFolder
-        );
+
+    filePicker->Init(nsnull,
+                     GetString(NS_LITERAL_STRING("SaveAllAttachments")).get(),
+                     nsIFilePicker::modeGetFolder);
 
     rv = GetLastSaveDirectory(getter_AddRefs(lastSaveDir));
     if (NS_SUCCEEDED(rv) && lastSaveDir) {
@@ -915,20 +952,22 @@ nsMessenger::SaveAs(const char *aURI, PRBool aAsFile, nsIMsgIdentity *aIdentity,
     nsCOMPtr<nsIFilePicker> filePicker = do_CreateInstance("@mozilla.org/filepicker;1", &rv);
     if (NS_FAILED(rv)) 
       goto done;
-    
-    filePicker->Init(nsnull, GetString(NS_LITERAL_STRING("SaveMailAs").get()), nsIFilePicker::modeSave);
+
+    filePicker->Init(nsnull, GetString(NS_LITERAL_STRING("SaveMailAs")).get(),
+                     nsIFilePicker::modeSave);
 
     // if we have a non-null filename use it, otherwise use default save message one
     if (aMsgFilename)    
       filePicker->SetDefaultString(aMsgFilename);
-    else
-      filePicker->SetDefaultString(GetString(NS_LITERAL_STRING("defaultSaveMessageAsFileName").get()));
-    
+    else {
+      filePicker->SetDefaultString(GetString(NS_LITERAL_STRING("defaultSaveMessageAsFileName")).get());
+    }
+
     // because we will be using GetFilterIndex()
     // we must call AppendFilters() one at a time, 
     // in MESSENGER_SAVEAS_FILE_TYPE order
-    filePicker->AppendFilter(GetString(NS_LITERAL_STRING("EMLFiles").get()),
-      NS_LITERAL_STRING("*.eml").get());
+    filePicker->AppendFilter(GetString(NS_LITERAL_STRING("EMLFiles")).get(),
+                             NS_LITERAL_STRING("*.eml").get());
     filePicker->AppendFilters(nsIFilePicker::filterHTML);     
     filePicker->AppendFilters(nsIFilePicker::filterText);
     filePicker->AppendFilters(nsIFilePicker::filterAll);
@@ -1072,13 +1111,13 @@ nsMessenger::SaveAs(const char *aURI, PRBool aAsFile, nsIMsgIdentity *aIdentity,
       // a "printing" operation
       if (saveAsFileType == TEXT_FILE_TYPE) 
       {
-        saveListener->m_outputFormat = NS_LITERAL_STRING(TEXT_PLAIN);
+        saveListener->m_outputFormat = nsSaveMsgListener::ePlainText;
         saveListener->m_doCharsetConversion = PR_TRUE;
         urlString += NS_LITERAL_CSTRING("?header=print");  
       }
       else 
       {
-        saveListener->m_outputFormat = NS_LITERAL_STRING(TEXT_HTML);
+        saveListener->m_outputFormat = nsSaveMsgListener::eHTML;
         saveListener->m_doCharsetConversion = PR_FALSE;
         urlString += NS_LITERAL_CSTRING("?header=saveas");  
       }
@@ -1088,12 +1127,14 @@ nsMessenger::SaveAs(const char *aURI, PRBool aAsFile, nsIMsgIdentity *aIdentity,
       if (NS_FAILED(rv)) 
         goto done;
       
+      const nsAFlatCString& empty = EmptyCString();
+
       saveListener->m_channel = nsnull;
       rv = NS_NewInputStreamChannel(getter_AddRefs(saveListener->m_channel),
         url, 
         nsnull,                 // inputStream
-        NS_LITERAL_CSTRING(""), // contentType
-        NS_LITERAL_CSTRING("")); // contentCharset
+        empty,                  // contentType
+        empty);                 // contentCharset
       NS_ASSERTION(NS_SUCCEEDED(rv), "NS_NewInputStreamChannel failed");
       if (NS_FAILED(rv)) 
         goto done;
@@ -1173,13 +1214,14 @@ nsresult
 nsMessenger::Alert(const char *stringName)
 {
     nsresult rv = NS_OK;
-    nsString errorMessage(GetString(NS_ConvertASCIItoUCS2(stringName).get()));
+
     if (mDocShell)
     {
         nsCOMPtr<nsIPrompt> dialog(do_GetInterface(mDocShell));
-        
+
         if (dialog) {
-            rv = dialog->Alert(nsnull, errorMessage.get());
+            rv = dialog->Alert(nsnull,
+                               GetString(NS_ConvertASCIItoUCS2(stringName)).get());
         }
     }
     return rv;
@@ -1631,8 +1673,7 @@ nsMessenger::SendUnsentMessages(nsIMsgIdentity *aIdentity, nsIMsgWindow *aMsgWin
 
 nsSaveMsgListener::nsSaveMsgListener(nsIFileSpec* aSpec, nsMessenger *aMessenger)
 {
-    if (aSpec)
-      m_fileSpec = do_QueryInterface(aSpec);
+    m_fileSpec = do_QueryInterface(aSpec);
     m_messenger = aMessenger;
     m_dataBuffer = nsnull;
 
@@ -1642,6 +1683,7 @@ nsSaveMsgListener::nsSaveMsgListener(nsIFileSpec* aSpec, nsMessenger *aMessenger
     mProgress = 0;
     mContentLength = -1;
     mCanceled = PR_FALSE;
+    m_outputFormat = eUnknown;
     mInitialized = PR_FALSE;
 }
 
@@ -1761,8 +1803,8 @@ nsSaveMsgListener::OnStopCopy(nsresult aStatus)
 // and for OSX, sets creator flags on the output file
 nsresult nsSaveMsgListener::InitializeDownload(nsIRequest * aRequest, PRInt32 aBytesDownloaded)
 {
-    nsresult rv = NS_OK;
-    
+  nsresult rv = NS_OK;
+
   mInitialized = PR_TRUE;
   nsCOMPtr<nsIChannel> channel (do_QueryInterface(aRequest));
 
@@ -1779,12 +1821,12 @@ nsresult nsSaveMsgListener::InitializeDownload(nsIRequest * aRequest, PRInt32 aB
       nsCOMPtr<nsIMIMEInfo> mimeinfo;
 
       mimeService->GetFromTypeAndExtension(m_contentType.get(), nsnull, getter_AddRefs(mimeinfo)); 
-    nsFileSpec realSpec;
-    m_fileSpec->GetFileSpec(&realSpec);
+      nsFileSpec realSpec;
+      m_fileSpec->GetFileSpec(&realSpec);
 
-    // Create nsILocalFile from a nsFileSpec.
-    nsCOMPtr<nsILocalFile> outputFile;
-    NS_FileSpecToIFile(&realSpec, getter_AddRefs(outputFile));
+      // Create nsILocalFile from a nsFileSpec.
+      nsCOMPtr<nsILocalFile> outputFile;
+      NS_FileSpecToIFile(&realSpec, getter_AddRefs(outputFile)); 
 
       // create a download progress window
       // XXX: we don't want to show the progress dialog if the download is really small.
@@ -1808,41 +1850,41 @@ nsresult nsSaveMsgListener::InitializeDownload(nsIRequest * aRequest, PRInt32 aB
       }
 
 #if defined(XP_MAC) || defined(XP_MACOSX)
-  	/* if we are saving an appledouble or applesingle attachment, we need to use an Apple File Decoder */
-    if ((nsCRT::strcasecmp(m_contentType.get(), APPLICATION_APPLEFILE) == 0) ||
-        (nsCRT::strcasecmp(m_contentType.get(), MULTIPART_APPLEDOUBLE) == 0))
-    {        
-      
-      nsCOMPtr<nsIAppleFileDecoder> appleFileDecoder = do_CreateInstance(NS_IAPPLEFILEDECODER_CONTRACTID, &rv);
-      if (NS_SUCCEEDED(rv) && appleFileDecoder)
-      {
-        rv = appleFileDecoder->Initialize(m_outputStream, outputFile);
-        if (NS_SUCCEEDED(rv))
-          m_outputStream = do_QueryInterface(appleFileDecoder, &rv);
-      }
-    }
-    else
-    {
-          if (mimeinfo)
+      /* if we are saving an appledouble or applesingle attachment, we need to use an Apple File Decoder */
+      if ((nsCRT::strcasecmp(m_contentType.get(), APPLICATION_APPLEFILE) == 0) ||
+          (nsCRT::strcasecmp(m_contentType.get(), MULTIPART_APPLEDOUBLE) == 0))
+      {        
+
+        nsCOMPtr<nsIAppleFileDecoder> appleFileDecoder = do_CreateInstance(NS_IAPPLEFILEDECODER_CONTRACTID, &rv);
+        if (NS_SUCCEEDED(rv) && appleFileDecoder)
         {
-          PRUint32 aMacType;
-          PRUint32 aMacCreator;
-          if (NS_SUCCEEDED(mimeinfo->GetMacType(&aMacType)) && NS_SUCCEEDED(mimeinfo->GetMacCreator(&aMacCreator)))
-          {
-            nsCOMPtr<nsILocalFileMac> macFile =  do_QueryInterface(outputFile, &rv);
-            if (NS_SUCCEEDED(rv) && macFile)
-            {
-              macFile->SetFileCreator((OSType)aMacCreator);
-              macFile->SetFileType((OSType)aMacType);
-            }
-          }
+          rv = appleFileDecoder->Initialize(m_outputStream, outputFile);
+          if (NS_SUCCEEDED(rv))
+            m_outputStream = do_QueryInterface(appleFileDecoder, &rv);
         }
       }
+      else
+      {
+          if (mimeinfo)
+          {
+            PRUint32 aMacType;
+            PRUint32 aMacCreator;
+            if (NS_SUCCEEDED(mimeinfo->GetMacType(&aMacType)) && NS_SUCCEEDED(mimeinfo->GetMacCreator(&aMacCreator)))
+            {
+              nsCOMPtr<nsILocalFileMac> macFile =  do_QueryInterface(outputFile, &rv);
+              if (NS_SUCCEEDED(rv) && macFile)
+              {
+                macFile->SetFileCreator((OSType)aMacCreator);
+                macFile->SetFileType((OSType)aMacType);
+              }
+            }
+          }
+      }
 #endif // XP_MACOSX
-    }
+  }
 
   return rv;
-  }
+}
 
 NS_IMETHODIMP
 nsSaveMsgListener::OnStartRequest(nsIRequest* request, nsISupports* aSupport)
@@ -1876,7 +1918,7 @@ nsSaveMsgListener::OnStopRequest(nsIRequest* request, nsISupports* aSupport,
     // If we need text/plain, then we need to convert the HTML and then convert
     // to the systems charset
     //
-    if (m_outputFormat.EqualsWithConversion(TEXT_PLAIN))
+    if (m_outputFormat == ePlainText)
     {
       ConvertBufToPlainText(m_msgBuffer);
       rv = nsMsgI18NSaveAsCharset(TEXT_PLAIN, nsMsgI18NFileSystemCharset(), 
@@ -1999,7 +2041,7 @@ nsSaveMsgListener::OnDataAvailable(nsIRequest* request,
       //
       if (NS_SUCCEEDED(rv))
       {
-        if ( (m_doCharsetConversion) && (m_outputFormat.EqualsWithConversion(TEXT_PLAIN)) )
+        if ( (m_doCharsetConversion) && (m_outputFormat == ePlainText) )
           m_msgBuffer.Append(NS_ConvertUTF8toUCS2(m_dataBuffer, readCount));
         else
           rv = m_outputStream->Write(m_dataBuffer, readCount, &writeCount);
@@ -2035,22 +2077,22 @@ nsMessenger::InitStringBundle()
     return res;
 }
 
-PRUnichar *
-nsMessenger::GetString(const PRUnichar *aStringName)
+const nsAdoptingString
+nsMessenger::GetString(const nsAFlatString& aStringName)
 {
-	nsresult    res = NS_OK;
-  PRUnichar   *ptrv = nsnull;
+    nsresult rv = NS_OK;
+    PRUnichar *ptrv = nsnull;
 
-	if (!mStringBundle)
-        res = InitStringBundle();
+    if (!mStringBundle)
+        rv = InitStringBundle();
 
-	if (mStringBundle)
-		res = mStringBundle->GetStringFromName(aStringName, &ptrv);
+    if (mStringBundle)
+        rv = mStringBundle->GetStringFromName(aStringName.get(), &ptrv);
 
-  if ( NS_SUCCEEDED(res) && (ptrv) )
-    return ptrv;
-  else
-    return nsCRT::strdup(aStringName);
+    if (NS_FAILED(rv) || !ptrv)
+        ptrv = ToNewUnicode(aStringName);
+
+    return nsAdoptingString(ptrv);
 }
 
 nsSaveAllAttachmentsState::nsSaveAllAttachmentsState(PRUint32 count,

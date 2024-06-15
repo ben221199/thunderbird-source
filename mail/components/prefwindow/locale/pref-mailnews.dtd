@@ -6,8 +6,8 @@
 <!ENTITY useMessenger.accesskey           "U">
 <!ENTITY autounzip.label                  "Automatically expand zip files when saving attachments">
 <!ENTITY autounzip.accesskey              "A">
-<!ENTITY messengerStartPage.label         "Mail Start Page">
-<!ENTITY enableStartPage.label            "When Mail launches, show the Start Page in the message area">
+<!ENTITY messengerStartPage.label         "&brandShortName; Start Page">
+<!ENTITY enableStartPage.label            "When &brandShortName; launches, show the Start Page in the message area">
 <!ENTITY enableStartPage.accesskey        "W">
 <!ENTITY location.label                   "Location:">
 <!ENTITY location.accesskey               "L">
@@ -31,7 +31,11 @@
 <!ENTITY reuseExpRadio2.label             "A tab in an existing message window">
 <!ENTITY reuseExpRadio2.accesskey         "t">
 
-<!ENTITY setDefaultMailClient.label             "Use &vendorShortName; as the default mail application">
+<!ENTITY setDefaultMailClient.label             "Use &brandShortName; as the default mail application">
 <!ENTITY setDefaultMailClient.accesskey         "u">
-<!ENTITY setDefaultNewsClient.label             "Use &vendorShortName; as the default news application">
+<!ENTITY setDefaultNewsClient.label             "Use &brandShortName; as the default news application">
 <!ENTITY setDefaultNewsClient.accesskey         "n">
+
+<!-- General -->
+<!ENTITY bounceSystemDockIcon.label "Animate the dock icon">
+<!ENTITY bounceSystemDockIcon.accesskey "A">

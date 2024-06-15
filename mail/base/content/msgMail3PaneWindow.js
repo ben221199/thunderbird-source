@@ -626,6 +626,12 @@ var gThreePaneIncomingServerListener = {
 function UpdateMailPaneConfig(aMsgWindowInitialized) {
   var paneConfig = pref.getIntPref("mail.pane_config.dynamic");
   
+  if (paneConfig == kStandardPaneConfig)
+    document.getElementById('messagepanebox').setAttribute('flex', 1);
+  else 
+    document.getElementById('messagepanebox').removeAttribute('flex');
+    
+  
   // don't do anything if we are already in the correct configuration
   if (paneConfig == gCurrentPaneConfig)
     return;
@@ -715,6 +721,27 @@ function OnLoadMessenger()
   // in delayedOnLoadMessenger...
   UpdateMailPaneConfig(false);
 
+  // Set a sane starting width/height for all resolutions on new profiles. Do this before the window loads
+  if (!document.documentElement.hasAttribute("width")) 
+  {
+    var defaultWidth, defaultHeight;
+    if (screen.availHeight <= 600) 
+    { 
+      document.documentElement.setAttribute("sizemode", "maximized");
+      defaultWidth = 800;
+      defaultHeight = 565;
+    }
+    else // for higher resolution displays, use larger values for height and width
+    {
+      defaultWidth = screen.availWidth * .8;
+      defaultHeight = screen.availHeight * .8; 
+    }
+
+    document.documentElement.setAttribute("width", defaultWidth);
+    document.documentElement.setAttribute("height", defaultHeight);
+  }
+
+
   setTimeout(delayedOnLoadMessenger, 0); // when debugging, set this to 5000, so you can see what happens after the window comes up.
 }
 
@@ -745,43 +772,13 @@ function delayedOnLoadMessenger()
   // argument[0] --> folder uri
   // argument[1] --> optional message key
   // argument[2] --> optional email address; //will come from aim; needs to show msgs from buddy's email address  
-  if ("arguments" in window && window.arguments[0])
+  if ("arguments" in window)
   {
-    gStartFolderUri = window.arguments[0];
-    gStartMsgKey = window.arguments[1];
-    gSearchEmailAddress = window.arguments[2];
-
-  }
-  else
-  {
-    gStartFolderUri = null;
-    gStartMsgKey = nsMsgKey_None;
-    gSearchEmailAddress = null;
+    gStartFolderUri = (window.arguments.length > 0) ? window.arguments[0] : null;
+    gStartMsgKey = (window.arguments.length > 1) ? window.arguments[1]: nsMsgKey_None;
+    gSearchEmailAddress = (window.arguments.length > 2) ? window.arguments[2] : null;
   }
 
-  if (this.CheckForUnsentMessages != undefined && CheckForUnsentMessages())
-  {
-    var ioService = Components.classes["@mozilla.org/network/io-service;1"].getService(Components.interfaces.nsIIOService);
-    if (!ioService.offline) 
-    {
-      InitPrompts();
-      InitServices();
-
-      if (gPromptService) 
-      {
-        var buttonPressed = gPromptService.confirmEx(window, 
-                            gOfflinePromptsBundle.getString('sendMessagesOfflineWindowTitle'), 
-                            gOfflinePromptsBundle.getString('sendMessagesLabel'),
-                            gPromptService.BUTTON_TITLE_IS_STRING * (gPromptService.BUTTON_POS_0 + 
-                              gPromptService.BUTTON_POS_1),
-                            gOfflinePromptsBundle.getString('sendMessagesSendButtonLabel'),
-                            gOfflinePromptsBundle.getString('sendMessagesNoSendButtonLabel'),
-                            null, null, {value:0});
-        if (buttonPressed == 0) 
-          SendUnsentMessages();
-      }
-    }
-  }
   setTimeout("loadStartFolder(gStartFolderUri);", 0);
 
   // FIX ME - later we will be able to use onload from the overlay
@@ -938,6 +935,30 @@ function loadStartFolder(initialUri)
     }
 
     MsgGetMessagesForAllServers(defaultServer);
+
+    if (this.CheckForUnsentMessages != undefined && CheckForUnsentMessages())
+    {
+      var ioService = Components.classes["@mozilla.org/network/io-service;1"].getService(Components.interfaces.nsIIOService);
+      if (!ioService.offline) 
+      {
+        InitPrompts();
+        InitServices();
+
+        if (gPromptService) 
+        {
+          var buttonPressed = gPromptService.confirmEx(window, 
+                            gOfflinePromptsBundle.getString('sendMessagesOfflineWindowTitle'), 
+                            gOfflinePromptsBundle.getString('sendMessagesLabel'),
+                            gPromptService.BUTTON_TITLE_IS_STRING * (gPromptService.BUTTON_POS_0 + 
+                            gPromptService.BUTTON_POS_1),
+                            gOfflinePromptsBundle.getString('sendMessagesSendButtonLabel'),
+                            gOfflinePromptsBundle.getString('sendMessagesNoSendButtonLabel'),
+                            null, null, {value:0});
+          if (buttonPressed == 0) 
+            SendUnsentMessages();
+        }
+      }
+    }
 }
 
 function TriggerGetMessages(server)

@@ -183,13 +183,18 @@ nsMsgFilterList::GetLogFileSpec(nsIFileSpec **aFileSpec)
   rv = server->GetType(getter_Copies(type));
   NS_ENSURE_SUCCESS(rv,rv);
 
-  // for news, the filter file is
+  PRBool isServer = PR_FALSE;
+  rv = folder->GetIsServer(&isServer);
+  NS_ENSURE_SUCCESS(rv,rv);
+
+  // for news folders (not servers), the filter file is
   // mcom.test.dat
   // where the summary file is 
   // mcom.test.msf
   // since the log is an html file we make it
   // mcom.test.htm
-  if (type.Equals("nntp")) {
+  if (type.Equals("nntp") && !isServer) 
+  {
     nsCOMPtr<nsIFileSpec> thisFolder;
     rv = m_folder->GetPath(getter_AddRefs(thisFolder));
     NS_ENSURE_SUCCESS(rv, rv);
@@ -402,9 +407,9 @@ static FilterFileAttribEntry FilterFileAttribTable[] =
 // If we want to buffer file IO, wrap it in here.
 char nsMsgFilterList::ReadChar(nsIOFileStream *aStream)
 {
-	char	newChar;
-	*aStream >> newChar;
-	if (aStream->eof())
+  char	newChar;
+  *aStream >> newChar;
+  if (aStream->eof())
     return -1;
   else
   {
@@ -416,98 +421,98 @@ char nsMsgFilterList::ReadChar(nsIOFileStream *aStream)
 
 char nsMsgFilterList::SkipWhitespace(nsIOFileStream *aStream)
 {
-	char ch;
-	do
-	{
-		ch = ReadChar(aStream);
-	} while (nsCRT::IsAsciiSpace((PRUnichar)ch));
-	return ch;
+  char ch;
+  do
+  {
+    ch = ReadChar(aStream);
+  } while (nsCRT::IsAsciiSpace((PRUnichar)ch));
+  return ch;
 }
 
 PRBool nsMsgFilterList::StrToBool(nsCString &str)
 {
-	return str.Equals("yes") ;
+  return str.Equals("yes") ;
 }
 
 char nsMsgFilterList::LoadAttrib(nsMsgFilterFileAttribValue &attrib, nsIOFileStream *aStream)
 {
-	char	attribStr[100];
-	char	curChar;
+  char	attribStr[100];
+  char	curChar;
   attrib = nsIMsgFilterList::attribNone;
-
-	curChar = SkipWhitespace(aStream);
-	int i;
-	for (i = 0; i + 1 < (int)(sizeof(attribStr)); )
-	{
-		if (curChar == (char) -1 || nsCRT::IsAsciiSpace((PRUnichar)curChar) || curChar == '=')
-			break;
-		attribStr[i++] = curChar;
-		curChar = ReadChar(aStream);
-	}
-	attribStr[i] = '\0';
-	for (int tableIndex = 0; tableIndex < (int)(sizeof(FilterFileAttribTable) / sizeof(FilterFileAttribTable[0])); tableIndex++)
-	{
-		if (!PL_strcasecmp(attribStr, FilterFileAttribTable[tableIndex].attribName))
-		{
-			attrib = FilterFileAttribTable[tableIndex].attrib;
-			break;
-		}
-	}
-	return curChar;
+  
+  curChar = SkipWhitespace(aStream);
+  int i;
+  for (i = 0; i + 1 < (int)(sizeof(attribStr)); )
+  {
+    if (curChar == (char) -1 || nsCRT::IsAsciiSpace((PRUnichar)curChar) || curChar == '=')
+      break;
+    attribStr[i++] = curChar;
+    curChar = ReadChar(aStream);
+  }
+  attribStr[i] = '\0';
+  for (int tableIndex = 0; tableIndex < (int)(sizeof(FilterFileAttribTable) / sizeof(FilterFileAttribTable[0])); tableIndex++)
+  {
+    if (!PL_strcasecmp(attribStr, FilterFileAttribTable[tableIndex].attribName))
+    {
+      attrib = FilterFileAttribTable[tableIndex].attrib;
+      break;
+    }
+  }
+  return curChar;
 }
 
 const char *nsMsgFilterList::GetStringForAttrib(nsMsgFilterFileAttribValue attrib)
 {
-	for (int tableIndex = 0; tableIndex < (int)(sizeof(FilterFileAttribTable) / sizeof(FilterFileAttribTable[0])); tableIndex++)
-	{
-		if (attrib == FilterFileAttribTable[tableIndex].attrib)
-			return FilterFileAttribTable[tableIndex].attribName;
-	}
-	return nsnull;
+  for (int tableIndex = 0; tableIndex < (int)(sizeof(FilterFileAttribTable) / sizeof(FilterFileAttribTable[0])); tableIndex++)
+  {
+    if (attrib == FilterFileAttribTable[tableIndex].attrib)
+      return FilterFileAttribTable[tableIndex].attribName;
+  }
+  return nsnull;
 }
 
 nsresult nsMsgFilterList::LoadValue(nsCString &value, nsIOFileStream *aStream)
 {
-	nsCAutoString	valueStr;
-	char	curChar;
-	value = "";
-	curChar = SkipWhitespace(aStream);
-	if (curChar != '"')
-	{
-		NS_ASSERTION(PR_FALSE, "expecting quote as start of value");
-		return NS_MSG_FILTER_PARSE_ERROR;
-	}
-	curChar = ReadChar(aStream);
-	do
-	{
-		if (curChar == '\\')
-		{
-			char nextChar = ReadChar(aStream);
-			if (nextChar == '"')
-				curChar = '"';
-			else if (nextChar == '\\')	// replace "\\" with "\"
-			{
-				curChar = ReadChar(aStream);
-			}
-			else
-			{
-				valueStr += curChar;
-				curChar = nextChar;
-			}
-		}
-		else
-		{
-			if (curChar == (char) -1 || curChar == '"' || curChar == '\n' || curChar == '\r')
-			{
-			    value += valueStr;
-				break;
-			}
-		}
-		valueStr += curChar;
-		curChar = ReadChar(aStream);
-	}
-	while (!aStream->eof());
-	return NS_OK;
+  nsCAutoString	valueStr;
+  char	curChar;
+  value = "";
+  curChar = SkipWhitespace(aStream);
+  if (curChar != '"')
+  {
+    NS_ASSERTION(PR_FALSE, "expecting quote as start of value");
+    return NS_MSG_FILTER_PARSE_ERROR;
+  }
+  curChar = ReadChar(aStream);
+  do
+  {
+    if (curChar == '\\')
+    {
+      char nextChar = ReadChar(aStream);
+      if (nextChar == '"')
+        curChar = '"';
+      else if (nextChar == '\\')	// replace "\\" with "\"
+      {
+        curChar = ReadChar(aStream);
+      }
+      else
+      {
+        valueStr += curChar;
+        curChar = nextChar;
+      }
+    }
+    else
+    {
+      if (curChar == (char) -1 || curChar == '"' || curChar == '\n' || curChar == '\r')
+      {
+        value += valueStr;
+        break;
+      }
+    }
+    valueStr += curChar;
+    curChar = ReadChar(aStream);
+  }
+  while (!aStream->eof());
+  return NS_OK;
 }
 
 nsresult nsMsgFilterList::LoadTextFilters(nsIOFileStream *aStream)
@@ -648,6 +653,13 @@ nsresult nsMsgFilterList::LoadTextFilters(nsIOFileStream *aStream)
             PRInt32 labelInt = value.ToInteger(&res, 10);
             if (res == 0)
               currentFilterAction->SetLabel((nsMsgLabelValue) labelInt);
+          }
+          else if (type == nsMsgFilterAction::JunkScore)
+          {
+            PRInt32 res;
+            PRInt32 junkScore = value.ToInteger(&res, 10);
+            if (!res)
+              currentFilterAction->SetJunkScore(junkScore);
           }
         }
         break;

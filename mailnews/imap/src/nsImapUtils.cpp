@@ -428,8 +428,6 @@ void AllocateImapUidString(PRUint32 *msgUids, PRUint32 &msgCount,
       returnString.AppendInt(startSequence);
       returnString += ':';
       returnString.AppendInt(curSequenceEnd);
-      if (!lastKey)
-        returnString += ',';
       startSequence = nextKey;
       curSequenceEnd = startSequence;
       curFlagStateIndex = -1;
@@ -439,8 +437,6 @@ void AllocateImapUidString(PRUint32 *msgUids, PRUint32 &msgCount,
       startSequence = nextKey;
       curSequenceEnd = startSequence;
       returnString.AppendInt(msgUids[keyIndex]);
-      if (!lastKey)
-        returnString += ',';
       curFlagStateIndex = -1;
     }
     // check if we've generated too long a string - if there's no flag state,
@@ -448,9 +444,43 @@ void AllocateImapUidString(PRUint32 *msgUids, PRUint32 &msgCount,
     // because the calling code won't handle breaking up the strings.
     if (flagState && returnString.Length() > 950) 
     {
-      msgCount = total;
+      msgCount = keyIndex;
       break;
     }
+    // If we are not the last item then we need to add the comma 
+    // but it's important we do it here, after the length check 
+    if (!lastKey) 
+      returnString += ','; 
+  }
+}
+
+void ParseUidString(const char *uidString, nsMsgKeyArray &keys)
+{
+  // This is in the form <id>,<id>, or <id1>:<id2>
+  char curChar = *uidString;
+  PRBool isRange = PR_FALSE;
+  int32 curToken;
+  int32 saveStartToken=0;
+
+  for (const char *curCharPtr = uidString; curChar && *curCharPtr;)
+  {
+    const char *currentKeyToken = curCharPtr;
+    curChar = *curCharPtr;
+    while (curChar != ':' && curChar != ',' && curChar != '\0')
+      curChar = *curCharPtr++;
+
+    // we don't need to null terminate currentKeyToken because atoi 
+    // stops at non-numeric chars.
+    curToken = atoi(currentKeyToken); 
+    if (isRange)
+    {
+      while (saveStartToken < curToken)
+        keys.Add(saveStartToken++);
+    }
+    keys.Add(curToken);
+    isRange = (curChar == ':');
+    if (isRange)
+      saveStartToken = curToken + 1;
   }
 }
 

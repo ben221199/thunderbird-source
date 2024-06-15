@@ -169,7 +169,7 @@ nsAutoConfig::OnStopRequest(nsIRequest *request, nsISupports *context,
         {
             PR_LOG(MCD, PR_LOG_DEBUG, ("mcd http request failed with status %x\n", httpStatus));
             return readOfflineFile();
-    }
+        }
     }
     
     // Send the autoconfig.jsc to javascript engine.
@@ -221,7 +221,7 @@ NS_IMETHODIMP nsAutoConfig::Observe(nsISupports *aSubject,
             rv = profile->GetCurrentProfile(getter_Copies(profileName));
             if (NS_SUCCEEDED(rv)) {
                 // setting the member variable to the current profile name
-                mCurrProfile = NS_ConvertUCS2toUTF8(profileName); 
+                CopyUTF16toUTF8(profileName, mCurrProfile); 
             }
             else {
                 NS_WARNING("nsAutoConfig::GetCurrentProfile() failed");

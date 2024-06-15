@@ -303,8 +303,20 @@ void nsImageGTK::UpdateCachedImage()
             break;
           case 0:
             NS_CLEAR_BIT(mask,x);
-            if (mAlphaDepth != 8)
+            if (mAlphaDepth == 0) {
               mAlphaDepth=1;
+
+              // promoting an image from no alpha channel to 1-bit, so
+              // we need to create/clear the alpha pixmap
+              CreateOffscreenPixmap(mWidth, mHeight);
+
+              XFillRectangle(GDK_WINDOW_XDISPLAY(mAlphaPixmap),
+                             GDK_WINDOW_XWINDOW(mAlphaPixmap),
+                             GDK_GC_XGC(s1bitGC),
+                             mDecodedX1, mDecodedY1,
+                             mDecodedX2 - mDecodedX1 + 1,
+                             mDecodedY2 - mDecodedY1 + 1);
+            }
             break;
           default:
             mAlphaDepth=8;
@@ -504,12 +516,18 @@ XlibRectStretch(PRInt32 srcWidth, PRInt32 srcHeight,
 
 //  fprintf(stderr, "scaleY Start/End = %d %d\n", scaleStartY, scaleEndY);
 
-  if (!skipHorizontal && !skipVertical)
+  if (!skipHorizontal && !skipVertical) {
     aTmpImage = gdk_pixmap_new(nsnull,
                                endColumn-startColumn,
                                scaleEndY-scaleStartY,
                                aDepth);
-  
+#ifdef MOZ_WIDGET_GTK2
+    if (aDepth != 1)
+      gdk_drawable_set_colormap(GDK_DRAWABLE(aTmpImage),
+                                gdk_rgb_get_colormap());
+#endif
+  }
+ 
   dx = abs((int)(yd2-yd1));
   dy = abs((int)(ys2-ys1));
   sx = sign(yd2-yd1);
@@ -1532,6 +1550,9 @@ void nsImageGTK::CreateOffscreenPixmap(PRInt32 aWidth, PRInt32 aHeight)
     // Create an off screen pixmap to hold the image bits.
     mImagePixmap = gdk_pixmap_new(nsnull, aWidth, aHeight,
                                   gdk_rgb_get_visual()->depth);
+#ifdef MOZ_WIDGET_GTK2
+    gdk_drawable_set_colormap(GDK_DRAWABLE(mImagePixmap), gdk_rgb_get_colormap());
+#endif
   }
 
     // Ditto for the clipmask
@@ -1561,8 +1582,11 @@ void nsImageGTK::CreateOffscreenPixmap(PRInt32 aWidth, PRInt32 aHeight)
        low to high address in memory. */
     mAlphaXImage->byte_order = MSBFirst;
 
-    if (!s1bitGC)
+    if (!s1bitGC) {
+      GdkColor fg = { 1, 0, 0, 0 };
       s1bitGC = gdk_gc_new(mAlphaPixmap);
+      gdk_gc_set_foreground(s1bitGC, &fg);
+    }
   }
 
   if (!sXbitGC)
@@ -1648,6 +1672,7 @@ void nsImageGTK::TilePixmap(GdkPixmap *src, GdkPixmap *dest,
 NS_IMETHODIMP nsImageGTK::DrawTile(nsIRenderingContext &aContext,
                                    nsDrawingSurface aSurface,
                                    PRInt32 aSXOffset, PRInt32 aSYOffset,
+                                   PRInt32 aPadX, PRInt32 aPadY,
                                    const nsRect &aTileRect)
 {
 #ifdef DEBUG_TILING
@@ -1700,7 +1725,7 @@ NS_IMETHODIMP nsImageGTK::DrawTile(nsIRenderingContext &aContext,
     return NS_OK;
   }
 
-  if (partial || (mAlphaDepth == 8)) {
+  if (partial || (mAlphaDepth == 8) || (aPadX || aPadY)) {
     PRInt32 aY0 = aTileRect.y - aSYOffset,
             aX0 = aTileRect.x - aSXOffset,
             aY1 = aTileRect.y + aTileRect.height,
@@ -1722,8 +1747,8 @@ NS_IMETHODIMP nsImageGTK::DrawTile(nsIRenderingContext &aContext,
 #ifdef DEBUG_TILING
       printf("Warning: using slow tiling\n");
 #endif
-      for (PRInt32 y = aY0; y < aY1; y += mHeight)
-        for (PRInt32 x = aX0; x < aX1; x += mWidth)
+      for (PRInt32 y = aY0; y < aY1; y += mHeight + aPadY)
+        for (PRInt32 x = aX0; x < aX1; x += mWidth + aPadX)
           Draw(aContext,aSurface, x,y,
                PR_MIN(validWidth, aX1-x),
                PR_MIN(validHeight, aY1-y));
@@ -1742,6 +1767,9 @@ NS_IMETHODIMP nsImageGTK::DrawTile(nsIRenderingContext &aContext,
 
     tileImg = gdk_pixmap_new(nsnull, aTileRect.width, 
                              aTileRect.height, drawing->GetDepth());
+#ifdef MOZ_WIDGET_GTK2
+    gdk_drawable_set_colormap(GDK_DRAWABLE(tileImg), gdk_rgb_get_colormap());
+#endif
     TilePixmap(mImagePixmap, tileImg, aSXOffset, aSYOffset, tmpRect,
                tmpRect, PR_FALSE);
 

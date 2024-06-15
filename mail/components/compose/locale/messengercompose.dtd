@@ -8,6 +8,7 @@
 <!ENTITY newMenu.accesskey "N">
 <!ENTITY newMessage.label "Message">
 <!ENTITY newMessage.key "M">
+<!ENTITY newMessageCmd2.key "N">
 <!ENTITY newMessage.accesskey "M">
 <!ENTITY newCard.label "Address Book Card...">
 <!ENTITY newCard.accesskey "c">
@@ -192,6 +193,7 @@
 <!ENTITY attachButton.label "Attach">
 <!ENTITY spellingButton.label "Spelling">
 <!ENTITY saveButton.label "Save">
+<!ENTITY throbberItem.title "Activity Indicator">
 
 <!-- Mail Toolbar Tooltips -->
 <!ENTITY sendButton.tooltip "Send this message now"> 
@@ -253,6 +255,9 @@
 <!ENTITY paste.accesskey "P">
 <!ENTITY pasteQuote.label "Paste As Quotation">
 <!ENTITY pasteQuote.accesskey "Q">
+
+<!ENTITY openAttachment.label "Open">
+<!ENTITY openAttachment.accesskey "O">
 <!ENTITY delete.label "Delete">
 <!ENTITY delete.accesskey "D">
 <!ENTITY selectAll.label "Select All">

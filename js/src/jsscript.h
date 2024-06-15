@@ -85,9 +85,9 @@ struct JSScript {
         JSTryNote *tn_ = (script)->trynotes;                                  \
         jsbytecode *catchpc_ = NULL;                                          \
         if (tn_) {                                                            \
-            ptrdiff_t offset_ = PTRDIFF(pc, (script)->main, jsbytecode);      \
-            if (offset_ >= 0) {                                               \
-                while ((jsuword)(offset_-tn_->start) >= (jsuword)tn_->length) \
+            ptrdiff_t off_ = PTRDIFF(pc, (script)->main, jsbytecode);         \
+            if (off_ >= 0) {                                                  \
+                while ((jsuword)(off_ - tn_->start) >= (jsuword)tn_->length)  \
                     ++tn_;                                                    \
                 if (tn_->catchStart)                                          \
                     catchpc_ = (script)->main + tn_->catchStart;              \
@@ -102,10 +102,10 @@ extern JSObject *
 js_InitScriptClass(JSContext *cx, JSObject *obj);
 
 extern JSBool
-js_InitScriptGlobals();
+js_InitRuntimeScriptState(JSContext *cx);
 
 extern void
-js_FreeScriptGlobals();
+js_FinishRuntimeScriptState(JSContext *cx);
 
 extern const char *
 js_SaveScriptFilename(JSContext *cx, const char *filename);

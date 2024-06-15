@@ -143,11 +143,11 @@ function onCancel()
 }
 */
 
-function onServerClick(event)
+function onFilterServerClick(selection)
 {
-    // Return if same server is selected.
-    var item = event.target;
-    if (item.id == gCurrentServerURI)
+    var itemURI = selection.getAttribute('id');
+
+    if (!itemURI || itemURI == gCurrentServerURI)
       return;
 
     // Save the current filters to disk before switching because
@@ -156,8 +156,7 @@ function onServerClick(event)
     if (filterList) 
       filterList.saveToDefaultFile();
 
-    var item = event.target;
-    selectServer(item.id);
+    selectServer(itemURI);
 }
 
 function CanRunFiltersAfterTheFact(aServer)

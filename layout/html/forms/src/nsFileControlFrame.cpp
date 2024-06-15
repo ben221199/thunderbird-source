@@ -131,6 +131,7 @@ nsFileControlFrame::Destroy(nsIPresContext* aPresContext)
     nsCOMPtr<nsITextControlElement> fileInput = do_QueryInterface(mContent);
     fileInput->TakeTextFrameValue(value);
   }
+  mTextFrame = nsnull;
   return nsAreaFrame::Destroy(aPresContext);
 }
 
@@ -234,8 +235,7 @@ void
 nsFileControlFrame::ScrollIntoView(nsIPresContext* aPresContext)
 {
   if (aPresContext) {
-    nsCOMPtr<nsIPresShell> presShell;
-    aPresContext->GetShell(getter_AddRefs(presShell));
+    nsIPresShell *presShell = aPresContext->GetPresShell();
     if (presShell) {
       presShell->ScrollFrameIntoView(this,
                    NS_PRESSHELL_SCROLL_IF_NOT_VISIBLE,NS_PRESSHELL_SCROLL_IF_NOT_VISIBLE);
@@ -317,6 +317,9 @@ nsFileControlFrame::MouseClick(nsIDOMEvent* aMouseEvent)
     }
   }
 
+  // Tell our textframe to remember the currently focused value
+  mTextFrame->InitFocusedValue();
+
   // Open dialog
   PRInt16 mode;
   result = filePicker->Show(&mode);
@@ -325,6 +328,11 @@ nsFileControlFrame::MouseClick(nsIDOMEvent* aMouseEvent)
   if (mode == nsIFilePicker::returnCancel)
     return NS_OK;
 
+  if (!mTextFrame) {
+    // We got destroyed while the filepicker was up.  Don't do anything here.
+    return NS_OK;
+  }
+  
   // Set property
   nsCOMPtr<nsILocalFile> localFile;
   result = filePicker->GetFile(getter_AddRefs(localFile));
@@ -333,6 +341,8 @@ nsFileControlFrame::MouseClick(nsIDOMEvent* aMouseEvent)
     result = localFile->GetPath(unicodePath);
     if (!unicodePath.IsEmpty()) {
       mTextFrame->SetProperty(mPresContext, nsHTMLAtoms::value, unicodePath);
+      // May need to fire an onchange here
+      mTextFrame->CheckFireOnChange();
       return NS_OK;
     }
   }
@@ -367,8 +377,7 @@ NS_IMETHODIMP nsFileControlFrame::Reflow(nsIPresContext*          aPresContext,
   if (NS_SUCCEEDED(rv) && mTextFrame != nsnull) {
     const nsStyleVisibility* vis = GetStyleVisibility();
 
-    nsIFrame * child;
-    FirstChild(aPresContext, nsnull, &child);
+    nsIFrame* child = GetFirstChild(nsnull);
     if (child == mTextFrame) {
       child = child->GetNextSibling();
     }
@@ -442,8 +451,7 @@ nsFileControlFrame::GetTextControlFrame(nsIPresContext* aPresContext, nsIFrame* 
   nsNewFrame* result = nsnull;
 #ifndef DEBUG_NEWFRAME
   // find the text control frame.
-  nsIFrame* childFrame = nsnull;
-  aStart->FirstChild(aPresContext, nsnull, &childFrame);
+  nsIFrame* childFrame = aStart->GetFirstChild(nsnull);
 
   while (childFrame) {
     // see if the child is a text control

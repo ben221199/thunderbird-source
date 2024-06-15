@@ -32,23 +32,25 @@ EXPORT_LIBRARY = 1
 IS_COMPONENT    = 1
 MODULE_NAME     = nsChromeModule
 GRE_MODULE      = 1
+
+PACKAGE_FILE = chrome.pkg
+
 REQUIRES	= xpcom \
 		  string \
 		  rdf \
+		  content \
 		  xuldoc \
 		  gfx \
 		  layout \
 		  content \
 		  necko \
 		  dom \
-		  intl \
 		  widget \
 		  js \
 		  appshell \
 		  caps \
 		  pref \
 		  docshell \
-		  imglib2 \
 		  xpconnect \
 		  jar \
 		  $(NULL)

@@ -756,9 +756,36 @@ nsresult nsMapiRegistryUtils::registerMailApp(PRBool aForceRegistration)
         nsCAutoString appKeyName;
         appKeyName.Assign(keyName);
         appKeyName.Append("\\shell\\open\\command");
-                    nsCAutoString mailAppPath(thisApp);
-                    mailAppPath += " -mail";
+        nsCAutoString mailAppPath(thisApp);
+        mailAppPath += " -mail";
         SetRegistryKey(HKEY_LOCAL_MACHINE, appKeyName.get(), "", (char *)mailAppPath.get());
+
+        // (5) Add a properties key that launches our options chrome
+#ifdef MOZ_THUNDERBIRD
+        appKeyName.Assign(keyName);
+        appKeyName.Append("\\shell\\properties\\command");
+        nsCAutoString optionsPath(thisApp);
+        optionsPath += " -options";
+        SetRegistryKey(HKEY_LOCAL_MACHINE, appKeyName.get(), "", (char *)optionsPath.get());
+
+        nsCOMPtr<nsIStringBundle> bundle;
+        rv = MakeMapiStringBundle (getter_AddRefs (bundle));
+        if (bundle)
+        {
+          appKeyName.Assign(keyName);
+          appKeyName.Append("\\shell\\properties");
+
+          nsAutoString brandShortName;
+          getVarValue(NS_LITERAL_STRING("brandRealShortName").get(), brandShortName);
+
+          const PRUnichar* brandNameStrings[] = { brandShortName.get() };
+
+          nsXPIDLString optionsTitle;
+          bundle->FormatStringFromName(NS_LITERAL_STRING("optionsLabel").get(),
+                                       brandNameStrings, 1, getter_Copies(optionsTitle));
+          SetRegistryKey(HKEY_LOCAL_MACHINE, appKeyName.get(), "", (char *) NS_ConvertUCS2toUTF8(optionsTitle).get());
+        }
+#endif
                         
         // (5) add a default icon entry to Software\\Clients\\Mail\\<app name>
         nsCAutoString iconPath(thisApp);
@@ -769,10 +796,10 @@ nsresult nsMapiRegistryUtils::registerMailApp(PRBool aForceRegistration)
 
         // if we got this far, set a flag in the registry so we know we have registered ourself as a default mail application
         SetRegistryKey(HKEY_LOCAL_MACHINE, kAppDesktopKey, "registeredAsMailApp", "1");
-                }
+    }
 
     return rv;
-                }
+}
 
 nsresult nsMapiRegistryUtils::registerNewsApp(PRBool aForceRegistration)
 {
@@ -807,7 +834,7 @@ nsresult nsMapiRegistryUtils::registerNewsApp(PRBool aForceRegistration)
         if (NS_FAILED(rv)) return NS_ERROR_FAILURE;
 
         rv = SetRegistryKey(HKEY_LOCAL_MACHINE, keyName.get(), "", NS_CONST_CAST(char *, NS_ConvertUCS2toUTF8(defaultMailTitle).get()) ) ; 
-    }
+                }
     else
         rv = NS_ERROR_FAILURE;
 
@@ -839,10 +866,10 @@ nsresult nsMapiRegistryUtils::registerNewsApp(PRBool aForceRegistration)
 
         // if we got this far, set a flag in the registry so we know we have registered ourself as a default news application
         SetRegistryKey(HKEY_LOCAL_MACHINE, kAppDesktopKey, "registeredAsNewsApp", "1");
-        }
+                }
 
     return rv;
-}
+            }            
 
 /** Sets Mozilla as the default News Client 
  */
@@ -891,7 +918,7 @@ nsresult nsMapiRegistryUtils::setDefaultNewsClient()
                           MOZ_HWND_BROADCAST_MSG_TIMEOUT,
                           NULL);
     return rv;
-}
+        }
 
 /** Sets Mozilla as default Mail Client
  */

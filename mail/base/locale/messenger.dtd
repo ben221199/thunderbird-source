@@ -1,5 +1,5 @@
 <!ENTITY messengerWindow.title "Mail &amp; Newsgroups">
-<!ENTITY titledefault.label    "&brandShortName;">
+<!ENTITY titledefault.label    "&brandFullName;">
 <!ENTITY titleSeparator.label " - ">
 
 <!-- File Menu -->
@@ -9,9 +9,11 @@
 <!ENTITY newFolderCmd.accesskey "F">
 <!ENTITY newAccountCmd.label "Account...">
 <!ENTITY newAccountCmd.accesskey "A">
-<!ENTITY openMessageCmd.label "Open Message">
-<!ENTITY openMessageCmd.accesskey "O">
-<!ENTITY openMessageCmd.key			"o">
+<!ENTITY openMessageMenu.label "Open">
+<!ENTITY openMessageWindowCmd.label "Open Message">
+<!ENTITY openMessageWindowCmd.accesskey "s">
+<!ENTITY openMessageFileCmd.label "Open Saved Message...">
+<!ENTITY openMessageFileCmd.accesskey "O">
 <!ENTITY openAttachmentCmd.label "Attachments">
 <!ENTITY openAttachmentCmd.accesskey "A">
 <!ENTITY saveAsMenu.label "Save As">
@@ -147,18 +149,18 @@
 <!ENTITY sortByRecipientCmd.accesskey "c">
 <!ENTITY sortByUnreadCmd.label "Read">
 <!ENTITY sortByUnreadCmd.accesskey "R">
-<!ENTITY sortByThreadCmd.label "Thread">
-<!ENTITY sortByThreadCmd.accesskey "T">
 <!ENTITY sortByOrderReceivedCmd.label "Order Received">
 <!ENTITY sortByOrderReceivedCmd.accesskey "O">
 <!ENTITY sortAscending.label "Ascending">
 <!ENTITY sortAscending.accesskey "A">
 <!ENTITY sortDescending.label "Descending">
 <!ENTITY sortDescending.accesskey "D">
+<!ENTITY sortThreaded.label "Threaded">
+<!ENTITY sortThreaded.accesskey "T">
+<!ENTITY sortUnthreaded.label "Unthreaded">
+<!ENTITY sortUnthreaded.accesskey "h">
 <!ENTITY msgsMenu.label "Messages">
 <!ENTITY msgsMenu.accesskey "M">
-<!ENTITY viewThreaded.label "Threaded">
-<!ENTITY viewThreaded.accesskey "T">
 <!ENTITY viewAll.label "All">
 <!ENTITY viewUnread.label "Unread">
 <!ENTITY viewAll.accesskey "A">
@@ -356,6 +358,8 @@
 <!ENTITY markAsNotJunkCmd.label "As Not Junk">
 <!ENTITY markAsNotJunkCmd.accesskey "N">
 <!ENTITY markAsNotJunkCmd.key "j">
+<!ENTITY recalculateJunkScoreCmd.label "Run Junk Mail Controls"> 
+<!ENTITY recalculateJunkScoreCmd.accesskey "C">
 <!ENTITY openMessageWindowCmd.label "Open Message">
 <!ENTITY openMessageWindowCmd.accesskey "O">
 <!ENTITY openMessageWindowCmd.key "o">
@@ -392,9 +396,9 @@
 <!ENTITY helpMenu.accesskey "H"> 
 <!ENTITY releaseCmd.label "Release Notes">
 <!ENTITY releaseCmd.accesskey "R"> 
-<!ENTITY hintsAndTips.label "&brandShortName; Help">
+<!ENTITY hintsAndTips.label "&brandFullName; Help">
 <!ENTITY hintsAndTips.accesskey "h"> 
-<!ENTITY aboutCmd.label "About &brandShortName;">
+<!ENTITY aboutCmd.label "About &brandFullName;">
 <!ENTITY aboutCmd.accesskey "A">
 
 <!-- Mail Toolbar -->
@@ -410,13 +414,12 @@
 <!ENTITY markButton.label "Mark">
 <!ENTITY printButton.label "Print">
 <!ENTITY stopButton.label "Stop">
+<!ENTITY throbberItem.title "Activity Indicator">
 <!ENTITY junkButton.label "Junk">
 <!ENTITY notJunkButton.label "Not Junk">
 <!ENTITY addressBookButton.label "Address Book">
 
 <!-- Mail Toolbar Tooltips-->
-<!ENTITY menuBar.tooltip "Menu Bar">
-<!ENTITY mailToolbar.tooltip "Mail Toolbar">
 <!ENTITY advancedButton.tooltip "Advanced message search">
 <!ENTITY clearButton.tooltip "Clear the search criteria and show all messages">
 <!ENTITY getMsgButton.tooltip "Get new messages">
@@ -565,6 +568,9 @@
 <!ENTITY junkBarMessage.label "&brandShortName; thinks this message is junk mail">
 <!ENTITY notJunkButton.label "This is Not Junk">
 <!ENTITY junkInfoButton.label "?">
+
+<!-- Search Bar -->
+<!ENTITY quickSearchCmd.key "k">
 
 <!-- Message Header Context Menu -->
 <!ENTITY AddToAddressBook.label "Add to Address Book...">

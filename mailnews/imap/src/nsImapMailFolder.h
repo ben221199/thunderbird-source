@@ -106,6 +106,7 @@ public:
     PRUint32 m_dataBufferSize;
     PRUint32 m_leftOver;
     PRBool m_allowUndo;
+    PRBool m_eatLF;
 };
 
 // ACLs for this folder.
@@ -373,7 +374,6 @@ protected:
   void SetIMAPDeletedFlag(nsIMsgDatabase *mailDB, const nsMsgKeyArray &msgids, PRBool markDeleted);
   virtual PRBool ShowDeletedMessages();
   virtual PRBool DeleteIsMoveToTrash();
-  void ParseUidString(char *uidString, nsMsgKeyArray &keys);
   nsresult GetFolder(const char *name, nsIMsgFolder **pFolder);
   nsresult GetTrashFolder(nsIMsgFolder **pTrashFolder);
   PRBool TrashOrDescendentOfTrash(nsIMsgFolder* folder);
@@ -421,6 +421,7 @@ protected:
     nsCString& msgIds, nsMsgKeyArray& keyArray);
   
   nsresult GetMoveCoalescer();
+  nsresult PlaybackCoalescedOperations();
   virtual nsresult CreateBaseMessageURI(const char *aURI);
   // offline-ish methods
   nsresult GetClearedOriginalOp(nsIMsgOfflineImapOperation *op, nsIMsgOfflineImapOperation **originalOp, 

@@ -97,6 +97,7 @@ pref("mail.imap.cleanup_inbox_on_exit",     false);
 pref("mail.imap.mime_parts_on_demand",      true);
 pref("mail.imap.mime_parts_on_demand_max_depth", 15);
 pref("mail.imap.mime_parts_on_demand_threshold", 30000);
+pref("mail.imap.use_literal_plus",          true);
 pref("mail.thread_without_re",	            true);
 pref("mail.leave_on_server",                false);
 pref("mail.default_cc",                     "");
@@ -197,6 +198,7 @@ pref("mailnews.autolookup_unknown_mime_types",  true);
 pref("mailnews.send_default_charset",       "chrome://messenger/locale/messenger.properties");
 pref("mailnews.view_default_charset",       "chrome://messenger/locale/messenger.properties");
 pref("mailnews.force_charset_override",     false);
+pref("mailnews.reply_in_default_charset",   false);
 
 pref("mailnews.search_date_format",        "chrome://messenger/locale/messenger.properties");
 pref("mailnews.search_date_separator",     "chrome://messenger/locale/messenger.properties");
@@ -280,6 +282,7 @@ pref("ldap_2.prefs_migrated",      false);
 pref("mailnews.confirm.moveFoldersToTrash", true);
 
 pref("mailnews.reuse_message_window", true);
+pref("mailnews.open_window_warning", 10); // warn user if they attempt to open more than this many messages at once
 
 pref("mailnews.start_page.url", "chrome://messenger-region/locale/region.properties");
 pref("mailnews.start_page.enabled", true);
@@ -371,7 +374,7 @@ pref("mail.server.default.canFileMessages", true);
 // special enhancements for IMAP servers
 pref("mail.server.default.store_read_mail_in_pfc", false);  
 pref("mail.server.default.store_sent_mail_in_pfc", false);  
-
+pref("mail.server.default.use_idle", true); 
 // for spam
 pref("mail.server.default.spamLevel",100);  // 0 off, 100 on.  not doing bool since we might have real levels one day.
 pref("mail.server.default.moveOnSpam",false);
@@ -385,6 +388,19 @@ pref("mail.server.default.purgeSpamInterval",14); // 14 days
 pref("mail.server.default.spamLoggingEnabled",false);
 pref("mail.server.default.manualMark",false);
 pref("mail.server.default.manualMarkMode",0); // 0 == "move to junk folder", 1 == "delete"
+
+// the probablilty threshold over which messages are classified as junk
+// this number is divided by 100 before it is used. The classifier can be fine tuned
+// by changing this pref. Typical values are .99, .95, .90, .5, etc. 
+pref("mail.adaptivefilters.junk_threshold", 90); 
+
+// if true, we'll use the password from an incoming server with
+// matching username and domain
+pref("mail.smtp.useMatchingDomainServer", false);
+
+// if true, we'll use the password from an incoming server with
+// matching username and host name
+pref("mail.smtp.useMatchingHostNameServer", false);
 
 pref("mail.smtpserver.default.auth_method", 1); // auth any
 pref("mail.smtpserver.default.trySecAuth", true);
@@ -549,14 +565,56 @@ pref("mail.compose.add_undisclosed_recipients", true);
 pref("mail.purge.min_delay",480);
 pref("mail.purge.timer_interval",5); 
 
+// set to true if viewing a message should mark it as read only if the msg is viewed for a specified time interval in seconds
+pref("mailnews.mark_message_read.delay", false); 
+pref("mailnews.mark_message_read.delay.interval", 5); // measured in seconds
+
 // require a password before showing imap or local headers in thread pane
 pref("mail.password_protect_local_cache", false);
 // to reduce forking in the js / C++
 // overridden by stand alone mail
 pref("mail.standalone", false);
 
-// set to true if viewing a message should mark it as read only if the msg is viewed for a specified time interval in seconds
-pref("mailnews.mark_message_read.delay", true); 
-pref("mailnews.mark_message_read.delay.interval", 5); // measured in seconds
-
 pref("mailnews.view.last",0); // 0 == "all" view
+
+#ifdef XP_WIN
+// Unread mail count timer. Value to be specified in seconds
+// default is 5 minutes, i.e., 5 * 60 seconds = 300
+pref("mail.windows_xp_integration.unread_count_interval", 300);
+#endif
+
+#ifdef XP_MACOSX
+pref("mail.notification.sound",             "");
+pref("mail.close_message_window.on_delete", true);
+pref("mail.close_message_window.on_file", true);
+
+pref("mail.server_type_on_restart",         -1);
+#endif
+
+#ifndef XP_MACOSX
+#ifdef XP_UNIX
+pref("mail.empty_trash", false);
+
+pref("mail.check_new_mail", true);
+pref("mail.signature_file", "~/.signature");
+pref("mail.default_fcc", "~/nsmail/Sent");
+pref("news.default_fcc", "~/nsmail/Sent");
+pref("mailnews.reply_with_extra_lines", 0);
+pref("mail.use_builtin_movemail", true);
+pref("mail.movemail_program", "");
+pref("mail.movemail_warn", false);
+pref("mail.sash_geometry", "");
+pref("news.cache_xover", false);
+pref("news.show_first_unread", false);
+pref("news.sash_geometry", "");
+pref("mail.signature_date", 0);
+
+// until bug #130581 is fixed, we need to override this on linux
+pref("mail.compose.max_recycled_windows", 0);
+# XP_UNIX
+#endif
+#endif
+
+#ifdef XP_OS2
+pref("mail.compose.max_recycled_windows", 0);
+#endif

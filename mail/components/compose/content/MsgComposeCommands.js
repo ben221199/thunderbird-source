@@ -181,6 +181,7 @@ function enableEditableFields()
 var gComposeRecyclingListener = {
   onClose: function() {
     //Reset recipients and attachments
+    ReleaseAutoCompleteState();
     awResetAllRows();
     RemoveAllAttachments();
 
@@ -377,6 +378,7 @@ var defaultController =
       //Edit Menu
       case "cmd_delete":
       case "cmd_selectAll":
+      case "cmd_openAttachment":
       case "cmd_account":
 
       //View Menu
@@ -421,9 +423,11 @@ var defaultController =
 
       //Edit Menu
       case "cmd_delete":
-        return MessageHasSelectedAttachments();
+        return MessageGetNumSelectedAttachments();
       case "cmd_selectAll":
         return MessageHasAttachments();
+      case "cmd_openAttachment":
+        return MessageGetNumSelectedAttachments() == 1;
       case "cmd_account":
 
       //View Menu
@@ -477,8 +481,9 @@ var defaultController =
       case "cmd_print"              : DoCommandPrint(); break;
 
       //Edit Menu
-      case "cmd_delete"             : if (MessageHasSelectedAttachments()) RemoveSelectedAttachment();         break;
+      case "cmd_delete"             : if (MessageGetNumSelectedAttachments()) RemoveSelectedAttachment();         break;
       case "cmd_selectAll"          : if (MessageHasAttachments()) SelectAllAttachments();                     break;
+      case "cmd_openAttachment"     : if (MessageGetNumSelectedAttachments() == 1) OpenSelectedAttachment();          break;
       case "cmd_account"            : MsgAccountManager(null); break;
 
       //View Menu
@@ -599,6 +604,7 @@ function updateEditItems() {
   goUpdateCommand("cmd_pasteQuote");
   goUpdateCommand("cmd_delete");
   goUpdateCommand("cmd_selectAll");
+  goUpdateCommand("cmd_openAttachment");
   goUpdateCommand("cmd_find");
   goUpdateCommand("cmd_findNext");
   goUpdateCommand("cmd_findPrev");
@@ -791,6 +797,19 @@ function setupLdapAutocompleteSession()
                     Components.interfaces.nsISupportsString).data;
             } catch (ex) {
                 // if we don't have this pref, no big deal
+            }
+
+            // set the LDAP protocol version correctly
+            var protocolVersion;
+            try { 
+                protocolVersion = sPrefs.getCharPref(autocompleteDirectory + 
+                                                      ".protocolVersion");
+            } catch (ex) {
+                // if we don't have this pref, no big deal
+            }
+            if (protocolVersion == "2") {
+                LDAPSession.version = 
+                    Components.interfaces.nsILDAPConnection.VERSION2;
             }
 
             // find out if we need to authenticate, and if so, tell the LDAP
@@ -1110,6 +1129,10 @@ function ComposeFieldsReady(msgType)
   }
   CompFields2Recipients(gMsgCompose.compFields, gMsgCompose.type);
   SetComposeWindowTitle();
+
+  if (gMsgCompose.composeHTML)
+    setTimeout("loadHTMLMsgPrefs();", 0);
+
   enableEditableFields();
   AdjustFocus();
 }
@@ -1144,19 +1167,17 @@ function ComposeStartup(recycled, aParams)
 
   else if (window.arguments && window.arguments[0]) {
     try {
-      if (typeof window.arguments[0] == "string") 
+      if (window.arguments[0] instanceof Components.interfaces.nsIMsgComposeParams)
+        params = window.arguments[0];
+      else
         params = handleMailtoArgs(window.arguments[0]);
-      else if (typeof window.arguments[0] == "object" && window.arguments[0] instanceof Components.interfaces.nsIMsgComposeParams)
-       params = window.arguments[0].QueryInterface(Components.interfaces.nsIMsgComposeParams);
     }
     catch(ex) { dump("ERROR with parameters: " + ex + "\n"); }
       
     // if still no dice, try and see if the params is an old fashioned list of string attributes
     // XXX can we get rid of this yet? 
     if (!params)
-    {
       args = GetArgs(window.arguments[0]);
-    }
   }
 
   var identityList = document.getElementById("msgIdentity");
@@ -1324,7 +1345,7 @@ function ComposeStartup(recycled, aParams)
         }
 
         // reset the priorty field for recycled windows
-        updatePriorityToolbarButton('normal');
+        updatePriorityToolbarButton('Normal');
       } 
       else 
       {
@@ -1736,7 +1757,7 @@ function GenericSendMessage( msgType )
         }
         msgWindow.SetDOMWindow(window);
 
-        gMsgCompose.SendMsg(msgType, getCurrentIdentity(), msgWindow, progress);
+        gMsgCompose.SendMsg(msgType, getCurrentIdentity(), getCurrentAccountKey(), msgWindow, progress);
       }
       catch (ex) {
         dump("failed to SendMsg: " + ex + "\n");
@@ -2031,6 +2052,7 @@ function FillIdentityListPopup(popup)
       item.className = "identity-popup-item";
       item.setAttribute("label", identity.identityName);
       item.setAttribute("value", identity.key);
+      item.setAttribute("accountkey", accounts[i].key);
       item.setAttribute("accountname", " - " + server.prettyName);
       popup.appendChild(item);
     }
@@ -2048,6 +2070,13 @@ function getCurrentIdentity()
     var identity = gAccountManager.getIdentity(identityKey);
 
     return identity;
+}
+
+function getCurrentAccountKey()
+{
+    // get the accounts key
+    var identityList = document.getElementById("msgIdentity");
+    return identityList.selectedItem.getAttribute("accountkey");
 }
 
 function getIdentityForKey(key)
@@ -2161,6 +2190,16 @@ function SetContentAndBodyAsUnmodified()
   gContentChanged = false;
 }
 
+function ReleaseAutoCompleteState()
+{
+  for (i=1; i <= awGetMaxRecipients(); i++) 
+    document.getElementById("addressCol2#" + i).removeSession(gLDAPSession);
+
+  gSessionAdded = false;
+  gLDAPSession = null;  
+  gAutocompleteSession = null;
+}
+
 function MsgComposeCloseWindow(recycleIt)
 {
   if (gMsgCompose)
@@ -2258,7 +2297,7 @@ function AddAttachment(attachment)
     var item = document.createElement("listitem");
 
     if (!attachment.name)
-      attachment.name = gMsgCompose.AttachmentPrettyName(attachment.url, attachment.urlCharset);
+      attachment.name = gMsgCompose.AttachmentPrettyName(attachment.url, null);
 
     // for security reasons, don't allow *-message:// uris to leak out
     // we don't want to reveal the .slt path (for mailbox://), or the username or hostname
@@ -2281,7 +2320,29 @@ function AddAttachment(attachment)
       item.setAttribute("tooltiptext", attachment.url);
     }
     item.setAttribute("class", "listitem-iconic");
-    item.setAttribute("image", "moz-icon:" + attachment.url);
+
+    var url = gIOService.newURI(attachment.url, null, null);
+
+    try 
+    {
+      url = url.QueryInterface( Components.interfaces.nsIURL );
+    }
+    catch (ex)
+    {
+      url = null;
+    }
+
+    
+    // for local file urls, we are better off using the full file url because moz-icon will
+    // actually resolve the file url and get the right icon from the file url. All other urls, we should
+    // try to extract the file name from them. This fixes issues were an icon wasn't showing up if you dragged
+    // a web url that had a query or reference string after the file name and for mailnews urls were the filename
+    // is hidden in the url as a &filename= part.
+    if (url && url.fileName && !url.schemeIs("file")) 
+      item.setAttribute("image", "moz-icon://" + url.fileName);
+    else      
+      item.setAttribute("image", "moz-icon:" + attachment.url);
+    
     bucket.appendChild(item);
   }
 }
@@ -2302,13 +2363,14 @@ function MessageHasAttachments()
   return false;
 }
 
-function MessageHasSelectedAttachments()
+function MessageGetNumSelectedAttachments()
 {
   var bucketList = document.getElementById("attachmentBucket");
 
   if (bucketList)
-    return (MessageHasAttachments() && bucketList.selectedItems && bucketList.selectedItems.length);
-  return false;
+    return bucketList.selectedItems.length;
+  else
+    return 0;
 }
 
 function AttachPage()
@@ -2416,6 +2478,92 @@ function AttachmentElementHasItems()
 
   return element ? element.childNodes.length : 0;
 }  
+
+function OpenSelectedAttachment()
+{
+  var child;
+  var bucket = document.getElementById("attachmentBucket");
+  if (bucket.selectedItems.length == 1) 
+  {
+    var attachmentUrl = bucket.getSelectedItem(0).attachment.url;
+
+    var messagePrefix = /^mailbox-message:|^imap-message:|^news-message:/i;
+    if (messagePrefix.test(attachmentUrl))
+    {
+      // we must be dealing with a forwarded attachment, treat this special
+      var messenger = Components.classes["@mozilla.org/messenger;1"].createInstance();
+      messenger = messenger.QueryInterface(Components.interfaces.nsIMessenger);
+      var msgHdr = messenger.messageServiceFromURI(attachmentUrl).messageURIToMsgHdr(attachmentUrl);
+      if (msgHdr)
+      {
+        var folderUri = msgHdr.folder.folderURL;
+        window.openDialog("chrome://messenger/content/messageWindow.xul", "_blank", "all,chrome,dialog=no,status,toolbar", 
+                          attachmentUrl, folderUri, null );
+      }
+    }
+    else
+    {
+      // turn the url into a nsIURL object then open it
+
+      var url = gIOService.newURI(attachmentUrl, null, null);
+      url = url.QueryInterface( Components.interfaces.nsIURL );
+
+      if (url)
+      {
+        var channel = gIOService.newChannelFromURI(url);
+        if (channel)
+        {
+          var uriLoader = Components.classes["@mozilla.org/uriloader;1"].getService(Components.interfaces.nsIURILoader);
+          uriLoader.openURI(channel, true, new nsAttachmentOpener());
+        } // if channel
+      } // if url 
+    }
+  } // if one attachment selected
+}
+
+function nsAttachmentOpener()
+{
+}
+
+nsAttachmentOpener.prototype =
+{
+  QueryInterface: function(iid)
+  {
+    if (iid.equals(Components.interfaces.nsIURIContentListener) ||
+        iid.equals(Components.interfaces.nsIInterfaceRequestor) ||
+        iid.equals(Components.interfaces.nsISupports))
+        return this;
+    throw Components.results.NS_NOINTERFACE;
+  },
+
+  onStartURIOpen: function(uri)
+  {
+    return;
+  },
+
+  doContent: function(contentType, isContentPreferred, request, contentHandler)
+  {
+    return;
+  },
+
+  isPreferred: function(contentType, desiredContentType)
+  {
+    return;
+  },
+
+  canHandleContent: function(contentType, isContentPreferred, desiredContentType)
+  {
+    return false;
+  },
+
+  getInterface: function(iid)
+  {
+    return this.QueryInterface(iid);
+  },
+
+  loadCookie: null,
+  parentContentListener: null
+}
 
 function DetermineHTMLAction(convertible)
 {
@@ -2676,6 +2824,8 @@ function AttachmentBucketClicked(event)
 
   if (event.originalTarget.localName == "listboxbody")
     goDoCommand('cmd_attachFile');
+  else if (event.originalTarget.localName == "listitem" && event.detail == 2)
+    OpenSelectedAttachment();    
 }
 
 // we can drag and drop addresses, files, messages and urls into the compose envelope
@@ -2773,12 +2923,12 @@ var envelopeDragObserver = {
     {
       if (aFlavour.contentType != "text/x-moz-address")
       {
-      // make sure the attachment box is visible during drag over
-      var attachmentBox = document.getElementById("attachments-box");
-      if (attachmentBox.hidden)
-      {
-        attachmentBox.hidden = false;
-        document.getElementById("attachmentbucket-sizer").hidden=false;
+        // make sure the attachment box is visible during drag over
+        var attachmentBox = document.getElementById("attachments-box");
+        if (attachmentBox.hidden)
+        {
+          attachmentBox.hidden = false;
+          document.getElementById("attachmentbucket-sizer").hidden=false;
         }
       }
     },
@@ -3030,4 +3180,40 @@ function toggleAddressPicker()
 function AddRecipient(recipientType, address)
 {
   awAddRecipient(recipientType, address);
+}
+
+function loadHTMLMsgPrefs() 
+{
+  var pref = GetPrefs();
+  var fontFace;
+  var fontSize;
+  var textColor;
+  var bgColor;
+  
+  try { 
+    fontFace = pref.getCharPref("msgcompose.font_face");
+    doStatefulCommand('cmd_fontFace', fontFace);
+  } catch (e) {}
+ 
+  try { 
+    fontSize = pref.getCharPref("msgcompose.font_size");
+    EditorSetFontSize(fontSize);
+    } catch (e) {}  
+   
+  var bodyElement = GetBodyElement(); 
+  try { 
+    textColor = pref.getCharPref("msgcompose.text_color");
+    bodyElement.setAttribute("text", textColor);
+    gDefaultTextColor = textColor;
+    document.getElementById("cmd_fontColor").setAttribute("state", textColor);    
+    onFontColorChange();
+  } catch (e) {}
+ 
+  try { 
+    bgColor = pref.getCharPref("msgcompose.background_color");
+    bodyElement.setAttribute("bgcolor", bgColor);
+    gDefaultBackgroundColor = bgColor;
+    document.getElementById("cmd_backgroundColor").setAttribute("state", bgColor);
+    onBackgroundColorChange();
+  } catch (e) {}
 }

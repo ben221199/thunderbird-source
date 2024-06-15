@@ -107,6 +107,9 @@
 #ifdef XP_OS2
 #include "nsMessengerOS2Integration.h"
 #endif
+#ifdef XP_MACOSX
+#include "nsMessengerOSXIntegration.h"
+#endif
 
 #include "nsCURILoader.h"
 #include "nsMessengerContentHandler.h"
@@ -140,6 +143,7 @@
 #include "nsAbBooleanExpression.h"
 #include "nsAbDirectoryQueryProxy.h"
 #include "nsAbView.h"
+
 #include "nsMsgVCardService.h"
 
 #if defined(MOZ_LDAP_XPCOM)
@@ -283,6 +287,7 @@
 // mailnews base factories
 ////////////////////////////////////////////////////////////////////////////////
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsMessengerBootstrap)
+NS_GENERIC_FACTORY_CONSTRUCTOR(nsMsgOptionsCmdLineHandler)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsUrlListenerManager)
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsMsgMailSession, Init)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsMessenger)
@@ -326,6 +331,9 @@ NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsMessengerWinIntegration, Init)
 #endif
 #ifdef XP_OS2
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsMessengerOS2Integration, Init)
+#endif
+#ifdef XP_MACOSX
+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsMessengerOSXIntegration, Init)
 #endif
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsMessengerContentHandler)
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsMsgContentPolicy, Init)
@@ -374,6 +382,7 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsAbLDAPProcessChangeLogData)
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsAbDirectoryQueryProxy)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsAbView)
+
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsMsgVCardService) 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -580,6 +589,12 @@ static const nsModuleComponentInfo gComponents[] = {
       nsMessengerBootstrap::RegisterProc,
       nsMessengerBootstrap::UnregisterProc
     },
+    { "Options Startup Handler", NS_MESSENGEROPTIONSSTARTUP_CID,
+      NS_MAILOPTIONSTARTUPHANDLER_CONTRACTID,
+      nsMsgOptionsCmdLineHandlerConstructor,
+      nsMsgOptionsCmdLineHandler::RegisterProc,
+      nsMsgOptionsCmdLineHandler::UnregisterProc
+    },
     { "UrlListenerManager", NS_URLLISTENERMANAGER_CID,
       NS_URLLISTENERMANAGER_CONTRACTID,
       nsUrlListenerManagerConstructor,
@@ -759,6 +774,12 @@ static const nsModuleComponentInfo gComponents[] = {
       nsMessengerOS2IntegrationConstructor,
     },
 #endif
+#ifdef XP_MACOSX
+    { "OSX OS Integration", NS_MESSENGEROSXINTEGRATION_CID,
+      NS_MESSENGEROSINTEGRATION_CONTRACTID,
+      nsMessengerOSXIntegrationConstructor,
+    },
+#endif
     { "x-message-display content handler",
        NS_MESSENGERCONTENTHANDLER_CID,
        NS_MESSENGERCONTENTHANDLER_CONTRACTID,
@@ -804,7 +825,9 @@ static const nsModuleComponentInfo gComponents[] = {
       NS_ADDBOOKURL_CONTRACTID, nsAddbookUrlConstructor },   
     { "The addbook Protocol Handler", NS_ADDBOOK_HANDLER_CID,
       NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "addbook", nsAddbookProtocolHandlerConstructor },
+
     { "add vCard content handler", NS_ADDRESSBOOK_CID, NS_CONTENT_HANDLER_CONTRACTID_PREFIX"x-application-addvcard", nsAddressBookConstructor },
+
 
     { "The directory factory service interface", NS_ABDIRFACTORYSERVICE_CID,
       NS_ABDIRFACTORYSERVICE_CONTRACTID, nsAbDirFactoryServiceConstructor },
@@ -851,6 +874,7 @@ static const nsModuleComponentInfo gComponents[] = {
     { "The directory query proxy interface", NS_ABDIRECTORYQUERYPROXY_CID,
       NS_ABDIRECTORYQUERYPROXY_CONTRACTID, nsAbDirectoryQueryProxyConstructor},
     { "addressbook view", NS_ABVIEW_CID, NS_ABVIEW_CONTRACTID, nsAbViewConstructor},
+
     { "vcard helper service", NS_MSGVCARDSERVICE_CID, NS_MSGVCARDSERVICE_CONTRACTID, nsMsgVCardServiceConstructor },
 
     ////////////////////////////////////////////////////////////////////////////////

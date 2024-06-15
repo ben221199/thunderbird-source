@@ -1,9 +1,0 @@
-/.cvsignore/1.1.1.1/Thu Jul 20 00:58:59 2000//TTHUNDERBIRD_0_5_RELEASE
-/Makefile.in/1.1.1.1/Thu Jul 20 00:58:59 2000//TTHUNDERBIRD_0_5_RELEASE
-/manifest.rdf/1.1.1.1/Thu Jul 20 00:58:59 2000//TTHUNDERBIRD_0_5_RELEASE
-D/communicator////
-D/editor////
-D/global////
-D/messenger////
-D/navigator////
-D/necko////

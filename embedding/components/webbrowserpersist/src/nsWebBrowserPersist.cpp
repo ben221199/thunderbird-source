@@ -350,7 +350,7 @@ NS_IMETHODIMP nsWebBrowserPersist::SetProgressListener(
     return NS_OK;
 }
 
-/* void saveURI (in nsIURI aURI, in nsIURI aReferrer,
+/* void saveURI (in nsIURI aURI, in nsISupports aCacheKey, in nsIURI aReferrer,
    in nsIInputStream aPostData, in wstring aExtraHeaders,
    in nsISupports aFile); */
 NS_IMETHODIMP nsWebBrowserPersist::SaveURI(
@@ -1193,7 +1193,7 @@ nsresult nsWebBrowserPersist::SaveURIInternal(
                 nsCOMPtr<nsIUploadChannel> uploadChannel(do_QueryInterface(httpChannel));
                 NS_ASSERTION(uploadChannel, "http must support nsIUploadChannel");
                 // Attach the postdata to the http channel
-                uploadChannel->SetUploadStream(aPostData, NS_LITERAL_CSTRING(""), -1);
+                uploadChannel->SetUploadStream(aPostData, EmptyCString(), -1);
             }
         }
 
@@ -1401,13 +1401,13 @@ nsresult nsWebBrowserPersist::SaveDocumentInternal(
 
     // Persist the main document
     nsCOMPtr<nsIDocument> doc(do_QueryInterface(aDocument));
-    mURI = doc->GetDocumentURL();
+    mURI = doc->GetDocumentURI();
 
     nsCOMPtr<nsIURI> oldBaseURI = mCurrentBaseURI;
     nsCAutoString oldCharset(mCurrentCharset);
 
     // Store the base URI and the charset
-    mCurrentBaseURI = doc->GetBaseURL();
+    mCurrentBaseURI = doc->GetBaseURI();
     mCurrentCharset = doc->GetDocumentCharacterSet();
 
     // Does the caller want to fixup the referenced URIs and save those too?
@@ -3128,7 +3128,7 @@ nsWebBrowserPersist::FixupURI(nsAString &aURI)
     nsAutoString newValue;
 
     // remove username/password if present
-    fileAsURI->SetUserPass(NS_LITERAL_CSTRING(""));
+    fileAsURI->SetUserPass(EmptyCString());
 
     // reset node attribute 
     // Use relative or absolute links
@@ -3241,7 +3241,7 @@ nsWebBrowserPersist::FixupAnchor(nsIDOMNode *aNode)
                        mCurrentCharset.get(), relativeURI);
         if (NS_SUCCEEDED(rv) && newURI)
         {
-            newURI->SetUserPass(NS_LITERAL_CSTRING(""));
+            newURI->SetUserPass(EmptyCString());
             nsCAutoString uriSpec;
             newURI->GetSpec(uriSpec);
             attrNode->SetNodeValue(NS_ConvertUTF8toUCS2(uriSpec));

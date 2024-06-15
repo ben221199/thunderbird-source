@@ -504,7 +504,8 @@ nsresult NS_MsgEscapeEncodeURLPath(const PRUnichar *str, char **result)
 {
   NS_ENSURE_ARG_POINTER(str);
   NS_ENSURE_ARG_POINTER(result);
-  *result = nsEscape(NS_ConvertUCS2toUTF8(str).get(), url_Path);
+
+  *result = nsEscape(NS_ConvertUCS2toUTF8(str).get(), url_Path); 
   if (!*result) return NS_ERROR_OUT_OF_MEMORY;
   return NS_OK;
 }

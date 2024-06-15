@@ -22,6 +22,7 @@
  *                 Kipp Hickman <kipp@netscape.com>
  *                 Warren Harris <warren@netscape.com>
  *                 Dan Matejka <danm@netscape.com>
+ *                 David Bienvenu <bienvenu@mozilla.org>
  *  
  * 
  * Alternatively, the contents of this file may be used under the
@@ -51,6 +52,7 @@
 #include "nsIProxyObjectManager.h"
 #include "nsEventQueueUtils.h"
 #include "nsNetError.h"
+#include "nsLDAPOperation.h"
 
 const char kConsoleServiceContractId[] = "@mozilla.org/consoleservice;1";
 const char kDNSServiceContractId[] = "@mozilla.org/network/dns-service;1";
@@ -59,10 +61,10 @@ const char kDNSServiceContractId[] = "@mozilla.org/network/dns-service;1";
 //
 nsLDAPConnection::nsLDAPConnection()
     : mConnectionHandle(0),
-      mBindName(0),
       mPendingOperations(0),
       mRunnable(0),
       mSSL(PR_FALSE),
+      mVersion(nsILDAPConnection::VERSION3),
       mDNSRequest(0)
 {
 }
@@ -71,40 +73,7 @@ nsLDAPConnection::nsLDAPConnection()
 //
 nsLDAPConnection::~nsLDAPConnection()
 {
-  int rc;
-
-  PR_LOG(gLDAPLogModule, PR_LOG_DEBUG, ("unbinding\n"));
-
-  if (mConnectionHandle) {
-      // note that the ldap_unbind() call in the 5.0 version of the LDAP C SDK
-      // appears to be exactly identical to ldap_unbind_s(), so it may in fact
-      // still be synchronous
-      //
-      rc = ldap_unbind(mConnectionHandle);
-#ifdef PR_LOGGING
-      if (rc != LDAP_SUCCESS) {
-          PR_LOG(gLDAPLogModule, PR_LOG_WARNING, 
-                 ("nsLDAPConnection::~nsLDAPConnection: %s\n", 
-                  ldap_err2string(rc)));
-      }
-#endif
-  }
-
-  PR_LOG(gLDAPLogModule, PR_LOG_DEBUG, ("unbound\n"));
-
-  if (mPendingOperations) {
-      delete mPendingOperations;
-  }
-
-  // Cancel the DNS lookup if needed, and also drop the reference to the
-  // Init listener (if still there).
-  //
-  if (mDNSRequest) {
-      mDNSRequest->Cancel();
-      mDNSRequest = 0;
-  }
-  mInitListener = 0;
-
+  Close();
   // Release the reference to the runnable object.
   //
   NS_IF_RELEASE(mRunnable);
@@ -167,7 +136,7 @@ NS_IMETHODIMP
 nsLDAPConnection::Init(const char *aHost, PRInt32 aPort, PRBool aSSL,
                        const nsACString& aBindName, 
                        nsILDAPMessageListener *aMessageListener,
-                       nsISupports *aClosure)
+                       nsISupports *aClosure, PRUint32 aVersion)
 {
     nsCOMPtr<nsIDNSListener> selfProxy;
     nsresult rv;
@@ -186,13 +155,17 @@ nsLDAPConnection::Init(const char *aHost, PRInt32 aPort, PRBool aSSL,
 
     mClosure = aClosure;
 
-    // Save the port number for later use, once the DNS server(s) has
-    // resolved the host part.
+    // Save the port number, SSL flag, and protocol version for later
+    // use, once the DNS server(s) has resolved the host part.
     //
     mPort = aPort;
-
-    // Save the SSL flag for later use
     mSSL = aSSL;
+    if (aVersion != nsILDAPConnection::VERSION2 && 
+        aVersion != nsILDAPConnection::VERSION3) {
+        NS_ERROR("nsLDAPConnection::Init(): illegal version");
+        return NS_ERROR_ILLEGAL_VALUE;
+    }
+    mVersion = aVersion;
 
     // Save the Init listener reference, we need it when the async
     // DNS resolver has finished.
@@ -216,7 +189,6 @@ nsLDAPConnection::Init(const char *aHost, PRInt32 aPort, PRBool aSSL,
                  "get current event queue");
         return NS_ERROR_FAILURE;
     }
-
     // Do the pre-resolve of the hostname, using the DNS service. This
     // will also initialize the LDAP connection properly, once we have
     // the IPs resolved for the hostname. This includes creating the
@@ -264,6 +236,49 @@ nsLDAPConnection::Init(const char *aHost, PRInt32 aPort, PRBool aSSL,
         mDNSHost.Truncate();
     }
     return rv;
+}
+
+// this might get exposed to clients, so we've broken it
+// out of the destructor.
+void
+nsLDAPConnection::Close()
+{
+  int rc;
+
+  PR_LOG(gLDAPLogModule, PR_LOG_DEBUG, ("unbinding\n"));
+
+  if (mConnectionHandle) {
+      // note that the ldap_unbind() call in the 5.0 version of the LDAP C SDK
+      // appears to be exactly identical to ldap_unbind_s(), so it may in fact
+      // still be synchronous
+      //
+      rc = ldap_unbind(mConnectionHandle);
+#ifdef PR_LOGGING
+      if (rc != LDAP_SUCCESS) {
+          PR_LOG(gLDAPLogModule, PR_LOG_WARNING, 
+                 ("nsLDAPConnection::Close(): %s\n", 
+                  ldap_err2string(rc)));
+      }
+#endif
+      mConnectionHandle = nsnull;
+  }
+
+  PR_LOG(gLDAPLogModule, PR_LOG_DEBUG, ("unbound\n"));
+
+  if (mPendingOperations) {
+      delete mPendingOperations;
+      mPendingOperations = nsnull;
+  }
+
+  // Cancel the DNS lookup if needed, and also drop the reference to the
+  // Init listener (if still there).
+  //
+  if (mDNSRequest) {
+      mDNSRequest->Cancel();
+      mDNSRequest = 0;
+  }
+  mInitListener = 0;
+
 }
 
 NS_IMETHODIMP
@@ -330,7 +345,7 @@ nsLDAPConnection::GetErrorString(PRUnichar **_retval)
 
     // make a copy using the XPCOM shared allocator
     //
-    *_retval = ToNewUnicode(NS_ConvertUTF8toUCS2(rv));
+    *_retval = UTF8ToNewUnicode(nsDependentCString(rv));
     if (!*_retval) {
         return NS_ERROR_OUT_OF_MEMORY;
     }
@@ -507,6 +522,12 @@ nsLDAPConnection::InvokeMessageCallback(LDAPMessage *aMsgHandle,
     // from the connection queue.
     //
     if (aRemoveOpFromConnQ) {
+        nsCOMPtr <nsLDAPOperation> operation = 
+          getter_AddRefs(NS_STATIC_CAST(nsLDAPOperation *,
+                                        mPendingOperations->Get(key)));
+        // try to break cycles
+        if (operation)
+          operation->Clear();
         rv = mPendingOperations->Remove(key);
         if (NS_FAILED(rv)) {
             NS_ERROR("nsLDAPConnection::InvokeMessageCallback: unable to "
@@ -901,30 +922,49 @@ nsLDAPConnection::OnLookupComplete(nsIDNSRequest *aRequest,
             const int lDebug = 0;
             ldap_set_option(mConnectionHandle, LDAP_OPT_DEBUG_LEVEL, &lDebug);
 #endif
-        }
+
+            // the C SDK currently defaults to v2.  if we're to use v3, 
+            // tell it so.
+            //
+            int version;
+            switch (mVersion) {
+            case 2:
+                break;
+            case 3:
+                version = LDAP_VERSION3;
+                ldap_set_option(mConnectionHandle, LDAP_OPT_PROTOCOL_VERSION, 
+                                &version);
+		break;
+            default:
+                NS_ERROR("nsLDAPConnection::OnLookupComplete(): mVersion"
+                         " invalid");
+            }
 
 #ifdef MOZ_PSM
-        // This code sets up the current connection to use PSM for SSL
-        // functionality.  Making this use libssldap instead for
-        // non-browser user shouldn't be hard.
+            // This code sets up the current connection to use PSM for SSL
+            // functionality.  Making this use libssldap instead for
+            // non-browser user shouldn't be hard.
 
-        extern nsresult nsLDAPInstallSSL(LDAP *ld, const char *aHostName);
+            extern nsresult nsLDAPInstallSSL(LDAP *ld, const char *aHostName);
 
-        if (mSSL) {
-            if (ldap_set_option(mConnectionHandle, LDAP_OPT_SSL, LDAP_OPT_ON)
-                != LDAP_SUCCESS ) {
-                NS_ERROR("nsLDAPConnection::OnStopLookup(): Error configuring"
-                         " connection to use SSL");
-                rv = NS_ERROR_UNEXPECTED;
+            if (mSSL) {
+                if (ldap_set_option(mConnectionHandle, LDAP_OPT_SSL,
+                                    LDAP_OPT_ON) != LDAP_SUCCESS ) {
+                    NS_ERROR("nsLDAPConnection::OnStopLookup(): Error"
+                             " configuring connection to use SSL");
+                    rv = NS_ERROR_UNEXPECTED;
+                }
+
+                rv = nsLDAPInstallSSL(mConnectionHandle, mDNSHost.get());
+                if (NS_FAILED(rv)) {
+                    NS_ERROR("nsLDAPConnection::OnStopLookup(): Error"
+                             " installing secure LDAP routines for"
+                             " connection");
+                }
             }
-
-            rv = nsLDAPInstallSSL(mConnectionHandle, mDNSHost.get());
-            if (NS_FAILED(rv)) {
-                NS_ERROR("nsLDAPConnection::OnStopLookup(): Error installing"
-                         " secure LDAP routines for connection");
-            }
-        }
 #endif
+        }
+
         // Create a new runnable object, and increment the refcnt. The
         // thread will also hold a strong ref to the runnable, but we need
         // to make sure it doesn't get destructed until we are done with

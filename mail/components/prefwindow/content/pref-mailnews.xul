@@ -24,9 +24,8 @@
 <?xml-stylesheet href="chrome://communicator/skin/pref/pref.css" type="text/css"?>
 <?xml-stylesheet href="chrome://communicator/skin/" type="text/css"?>
 
-
 <!DOCTYPE overlay [
-  <!ENTITY % brandDTD SYSTEM "chrome://global/locale/brand.dtd" > %brandDTD;
+  <!ENTITY % brandingDTD SYSTEM "chrome://global/locale/brand.dtd" > %brandingDTD;
   <!ENTITY % dtd1 SYSTEM "chrome://messenger/locale/pref-mailnews.dtd" > %dtd1;
   <!ENTITY % dtd2 SYSTEM "chrome://messenger/locale/pref-notifications.dtd" > %dtd2;
 ]>
@@ -46,6 +45,10 @@
 #ifdef XP_WIN
     _elementIDs.push("mailnewsEnableMapi");
     _elementIDs.push("mailnewsEnableNews");
+#endif
+
+#ifdef XP_MACOSX
+    _elementIDs.push("newMailNotificationBounce");
 #endif
 
   ]]>
@@ -125,6 +128,12 @@
     <checkbox id="newMailNotificationAlert" label="&showAnimatedAlert.label;"
               prefstring="mail.biff.show_alert"
               accesskey="&showAnimatedAlert.accesskey;"/>
+
+#ifdef XP_MACOSX
+    <checkbox id="newMailNotificationBounce" label="&bounceSystemDockIcon.label;"
+              prefstring="mail.biff.animate_dock_icon"
+              accesskey="&bounceSystemDockIcon.accesskey;"/>
+#endif
     
     <checkbox id="newMailNotification" accesskey="&playSound.accesskey;"
          prefstring="mail.biff.play_sound" label="&playSound.label;"
@@ -139,7 +148,7 @@
       <vbox>
         <spacer flex="1"/>
         <hbox align="center">
-          <textbox flex="1" oninput="onCustomWavInput()" id="mailnewsSoundFileUrl" preftype="string"
+          <textbox readonly="true" flex="1" oninput="onCustomWavInput()" id="mailnewsSoundFileUrl" preftype="string"
                    prefstring="mail.biff.play_sound.url"/>
           <button id="browse" label="&browse.label;" filepickertitle="&browse.title;"
                   accesskey="&browse.accesskey;" oncommand="Browse()"/>

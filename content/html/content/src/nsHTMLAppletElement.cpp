@@ -54,7 +54,7 @@
 #endif
 
 
-class nsHTMLAppletElement : public nsGenericHTMLContainerElement,
+class nsHTMLAppletElement : public nsGenericHTMLElement,
                             public nsIDOMHTMLAppletElement
 {
 public:
@@ -65,25 +65,25 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
 
   // nsIDOMNode
-  NS_FORWARD_NSIDOMNODE_NO_CLONENODE(nsGenericHTMLContainerElement::)
+  NS_FORWARD_NSIDOMNODE_NO_CLONENODE(nsGenericHTMLElement::)
 
   // nsIDOMElement
-  NS_FORWARD_NSIDOMELEMENT(nsGenericHTMLContainerElement::)
+  NS_FORWARD_NSIDOMELEMENT(nsGenericHTMLElement::)
 
   // nsIDOMHTMLElement
-  NS_FORWARD_NSIDOMHTMLELEMENT(nsGenericHTMLContainerElement::)
+  NS_FORWARD_NSIDOMHTMLELEMENT(nsGenericHTMLElement::)
 
   // nsIDOMHTMLAppletElement
   NS_DECL_NSIDOMHTMLAPPLETELEMENT
 
-  NS_IMETHOD StringToAttribute(nsIAtom* aAttribute,
-                               const nsAString& aValue,
-                               nsHTMLValue& aResult);
+  virtual PRBool ParseAttribute(nsIAtom* aAttribute,
+                                const nsAString& aValue,
+                                nsAttrValue& aResult);
   NS_IMETHOD AttributeToString(nsIAtom* aAttribute,
                                const nsHTMLValue& aValue,
                                nsAString& aResult) const;
   NS_IMETHOD GetAttributeMappingFunction(nsMapRuleToAttributesFunc& aMapRuleFunc) const;
-  NS_IMETHOD_(PRBool) HasAttributeDependentStyle(const nsIAtom* aAttribute) const;
+  NS_IMETHOD_(PRBool) IsAttributeMapped(const nsIAtom* aAttribute) const;
 protected:
   PRBool mReflectedApplet;
 };
@@ -129,8 +129,7 @@ NS_IMPL_RELEASE_INHERITED(nsHTMLAppletElement, nsGenericElement)
 
 
 // QueryInterface implementation for nsHTMLAppletElement
-NS_HTML_CONTENT_INTERFACE_MAP_BEGIN(nsHTMLAppletElement,
-                                    nsGenericHTMLContainerElement)
+NS_HTML_CONTENT_INTERFACE_MAP_BEGIN(nsHTMLAppletElement, nsGenericHTMLElement)
   NS_INTERFACE_MAP_ENTRY(nsIDOMHTMLAppletElement)
   NS_INTERFACE_MAP_ENTRY_CONTENT_CLASSINFO(HTMLAppletElement)
 NS_HTML_CONTENT_INTERFACE_MAP_END
@@ -155,7 +154,7 @@ nsHTMLAppletElement::CloneNode(PRBool aDeep, nsIDOMNode** aReturn)
   if (NS_FAILED(rv))
     return rv;
 
-  CopyInnerTo(this, it, aDeep);
+  CopyInnerTo(it, aDeep);
 
   *aReturn = NS_STATIC_CAST(nsIDOMNode *, it);
 
@@ -170,27 +169,26 @@ NS_IMPL_STRING_ATTR(nsHTMLAppletElement, Archive, archive)
 NS_IMPL_STRING_ATTR(nsHTMLAppletElement, Code, code)
 NS_IMPL_URI_ATTR(nsHTMLAppletElement, CodeBase, codebase)
 NS_IMPL_STRING_ATTR(nsHTMLAppletElement, Height, height)
-NS_IMPL_PIXEL_ATTR(nsHTMLAppletElement, Hspace, hspace)
+NS_IMPL_INT_ATTR(nsHTMLAppletElement, Hspace, hspace)
 NS_IMPL_STRING_ATTR(nsHTMLAppletElement, Name, name)
 NS_IMPL_STRING_ATTR(nsHTMLAppletElement, Object, object)
-NS_IMPL_PIXEL_ATTR(nsHTMLAppletElement, Vspace, vspace)
+NS_IMPL_INT_ATTR(nsHTMLAppletElement, Vspace, vspace)
 NS_IMPL_STRING_ATTR(nsHTMLAppletElement, Width, width)
 
-NS_IMETHODIMP
-nsHTMLAppletElement::StringToAttribute(nsIAtom* aAttribute,
-                                       const nsAString& aValue,
-                                       nsHTMLValue& aResult)
+PRBool
+nsHTMLAppletElement::ParseAttribute(nsIAtom* aAttribute,
+                                    const nsAString& aValue,
+                                    nsAttrValue& aResult)
 {
   if (aAttribute == nsHTMLAtoms::align) {
-    if (nsGenericHTMLElement::ParseAlignValue(aValue, aResult)) {
-      return NS_CONTENT_ATTR_HAS_VALUE;
-    }
+    return nsGenericHTMLElement::ParseAlignValue(aValue, aResult);
   }
-  else if (nsGenericHTMLElement::ParseImageAttribute(aAttribute,
-                                                     aValue, aResult)) {
-    return NS_CONTENT_ATTR_HAS_VALUE;
+  if (nsGenericHTMLElement::ParseImageAttribute(aAttribute,
+                                                aValue, aResult)) {
+    return PR_TRUE;
   }
-  return NS_CONTENT_ATTR_NOT_THERE;
+
+  return nsGenericHTMLElement::ParseAttribute(aAttribute, aValue, aResult);
 }
 
 NS_IMETHODIMP
@@ -204,16 +202,11 @@ nsHTMLAppletElement::AttributeToString(nsIAtom* aAttribute,
       return NS_CONTENT_ATTR_HAS_VALUE;
     }
   }
-  else if (nsGenericHTMLElement::ImageAttributeToString(aAttribute,
-                                                          aValue, aResult)) {
-    return NS_CONTENT_ATTR_HAS_VALUE;
-  }
-  return nsGenericHTMLContainerElement::AttributeToString(aAttribute, aValue,
-                                                          aResult);
+  return nsGenericHTMLElement::AttributeToString(aAttribute, aValue, aResult);
 }
 
 static void
-MapAttributesIntoRule(const nsIHTMLMappedAttributes* aAttributes,
+MapAttributesIntoRule(const nsMappedAttributes* aAttributes,
                       nsRuleData* aData)
 {
   nsGenericHTMLElement::MapImageBorderAttributeInto(aAttributes, aData);
@@ -224,9 +217,9 @@ MapAttributesIntoRule(const nsIHTMLMappedAttributes* aAttributes,
 }
 
 NS_IMETHODIMP_(PRBool)
-nsHTMLAppletElement::HasAttributeDependentStyle(const nsIAtom* aAttribute) const
+nsHTMLAppletElement::IsAttributeMapped(const nsIAtom* aAttribute) const
 {
-  static const AttributeDependenceEntry* const map[] = {
+  static const MappedAttributeEntry* const map[] = {
     sCommonAttributeMap,
     sImageMarginSizeAttributeMap,
     sImageAlignAttributeMap,

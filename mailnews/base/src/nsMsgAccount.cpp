@@ -249,13 +249,13 @@ nsMsgAccount::createIdentities()
   nsCOMPtr<nsIMsgAccountManager> accountManager = 
            do_GetService(NS_MSGACCOUNTMANAGER_CONTRACTID, &rv);
   if (NS_FAILED(rv)) return rv;
-    
+
   // const-casting because nsCRT::strtok whacks the string,
   // but safe because identityKey is a copy
   char* newStr;
-  char* rest = NS_CONST_CAST(char*,identityKey.get());
+  char* rest = identityKey.BeginWriting();
   char* token = nsCRT::strtok(rest, ",", &newStr);
-    
+
   // temporaries used inside the loop
   nsCOMPtr<nsIMsgIdentity> identity;
   nsCAutoString key;
@@ -276,7 +276,7 @@ nsMsgAccount::createIdentities()
     // advance to next key, if any
     token = nsCRT::strtok(newStr, ",", &newStr);
   }
-
+    
   return rv;
 }
 
@@ -349,7 +349,7 @@ nsMsgAccount::AddIdentity(nsIMsgIdentity *identity)
     nsCAutoString identitiesKeyPref("mail.account.");
     identitiesKeyPref.Append(m_accountKey);
     identitiesKeyPref.Append(".identities");
-    
+      
     nsXPIDLCString identityList;
     m_prefs->GetCharPref(identitiesKeyPref.get(),
                          getter_Copies(identityList));
@@ -365,7 +365,7 @@ nsMsgAccount::AddIdentity(nsIMsgIdentity *identity)
       // const-casting because nsCRT::strtok whacks the string,
       // but safe because identityList is a copy
       char *newStr;
-      char *rest = NS_CONST_CAST(char*,identityList.get());
+      char *rest = identityList.BeginWriting();
       char *token = nsCRT::strtok(rest, ",", &newStr);
       
       // look for the identity key that we're adding
@@ -378,8 +378,8 @@ nsMsgAccount::AddIdentity(nsIMsgIdentity *identity)
 
         token = nsCRT::strtok(newStr, ",", &newStr);
       }
-  }
-  
+    }
+
     // if it didn't already exist, append it
     if (!foundIdentity) {
       if (newIdentityList.IsEmpty())
@@ -395,7 +395,7 @@ nsMsgAccount::AddIdentity(nsIMsgIdentity *identity)
 
   // now add it to the in-memory list
   rv = addIdentityInternal(identity);
-
+  
   if (!m_defaultIdentity)
     SetDefaultIdentity(identity);
   

@@ -1,9 +1,9 @@
-/.cvsignore/1.1/Sat Sep 28 00:38:02 2002//TTHUNDERBIRD_0_5_RELEASE
-/Makefile.in/1.3/Sat Aug  9 10:07:56 2003//TTHUNDERBIRD_0_5_RELEASE
-/nsIAutoCompleteController.idl/1.4/Fri Oct 11 20:55:52 2002//TTHUNDERBIRD_0_5_RELEASE
-/nsIAutoCompleteInput.idl/1.3/Sun Jul 13 02:27:25 2003//TTHUNDERBIRD_0_5_RELEASE
-/nsIAutoCompletePopup.idl/1.1/Sat Sep 28 00:38:03 2002//TTHUNDERBIRD_0_5_RELEASE
-/nsIAutoCompleteResult.idl/1.1/Sat Sep 28 00:38:03 2002//TTHUNDERBIRD_0_5_RELEASE
-/nsIAutoCompleteResultTypes.idl/1.1/Sat Aug  9 10:07:57 2003//TTHUNDERBIRD_0_5_RELEASE
-/nsIAutoCompleteSearch.idl/1.2/Mon Aug  4 07:20:06 2003//TTHUNDERBIRD_0_5_RELEASE
+/.cvsignore/1.1/Sat Sep 28 00:38:02 2002//TTHUNDERBIRD_0_6_RELEASE
+/Makefile.in/1.3/Sat Aug  9 10:07:56 2003//TTHUNDERBIRD_0_6_RELEASE
+/nsIAutoCompleteController.idl/1.5/Thu Mar 18 01:52:50 2004//TTHUNDERBIRD_0_6_RELEASE
+/nsIAutoCompleteInput.idl/1.3/Sun Jul 13 02:27:25 2003//TTHUNDERBIRD_0_6_RELEASE
+/nsIAutoCompletePopup.idl/1.1/Sat Sep 28 00:38:03 2002//TTHUNDERBIRD_0_6_RELEASE
+/nsIAutoCompleteResult.idl/1.1/Sat Sep 28 00:38:03 2002//TTHUNDERBIRD_0_6_RELEASE
+/nsIAutoCompleteResultTypes.idl/1.2/Thu Mar 18 01:52:50 2004//TTHUNDERBIRD_0_6_RELEASE
+/nsIAutoCompleteSearch.idl/1.2/Mon Aug  4 07:20:06 2003//TTHUNDERBIRD_0_6_RELEASE
 D

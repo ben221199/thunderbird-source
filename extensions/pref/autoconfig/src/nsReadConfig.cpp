@@ -37,6 +37,10 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+#ifdef MOZ_LOGGING
+// sorry, this has to be before the pre-compiled header
+#define FORCE_PR_LOG /* Allow logging in the release build */
+#endif
 #include "nsReadConfig.h"
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsIAppShellService.h"
@@ -98,7 +102,6 @@ static void DisplayError(void)
 
     promptService->Alert(nsnull, title.get(), err.get());
 }
-
 
 // nsISupports Implementation
 
@@ -208,12 +211,13 @@ nsresult nsReadConfig::readConfigFile()
     PRInt32 obscureValue = 0;
     (void) prefBranch->GetIntPref("general.config.obscure_value", &obscureValue);
     PR_LOG(MCD, PR_LOG_DEBUG, ("evaluating .cfg file %s with obscureValue %d\n", lockFileName.get(), obscureValue));
-    rv = openAndEvaluateJSFile(lockFileName.get(), obscureValue, PR_TRUE, PR_TRUE);
-    if (NS_FAILED(rv)) 
+    rv = openAndEvaluateJSFile(lockFileName.get(), PR_TRUE, obscureValue, PR_TRUE);
+    if (NS_FAILED(rv))
     {
       PR_LOG(MCD, PR_LOG_DEBUG, ("error evaluating .cfg file %s %x\n", lockFileName.get(), rv));
       return rv;
     }
+    
     rv = prefBranch->GetCharPref("general.config.filename", 
                                   getter_Copies(lockFileName));
     if (NS_FAILED(rv))
@@ -258,8 +262,8 @@ nsresult nsReadConfig::readConfigFile()
 } // ReadConfigFile
 
 
-nsresult nsReadConfig::openAndEvaluateJSFile(const char *aFileName, PRInt32 obscureValue,
-                                             PRBool isEncoded, 
+nsresult nsReadConfig::openAndEvaluateJSFile(const char *aFileName, PRBool isEncoded, 
+                                             PRInt32 obscureValue,
                                              PRBool isBinDir)
 {
     nsresult rv;
@@ -317,7 +321,7 @@ nsresult nsReadConfig::openAndEvaluateJSFile(const char *aFileName, PRInt32 obsc
         fileURL = NS_LITERAL_CSTRING("file:///") + path;
         rv = EvaluateAdminConfigScript(buf, amt, fileURL.get(), 
                                        PR_FALSE, PR_TRUE, 
-                                       isEncoded);
+                                       isEncoded ? PR_TRUE:PR_FALSE);
     }
     inStr->Close();
     PR_Free(buf);

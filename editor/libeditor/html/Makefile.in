@@ -43,7 +43,7 @@ REQUIRES	= xpcom \
 		  gfx \
               imglib2 \
 		  widget \
-              view \
+		  view \
               exthandler \
 		  $(NULL)
 
@@ -62,7 +62,7 @@ CPPSRCS  = \
            nsHTMLObjectResizer.cpp        \
            nsHTMLEditorMouseListener.cpp  \
            nsHTMLInlineTableEditor.cpp    \
-	     nsHTMLURIRefObject.cpp         \
+           nsHTMLURIRefObject.cpp         \
            nsTableEditor.cpp              \
            nsWSRunObject.cpp              \
            TypeInState.cpp                \

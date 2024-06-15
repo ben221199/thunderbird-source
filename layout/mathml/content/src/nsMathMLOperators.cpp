@@ -232,7 +232,7 @@ SetOperator(OperatorData*   aOperatorData,
 #endif
   // Loop over the space-delimited list of attributes to get the name:value pairs
   aAttributes.Append(kNullCh);  // put an extra null at the end
-  PRUnichar* start = (PRUnichar*)(const PRUnichar*)aAttributes.get();
+  PRUnichar* start = aAttributes.BeginWriting();
   PRUnichar* end   = start;
   while ((kNullCh != *start) && (kDashCh != *start)) {
     name.SetLength(0);
@@ -280,7 +280,7 @@ InitOperators(void)
   nsresult rv;
   nsCOMPtr<nsIPersistentProperties> mathfontProp;
   rv = NS_LoadPersistentPropertiesFromURISpec(getter_AddRefs(mathfontProp),
-       NS_LITERAL_CSTRING("resource:/res/fonts/mathfont.properties"));
+       NS_LITERAL_CSTRING("resource://gre/res/fonts/mathfont.properties"));
   if NS_FAILED(rv) return rv;
 
   // Get the list of invariant chars

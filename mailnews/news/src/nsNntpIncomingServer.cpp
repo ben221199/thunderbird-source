@@ -118,9 +118,7 @@ nsNntpIncomingServer::nsNntpIncomingServer() : nsMsgLineBuffer(nsnull, PR_FALSE)
   mSubscribedAtom = do_GetAtom("subscribed");
   mNntpAtom = do_GetAtom("nntp");
 
-  // our filters are on the server, they are on a per newsgroup basis
-  // but this will make the filter UI enable for news accounts
-  // which is what we want
+  // we have server wide and per group filters
   m_canHaveFilters = PR_TRUE;
 
   SetupNewsrcSaveTimer();
@@ -611,13 +609,6 @@ nsNntpIncomingServer::PerformExpand(nsIMsgWindow *aMsgWindow)
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsNntpIncomingServer::GetFilterList(nsIMsgWindow *aMsgWindow, nsIMsgFilterList **aResult)
-{
-  // news servers don't have filters, each newsgroup does.
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
 NS_IMETHODIMP 
 nsNntpIncomingServer::GetNumGroupsNeedingCounts(PRInt32 *aNumGroupsNeedingCounts)
 {
@@ -1004,7 +995,7 @@ nsNntpIncomingServer::AddNewsgroupToList(const char *aName)
 {
 	nsresult rv;
 
-	rv = AddTo(aName, PR_FALSE, PR_TRUE);
+	rv = AddTo(aName, PR_FALSE, PR_TRUE, PR_TRUE);
 	if (NS_FAILED(rv)) return rv;
 	return NS_OK;
 }
@@ -1112,7 +1103,7 @@ nsNntpIncomingServer::UpdateSubscribed()
 }
 
 NS_IMETHODIMP
-nsNntpIncomingServer::AddTo(const char *aName, PRBool addAsSubscribed, PRBool changeIfExists)
+nsNntpIncomingServer::AddTo(const char *aName, PRBool addAsSubscribed, PRBool aSubscribable, PRBool changeIfExists)
 {
     nsresult rv = EnsureInner();
     NS_ENSURE_SUCCESS(rv,rv);
@@ -1126,7 +1117,7 @@ nsNntpIncomingServer::AddTo(const char *aName, PRBool addAsSubscribed, PRBool ch
     rv = AddGroupOnServer(escapedName);
     NS_ENSURE_SUCCESS(rv,rv);
  
-    rv = mInner->AddTo(escapedName,addAsSubscribed,changeIfExists);
+    rv = mInner->AddTo(escapedName,addAsSubscribed, aSubscribable, changeIfExists);
     NS_ENSURE_SUCCESS(rv,rv);
 
     PR_FREEIF(escapedName);
@@ -1236,7 +1227,7 @@ nsNntpIncomingServer::HandleLine(char* line, PRUint32 line_size)
 		char *commaPos = PL_strchr(line,',');
 		if (commaPos) *commaPos = 0;
 
-		nsresult rv = AddTo(line, PR_FALSE, PR_TRUE);
+		nsresult rv = AddTo(line, PR_FALSE, PR_TRUE, PR_TRUE);
 		NS_ASSERTION(NS_SUCCEEDED(rv),"failed to add line");
 		if (NS_SUCCEEDED(rv)) {
           // since we've seen one group, we can claim we've loaded the hostinfo file
@@ -1319,6 +1310,14 @@ nsNntpIncomingServer::IsSubscribed(const char *path, PRBool *aIsSubscribed)
     nsresult rv = EnsureInner();
     NS_ENSURE_SUCCESS(rv,rv);
     return mInner->IsSubscribed(path, aIsSubscribed);
+}
+
+NS_IMETHODIMP
+nsNntpIncomingServer::IsSubscribable(const char *path, PRBool *aIsSubscribable)
+{
+    nsresult rv = EnsureInner();
+    NS_ENSURE_SUCCESS(rv,rv);
+    return mInner->IsSubscribable(path, aIsSubscribable);
 }
 
 NS_IMETHODIMP

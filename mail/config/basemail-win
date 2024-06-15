@@ -54,7 +54,6 @@ components\msgsmime.dll
 chrome\qute.jar
 chrome\en-US-mail.jar
 chrome\en-win.jar
-chrome\overlayinfo\messenger\content\overlays.rdf
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Default Profile Settings
@@ -62,6 +61,7 @@ chrome\overlayinfo\messenger\content\overlays.rdf
 
 ; default pref files
 defaults\pref\*
+greprefs\*
 defaults\messenger\mailViews.dat
 defaults\profile\localstore.rdf
 defaults\profile\mimeTypes.rdf
@@ -105,9 +105,15 @@ components\xpinstall.xpt
 components\xmlextras.dll
 components\xmlextras.xpt
 
+; offline extension (may not be present in the build, that's ok)
+chrome\offline.jar
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Base Package Files
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+LICENSE.txt
+README.txt
 
 ; NSPR:
 nspr4.dll      
@@ -122,6 +128,8 @@ components\jsurl.xpt
 ; XPCOM:
 xpcom.dll
 xpcom_compat.dll
+xpistub.dll
+xpicleanup.exe
 components\xpcom_compat_c.dll
 components\xpcom_base.xpt
 components\xpcom_components.xpt
@@ -178,8 +186,7 @@ components\appshell.xpt
 components\docshell.dll                 
 components\docshell_base.xpt            
 components\uriloader.xpt
-components\chrome.dll                   
-components\chrome.xpt                   
+components\chrome.dll                 
 components\webbrwsr.dll              
 components\webBrowser_core.xpt
 components\embedcomponents.dll
@@ -215,7 +222,6 @@ components\unicharutil.xpt
 components\ucnative.xpt
 
 ; dom
-components\jsdom.dll   
 components\dom.xpt                      
 components\dom_base.xpt
 components\dom_core.xpt
@@ -289,7 +295,6 @@ components\nsprefm.dll
 components\prefmigr.xpt
 components\proxyObject.xpt
 components\exthandler.xpt
-components\util.xpt
 components\embed_base.xpt
 components\webshell_idls.xpt
 components\widget.xpt

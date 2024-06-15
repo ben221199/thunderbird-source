@@ -249,6 +249,8 @@ NS_IMETHODIMP nsAbMDBDirectory::Init(const char* aURI)
 
     mIsQueryURI = PR_TRUE;
   }
+  else
+    mIsQueryURI = PR_FALSE;
 
   return rv;
 }
@@ -327,16 +329,15 @@ NS_IMETHODIMP nsAbMDBDirectory::AddDirectory(const char *uriName, nsIAbDirectory
 
 NS_IMETHODIMP nsAbMDBDirectory::GetDirUri(char **uri)
 {
-  if (uri)
-  {
-    if (mURI)
-      *uri = nsCRT::strdup(mURI);
-    else
-      *uri = nsCRT::strdup("");
-    return NS_OK;
-  }
-  else
-    return NS_RDF_NO_VALUE;
+  NS_ASSERTION(uri, "Null out param");
+  NS_ASSERTION(!mURI.IsEmpty(), "Not initialized?");
+
+  *uri = ToNewCString(mURI);
+
+  if (!*uri)
+    return NS_ERROR_OUT_OF_MEMORY;
+
+  return NS_OK;
 }
 
 
@@ -381,15 +382,16 @@ NS_IMETHODIMP nsAbMDBDirectory::GetChildCards(nsIEnumerator* *result)
     return array->Enumerate(result);
   }
 
-  if (mURI && mIsMailingList == -1)
+  NS_ASSERTION(!mURI.IsEmpty(), "Not Initialized?");
+  if (mIsMailingList == -1)
   {
     /* directory URIs are of the form
      * moz-abmdbdirectory://foo
      * mailing list URIs are of the form
      * moz-abmdbdirectory://foo/bar
      */
-    NS_ENSURE_TRUE(strlen(mURI) > kMDBDirectoryRootLen, NS_ERROR_UNEXPECTED);
-    if (strchr(mURI + kMDBDirectoryRootLen, '/'))
+    NS_ENSURE_TRUE(mURI.Length() > kMDBDirectoryRootLen, NS_ERROR_UNEXPECTED);
+    if (strchr(mURI.get() + kMDBDirectoryRootLen, '/'))
       mIsMailingList = 1;
     else
       mIsMailingList = 0;
@@ -493,7 +495,7 @@ NS_IMETHODIMP nsAbMDBDirectory::DeleteCards(nsISupportsArray *cards)
             //to do, get mailing list dir side uri and notify rdf to remove it
             PRUint32 rowID;
             dbcard->GetDbRowID(&rowID);
-            char *listUri = PR_smprintf("%s/MailList%ld", mURI, rowID);
+            char *listUri = PR_smprintf("%s/MailList%ld", mURI.get(), rowID);
             if (listUri)
             {
               nsresult rv = NS_OK;
@@ -637,6 +639,8 @@ nsresult nsAbMDBDirectory::InternalAddMailList(nsIAbDirectory *list, PRUint32 *k
   {
     // XXX fix this.
     nsAbMDBDirProperty* dblistproperty = new nsAbMDBDirProperty ();
+    if (!dblistproperty)
+      return NS_ERROR_OUT_OF_MEMORY;
     NS_ADDREF(dblistproperty);
     nsCOMPtr<nsIAbDirectory> newlist = getter_AddRefs(NS_STATIC_CAST(nsIAbDirectory*, dblistproperty));
     newlist->CopyMailList(list);
@@ -645,7 +649,7 @@ nsresult nsAbMDBDirectory::InternalAddMailList(nsIAbDirectory *list, PRUint32 *k
   }
 
   if (!key)
-  mDatabase->CreateMailListAndAddToDB(list, PR_TRUE);
+    mDatabase->CreateMailListAndAddToDB(list, PR_TRUE);
   else
     mDatabase->CreateMailListAndAddToDBWithKey(list, PR_TRUE, key);
   mDatabase->Commit(nsAddrDBCommitType::kLargeCommit);
@@ -654,7 +658,7 @@ nsresult nsAbMDBDirectory::InternalAddMailList(nsIAbDirectory *list, PRUint32 *k
   dblist->GetDbRowID(&dbRowID);
 
   nsCAutoString listUri;
-  listUri = nsDependentCString(mURI) + NS_LITERAL_CSTRING("/MailList");
+  listUri = mURI + NS_LITERAL_CSTRING("/MailList");
   listUri.AppendInt(dbRowID);
 
   nsCOMPtr<nsIAbDirectory> newList;
@@ -732,15 +736,16 @@ NS_IMETHODIMP nsAbMDBDirectory::DropCard(nsIAbCard* aCard, PRBool needToCopyCard
   if (!isNormal)
     return NS_OK;
 
-  if (mURI && mIsMailingList == -1)
+  NS_ASSERTION(!mURI.IsEmpty(), "Not initialized?");
+  if (mIsMailingList == -1)
   {
     /* directory URIs are of the form
      * moz-abmdbdirectory://foo
      * mailing list URIs are of the form
      * moz-abmdbdirectory://foo/bar
      */
-    NS_ENSURE_TRUE(strlen(mURI) > kMDBDirectoryRootLen, NS_ERROR_UNEXPECTED);
-    if (strchr(mURI + kMDBDirectoryRootLen, '/'))
+    NS_ENSURE_TRUE(mURI.Length() > kMDBDirectoryRootLen, NS_ERROR_UNEXPECTED);
+    if (strchr(mURI.get() + kMDBDirectoryRootLen, '/'))
       mIsMailingList = 1;
     else
       mIsMailingList = 0;
@@ -979,13 +984,15 @@ nsresult nsAbMDBDirectory::OnSearchFoundCard (nsIAbCard* card)
 
 nsresult nsAbMDBDirectory::GetAbDatabase()
 {
-  if (!mDatabase && mURI) {
+  NS_ASSERTION(!mURI.IsEmpty(), "Not initialized?");
+
+  if (!mDatabase) {
     nsresult rv;
 
     nsCOMPtr<nsIAddressBook> addressBook = do_GetService(NS_ADDRESSBOOK_CONTRACTID, &rv);
     NS_ENSURE_SUCCESS(rv,rv);
 
-    rv = addressBook->GetAbDatabaseFromURI(mURI, getter_AddRefs(mDatabase));
+    rv = addressBook->GetAbDatabaseFromURI(mURI.get(), getter_AddRefs(mDatabase));
     NS_ENSURE_SUCCESS(rv,rv);
 
     rv = mDatabase->AddListener(this);

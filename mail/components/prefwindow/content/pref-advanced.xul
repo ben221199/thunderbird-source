@@ -62,7 +62,7 @@
                        "emailCollectionOutgoing", "localDirectoriesList",
                                               
                        // general settings
-                       "markAsRead", "markAsReadDelay", "showFolderPaneColumns",
+                       "showCondensedAddresses", "markAsRead", "markAsReadDelay", "showFolderPaneColumns",
                                               
                        // connection
                        "networkProxyType",
@@ -95,7 +95,7 @@
 
     <!-- Password management -->
     <expander id="passwordManagement" label="&signonHeader.label;" open="true" persist="open" clearhidden="true">
-      <hbox align="center" pack="end">
+      <hbox id="passwordManager" align="center" pack="end">
         <label class="expanderDescription" value="&signonDescription.label;" flex="1"/>
         <button label="&viewSignons.label;" accesskey="&viewSignons.accesskey;"
                 oncommand="editPasswords();"
@@ -125,6 +125,9 @@
 
     <!-- Message Display Extras  -->
     <expander id="generalSettings" label="&generalSettings.label;" open="true" persist="open" clearhidden="true">
+      <hbox align="center" pack="start">
+        <checkbox id="showCondensedAddresses" label="&showCondensedAddresses.label;" prefstring="mail.showCondensedAddresses"/>
+      </hbox> 
       <hbox align="center" pack="start">
         <checkbox id="markAsRead" label="&markAsRead.label;" prefstring="mailnews.mark_message_read.delay"/>
         <textbox  id="markAsReadDelay" size="2" preftype="int" prefstring="mailnews.mark_message_read.delay.interval"/>

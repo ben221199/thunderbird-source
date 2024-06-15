@@ -43,8 +43,6 @@
 #include "nsIPop3IncomingServer.h"
 #include "nsIMsgMailSession.h"
 
-#include "nsIPref.h"
-
 #include "nsPop3URL.h"
 #include "nsPop3Sink.h"
 #include "nsPop3Protocol.h"
@@ -69,7 +67,6 @@
 #define PREF_MAIL_ROOT_POP3 "mail.root.pop3"        // old - for backward compatibility only
 #define PREF_MAIL_ROOT_POP3_REL "mail.root.pop3-rel"
 
-static NS_DEFINE_CID(kPrefCID, NS_PREF_CID);
 static NS_DEFINE_CID(kPop3UrlCID, NS_POP3URL_CID);
 static NS_DEFINE_CID(kRDFServiceCID, NS_RDFSERVICE_CID);
 
@@ -324,7 +321,8 @@ NS_IMETHODIMP nsPop3Service::NewURI(const nsACString &aSpec,
     popSpec += ":";
     popSpec.AppendInt(port);
     popSpec += "?";
-    const char *uidl = PL_strstr(PromiseFlatCString(aSpec).get(), "uidl=");
+    const nsCString &flatSpec = PromiseFlatCString(aSpec);
+    const char *uidl = PL_strstr(flatSpec.get(), "uidl=");
     if (!uidl) return NS_ERROR_FAILURE;
     popSpec += uidl;
     nsCOMPtr<nsIUrlListener> urlListener = do_QueryInterface(folder, &rv);

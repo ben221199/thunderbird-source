@@ -121,6 +121,9 @@
 #include "nsIExternalProtocolService.h"
 #include "nsCExternalHandlerService.h"
 
+// Used in the fixup code
+#include "prnetdb.h"
+
 #ifdef NS_DEBUG
 /**
  * Note: the log module is created during initialization which
@@ -167,7 +170,7 @@ nsWebShell::nsWebShell() : nsDocShell()
   ++gNumberOfWebShells;
 #endif
 #ifdef DEBUG
-    printf("WEBSHELL+ = %ld\n", gNumberOfWebShells);
+    printf("++WEBSHELL == %ld\n", gNumberOfWebShells);
 #endif
 
   mThread = nsnull;
@@ -213,7 +216,7 @@ nsWebShell::~nsWebShell()
   --gNumberOfWebShells;
 #endif
 #ifdef DEBUG
-  printf("WEBSHELL- = %ld\n", gNumberOfWebShells);
+  printf("--WEBSHELL == %ld\n", gNumberOfWebShells);
 #endif
 }
 
@@ -352,40 +355,6 @@ nsWebShell::GetDocumentLoader(nsIDocumentLoader*& aResult)
 
 //----------------------------------------------------------------------
 // Web Shell Services API
-
-NS_IMETHODIMP
-nsWebShell::LoadDocument(const char* aURL,
-                         const char* aCharset,
-                         PRInt32 aSource)
-{
-  // XXX hack. kee the aCharset and aSource wait to pick it up
-  nsCOMPtr<nsIContentViewer> cv;
-  NS_ENSURE_SUCCESS(GetContentViewer(getter_AddRefs(cv)), NS_ERROR_FAILURE);
-  if (cv)
-  {
-    nsCOMPtr<nsIMarkupDocumentViewer> muDV = do_QueryInterface(cv);  
-    if (muDV)
-    {
-      PRInt32 hint;
-      muDV->GetHintCharacterSetSource(&hint);
-      if( aSource > hint ) 
-      {
-        muDV->SetHintCharacterSet(nsDependentCString(aCharset));
-        muDV->SetHintCharacterSetSource(aSource);
-        if(eCharsetReloadRequested != mCharsetReloadState) 
-        {
-          mCharsetReloadState = eCharsetReloadRequested;
-          LoadURI(NS_ConvertASCIItoUCS2(aURL).get(),  // URI string
-                  LOAD_FLAGS_NONE,                    // Load flags
-                  nsnull,                             // Referring URI
-                  nsnull,                             // Post data stream
-                  nsnull);                            // Header stream
-        }
-      }
-    }
-  }
-  return NS_OK;
-}
 
 //This functions is only called when a new charset is detected in loading a document. 
 //Its name should be changed to "CharsetReloadDocument"
@@ -630,7 +599,7 @@ nsWebShell::OnLinkClickSync(nsIContent *aContent,
   nsCOMPtr<nsIDocument> refererDoc(do_QueryInterface(refererOwnerDoc));
   NS_ENSURE_TRUE(refererDoc, NS_ERROR_UNEXPECTED);
 
-  nsIURI *referer = refererDoc->GetDocumentURL();
+  nsIURI *referer = refererDoc->GetDocumentURI();
 
   // referer could be null here in some odd cases, but that's ok,
   // we'll just load the link w/o sending a referer in those cases.
@@ -722,7 +691,7 @@ nsWebShell::OnLeaveLink()
 
   if (browserChrome)  {
       rv = browserChrome->SetStatus(nsIWebBrowserChrome::STATUS_LINK,
-                                    NS_LITERAL_STRING("").get());
+                                    EmptyString().get());
   }
   return rv;
 }
@@ -742,11 +711,8 @@ nsWebShell::GetLinkState(nsIURI* aLinkURI, nsLinkState& aState)
   if (!mGlobalHistory)
     return NS_OK;
 
-  nsCAutoString spec;
-  aLinkURI->GetSpec(spec);
-
   PRBool isVisited;
-  NS_ENSURE_SUCCESS(mGlobalHistory->IsVisited(spec.get(), &isVisited),
+  NS_ENSURE_SUCCESS(mGlobalHistory->IsVisited(aLinkURI, &isVisited),
                     NS_ERROR_FAILURE);
   if (isVisited)
     aState = eLinkState_Visited;
@@ -826,17 +792,12 @@ nsresult nsWebShell::EndPageLoad(nsIWebProgress *aProgress,
       //
       // First try keyword fixup
       //
-      if (aStatus == NS_ERROR_UNKNOWN_HOST ||
-          aStatus == NS_ERROR_CONNECTION_REFUSED ||
-          aStatus == NS_ERROR_NET_TIMEOUT ||
-          aStatus == NS_ERROR_NET_RESET)
+      if (aStatus == NS_ERROR_UNKNOWN_HOST)  
       {
         PRBool keywordsEnabled = PR_FALSE;
 
-        if(mPrefs) {
-          rv = mPrefs->GetBoolPref("keyword.enabled", &keywordsEnabled);
-          if (NS_FAILED(rv)) return rv;
-        }
+        if (mPrefs && NS_FAILED(mPrefs->GetBoolPref("keyword.enabled", &keywordsEnabled)))
+            keywordsEnabled = PR_FALSE;
 
         nsCAutoString host;
         url->GetHost(host);
@@ -860,12 +821,19 @@ nsresult nsWebShell::EndPageLoad(nsIWebProgress *aProgress,
             keywordsEnabled = PR_FALSE;
         }
 
+        // Don't perform fixup on an IP address
+        PRNetAddr addr;
+        if(PR_StringToNetAddr(host.get(), &addr) == PR_SUCCESS) {
+            keywordsEnabled = PR_FALSE;
+        }
+
         if(keywordsEnabled && (-1 == dotLoc)) {
           // only send non-qualified hosts to the keyword server
-          nsAutoString keywordSpec; keywordSpec.AssignWithConversion("keyword:");
-          keywordSpec.Append(NS_ConvertUTF8toUCS2(host));
+          nsCAutoString keywordSpec("keyword:");
+          keywordSpec += host;
 
-          NS_NewURI(getter_AddRefs(newURI), keywordSpec, nsnull);
+          NS_NewURI(getter_AddRefs(newURI),
+                    keywordSpec, nsnull);
         } // end keywordsEnabled
       }
 

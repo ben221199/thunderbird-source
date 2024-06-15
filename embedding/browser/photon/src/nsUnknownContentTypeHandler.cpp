@@ -101,14 +101,14 @@ NS_IMETHODIMP nsUnknownContentTypeHandler::Show( nsIHelperAppLauncher *aLauncher
 	memset( &cbinfo, 0, sizeof( cbinfo ) );
 	cbinfo.reason = Pt_CB_MOZ_UNKNOWN;
 	cbinfo.cbdata = &cb;
-	cb.action = WWW_ACTION_OK;
+	cb.action = Pt_WEB_ACTION_OK;
 
 	/* pass extra information to the mozilla widget, so that it will know what to do when Pt_ARG_MOZ_UNKNOWN_RESP comes */
 	moz->EmbedRef->app_launcher = aLauncher;
 	moz->EmbedRef->context = aContext;
 
-	strcpy( cb.content_type, mimeType );
-	REMOVE_WHEN_NEW_PT_WEB_strcpy( cb.url, url );
+	cb.content_type = mimeType;
+	cb.url = url;
 	cb.content_length = strlen( cb.url );
 	PtInvokeCallbackList( moz->web_unknown_cb, (PtWidget_t *)moz, &cbinfo);
 	return rv;

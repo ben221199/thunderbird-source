@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 /* ***** BEGIN LICENSE BLOCK *****
  * Version: NPL 1.1/GPL 2.0/LGPL 2.1
  *
@@ -89,17 +89,11 @@ nsInstallTrigger::GetScriptObject(nsIScriptContext *aContext, void** aScriptObje
 
     if (nsnull == mScriptObject)
     {
-        nsIScriptGlobalObject *global = nsnull;
-        aContext->GetGlobalObject(&global);
-
-        res = NS_NewScriptInstallTriggerGlobal(  aContext,
-                                                (nsISupports *)(nsIDOMInstallTriggerGlobal*)this,
-                                                (nsISupports *)global,
-                                                &mScriptObject);
-        NS_IF_RELEASE(global);
-
+        res = NS_NewScriptInstallTriggerGlobal(aContext,
+                                               (nsIDOMInstallTriggerGlobal*)this,
+                                               aContext->GetGlobalObject(),
+                                               &mScriptObject);
     }
-
 
     *aScriptObject = mScriptObject;
     return res;
@@ -275,7 +269,7 @@ nsInstallTrigger::StartSoftwareUpdate(nsIScriptGlobalObject* aGlobalObject, cons
         nsXPITriggerInfo* trigger = new nsXPITriggerInfo();
         if ( trigger )
         {
-            nsXPITriggerItem* item = new nsXPITriggerItem(0,aURL.get());
+            nsXPITriggerItem* item = new nsXPITriggerItem(0,aURL.get(),nsnull);
             if (item)
             {
                 trigger->Add( item );

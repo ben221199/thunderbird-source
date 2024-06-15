@@ -982,7 +982,7 @@ nsresult nsNNTPProtocol::OpenCacheEntry()
   nsCAutoString urlSpec;
   mailnewsUrl->GetAsciiSpec(urlSpec);
   // for now, truncate of the query part so we don't duplicate urls in the cache...
-  char * anchor = (char *)strrchr(urlSpec.get(), '?');
+  char * anchor = (char *)strrchr(urlSpec.BeginWriting(), '?');
   if (anchor)
     *anchor = '\0';
   return cacheSession->AsyncOpenCacheEntry(urlSpec.get(), nsICache::ACCESS_READ_WRITE, this);
@@ -3976,7 +3976,7 @@ PRInt32 nsNNTPProtocol::GetNextGroupNeedingCounts( nsISupports** pNextGroup, PRI
     
     if (m_newsRCListCount) {
       // clear the status text.
-      rv = SetProgressStatus(NS_LITERAL_STRING("").get());
+      rv = SetProgressStatus(EmptyString().get());
       NS_ENSURE_SUCCESS(rv, rv);
       
       SetProgressBarPercent(0, -1);

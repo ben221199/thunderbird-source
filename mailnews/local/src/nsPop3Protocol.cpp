@@ -53,7 +53,6 @@
 #include "nsLocalStringBundle.h"
 #include "nsTextFormatter.h"
 #include "nsCOMPtr.h"
-#include "nsIPref.h" 
 #include "nsIMsgWindow.h"
 #include "nsIMsgFolder.h" // TO include biffState enum. Change to bool later...
 #include "nsIDocShell.h"
@@ -489,6 +488,7 @@ nsPop3Protocol::nsPop3Protocol(nsIURI* aURL)
   m_password_already_sent(PR_FALSE)
 {
   SetLookingForCRLF(MSG_LINEBREAK_LEN == 2);
+  m_ignoreCRLFs = PR_TRUE;
 }
 
 nsresult nsPop3Protocol::Initialize(nsIURI * aURL)
@@ -1134,6 +1134,13 @@ PRInt32 nsPop3Protocol::AuthResponse(nsIInputStream* inputStream,
         if (NS_SUCCEEDED(rv))
             SetCapFlag(POP3_HAS_AUTH_NTLM);
     }
+    else if (!PL_strcasecmp (line, "MSN"))
+    {
+        nsCOMPtr<nsISignatureVerifier> verifier = do_GetService(SIGNATURE_VERIFIER_CONTRACTID, &rv);
+        // this checks if psm is installed...
+        if (NS_SUCCEEDED(rv))
+            SetCapFlag(POP3_HAS_AUTH_NTLM|POP3_HAS_AUTH_MSN);
+    }
     else if (!PL_strcasecmp (line, "PLAIN")) 
         SetCapFlag(POP3_HAS_AUTH_PLAIN);
     else if (!PL_strcasecmp (line, "LOGIN")) 
@@ -1298,7 +1305,7 @@ PRInt32 nsPop3Protocol::AuthFallback()
                 ClearCapFlag(POP3_HAS_AUTH_CRAM_MD5);
             else if (TestCapFlag(POP3_HAS_AUTH_NTLM))
                 // if NTLM enabled, disable it
-                ClearCapFlag(POP3_HAS_AUTH_NTLM);
+                ClearCapFlag(POP3_HAS_AUTH_NTLM|POP3_HAS_AUTH_MSN);
             else if (TestCapFlag(POP3_HAS_AUTH_APOP))
             {
                 // if APOP enabled, disable it
@@ -1415,7 +1422,8 @@ PRInt32 nsPop3Protocol::AuthLoginResponse()
 // responds + to "AUTH NTLM"
 PRInt32 nsPop3Protocol::AuthNtlm()
 {
-    nsCAutoString command("AUTH NTLM" CRLF);
+    nsCAutoString command (TestCapFlag(POP3_HAS_AUTH_MSN) ? "AUTH MSN" CRLF :
+                                                            "AUTH NTLM" CRLF);
     m_pop3ConData->next_state_after_response = POP3_AUTH_NTLM_RESPONSE;
     m_pop3ConData->pause_for_read = PR_TRUE;
 
@@ -1430,7 +1438,7 @@ PRInt32 nsPop3Protocol::AuthNtlmResponse()
     if (!m_pop3ConData->command_succeeded) 
     {
         // we failed with NTLM, remove it
-        ClearCapFlag(POP3_HAS_AUTH_NTLM);
+        ClearCapFlag(POP3_HAS_AUTH_NTLM|POP3_HAS_AUTH_MSN);
 
         m_pop3ConData->next_state = POP3_PROCESS_AUTH;
     }
@@ -2601,7 +2609,7 @@ PRInt32 nsPop3Protocol::SendTop()
    return status;
 }
  
- /* send the xsender command
+/* send the xsender command
  */
 PRInt32 nsPop3Protocol::SendXsender()
 {
@@ -2609,9 +2617,9 @@ PRInt32 nsPop3Protocol::SendXsender()
   PRInt32 status = -1;
   if (cmd)
   {  
-   m_pop3ConData->next_state_after_response = POP3_XSENDER_RESPONSE;
-   status = SendData(m_url, cmd);
-  PR_Free(cmd);
+    m_pop3ConData->next_state_after_response = POP3_XSENDER_RESPONSE;
+    status = SendData(m_url, cmd);
+    PR_Free(cmd);
   }
   return status;
 }
@@ -2619,15 +2627,15 @@ PRInt32 nsPop3Protocol::SendXsender()
 PRInt32 nsPop3Protocol::XsenderResponse()
 {
     m_pop3ConData->seenFromHeader = PR_FALSE;
-	m_senderInfo = "";
-    
+    m_senderInfo = "";
+
     if (m_pop3ConData->command_succeeded) {
         if (m_commandResponse.Length() > 4)
-			m_senderInfo = m_commandResponse;
-        }
+            m_senderInfo = m_commandResponse;
+    }
     else {
         ClearCapFlag(POP3_HAS_XSENDER);
-    m_pop3Server->SetPop3CapabilityFlags(m_pop3ConData->capability_flags);
+        m_pop3Server->SetPop3CapabilityFlags(m_pop3ConData->capability_flags);
     }
 
     if (m_pop3ConData->truncating_cur_msg)
@@ -2826,19 +2834,25 @@ nsPop3Protocol::RetrResponse(nsIInputStream* inputStream,
       status = buffer_size;
       do
       {
-        PRInt32 res = BufferInput(line, buffer_size);
-        if (res < 0) return(Error(POP3_MESSAGE_WRITE_ERROR));
-			  // BufferInput(CRLF, 2);
-        res = BufferInput(MSG_LINEBREAK, MSG_LINEBREAK_LEN);
-        if (res < 0) return(Error(POP3_MESSAGE_WRITE_ERROR));
+        if (m_pop3ConData->msg_closure)
+        {
+          m_ignoreCRLFs = PR_TRUE;
+          PRInt32 res = BufferInput(line, buffer_size);
+          if (res < 0) return(Error(POP3_MESSAGE_WRITE_ERROR));
+          // BufferInput(CRLF, 2);
+          m_ignoreCRLFs = PR_FALSE;
+          res = BufferInput(MSG_LINEBREAK, MSG_LINEBREAK_LEN);
+          if (res < 0) return(Error(POP3_MESSAGE_WRITE_ERROR));
 
-        m_pop3ConData->parsed_bytes += (buffer_size+2); // including CRLF
-			  // now read in the next line
-			  PR_Free(line);
-		    line = m_lineStreamBuffer->ReadNextLine(inputStream, buffer_size,
-                                                    pauseForMoreData);
+          m_pop3ConData->parsed_bytes += (buffer_size+2); // including CRLF
+        }
+
+        // now read in the next line
+        PR_Free(line);
+        line = m_lineStreamBuffer->ReadNextLine(inputStream, buffer_size,
+                                                pauseForMoreData);
         PR_LOG(POP3LOGMODULE, PR_LOG_ALWAYS,("RECV: %s", line));
-			  status += (buffer_size+2); // including CRLF
+        status += (buffer_size+2); // including CRLF
       } while (/* !pauseForMoreData && */ line);
     }
 

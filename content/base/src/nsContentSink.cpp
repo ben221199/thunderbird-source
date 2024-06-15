@@ -38,8 +38,8 @@
 #include "nsContentSink.h"
 #include "nsIScriptLoader.h"
 #include "nsIDocument.h"
-#include "nsIHTMLContentContainer.h"
 #include "nsICSSLoader.h"
+#include "nsStyleConsts.h"
 #include "nsStyleLinkElement.h"
 #include "nsINodeInfo.h"
 #include "nsIDocShell.h"
@@ -50,16 +50,20 @@
 #include "nsIURI.h"
 #include "nsNetUtil.h"
 #include "nsIHttpChannel.h"
+#include "nsIContent.h"
 #include "nsIDOMHTMLScriptElement.h"
 #include "nsIParser.h"
 #include "nsContentErrors.h"
 #include "nsIPresShell.h"
+#include "nsIPresContext.h"
 #include "nsIViewManager.h"
+#include "nsIScrollableView.h"
 #include "nsIContentViewer.h"
 #include "nsIAtom.h"
 #include "nsHTMLAtoms.h"
 #include "nsIDOMWindowInternal.h"
 #include "nsIPrincipal.h"
+#include "nsIPrefBranch.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsNetCID.h"
@@ -72,6 +76,7 @@
 #include "nsCRT.h"
 #include "nsEscape.h"
 #include "nsWeakReference.h"
+#include "nsUnicharUtils.h"
 
 
 #ifdef ALLOW_ASYNCH_STYLE_SHEETS
@@ -141,6 +146,7 @@ NS_IMPL_ISUPPORTS3(nsContentSink,
                    nsIScriptLoaderObserver)
 
 nsContentSink::nsContentSink()
+  : mNeedToBlockParser(PR_FALSE)
 {
 }
 
@@ -150,21 +156,21 @@ nsContentSink::~nsContentSink()
 
 nsresult
 nsContentSink::Init(nsIDocument* aDoc,
-                    nsIURI* aURL,
+                    nsIURI* aURI,
                     nsISupports* aContainer,
                     nsIChannel* aChannel)
 {
   NS_PRECONDITION(aDoc, "null ptr");
-  NS_PRECONDITION(aURL, "null ptr");
+  NS_PRECONDITION(aURI, "null ptr");
 
-  if (!aDoc || !aURL) {
+  if (!aDoc || !aURI) {
     return NS_ERROR_NULL_POINTER;
   }
 
   mDocument = aDoc;
 
-  mDocumentURL = aURL;
-  mDocumentBaseURL = aURL;
+  mDocumentURI = aURI;
+  mDocumentBaseURI = aURI;
   mDocShell = do_QueryInterface(aContainer);
 
   // use this to avoid a circular reference sink->document->scriptloader->sink
@@ -177,10 +183,7 @@ nsContentSink::Init(nsIDocument* aDoc,
   nsresult rv = loader->AddObserver(proxy);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsCOMPtr<nsIHTMLContentContainer> htmlContainer(do_QueryInterface(aDoc));
-  if (htmlContainer) {
-    htmlContainer->GetCSSLoader(*getter_AddRefs(mCSSLoader));
-  }
+  mCSSLoader = aDoc->GetCSSLoader();
 
   // XXX this presumes HTTP header info is already set in document
   // XXX if it isn't we need to set it here...
@@ -275,6 +278,60 @@ nsContentSink::ScriptEvaluated(nsresult aResult,
   return NS_OK;
 }
 
+typedef PRBool (* PR_CALLBACK HeaderCallback)(nsIHttpChannel* aChannel);
+
+struct HeaderData {
+  char *name;
+  // The function returns true if and only if it's OK to process the header
+  HeaderCallback checkFunc;
+};
+
+PR_STATIC_CALLBACK(PRBool)
+ContentLocationOK(nsIHttpChannel* aChannel)
+{
+  // Some servers are known to send bogus content-location headers.
+  // We blacklist them here.  See bug 238654.
+  NS_PRECONDITION(aChannel, "Must have a channel");
+
+  nsCAutoString serverHeader;
+  nsresult rv =
+    aChannel->GetResponseHeader(NS_LITERAL_CSTRING("server"), serverHeader);
+  if (NS_FAILED(rv) || serverHeader.IsEmpty()) {
+    return PR_TRUE;
+  }
+  
+  nsCOMPtr<nsIPrefBranch> prefBranch =
+    do_GetService("@mozilla.org/preferences-service;1");
+  if (!prefBranch) {
+    return PR_TRUE;
+  }
+
+  nsXPIDLCString serverList;
+  rv = prefBranch->GetCharPref("browser.content-location.bogus-servers",
+                               getter_Copies(serverList));
+  if (NS_FAILED(rv) || serverList.IsEmpty()) {
+    return PR_TRUE;
+  }
+
+  // The server list is a comma-separated list; server names
+  // containing commas use periods instead.
+  serverHeader.ReplaceChar(',', '.');
+
+  PRUint32 cur = 0;
+  do {
+    PRInt32 comma = serverList.FindChar(',', cur);
+    if (comma == kNotFound) {
+      comma = serverList.Length();
+    }
+    if (StringBeginsWith(serverHeader, Substring(serverList, cur, comma-cur))) {
+      return PR_FALSE;
+    }
+    cur = comma + 1;
+  } while (cur < serverList.Length());
+  
+  return PR_TRUE;
+}
+
 nsresult
 nsContentSink::ProcessHTTPHeaders(nsIChannel* aChannel)
 {
@@ -283,25 +340,29 @@ nsContentSink::ProcessHTTPHeaders(nsIChannel* aChannel)
   if (!httpchannel) {
     return NS_OK;
   }
-
-  static const char *const headers[] = {
-    "link",
-    "default-style",
-    "content-style-type",
+  
+  static const HeaderData headers[] = {
+    { "link", nsnull },
+    { "default-style", nsnull }, 
+    { "content-style-type", nsnull },
+    { "content-location", ContentLocationOK },
     // add more http headers if you need
-    0
+    { 0, nsnull }
   };
   
-  const char *const *name = headers;
+  const HeaderData *data = headers;
   nsCAutoString tmp;
   
-  while (*name) {
-    nsresult rv = httpchannel->GetResponseHeader(nsDependentCString(*name), tmp);
-    if (NS_SUCCEEDED(rv) && !tmp.IsEmpty()) {
-      nsCOMPtr<nsIAtom> key = do_GetAtom(*name);
-      ProcessHeaderData(key, NS_ConvertASCIItoUCS2(tmp));
+  while (data->name) {
+    if (!data->checkFunc || data->checkFunc(httpchannel)) {
+      nsresult rv =
+        httpchannel->GetResponseHeader(nsDependentCString(data->name), tmp);
+      if (NS_SUCCEEDED(rv) && !tmp.IsEmpty()) {
+        nsCOMPtr<nsIAtom> key = do_GetAtom(data->name);
+        ProcessHeaderData(key, NS_ConvertASCIItoUCS2(tmp));
+      }
     }
-    ++name;
+    ++data;
   }
   
   return NS_OK;
@@ -401,6 +462,16 @@ nsContentSink::ProcessHeaderData(nsIAtom* aHeader, const nsAString& aValue,
       }
     }
   }
+  else if (aHeader == nsHTMLAtoms::contentLocation) {
+    nsCOMPtr<nsIURI> newBase;
+    rv = NS_NewURI(getter_AddRefs(newBase), aValue, nsnull, mDocumentBaseURI);
+    if (NS_SUCCEEDED(rv)) {
+      rv = mDocument->SetBaseURI(newBase); // does security check
+      if (NS_SUCCEEDED(rv)) {
+        mDocumentBaseURI = mDocument->GetBaseURI();
+      }
+    }
+  }
   else if (mParser) {
     // we also need to report back HTTP-EQUIV headers to the channel
     // so that it can process things like pragma: no-cache or other
@@ -450,7 +521,7 @@ nsContentSink::ProcessLinkHeader(nsIContent* aElement,
   // put an extra null at the end
   stringList.Append(kNullCh);
 
-  PRUnichar* start = NS_CONST_CAST(PRUnichar *, stringList.get());
+  PRUnichar* start = stringList.BeginWriting();
   PRUnichar* end   = start;
   PRUnichar* last  = start;
   PRUnichar  endCh;
@@ -658,10 +729,10 @@ nsContentSink::ProcessStyleLink(nsIContent* aElement,
   }
 
   nsCOMPtr<nsIURI> url;
-  nsresult rv = NS_NewURI(getter_AddRefs(url), aHref, nsnull, mDocumentBaseURL);
+  nsresult rv = NS_NewURI(getter_AddRefs(url), aHref, nsnull, mDocumentBaseURI);
   
   if (NS_FAILED(rv)) {
-    // The URL is bad, move along, don't propagate the error (for now)
+    // The URI is bad, move along, don't propagate the error (for now)
     return NS_OK;
   }
 
@@ -707,6 +778,31 @@ nsContentSink::ProcessStyleLink(nsIContent* aElement,
   return rv;
 }
 
+
+nsresult
+nsContentSink::ProcessMETATag(nsIContent* aContent)
+{
+  NS_ASSERTION(aContent, "missing base-element");
+
+  nsresult rv = NS_OK;
+
+  // set any HTTP-EQUIV data into document's header data as well as url
+  nsAutoString header;
+  aContent->GetAttr(kNameSpaceID_None, nsHTMLAtoms::httpEquiv, header);
+  if (!header.IsEmpty()) {
+    nsAutoString result;
+    aContent->GetAttr(kNameSpaceID_None, nsHTMLAtoms::content, result);
+    if (!result.IsEmpty()) {
+      ToLowerCase(header);
+      nsCOMPtr<nsIAtom> fieldAtom(do_GetAtom(header));
+      rv = ProcessHeaderData(fieldAtom, result, aContent); 
+    }
+  }
+
+  return rv;
+}
+
+
 void
 nsContentSink::PrefetchHref(const nsAString &aHref, PRBool aExplicit)
 {
@@ -749,9 +845,9 @@ nsContentSink::PrefetchHref(const nsAString &aHref, PRBool aExplicit)
     nsCOMPtr<nsIURI> uri;
     NS_NewURI(getter_AddRefs(uri), aHref,
               charset.IsEmpty() ? nsnull : PromiseFlatCString(charset).get(),
-              mDocumentBaseURL);
+              mDocumentBaseURI);
     if (uri) {
-      prefetchService->PrefetchURI(uri, mDocumentURL, aExplicit);
+      prefetchService->PrefetchURI(uri, mDocumentURI, aExplicit);
     }
   }
 }
@@ -844,7 +940,7 @@ nsContentSink::ScrollToRef(PRBool aReallyScroll)
         rv = NS_ERROR_FAILURE;
       }
 
-      // If UTF-8 URL failed then try to assume the string as a
+      // If UTF-8 URI failed then try to assume the string as a
       // document's charset.
 
       if (NS_FAILED(rv)) {
@@ -884,4 +980,87 @@ nsContentSink::RefreshIfEnabled(nsIViewManager* vm)
   }
 
   return NS_OK;
+}
+
+void
+nsContentSink::StartLayout(PRBool aIsFrameset)
+{
+  PRUint32 i, ns = mDocument->GetNumberOfShells();
+  for (i = 0; i < ns; i++) {
+    nsIPresShell *shell = mDocument->GetShellAt(i);
+
+    if (shell) {
+      // Make sure we don't call InitialReflow() for a shell that has
+      // already called it. This can happen when the layout frame for
+      // an iframe is constructed *between* the Embed() call for the
+      // docshell in the iframe, and the content sink's call to OpenBody().
+      // (Bug 153815)
+
+      PRBool didInitialReflow = PR_FALSE;
+      shell->GetDidInitialReflow(&didInitialReflow);
+      if (didInitialReflow) {
+        // XXX: The assumption here is that if something already
+        // called InitialReflow() on this shell, it also did some of
+        // the setup below, so we do nothing and just move on to the
+        // next shell in the list.
+
+        continue;
+      }
+
+      // Make shell an observer for next time
+      shell->BeginObservingDocument();
+
+      // Resize-reflow this time
+      nsCOMPtr<nsIPresContext> cx;
+      shell->GetPresContext(getter_AddRefs(cx));
+      nsRect r = cx->GetVisibleArea();
+      shell->InitialReflow(r.width, r.height);
+
+      // Now trigger a refresh
+      RefreshIfEnabled(shell->GetViewManager());
+    }
+  }
+
+  // If the document we are loading has a reference or it is a
+  // frameset document, disable the scroll bars on the views.
+
+  if (mDocumentURI) {
+    nsCAutoString ref;
+
+    // Since all URI's that pass through here aren't URL's we can't
+    // rely on the nsIURI implementation for providing a way for
+    // finding the 'ref' part of the URI, we'll haveto revert to
+    // string routines for finding the data past '#'
+
+    mDocumentURI->GetSpec(ref);
+
+    nsReadingIterator<char> start, end;
+
+    ref.BeginReading(start);
+    ref.EndReading(end);
+
+    if (FindCharInReadable('#', start, end)) {
+      ++start; // Skip over the '#'
+
+      mRef = Substring(start, end);
+    }
+  }
+
+  if (!mRef.IsEmpty() || aIsFrameset) {
+    // Disable the scroll bars.
+    for (i = 0; i < ns; i++) {
+      nsIPresShell *shell = mDocument->GetShellAt(i);
+
+      nsIViewManager* vm = shell->GetViewManager();
+      if (vm) {
+        nsIView* rootView = nsnull;
+        vm->GetRootView(rootView);
+        nsCOMPtr<nsIScrollableView> sview(do_QueryInterface(rootView));
+
+        if (sview) {
+          sview->SetScrollPreference(nsScrollPreference_kNeverScroll);
+        }
+      }
+    }
+  }
 }

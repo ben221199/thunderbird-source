@@ -91,6 +91,7 @@
 #include "nsIMsgProtocolInfo.h"
 #include "nsIMsgMailSession.h"
 #include "nsIMAPNamespace.h"
+#include "nsISignatureVerifier.h"
 
 #include "nsITimer.h"
 #include "nsMsgUtils.h"
@@ -340,6 +341,9 @@ NS_IMPL_SERVERPREF_BOOL(nsImapIncomingServer, StoreSentMailInPFC,
 
 NS_IMPL_SERVERPREF_BOOL(nsImapIncomingServer, DownloadBodiesOnGetNewMail,
                         "download_bodies_on_get_new_mail")
+
+NS_IMPL_SERVERPREF_BOOL(nsImapIncomingServer, UseIdle,
+                        "use_idle")
 //NS_IMPL_SERVERPREF_INT(nsImapIncomingServer, DeleteModel,
 //                       "delete_model")
 
@@ -406,20 +410,20 @@ NS_IMPL_SERVERPREF_BOOL(nsImapIncomingServer, AOLMailboxView,
 NS_IMETHODIMP
 nsImapIncomingServer::GetIsAOLServer(PRBool *aBool)
 {
-	if (!aBool)
-		return NS_ERROR_NULL_POINTER;
-	*aBool = ((m_capability & kAOLImapCapability) != 0);
-	return NS_OK;
+  if (!aBool)
+    return NS_ERROR_NULL_POINTER;
+  *aBool = ((m_capability & kAOLImapCapability) != 0);
+  return NS_OK;
 }
 
 NS_IMETHODIMP
 nsImapIncomingServer::SetIsAOLServer(PRBool aBool)
 {
-	if (aBool)
-		m_capability |= kAOLImapCapability;
-	else
-		m_capability &= ~kAOLImapCapability;
-	return NS_OK;
+  if (aBool)
+    m_capability |= kAOLImapCapability;
+  else
+    m_capability &= ~kAOLImapCapability;
+  return NS_OK;
 }
 
 
@@ -431,20 +435,20 @@ nsImapIncomingServer::GetImapConnectionAndLoadUrl(nsIEventQueue * aClientEventQu
   nsresult rv = NS_OK;
   nsCOMPtr <nsIImapProtocol> aProtocol;
   
-  rv = CreateImapConnection(aClientEventQueue, aImapUrl, getter_AddRefs(aProtocol));
+  rv = GetImapConnection(aClientEventQueue, aImapUrl, getter_AddRefs(aProtocol));
   if (NS_FAILED(rv)) return rv;
 
   nsCOMPtr<nsIMsgMailNewsUrl> mailnewsurl = do_QueryInterface(aImapUrl, &rv);
   if (aProtocol)
   {
-    rv = aProtocol->LoadUrl(mailnewsurl, aConsumer);
+    rv = aProtocol->LoadImapUrl(mailnewsurl, aConsumer);
     // *** jt - in case of the time out situation or the connection gets
     // terminated by some unforseen problems let's give it a second chance
     // to run the url
     if (NS_FAILED(rv))
     {
       NS_ASSERTION(PR_FALSE, "shouldn't get an error loading url");
-      rv = aProtocol->LoadUrl(mailnewsurl, aConsumer);
+      rv = aProtocol->LoadImapUrl(mailnewsurl, aConsumer);
     }
   }
   else
@@ -460,21 +464,23 @@ nsImapIncomingServer::GetImapConnectionAndLoadUrl(nsIEventQueue * aClientEventQu
     PR_CExitMonitor(this);
     // let's try running it now - maybe the connection is free now.
     PRBool urlRun;
-    rv = LoadNextQueuedUrl(&urlRun);
+    rv = LoadNextQueuedUrl(nsnull, &urlRun);
   }
 
   return rv;
 }
 
 // checks to see if there are any queued urls on this incoming server,
-// and if so, tries to run the oldest one.
+// and if so, tries to run the oldest one. Returns true if the url is run
+// on the passed in protocol connection.
 NS_IMETHODIMP
-nsImapIncomingServer::LoadNextQueuedUrl(PRBool *aResult)
+nsImapIncomingServer::LoadNextQueuedUrl(nsIImapProtocol *aProtocol, PRBool *aResult)
 {
   PRUint32 cnt = 0;
   nsresult rv = NS_OK;
   PRBool urlRun = PR_FALSE;
   PRBool keepGoing = PR_TRUE;
+  nsCOMPtr <nsIImapProtocol>  protocolInstance ;
   
   nsAutoCMonitor mon(this);
   m_urlQueue->Count(&cnt);
@@ -496,16 +502,15 @@ nsImapIncomingServer::LoadNextQueuedUrl(PRBool *aResult)
         nsISupports *aConsumer = (nsISupports*)m_urlConsumers.ElementAt(0);
         NS_IF_ADDREF(aConsumer);
         
-        nsCOMPtr <nsIImapProtocol>  protocolInstance ;
         nsImapProtocol::LogImapUrl("creating protocol instance to play queued url", aImapUrl);
-        rv = CreateImapConnection(nsnull, aImapUrl, getter_AddRefs(protocolInstance));
+        rv = GetImapConnection(nsnull, aImapUrl, getter_AddRefs(protocolInstance));
         if (NS_SUCCEEDED(rv) && protocolInstance)
         {
           nsCOMPtr<nsIURI> url = do_QueryInterface(aImapUrl, &rv);
           if (NS_SUCCEEDED(rv) && url)
           {
             nsImapProtocol::LogImapUrl("playing queued url", aImapUrl);
-            rv = protocolInstance->LoadUrl(url, aConsumer);
+            rv = protocolInstance->LoadImapUrl(url, aConsumer);
             NS_ASSERTION(NS_SUCCEEDED(rv), "failed running queued url");
             urlRun = PR_TRUE;
             removeUrlFromQueue = PR_TRUE;
@@ -527,7 +532,7 @@ nsImapIncomingServer::LoadNextQueuedUrl(PRBool *aResult)
     m_urlQueue->Count(&cnt);
   }
   if (aResult)
-    *aResult = urlRun;
+    *aResult = urlRun && aProtocol && aProtocol == protocolInstance;
   
   return rv;
 }
@@ -659,7 +664,7 @@ nsImapIncomingServer::ConnectionTimeOut(nsIImapProtocol* aConnection)
 }
 
 nsresult
-nsImapIncomingServer::CreateImapConnection(nsIEventQueue *aEventQueue, 
+nsImapIncomingServer::GetImapConnection(nsIEventQueue *aEventQueue, 
                                            nsIImapUrl * aImapUrl, 
                                            nsIImapProtocol ** aImapConnection)
 {
@@ -684,9 +689,9 @@ nsImapIncomingServer::CreateImapConnection(nsIEventQueue *aEventQueue,
       maxConnections = 5;
       rv = SetMaximumConnectionsNumber(maxConnections);
   }
-  else if (maxConnections < 2)
-  {   // forced to use at least 2
-      maxConnections = 2;
+  else if (maxConnections < 1)
+  {   // forced to use at least 1
+      maxConnections = 1;
       rv = SetMaximumConnectionsNumber(maxConnections);
   }
 
@@ -752,7 +757,8 @@ nsImapIncomingServer::CreateImapConnection(nsIEventQueue *aEventQueue,
         rv = connection->IsBusy(&isBusy, &isInboxConnection);
         if (NS_FAILED(rv)) 
           continue;
-        if (!isBusy && !isInboxConnection)
+        // if max connections is <= 1, we have to re-use the inbox connection.
+        if (!isBusy && (!isInboxConnection || maxConnections <= 1))
         {
           if (!freeConnection)
             freeConnection = connection;
@@ -842,8 +848,18 @@ nsImapIncomingServer::CreateProtocolInstance(nsIEventQueue *aEventQueue,
   // create a new connection and add it to the connection cache
   // we may need to flag the protocol connection as busy so we don't get
   // a race condition where someone else goes through this code 
+
+  PRBool useSecAuth;
+  GetUseSecAuth(&useSecAuth);
+  nsresult rv;
+  // pre-flight that we have nss - on the ui thread
+  if (useSecAuth)
+  {
+    nsCOMPtr<nsISignatureVerifier> verifier = do_GetService(SIGNATURE_VERIFIER_CONTRACTID, &rv);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
   nsIImapProtocol * protocolInstance = nsnull;
-  nsresult rv = nsComponentManager::CreateInstance(kImapProtocolCID, nsnull,
+  rv = nsComponentManager::CreateInstance(kImapProtocolCID, nsnull,
     NS_GET_IID(nsIImapProtocol),
     (void **) &protocolInstance);
   if (NS_SUCCEEDED(rv) && protocolInstance)
@@ -851,7 +867,7 @@ nsImapIncomingServer::CreateProtocolInstance(nsIEventQueue *aEventQueue,
     nsCOMPtr<nsIImapHostSessionList> hostSession = 
       do_GetService(kCImapHostSessionListCID, &rv);
     if (NS_SUCCEEDED(rv))
-      rv = protocolInstance->Initialize(hostSession, aEventQueue);
+      rv = protocolInstance->Initialize(hostSession, this, aEventQueue);
   }
   
   // take the protocol instance and add it to the connectionCache
@@ -970,18 +986,17 @@ nsImapIncomingServer::PerformExpand(nsIMsgWindow *aMsgWindow)
 
 NS_IMETHODIMP nsImapIncomingServer::PerformBiff(nsIMsgWindow* aMsgWindow)
 {
-  nsresult rv;
-
-	nsCOMPtr<nsIMsgFolder> rootMsgFolder;
-	rv = GetRootMsgFolder(getter_AddRefs(rootMsgFolder));
-	if(NS_SUCCEEDED(rv))
-	{
+  
+  nsCOMPtr<nsIMsgFolder> rootMsgFolder;
+  nsresult rv = GetRootMsgFolder(getter_AddRefs(rootMsgFolder));
+  if(NS_SUCCEEDED(rv))
+  {
     SetPerformingBiff(PR_TRUE);
-		rv = rootMsgFolder->GetNewMessages(aMsgWindow, nsnull);
+    rv = rootMsgFolder->GetNewMessages(aMsgWindow, nsnull);
   }
   return rv;
 }
-    
+
 
 NS_IMETHODIMP
 nsImapIncomingServer::CloseCachedConnections()
@@ -1012,10 +1027,10 @@ const char *nsImapIncomingServer::GetPFCName()
   {
     if(NS_SUCCEEDED(GetStringBundle()))
     {
-		  nsXPIDLString pfcName;
-		  nsresult res = m_stringBundle->GetStringFromID(IMAP_PERSONAL_FILING_CABINET, getter_Copies(pfcName));
+      nsXPIDLString pfcName;
+      nsresult res = m_stringBundle->GetStringFromID(IMAP_PERSONAL_FILING_CABINET, getter_Copies(pfcName));
       if (NS_SUCCEEDED(res))
-        m_pfcName = NS_ConvertUCS2toUTF8(pfcName).get();
+        CopyUTF16toUTF8(pfcName, m_pfcName);
     }
     m_readPFCName = PR_TRUE;
   }
@@ -1147,8 +1162,8 @@ NS_IMETHODIMP nsImapIncomingServer::PossibleImapMailbox(const char *folderPath, 
       NS_ENSURE_SUCCESS(rv,rv);
       imapFolder->SetHierarchyDelimiter(hierarchyDelimiter);
       isNamespace = (boxFlags & kNameSpace) != 0;
-      if (!isNamespace && !noSelect)
-        rv = AddTo(dupFolderPath.get(), mDoingLsub /* add as subscribed */, mDoingLsub /* change if exists */);
+      if (!isNamespace)
+        rv = AddTo(dupFolderPath.get(), mDoingLsub && !noSelect/* add as subscribed */, !noSelect, mDoingLsub /* change if exists */);
       NS_ENSURE_SUCCESS(rv,rv);
       return rv;
     }
@@ -1285,13 +1300,13 @@ NS_IMETHODIMP nsImapIncomingServer::PossibleImapMailbox(const char *folderPath, 
       // or the canonical path - one or the other, but be consistent.
       dupFolderPath.ReplaceChar('/', hierarchyDelimiter);
       if (hierarchyDelimiter != '/')
-        nsImapUrl::UnescapeSlashes(NS_CONST_CAST(char*, dupFolderPath.get()));
+        nsImapUrl::UnescapeSlashes(dupFolderPath.BeginWriting());
       
       if (onlineName.IsEmpty()
         || nsCRT::strcmp(onlineName.get(), dupFolderPath.get()))
         imapFolder->SetOnlineName(dupFolderPath.get());
       if (hierarchyDelimiter != '/')
-        nsImapUrl::UnescapeSlashes(NS_CONST_CAST(char*, folderName.get()));
+        nsImapUrl::UnescapeSlashes(folderName.BeginWriting());
       if (NS_SUCCEEDED(CreatePRUnicharStringFromUTF7(folderName.get(), getter_Copies(unicodeName))))
         child->SetPrettyName(unicodeName);
       // Call ConvertFolderName() and HideFolderName() to do special folder name
@@ -1604,12 +1619,12 @@ nsresult nsImapIncomingServer::GetFolder(const char* name, nsIMsgFolder** pFolde
 
 NS_IMETHODIMP  nsImapIncomingServer::OnlineFolderDelete(const char *aFolderName) 
 {
-	return NS_OK;
+  return NS_OK;
 }
 
 NS_IMETHODIMP  nsImapIncomingServer::OnlineFolderCreateFailed(const char *aFolderName) 
 {
-	return NS_OK;
+  return NS_OK;
 }
 
 NS_IMETHODIMP nsImapIncomingServer::OnlineFolderRename(nsIMsgWindow *msgWindow, const char *oldName, const char *newName)
@@ -1746,9 +1761,11 @@ NS_IMETHODIMP nsImapIncomingServer::DiscoveryDone()
           for (PRUint32 i = 0; i < numFolders; i++)
           {
             nsXPIDLString folderName;
-            if (NS_SUCCEEDED(trashFolders[i]->GetName(getter_Copies(folderName))) && 
-                  !folderName.Equals(trashName))
-              trashFolders[i]->ClearFlag(MSG_FOLDER_FLAG_TRASH);
+            if (NS_SUCCEEDED(trashFolders[i]->GetName(getter_Copies(folderName))))
+            {
+              if (!folderName.Equals(trashName))
+                trashFolders[i]->ClearFlag(MSG_FOLDER_FLAG_TRASH);
+            }
 
             NS_RELEASE(trashFolders[i]);
           }
@@ -1785,6 +1802,10 @@ NS_IMETHODIMP nsImapIncomingServer::DiscoveryDone()
         ((NS_SUCCEEDED(currentFolder->GetHasSubFolders(&hasSubFolders)) && hasSubFolders)
         && !NoDescendentsAreVerified(currentFolder)))
       {
+        PRBool isNamespace;
+        currentImapFolder->GetIsNamespace(&isNamespace);
+        if (!isNamespace) // don't list namespaces explicitly
+        {
         // If there are no subfolders and this is unverified, we don't want to run
         // this url.  That is, we want to undiscover the folder.
         // If there are subfolders and no descendants are verified, we want to 
@@ -1793,6 +1814,7 @@ NS_IMETHODIMP nsImapIncomingServer::DiscoveryDone()
         // to refresh that folder's flags, because it won't be going away.
         currentImapFolder->SetExplicitlyVerify(PR_FALSE);
         currentImapFolder->List();
+      }
       }
       else
       {
@@ -2628,7 +2650,7 @@ NS_IMETHODIMP nsImapIncomingServer::OnLogonRedirectionError(const PRUnichar *pEr
       {       
         nsCOMPtr <nsIImapProtocol>  protocolInstance ;
         m_waitingForConnectionInfo = PR_FALSE;
-        rv = CreateImapConnection(aEventQueue, aImapUrl, getter_AddRefs(protocolInstance));
+        rv = GetImapConnection(aEventQueue, aImapUrl, getter_AddRefs(protocolInstance));
         // If users cancel the login then we need to reset url state.
         if (rv == NS_BINDING_ABORTED)
           resetUrlState = PR_TRUE;
@@ -2695,7 +2717,7 @@ NS_IMETHODIMP nsImapIncomingServer::OnLogonRedirectionReply(const PRUnichar *pHo
       nsCOMPtr<nsISupports> aConsumer = (nsISupports*)m_urlConsumers.ElementAt(0);
       
       nsCOMPtr <nsIImapProtocol>  protocolInstance ;
-      rv = CreateImapConnection(aEventQueue, aImapUrl, getter_AddRefs(protocolInstance));
+      rv = GetImapConnection(aEventQueue, aImapUrl, getter_AddRefs(protocolInstance));
       m_waitingForConnectionInfo = PR_FALSE;
       if (NS_SUCCEEDED(rv) && protocolInstance)
       {
@@ -2703,7 +2725,7 @@ NS_IMETHODIMP nsImapIncomingServer::OnLogonRedirectionReply(const PRUnichar *pHo
         nsCOMPtr<nsIURI> url = do_QueryInterface(aImapUrl, &rv);
         if (NS_SUCCEEDED(rv) && url)
         {
-          rv = protocolInstance->LoadUrl(url, aConsumer);
+          rv = protocolInstance->LoadImapUrl(url, aConsumer);
           urlRun = PR_TRUE;
         }
         
@@ -2917,7 +2939,7 @@ nsImapIncomingServer::UpdateSubscribed()
 }
 
 NS_IMETHODIMP
-nsImapIncomingServer::AddTo(const char *aName, PRBool addAsSubscribed,PRBool changeIfExists)
+nsImapIncomingServer::AddTo(const char *aName, PRBool addAsSubscribed, PRBool aSubscribable, PRBool changeIfExists)
 {
   nsresult rv = EnsureInner();
   NS_ENSURE_SUCCESS(rv,rv);
@@ -2941,7 +2963,7 @@ nsImapIncomingServer::AddTo(const char *aName, PRBool addAsSubscribed,PRBool cha
   NS_ASSERTION(nameIsClean,"folder path was not in UTF7, ignore it");
   if (!nameIsClean) return NS_OK;
   
-  return mInner->AddTo(aName, addAsSubscribed, changeIfExists);
+  return mInner->AddTo(aName, addAsSubscribed, aSubscribable, changeIfExists);
 }
 
 NS_IMETHODIMP
@@ -3099,6 +3121,14 @@ nsImapIncomingServer::IsSubscribed(const char *path, PRBool *aIsSubscribed)
     nsresult rv = EnsureInner();
     NS_ENSURE_SUCCESS(rv,rv);
     return mInner->IsSubscribed(path, aIsSubscribed);
+}
+
+NS_IMETHODIMP
+nsImapIncomingServer::IsSubscribable(const char *path, PRBool *aIsSubscribable)
+{
+    nsresult rv = EnsureInner();
+    NS_ENSURE_SUCCESS(rv,rv);
+    return mInner->IsSubscribable(path, aIsSubscribable);
 }
 
 NS_IMETHODIMP
@@ -3815,8 +3845,10 @@ nsImapIncomingServer::GetMsgFolderFromURI(nsIMsgFolder *aFolderResource, const c
       nsCOMPtr <nsIMsgFolder> folderResource;
       folderResource = do_QueryInterface(resource, &rv);
       NS_ENSURE_SUCCESS(rv,rv);
-    }   
-    msgFolder = aFolderResource;
+      msgFolder = folderResource;
+    }
+    else
+      msgFolder = aFolderResource;
   }
 
   NS_IF_ADDREF(*aFolder = msgFolder);

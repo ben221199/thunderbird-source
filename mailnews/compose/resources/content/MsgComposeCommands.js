@@ -83,7 +83,7 @@ var gSendFormat;
 var gLogComposePerformance;
 
 var gMsgIdentityElement;
-var gMsgAddressingWidgetTreeElement;
+var gMsgAddressingWidgetElement;
 var gMsgSubjectElement;
 var gMsgAttachmentElement;
 var gMsgHeadersToolbarElement;
@@ -183,6 +183,7 @@ function enableEditableFields()
 var gComposeRecyclingListener = {
   onClose: function() {
     //Reset recipients and attachments
+    ReleaseAutoCompleteState();
     awResetAllRows();
     RemoveAllAttachments();
 
@@ -1506,8 +1507,8 @@ function GetCharsetUIString()
     if (gCharsetTitle == null) {
       try {
         // check if we have a converter for this charset
-        var charsetAlias = gCharsetConvertManager.GetCharsetAlias(charset);
-        var encoderList = gCharsetConvertManager.GetEncoderList();
+        var charsetAlias = gCharsetConvertManager.getCharsetAlias(charset);
+        var encoderList = gCharsetConvertManager.getEncoderList();
         var found = false;
         while (encoderList.hasMore()) {
             if (charsetAlias == encoderList.getNext()) {
@@ -1673,7 +1674,7 @@ function GenericSendMessage( msgType )
         }
         msgWindow.SetDOMWindow(window);
 
-        gMsgCompose.SendMsg(msgType, getCurrentIdentity(), msgWindow, progress);
+        gMsgCompose.SendMsg(msgType, getCurrentIdentity(), getCurrentAccountKey(), msgWindow, progress);
       }
       catch (ex) {
         dump("failed to SendMsg: " + ex + "\n");
@@ -1799,11 +1800,11 @@ function PriorityMenuSelect(target)
     if (msgCompFields)
       switch (target.getAttribute('id'))
       {
-        case "priority_lowest":  msgCompFields.priority = "lowest";   break;
-        case "priority_low":     msgCompFields.priority = "low";      break;
-        case "priority_normal":  msgCompFields.priority = "normal";   break;
-        case "priority_high":    msgCompFields.priority = "high";     break;
-        case "priotity_highest": msgCompFields.priority = "highest";  break;
+        case "priority_lowest":  msgCompFields.priority = "Lowest";   break;
+        case "priority_low":     msgCompFields.priority = "Low";      break;
+        case "priority_normal":  msgCompFields.priority = "Normal";   break;
+        case "priority_high":    msgCompFields.priority = "High";     break;
+        case "priotity_highest": msgCompFields.priority = "Highest";  break;
       }
   }
 }
@@ -1949,6 +1950,7 @@ function FillIdentityListPopup(popup)
       item.className = "identity-popup-item";
       item.setAttribute("label", identity.identityName);
       item.setAttribute("value", identity.key);
+      item.setAttribute("accountkey", accounts[i].key);
       item.setAttribute("accountname", " - " + server.prettyName);
       popup.appendChild(item);
     }
@@ -1966,6 +1968,13 @@ function getCurrentIdentity()
     var identity = gAccountManager.getIdentity(identityKey);
 
     return identity;
+}
+
+function getCurrentAccountKey()
+{
+    // get the accounts key
+    var identityList = document.getElementById("msgIdentity");
+    return identityList.selectedItem.getAttribute("accountkey");
 }
 
 function getIdentityForKey(key)
@@ -2077,6 +2086,16 @@ function SetContentAndBodyAsUnmodified()
 {
   gMsgCompose.bodyModified = false; 
   gContentChanged = false;
+}
+
+function ReleaseAutoCompleteState()
+{
+  for (i=1; i <= awGetMaxRecipients(); i++) 
+    document.getElementById("addressCol2#" + i).removeSession(gLDAPSession);
+
+  gSessionAdded = false;
+  gLDAPSession = null;  
+  gAutocompleteSession = null;
 }
 
 function MsgComposeCloseWindow(recycleIt)
@@ -2309,7 +2328,7 @@ function FocusOnFirstAttachment()
   var bucketList = document.getElementById("attachmentBucket");
 
   if (bucketList && bucketList.hasChildNodes())
-    bucketTree.selectItem(bucketList.firstChild);
+    bucketList.selectItem(bucketList.firstChild);
 }
 
 function AttachmentElementHasItems()
@@ -2555,7 +2574,7 @@ function subjectKeyPress(event)
 {  
   switch(event.keyCode) {
   case 9:
-    if (!event.shiftKey) {
+    if (!event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
       window.content.focus();
       event.preventDefault();
     }
@@ -2714,9 +2733,9 @@ function DisplaySaveFolderDlg(folderURI)
 
 
 
-function SetMsgAddressingWidgetTreeElementFocus()
+function SetMsgAddressingWidgetElementFocus()
 {
-  var element = document.getElementById("msgRecipient#" + awGetNumberOfRecipients());
+  var element = awGetInputElement(awGetNumberOfRecipients());
   awSetFocus(awGetNumberOfRecipients(), element);
 }
 
@@ -2741,12 +2760,12 @@ function SetMsgBodyFrameFocus()
   window.content.focus();
 }
 
-function GetMsgAddressingWidgetTreeElement()
+function GetMsgAddressingWidgetElement()
 {
-  if (!gMsgAddressingWidgetTreeElement)
-    gMsgAddressingWidgetTreeElement = document.getElementById("addressingWidgetTree");
+  if (!gMsgAddressingWidgetElement)
+    gMsgAddressingWidgetElement = document.getElementById("addressingWidget");
 
-  return gMsgAddressingWidgetTreeElement;
+  return gMsgAddressingWidgetElement;
 }
 
 function GetMsgIdentityElement()
@@ -2792,10 +2811,10 @@ function IsMsgHeadersToolbarCollapsed()
 
 function WhichElementHasFocus()
 {
-  var msgIdentityElement             = GetMsgIdentityElement();
-  var msgAddressingWidgetTreeElement = GetMsgAddressingWidgetTreeElement();
-  var msgSubjectElement              = GetMsgSubjectElement();
-  var msgAttachmentElement           = GetMsgAttachmentElement();
+  var msgIdentityElement         = GetMsgIdentityElement();
+  var msgAddressingWidgetElement = GetMsgAddressingWidgetElement();
+  var msgSubjectElement          = GetMsgSubjectElement();
+  var msgAttachmentElement       = GetMsgAttachmentElement();
 
   if (top.document.commandDispatcher.focusedWindow == content)
     return content;
@@ -2804,7 +2823,7 @@ function WhichElementHasFocus()
   while (currentNode)
   {
     if (currentNode == msgIdentityElement ||
-        currentNode == msgAddressingWidgetTreeElement ||
+        currentNode == msgAddressingWidgetElement ||
         currentNode == msgSubjectElement ||
         currentNode == msgAttachmentElement)
       return currentNode;
@@ -2819,7 +2838,7 @@ function WhichElementHasFocus()
 // one element to another in the mail compose window.
 // The default element to switch to when going in either
 // direction (shift or no shift key pressed), is the
-// AddressingWidgetTreeElement.
+// AddressingWidgetElement.
 //
 // The only exception is when the MsgHeadersToolbar is
 // collapsed, then the focus will always be on the body of
@@ -2832,7 +2851,7 @@ function SwitchElementFocus(event)
   {
     if (IsMsgHeadersToolbarCollapsed())
       SetMsgBodyFrameFocus();
-    else if (focusedElement == gMsgAddressingWidgetTreeElement)
+    else if (focusedElement == gMsgAddressingWidgetElement)
       SetMsgIdentityElementFocus();
     else if (focusedElement == gMsgIdentityElement)
       SetMsgBodyFrameFocus();
@@ -2848,13 +2867,13 @@ function SwitchElementFocus(event)
     else if (focusedElement == gMsgAttachmentElement)
       SetMsgSubjectElementFocus();
     else
-      SetMsgAddressingWidgetTreeElementFocus();
+      SetMsgAddressingWidgetElementFocus();
   }
   else
   {
     if (IsMsgHeadersToolbarCollapsed())
       SetMsgBodyFrameFocus();
-    else if (focusedElement == gMsgAddressingWidgetTreeElement)
+    else if (focusedElement == gMsgAddressingWidgetElement)
       SetMsgSubjectElementFocus();
     else if (focusedElement == gMsgSubjectElement)
     {
@@ -2870,7 +2889,7 @@ function SwitchElementFocus(event)
     else if (focusedElement == content)
       SetMsgIdentityElementFocus();
     else
-      SetMsgAddressingWidgetTreeElementFocus();
+      SetMsgAddressingWidgetElementFocus();
   }
 }
 

@@ -365,16 +365,6 @@ NS_IMETHODIMP nsDeviceContextXlib::GetSystemFont(nsSystemFontID anID, nsFont *aF
   return NS_OK;
 }
 
-NS_IMETHODIMP nsDeviceContextXlib::ConvertPixel(nscolor aColor, PRUint32 & aPixel)
-{
-  PR_LOG(DeviceContextXlibLM, PR_LOG_DEBUG, ("nsDeviceContextXlib::ConvertPixel()\n"));
-  aPixel = xxlib_rgb_xpixel_from_rgb(mXlibRgbHandle,
-                                     NS_RGB(NS_GET_B(aColor),
-                                            NS_GET_G(aColor),
-                                            NS_GET_R(aColor)));
-  return NS_OK;
-}
-
 NS_IMETHODIMP nsDeviceContextXlib::CheckFontExistence(const nsString& aFontName)
 {
   return nsFontMetricsXlib::FamilyExists(mFontMetricsContext, aFontName);
@@ -442,7 +432,7 @@ NS_IMETHODIMP nsDeviceContextXlib::GetDeviceContextFor(nsIDeviceContextSpec *aDe
     nsCOMPtr<nsIDeviceContextXp> dcxp(do_CreateInstance(kCDeviceContextXp, &rv));
     NS_ASSERTION(NS_SUCCEEDED(rv), "Couldn't create Xp Device context.");    
     if (NS_FAILED(rv)) 
-      return rv;
+      return NS_ERROR_GFX_COULD_NOT_LOAD_PRINT_MODULE;
     
     rv = dcxp->SetSpec(aDevice);
     if (NS_FAILED(rv)) 
@@ -468,7 +458,7 @@ NS_IMETHODIMP nsDeviceContextXlib::GetDeviceContextFor(nsIDeviceContextSpec *aDe
     nsCOMPtr<nsIDeviceContextPS> dcps(do_CreateInstance(kCDeviceContextPS, &rv));
     NS_ASSERTION(NS_SUCCEEDED(rv), "Couldn't create PS Device context.");
     if (NS_FAILED(rv)) 
-      return rv;
+      return NS_ERROR_GFX_COULD_NOT_LOAD_PRINT_MODULE;
   
     rv = dcps->SetSpec(aDevice);
     if (NS_FAILED(rv)) 
@@ -523,11 +513,11 @@ class nsFontCacheXlib : public nsFontCache
 {
 public:
   /* override DeviceContextImpl::CreateFontCache() */
-  NS_IMETHODIMP CreateFontMetricsInstance(nsIFontMetrics** aResult);
+  virtual nsresult CreateFontMetricsInstance(nsIFontMetrics** aResult);
 };
 
 
-NS_IMETHODIMP nsFontCacheXlib::CreateFontMetricsInstance(nsIFontMetrics** aResult)
+nsresult nsFontCacheXlib::CreateFontMetricsInstance(nsIFontMetrics** aResult)
 {
   NS_PRECONDITION(aResult, "null out param");
   nsIFontMetrics *fm = new nsFontMetricsXlib();

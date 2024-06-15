@@ -42,6 +42,7 @@
 #include "nsIImapProtocol.h"
 #include "nsIImapUrl.h"
 
+#include "nsMsgProtocol.h"
 #include "nsIEventQueue.h"
 #include "nsIStreamListener.h"
 #include "nsIOutputStream.h"
@@ -84,7 +85,7 @@
 #include "nsICacheListener.h"
 #include "nsIImapHeaderXferInfo.h"
 #include "nsMsgLineBuffer.h"
-
+#include "nsIAsyncInputStream.h"
 class nsIMAPMessagePartIDArray;
 class nsIMsgIncomingServer;
 
@@ -149,26 +150,29 @@ public:
 #define IMAP_CLEAN_UP_URL_STATE       0x00000010 // processing clean up url state
 #define IMAP_ISSUED_LANGUAGE_REQUEST  0x00000020 // make sure we only issue the language request once per connection...
 
-class nsImapProtocol : public nsIImapProtocol, public nsIRunnable
+class nsImapProtocol : public nsIImapProtocol, public nsIRunnable, public nsIInputStreamCallback, public nsMsgProtocol
 {
 public:
   
   NS_DECL_ISUPPORTS
-    
+  NS_DECL_NSIINPUTSTREAMCALLBACK    
   nsImapProtocol();
   virtual ~nsImapProtocol();
   
+  virtual nsresult ProcessProtocolState(nsIURI * url, nsIInputStream * inputStream, 
+									PRUint32 sourceOffset, PRUint32 length);
+
   // nsIRunnable method
   NS_IMETHOD Run();
   
   //////////////////////////////////////////////////////////////////////////////////
   // we support the nsIImapProtocol interface
   //////////////////////////////////////////////////////////////////////////////////
-  NS_IMETHOD LoadUrl(nsIURI * aURL, nsISupports * aConsumer);
+  NS_IMETHOD LoadImapUrl(nsIURI * aURL, nsISupports * aConsumer);
   NS_IMETHOD IsBusy(PRBool * aIsConnectionBusy, PRBool *isInboxConnection);
   NS_IMETHOD CanHandleUrl(nsIImapUrl * aImapUrl, PRBool * aCanRunUrl,
                           PRBool * hasToWait);
-  NS_IMETHOD Initialize(nsIImapHostSessionList * aHostSessionList, nsIEventQueue * aSinkEventQueue);
+  NS_IMETHOD Initialize(nsIImapHostSessionList * aHostSessionList, nsIImapIncomingServer *aServer, nsIEventQueue * aSinkEventQueue);
   // Notify FE Event has been completed
   NS_IMETHOD NotifyFEEventCompletion();
   
@@ -203,11 +207,6 @@ public:
   //////////////////////////////////////////////////////////////////////////////////////
   // End of nsIStreamListenerSupport
   ////////////////////////////////////////////////////////////////////////////////////////
-  
-  // Flag manipulators
-  PRBool TestFlag  (PRUint32 flag) {return flag & m_flags;}
-  void   SetFlag   (PRUint32 flag) { m_flags |= flag; }
-  void   ClearFlag (PRUint32 flag) { m_flags &= ~flag; }
   
   // message id string utilities.
   PRUint32		CountMessagesInIdString(const char *idString);
@@ -369,9 +368,7 @@ private:
   // the following flag is used to determine when a url is currently being run. It is cleared when we 
   // finish processng a url and it is set whenever we call Load on a url
   PRBool                        m_urlInProgress;	
-  PRBool                        m_socketIsOpen;
   PRBool                        m_gotFEEventCompletion;
-  PRUint32                      m_flags;	   // used to store flag information
   nsCOMPtr<nsIImapUrl>		m_runningUrl; // the nsIImapURL that is currently running
   nsImapAction	m_imapAction;  // current imap action associated with this connnection...
   
@@ -387,13 +384,9 @@ private:
   
   // Ouput stream for writing commands to the socket
   nsCOMPtr<nsISocketTransport>  m_transport; 
-  nsCOMPtr<nsIOutputStream>     m_outputStream;   // this will be obtained from the transport interface
-  nsCOMPtr<nsIInputStream>      m_inputStream;
   
   nsCOMPtr<nsIInputStream>  m_channelInputStream;
   nsCOMPtr<nsIOutputStream> m_channelOutputStream;
-  nsCOMPtr<nsIStreamListener>	    m_channelListener; // if we are displaying an article this is the rfc-822 display sink...
-  nsCOMPtr<nsISupports>           m_channelContext;
   nsCOMPtr<nsIImapMockChannel>    m_mockChannel;   // this is the channel we should forward to people
   //nsCOMPtr<nsIRequest> mAsyncReadRequest; // we're going to cancel this when we're done with the conn.
   
@@ -436,6 +429,7 @@ private:
   nsImapServerResponseParser m_parser;
   nsImapServerResponseParser& GetServerStateParser() { return m_parser; };
   
+  void HandleIdleResponses();
   virtual PRBool ProcessCurrentURL();
   void EstablishServerConnection();
   virtual void ParseIMAPandCheckForNewMail(const char* commandString =
@@ -562,6 +556,8 @@ private:
   void List(const char *mailboxPattern, PRBool addDirectoryIfNecessary);
   void Subscribe(const char *mailboxName);
   void Unsubscribe(const char *mailboxName);
+  void Idle();
+  void EndIdle();
   // Some imap servers include the mailboxName following the dir-separator in the list of 
   // subfolders of the mailboxName. In fact, they are the same. So we should decide if
   // we should delete such subfolder and provide feedback if the delete operation succeed.
@@ -623,6 +619,8 @@ private:
   PRBool m_notifySearchHit;
   PRBool m_checkForNewMailDownloadsHeaders;
   PRBool m_needNoop;
+  PRBool m_idle;
+  PRBool m_useIdle;
   PRInt32 m_noopCount;
   PRBool  m_autoSubscribe, m_autoUnsubscribe, m_autoSubscribeOnOpen;
   PRBool m_closeNeededBeforeSelect;

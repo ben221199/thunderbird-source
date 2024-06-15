@@ -114,10 +114,13 @@
 <keyset id="tasksKeys">
   <!-- File Menu -->
 #ifdef XP_MACOSX
-  <key id="key_newMessage" key="&newMessageCmd.key;" modifiers="accel,shift" oncommand="AbNewMessage()"/>
+    <key id="key_newMessage" key="&newMessageCmd.key;" modifiers="accel,shift" oncommand="AbNewMessage()"/>
+    <key id="key_newCard" key="&newCard.key;" modifiers="accel,shift" oncommand="AbNewCard('dirTree')"/>
 #else
-  <key id="key_newMessage" key="&newMessageCmd.key;" modifiers="accel" oncommand="AbNewMessage()"/>
+    <key id="key_newMessage" key="&newMessageCmd.key;" modifiers="accel" oncommand="AbNewMessage()"/>
+    <key id="key_newCard" key="&newCard.key;" modifiers="accel" oncommand="AbNewCard('dirTree')"/>
 #endif
+
   <key id="key_printCard" key="&printCardViewCmd.key;" oncommand="AbPrintCard()" modifiers="accel"/>
   <key id="key_close" key="&closeCmd.key;" modifiers="accel" oncommand="AbClose()"/>
   <key id="key_quit" key="&quitApplicationCmd.key;" modifiers="accel" oncommand="goQuitApplication()"/>
@@ -206,7 +209,7 @@
             <menupopup id="menu_FilePopup">
                 <menu id="menu_New" label="&newMenu.label;" accesskey="&newMenu.accesskey;">
                     <menupopup id="menu_NewPopup">
-                      <menuitem label="&newCard.label;" accesskey="&newCard.accesskey;" oncommand="AbNewCard('dirTree')"/>
+                      <menuitem label="&newCard.label;" accesskey="&newCard.accesskey;" key="key_newCard" oncommand="AbNewCard('dirTree')"/>
                       <menuitem label="&newListCmd.label;" accesskey="&newListCmd.accesskey;" oncommand="AbNewList('dirTree')"/>
                       <menuitem label="&newAddressBookCmd.label;" accesskey="&newAddressBookCmd.accesskey;" oncommand="AbNewAddressBook()"/>
                       <menuitem label="&newLDAPDirectoryCmd.label;" id="addLDAP" accesskey="&newLDAPDirectoryCmd.accesskey;" oncommand="AbNewLDAPDirectory()"/>
@@ -465,7 +468,7 @@
       <toolbarbutton class="toolbarbutton-1" id="button-newim" label="&newIM.label;" tooltiptext="&newIM.tooltip;" oncommand="AbIMSelected();"/>
       <toolbarbutton class="toolbarbutton-1" id="button-abdelete" observes="button_delete" label="&deleteButton.label;" tooltiptext="&deleteButton.tooltip;" oncommand="goDoCommand('button_delete');"/>
 
-      <toolbaritem id="throbber-box" align="center" pack="center">
+      <toolbaritem id="throbber-box" title="&throbberItem.title;" align="center" pack="center">
         <button id="navigator-throbber" oncommand="loadThrobberUrl('addressbook.throbber.url')" tooltiptext="&throbber.tooltip;">
           <observes element="broadcaster_throbber" attribute="busy"/>
         </button>

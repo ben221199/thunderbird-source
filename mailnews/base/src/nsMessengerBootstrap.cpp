@@ -46,7 +46,8 @@
 #include "nsMsgBaseCID.h"
 #include "nsIMsgMailSession.h"
 #include "nsIMsgFolderCache.h"
-#include "nsIPref.h"
+#include "nsIPrefService.h"
+#include "nsIPrefBranch.h"
 #include "nsIDOMWindow.h"
 #include "nsXPCOM.h"
 #include "nsISupportsPrimitives.h"
@@ -54,7 +55,6 @@
 #include "nsString.h"
 #include "nsIURI.h"
 #include "nsIDialogParamBlock.h"
-static NS_DEFINE_CID(kPrefServiceCID, NS_PREF_CID);
 
 NS_IMPL_THREADSAFE_ADDREF(nsMessengerBootstrap)
 NS_IMPL_THREADSAFE_RELEASE(nsMessengerBootstrap)
@@ -74,12 +74,12 @@ NS_IMETHODIMP nsMessengerBootstrap::GetChromeUrlForTask(char **aChromeUrlForTask
 { 
 #ifndef MOZ_THUNDERBIRD
   if (!aChromeUrlForTask) return NS_ERROR_FAILURE; 
-  nsresult rv;
-  nsCOMPtr<nsIPref> prefService(do_GetService(kPrefServiceCID, &rv));
-  if (NS_SUCCEEDED(rv))
+  nsCOMPtr<nsIPrefBranch> pPrefBranch(do_GetService(NS_PREFSERVICE_CONTRACTID));
+  if (pPrefBranch)
   {
+    nsresult rv;
     PRInt32 layout;
-    rv = prefService->GetIntPref("mail.pane_config", &layout);		
+    rv = pPrefBranch->GetIntPref("mail.pane_config", &layout);		
     if(NS_SUCCEEDED(rv))
     {
       if(layout == 0)
@@ -138,3 +138,19 @@ NS_IMETHODIMP nsMessengerBootstrap::OpenMessengerWindowWithUri(const char *windo
 
   return NS_OK;
 }
+
+#ifdef MOZ_THUNDERBIRD
+nsMsgOptionsCmdLineHandler::nsMsgOptionsCmdLineHandler()
+{
+}
+
+nsMsgOptionsCmdLineHandler::~nsMsgOptionsCmdLineHandler()
+{
+}
+
+NS_IMPL_ISUPPORTS1(nsMsgOptionsCmdLineHandler, nsICmdLineHandler) 
+
+CMDLINEHANDLER_IMPL(nsMsgOptionsCmdLineHandler,"-options","", "chrome://communicator/content/pref/pref.xul",
+                   "Open Options Dialog.", NS_MAILOPTIONSTARTUPHANDLER_CONTRACTID,"Mail Options Startup Handler", PR_TRUE,"", PR_TRUE)
+
+#endif

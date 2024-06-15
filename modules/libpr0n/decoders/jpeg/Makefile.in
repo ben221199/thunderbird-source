@@ -45,7 +45,7 @@ CPPSRCS		= nsJPEGDecoder.cpp \
             $(NULL)
 
 ifeq ($(OS_ARCH),WINNT)
-CPPSRCS		+= nsJPEGEncoder.cpp 
+CPPSRCS         += nsJPEGEncoder.cpp
 endif
 
 include $(topsrcdir)/config/rules.mk

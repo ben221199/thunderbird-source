@@ -74,29 +74,35 @@ var gFocusedDocument = null;
 const gButtonPrefListener =
 {
   domain: "browser.toolbars.showbutton",
+  init: function()
+  {
+    var array = pref.getChildList(this.domain, {});
+    for (var i in array)
+      this.updateButton(array[i]);
+    this.updateSeparator();
+  },
   observe: function(subject, topic, prefName)
   {
     // verify that we're changing a button pref
     if (topic != "nsPref:changed")
       return;
 
+    this.updateButton(prefName);
+    this.updateSeparator();
+  },
+  updateButton: function(prefName)
+  {
     var buttonName = prefName.substr(this.domain.length+1);
     var buttonId = buttonName + "-button";
     var button = document.getElementById(buttonId);
-
-    // We need to explicitly set "hidden" to "false"
-    // in order for persistence to work correctly
-    var show = pref.getBoolPref(prefName);
-    if (show)
-      button.setAttribute("hidden","false");
-    else
-      button.setAttribute("hidden", "true");
-
+    if (button)
+      button.hidden = !pref.getBoolPref(prefName);
+  },
+  updateSeparator: function()
+  {
     // If all buttons before the separator are hidden, also hide the separator
-    if (allLeftButtonsAreHidden())
-      document.getElementById("home-bm-separator").setAttribute("hidden", "true");
-    else
-      document.getElementById("home-bm-separator").removeAttribute("hidden");
+    var separator = document.getElementById("home-bm-separator");
+    separator.hidden = allLeftButtonsAreHidden();
   }
 };
 
@@ -110,7 +116,7 @@ const gTabStripPrefListener =
       return;
 
     var stripVisibility = !pref.getBoolPref(prefName);
-    if (gBrowser.mTabContainer.childNodes.length == 1) {
+    if (gBrowser.tabContainer.childNodes.length == 1) {
       gBrowser.setStripVisibilityTo(stripVisibility);
       pref.setBoolPref("browser.tabs.forceHide", false);
     }
@@ -411,25 +417,15 @@ function allLeftButtonsAreHidden()
   return true;
 }
 
-function RegisterTabOpenObserver()
-{
-  const observer = {
-    observe: function(subject, topic, data)
-    {
-      if (topic != "open-new-tab-request" || subject != window)
-        return;
+const gTabOpenObserver = {
+  observe: function(subject, topic, data)
+  {
+    if (topic != "open-new-tab-request" || subject != window)
+      return;
 
-      delayedOpenTab(data);
-    }
-  };
-
-  var service = Components.classes["@mozilla.org/observer-service;1"]
-    .getService(Components.interfaces.nsIObserverService);
-  service.addObserver(observer, "open-new-tab-request", false);
-  // Null out service variable so the closure of the observer doesn't
-  // own the service and create a cycle (bug 170022).
-  service = null;
-}
+    delayedOpenTab(data);
+  }
+};
 
 function Startup()
 {
@@ -469,6 +465,9 @@ function Startup()
   }
 
   // Do all UI building here:
+
+  // Ensure button visibility matches prefs
+  gButtonPrefListener.init();
 
   // set home button tooltip text
   updateHomeButtonTooltip();
@@ -530,10 +529,8 @@ function Startup()
       webNavigation.sessionHistory = Components.classes["@mozilla.org/browser/shistory;1"]
                                                .createInstance(Components.interfaces.nsISHistory);
 
-      // wire up global history.  the same applies here.
-      var globalHistory = Components.classes["@mozilla.org/browser/global-history;1"]
-                                    .getService(Components.interfaces.nsIGlobalHistory);
-      getBrowser().docShell.QueryInterface(Components.interfaces.nsIDocShellHistory).globalHistory = globalHistory;
+      // enable global history
+      getBrowser().docShell.QueryInterface(Components.interfaces.nsIDocShellHistory).useGlobalHistory = true;
     } catch (e) {}
 
     const selectedBrowser = getBrowser().selectedBrowser;
@@ -578,7 +575,7 @@ function Startup()
               uriArray = getHomePage();
               break;
             case 2:
-              var history = Components.classes["@mozilla.org/browser/global-history;1"]
+              var history = Components.classes["@mozilla.org/browser/global-history;2"]
                                       .getService(Components.interfaces.nsIBrowserHistory);
               uriArray = [history.lastPageVisited];
               break;
@@ -617,9 +614,15 @@ function Startup()
         return;
     }
 
-    // Focus the content area unless we're loading a blank page
+    // Focus the content area unless we're loading a blank page, or if
+    // we weren't passed any arguments. This "breaks" the
+    // javascript:window.open(); case where we don't get any arguments
+    // either, but we're loading about:blank, but focusing the content
+    // are is arguably correct in that case as well since the opener
+    // is very likely to put some content in the new window, and then
+    // the focus should be in the content area.
     var navBar = document.getElementById("nav-bar");
-    if (uriToLoad == "about:blank" && !navBar.hidden && window.locationbar.visible)
+    if ("arguments" in window && uriToLoad == "about:blank" && !navBar.hidden && window.locationbar.visible)
       setTimeout(WindowFocusTimerCallback, 0, gURLBar);
     else
       setTimeout(WindowFocusTimerCallback, 0, _content);
@@ -634,7 +637,9 @@ function Startup()
                                 .getService(Components.interfaces.nsIXRemoteService);
       remoteService.addBrowserInstance(window);
 
-      RegisterTabOpenObserver();
+      var observerService = Components.classes["@mozilla.org/observer-service;1"]
+        .getService(Components.interfaces.nsIObserverService);
+      observerService.addObserver(gTabOpenObserver, "open-new-tab-request", false);
     }
   }
   
@@ -698,7 +703,7 @@ function BrowserFlushBookmarksAndHistory()
     bmks.Flush();
 
     // give history a chance at flushing to disk also
-    var history = Components.classes["@mozilla.org/browser/global-history;1"]
+    var history = Components.classes["@mozilla.org/browser/global-history;2"]
                             .getService(Components.interfaces.nsIRDFRemoteDataSource);
     history.Flush();
   } catch(ex) {
@@ -713,12 +718,22 @@ function Shutdown()
     remoteService = Components.classes[XREMOTESERVICE_CONTRACTID]
                               .getService(Components.interfaces.nsIXRemoteService);
     remoteService.removeBrowserInstance(window);
+
+    var observerService = Components.classes["@mozilla.org/observer-service;1"]
+      .getService(Components.interfaces.nsIObserverService);
+    observerService.removeObserver(gTabOpenObserver, "open-new-tab-request", false);
   }
 
   try {
     getBrowser().removeProgressListener(window.XULBrowserWindow);
   } catch (ex) {
   }
+
+  var bt = document.getElementById("bookmarks-ptf");
+  if (bt) {
+    bt.database.RemoveObserver(BookmarksToolbarRDFObserver);
+  }
+  controllers.removeController(BookmarksMenuController);
 
   window.XULBrowserWindow.destroy();
   window.XULBrowserWindow = null;
@@ -740,8 +755,10 @@ function Shutdown()
 
 function Translate()
 {
-  var service = pref.getCharPref("browser.translation.service");
-  var serviceDomain = pref.getCharPref("browser.translation.serviceDomain");
+  var service = pref.getComplexValue("browser.translation.service",
+                                     Components.interfaces.nsIPrefLocalizedString).data;
+  var serviceDomain = pref.getComplexValue("browser.translation.serviceDomain",
+                                           Components.interfaces.nsIPrefLocalizedString).data;
   var targetURI = getWebNavigation().currentURI.spec;
 
   // if we're already viewing a translated page, then just reload
@@ -1088,7 +1105,7 @@ function BrowserSearchInternet()
         // Get a search URL and guess that the front page of the site has a search form.
         var searchDS = Components.classes["@mozilla.org/rdf/datasource;1?name=internetsearch"]
                                  .getService(Components.interfaces.nsIInternetSearchService);
-        searchURL = searchDS.GetInternetSearchURL(searchEngineURI, "ABC", 0, 0, {value:0});
+        var searchURL = searchDS.GetInternetSearchURL(searchEngineURI, "ABC", 0, 0, {value:0});
         if (searchURL) {
           searchRoot = searchURL.match(/[a-z]+:\/\/[a-z.-]+/);
           if (searchRoot) {
@@ -1195,7 +1212,7 @@ function updateCloseItems()
     document.getElementById('menu_close').setAttribute('label', gNavigatorBundle.getString('tabs.closeTab'));
     document.getElementById('menu_closeWindow').hidden = false;
     document.getElementById('menu_closeOtherTabs').hidden = false;
-    if (browser.mTabContainer.childNodes.length > 1)
+    if (browser.tabContainer.childNodes.length > 1)
       document.getElementById('cmd_closeOtherTabs').removeAttribute('disabled');
     else
       document.getElementById('cmd_closeOtherTabs').setAttribute('disabled', 'true');
@@ -1215,7 +1232,7 @@ function BrowserCloseOtherTabs()
 function BrowserCloseTabOrWindow()
 {
   var browser = getBrowser();
-  if (browser.mTabContainer.childNodes.length > 1) {
+  if (browser.tabContainer.childNodes.length > 1) {
     // Just close up a tab.
     browser.removeCurrentTab();
     return;
@@ -2149,7 +2166,7 @@ function onPopupBlocked(aEvent) {
       if (browser == getBrowser().selectedBrowser) {
         var popupIcon = document.getElementById("popupIcon");
         popupIcon.hidden = false;
-      }    
+      }
     }
   }
 }
@@ -2234,7 +2251,8 @@ function maybeInitPopupContext()
 function WindowIsClosing()
 {
   var browser = getBrowser();
-  var numtabs = browser.mTabContainer.childNodes.length;
+  var cn = browser.tabContainer.childNodes;
+  var numtabs = cn.length;
   var reallyClose = true;
 
   if (numtabs > 1) {
@@ -2262,5 +2280,13 @@ function WindowIsClosing()
       }
     } //if the warn-me pref was true
   } //if multiple tabs are open
+
+  for (var i = 0; reallyClose && i < numtabs; ++i) {
+    var ds = browser.getBrowserForTab(cn[i]).docShell;
+  
+    if (ds.contentViewer && !ds.contentViewer.permitUnload())
+      reallyClose = false;
+  }
+
   return reallyClose;
 }

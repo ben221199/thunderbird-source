@@ -127,9 +127,9 @@ STDMETHODIMP CPalmSyncImp::IsValid()
 
 // Get the list of Address Books for the currently logged in user profile
 STDMETHODIMP CPalmSyncImp::nsGetABList(BOOL aIsUnicode, short * aABListCount,
-                        lpnsMozABDesc * aABList, long ** aABCatIndexList, BOOL ** aFirstTimeSyncList)
+                        lpnsMozABDesc * aABList, long ** aABCatIndexList, BOOL ** aDirFlagsList)
 {
-  if (!aABListCount || !aABList || !aABCatIndexList ||!aFirstTimeSyncList)
+  if (!aABListCount || !aABList || !aABCatIndexList ||!aDirFlagsList)
         return E_FAIL;
   *aABListCount = 0;
 
@@ -156,12 +156,12 @@ STDMETHODIMP CPalmSyncImp::nsGetABList(BOOL aIsUnicode, short * aABListCount,
     {
         if (NS_SUCCEEDED(subDirectories->GetNext(getter_AddRefs(item))))
         {
-          directory = do_QueryInterface(item, &rv);
+          nsCOMPtr <nsIAbDirectory> subDirectory = do_QueryInterface(item, &rv);
           if (NS_SUCCEEDED(rv))
           {
               nsCOMPtr <nsIAbDirectoryProperties> properties;
               nsXPIDLCString fileName;
-              rv = directory->GetDirectoryProperties(getter_AddRefs(properties));
+              rv = subDirectory->GetDirectoryProperties(getter_AddRefs(properties));
               if(NS_FAILED(rv)) 
                 continue;
               rv = properties->GetFileName(getter_Copies(fileName));
@@ -170,7 +170,7 @@ STDMETHODIMP CPalmSyncImp::nsGetABList(BOOL aIsUnicode, short * aABListCount,
               PRUint32 dirType;
               rv = properties->GetDirType(&dirType);
               nsCAutoString prefName;
-              directory->GetDirPrefId(prefName);
+              subDirectory->GetDirPrefId(prefName);
               prefName.Append(".disablePalmSync");
               PRBool disableThisAB = GetBoolPref(prefName.get(), PR_FALSE);
               // Skip/Ignore 4.X addrbooks (ie, with ".na2" extension), and non personal AB's
@@ -187,14 +187,15 @@ STDMETHODIMP CPalmSyncImp::nsGetABList(BOOL aIsUnicode, short * aABListCount,
       return E_FAIL;  // should not happen but just in case.
 
     lpnsMozABDesc serverDescList = (lpnsMozABDesc) CoTaskMemAlloc(sizeof(nsMozABDesc) * count);
-    BOOL *firstTimeSyncList = (BOOL *) CoTaskMemAlloc(sizeof(BOOL) * count);
+    BOOL *dirFlagsList = (BOOL *) CoTaskMemAlloc(sizeof(BOOL) * count);
     long *catIndexList = (long *) CoTaskMemAlloc(sizeof(long) * count);
 
     *aABListCount = count;
     *aABList = serverDescList;
-    *aFirstTimeSyncList = firstTimeSyncList;
+    *aDirFlagsList = dirFlagsList;
     *aABCatIndexList = catIndexList;
 
+    directory->GetChildNodes(getter_AddRefs(subDirectories)); // reset enumerator
     // For each valid addrbook collect info.
     while (NS_SUCCEEDED(rv = subDirectories->HasMoreElements(&hasMore)) && hasMore)
     {
@@ -263,8 +264,14 @@ STDMETHODIMP CPalmSyncImp::nsGetABList(BOOL aIsUnicode, short * aABListCount,
           }
           serverDescList++;
 
-          *firstTimeSyncList = (palmSyncTimeStamp <= 0);
-          firstTimeSyncList++;
+          PRUint32 dirFlag = 0;
+          if (palmSyncTimeStamp <= 0)
+            dirFlag |= kFirstTimeSyncDirFlag;
+          // was this the pab?
+          if (prefName.Equals("ldap_2.servers.pab.disablePalmSync"))
+            dirFlag |= kIsPabDirFlag;
+          *dirFlagsList = (BOOL) dirFlag;
+          dirFlagsList++;
 
           *catIndexList = palmCategoryIndex;
           catIndexList++;
@@ -274,7 +281,7 @@ STDMETHODIMP CPalmSyncImp::nsGetABList(BOOL aIsUnicode, short * aABListCount,
 
     // assign member variables to the beginning of the list
     serverDescList = *aABList;
-    firstTimeSyncList = *aFirstTimeSyncList;
+    dirFlagsList = *aDirFlagsList;
     catIndexList = *aABCatIndexList;
 
     if(NS_FAILED(rv))

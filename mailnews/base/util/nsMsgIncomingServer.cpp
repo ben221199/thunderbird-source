@@ -82,7 +82,7 @@
 
 #define PORT_NOT_SET -1
 
-NS_NAMED_LITERAL_CSTRING(REL_FILE_PREF_SUFFIX, "-rel");
+#define REL_FILE_PREF_SUFFIX NS_LITERAL_CSTRING("-rel")
 
 MOZ_DECL_CTOR_COUNTER(nsMsgIncomingServer)
 
@@ -821,8 +821,10 @@ nsMsgIncomingServer::GetPasswordWithUI(const PRUnichar * aPromptMessage, const
       nsAutoString userNameFound;
       nsAutoString passwordFound;
 
+      const nsAFlatString& empty = EmptyString();
+
       // Get password entry corresponding to the host URI we are passing in.
-      if (NS_SUCCEEDED(passwordMgrInt->FindPasswordEntry(currServerUri, NS_LITERAL_STRING(""), NS_LITERAL_STRING(""),
+      if (NS_SUCCEEDED(passwordMgrInt->FindPasswordEntry(currServerUri, empty, empty,
                                              hostFound, userNameFound, passwordFound)))
       {
         m_password.AssignWithConversion(passwordFound);
@@ -1438,9 +1440,10 @@ nsMsgIncomingServer::SetPort(PRInt32 aPort)
     NS_ENSURE_SUCCESS(rv, rv);
 
     PRInt32 defaultPort;
-    // First param is set to FALSE so that the non-secure
-    // default port is returned
-    rv = protocolInfo->GetDefaultServerPort(PR_FALSE, &defaultPort);
+    PRBool isSecure = PR_FALSE;
+    // Try this, and if it fails, fall back to the non-secure port
+    GetIsSecure(&isSecure);
+    rv = protocolInfo->GetDefaultServerPort(isSecure, &defaultPort);
     if (NS_SUCCEEDED(rv) && aPort == defaultPort)
         // clear it out by setting it to the default
         rv = SetIntValue("port", PORT_NOT_SET);

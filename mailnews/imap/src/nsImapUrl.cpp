@@ -336,7 +336,7 @@ nsresult nsImapUrl::ParseUrl()
   NS_UnescapeURL(imapPartOfUrl);
   if (NS_SUCCEEDED(rv) && !imapPartOfUrl.IsEmpty())
   {
-    ParseImapPart((char*)imapPartOfUrl.get()+1);  // GetPath leaves leading '/' in the path!!!
+    ParseImapPart(imapPartOfUrl.BeginWriting()+1);  // GetPath leaves leading '/' in the path!!!
   }
   
   return NS_OK;
@@ -830,10 +830,11 @@ NS_IMETHODIMP nsImapUrl::AddOnlineDirectoryIfNecessary(const char *onlineMailbox
   rv = server->GetKey(getter_Copies(serverKey));
   if (NS_FAILED(rv)) return rv;
   rv = hostSessionList->GetOnlineDirForHost(serverKey, aString);
-  char *onlineDir = !aString.IsEmpty() ? ToNewCString(aString) : nsnull;
+  nsCAutoString onlineDir;
+  onlineDir.AssignWithConversion(aString);
   
   // If this host has an online server directory configured
-  if (onlineMailboxName && onlineDir)
+  if (onlineMailboxName && !onlineDir.IsEmpty())
   {
     nsIMAPNamespace *ns = nsnull;
     rv = hostSessionList->GetNamespaceForMailboxForHost(serverKey,

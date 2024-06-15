@@ -42,7 +42,7 @@
 #include "nsIEventStateManager.h"
 #include "nsGUIEvent.h"
 #include "nsIContent.h"
-#include "nsIPrefBranch.h"
+#include "nsIPrefBranchInternal.h"
 #include "nsIObserver.h"
 #include "nsWeakReference.h"
 #include "nsHashtable.h"
@@ -58,6 +58,7 @@ class nsIDocShell;
 class nsIDocShellTreeNode;
 class nsIDocShellTreeItem;
 class nsIFocusController;
+class CurrentEventShepherd;
 
 // mac uses click-hold context menus, a holdover from 4.x
 #if defined(XP_MAC) || defined(XP_MACOSX)
@@ -121,6 +122,11 @@ public:
                              nsEventStatus* aStatus,
                              nsIView* aView);
 
+  NS_IMETHOD GetCurrentEvent(nsEvent **aEvent)
+               { *aEvent = mCurrentEvent; return NS_OK; }
+  NS_IMETHOD SetCurrentEvent(nsEvent *aEvent)
+               { mCurrentEvent = aEvent; return NS_OK; }
+
   NS_IMETHOD SetPresContext(nsIPresContext* aPresContext);
   NS_IMETHOD ClearFrameRefs(nsIFrame* aFrame);
 
@@ -157,6 +163,8 @@ public:
   NS_IMETHOD MoveCaretToFocus();
 
 protected:
+  friend class CurrentEventShepherd;
+
   void UpdateCursor(nsIPresContext* aPresContext, nsEvent* aEvent, nsIFrame* aTargetFrame, nsEventStatus* aStatus);
   /**
    * Turn a GUI mouse event into a mouse event targeted at the specified
@@ -174,7 +182,9 @@ protected:
   nsresult SetClickCount(nsIPresContext* aPresContext, nsMouseEvent *aEvent, nsEventStatus* aStatus);
   nsresult CheckForAndDispatchClick(nsIPresContext* aPresContext, nsMouseEvent *aEvent, nsEventStatus* aStatus);
   PRBool ChangeFocus(nsIContent* aFocus, PRInt32 aFocusedWith);
-  nsresult GetNextTabbableContent(nsIContent* aRootContent, nsIFrame* aFrame,
+  nsresult GetNextTabbableContent(nsIContent* aRootContent,
+                                  nsIContent* aStartContent,
+                                  nsIFrame* aStartFrame,
                                   PRBool forward, PRBool ignoreTabIndex,
                                   nsIContent** aResultNode,
                                   nsIFrame** aResultFrame);
@@ -277,6 +287,7 @@ protected:
   PRInt32 mCurrentTabIndex;
   PRBool      mConsumeFocusEvents;
   PRInt32     mLockCursor;
+  nsEvent    *mCurrentEvent;
 
   // DocShell Traversal Data Memebers
   nsCOMPtr<nsIContent> mLastContentFocus;
@@ -306,7 +317,7 @@ protected:
   static PRInt32 gGeneralAccesskeyModifier;
 
   // For preferences handling
-  nsCOMPtr<nsIPrefBranch> mPrefBranch;
+  nsCOMPtr<nsIPrefBranchInternal> mPrefBranch;
   PRPackedBool m_haveShutdown;
 
   // To inform people that dispatched events that frames have been cleared and
@@ -346,8 +357,5 @@ protected:
 #endif
 
 };
-
-nsresult
-NS_NewEventStateManager(nsIEventStateManager** aInstancePtrResult);
 
 #endif // nsEventStateManager_h__
