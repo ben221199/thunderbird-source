@@ -610,29 +610,27 @@ nsresult nsAbAutoCompleteSession::SearchDirectory(const nsACString& aURI, nsAbAu
     if (!searchSubDirectory)
         return rv;
   
-    nsCOMPtr<nsIEnumerator> subDirectories;
+    nsCOMPtr<nsISimpleEnumerator> subDirectories;
     if (NS_SUCCEEDED(directory->GetChildNodes(getter_AddRefs(subDirectories))) && subDirectories)
     {
         nsCOMPtr<nsISupports> item;
-        if (NS_SUCCEEDED(subDirectories->First()))
+        PRBool hasMore;
+        while (NS_SUCCEEDED(rv = subDirectories->HasMoreElements(&hasMore)) && hasMore)
         {
-            do
+            if (NS_SUCCEEDED(subDirectories->GetNext(getter_AddRefs(item))))
             {
-                if (NS_SUCCEEDED(subDirectories->CurrentItem(getter_AddRefs(item))))
+              directory = do_QueryInterface(item, &rv);
+              if (NS_SUCCEEDED(rv))
+              {
+                nsCOMPtr<nsIRDFResource> subResource(do_QueryInterface(item, &rv));
+                if (NS_SUCCEEDED(rv))
                 {
-                    directory = do_QueryInterface(item, &rv);
-                    if (NS_SUCCEEDED(rv))
-                    {
-                        nsCOMPtr<nsIRDFResource> subResource(do_QueryInterface(item, &rv));
-                        if (NS_SUCCEEDED(rv))
-                        {
-                            nsXPIDLCString URI;
-                            subResource->GetValue(getter_Copies(URI));
-                            rv = SearchDirectory(URI, searchStr, PR_TRUE, results);
-                        }
-                    }
+                    nsXPIDLCString URI;
+                    subResource->GetValue(getter_Copies(URI));
+                    rv = SearchDirectory(URI, searchStr, PR_TRUE, results);
                 }
-            } while (NS_SUCCEEDED(subDirectories->Next()));
+              }
+            }
         }
     }
     return rv;
@@ -734,9 +732,12 @@ NS_IMETHODIMP nsAbAutoCompleteSession::OnStartLookup(const PRUnichar *uSearchStr
       mAutoCompleteCommentColumn = 0;
     }
 
+
+    // strings with @ signs or commas (commas denote multiple names) should be ignored for 
+    // autocomplete purposes
     PRInt32 i;
     for (i = nsCRT::strlen(uSearchString) - 1; i >= 0; i --)
-        if (uSearchString[i] == '@')
+        if (uSearchString[i] == '@' || uSearchString[i] == ',')
         {
             listener->OnAutoComplete(nsnull, nsIAutoCompleteStatus::ignored);
             return NS_OK;

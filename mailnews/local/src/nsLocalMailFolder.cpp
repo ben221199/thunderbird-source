@@ -142,7 +142,8 @@ nsLocalMailCopyState::~nsLocalMailCopyState()
 nsMsgLocalMailFolder::nsMsgLocalMailFolder(void)
   : mHaveReadNameFromDB(PR_FALSE),
     mInitialized(PR_FALSE), mCopyState(nsnull), mType(nsnull),
-    mCheckForNewMessagesAfterParsing(PR_FALSE), mNumFilterClassifyRequests(0)
+    mCheckForNewMessagesAfterParsing(PR_FALSE), mNumFilterClassifyRequests(0), 
+    m_parsingFolder(PR_FALSE)
 {
 }
 
@@ -399,7 +400,8 @@ NS_IMETHODIMP nsMsgLocalMailFolder::ParseFolder(nsIMsgWindow *aMsgWindow, nsIUrl
   }
   
   rv = mailboxService->ParseMailbox(aMsgWindow, path, parser, listener, nsnull);
-  
+  if (NS_SUCCEEDED(rv))
+    m_parsingFolder = PR_TRUE;
   return rv;
 }
 
@@ -718,7 +720,7 @@ nsMsgLocalMailFolder::UpdateFolder(nsIMsgWindow *aWindow)
     }
     else if (mCopyState)
       mCopyState->m_notifyFolderLoaded = PR_TRUE; //defer folder loaded notification
-    else // if the db was already open, it's probably OK to load it...
+    else if (!m_parsingFolder)// if the db was already open, it's probably OK to load it if not parsing
       NotifyFolderEvent(mFolderLoadedAtom);
   }
   PRBool filtersRun;
@@ -801,6 +803,7 @@ nsresult nsMsgLocalMailFolder::CreateDirectoryForFolder(nsFileSpec &path)
       //otherwise we need to create a new directory.
       else
       {
+        nsFileSpec tempPath(path.GetNativePathCString(), PR_TRUE); // create intermediate directories
         path.CreateDirectory();
         //Above doesn't return an error value so let's see if
         //it was created.
@@ -1044,7 +1047,7 @@ NS_IMETHODIMP nsMsgLocalMailFolder::Compact(nsIUrlListener *aListener, nsIMsgWin
     // check if we need to compact the folder
 
     if (expungedBytes > 0)
-      rv = folderCompactor->Compact(this, aMsgWindow);
+      rv = folderCompactor->Compact(this, PR_FALSE, aMsgWindow);
     else
       rv = NotifyCompactCompleted();
   }
@@ -1624,14 +1627,9 @@ nsMsgLocalMailFolder::DeleteMessages(nsISupportsArray *messages,
             ThrowAlertMsg("deletingMsgsFailed", msgWindow);
 
           // we are the source folder here for a move or shift delete
-          //enable notifications first, because that will close the file stream
-          // we've been caching, and truly make the summary valid.
+          //enable notifications because that will close the file stream
+          // we've been caching, mark the db as valid, and commit it.
           EnableNotifications(allMessageCountNotifications, PR_TRUE, PR_TRUE /*dbBatching*/);
-          if (NS_SUCCEEDED(rv))
-          {
-            mDatabase->SetSummaryValid(PR_TRUE);
-            mDatabase->Commit(nsMsgDBCommitType::kLargeCommit);
-          }
           if(!isMove)
             NotifyFolderEvent(NS_SUCCEEDED(rv) ? mDeleteOrMoveMsgCompletedAtom : mDeleteOrMoveMsgFailedAtom);
       }
@@ -1727,16 +1725,7 @@ nsMsgLocalMailFolder::OnCopyCompleted(nsISupports *srcSupport, PRBool moveCopySu
   {
     mDatabase->SetSummaryValid(PR_TRUE);
     mDatabase->Commit(nsMsgDBCommitType::kLargeCommit);
-    nsresult rv;
-    nsCOMPtr<nsIMsgMailSession> session = 
-             do_GetService(NS_MSGMAILSESSION_CONTRACTID, &rv); 
-    if (NS_SUCCEEDED(rv) && session) // don't use NS_ENSURE_SUCCESS here - we need to release semaphore below
-    {
-      PRBool folderOpen;
-      session->IsFolderOpenInWindow(this, &folderOpen);
-      if (!folderOpen && ! (mFlags & (MSG_FOLDER_FLAG_TRASH | MSG_FOLDER_FLAG_INBOX)))
-        SetMsgDatabase(nsnull);
-    }
+    (void) CloseDBIfFolderNotOpen();
   }
 
   PRBool haveSemaphore;
@@ -3247,6 +3236,7 @@ nsMsgLocalMailFolder::OnStopRunningUrl(nsIURI * aUrl, nsresult aExitCode)
     }
   }
 
+  m_parsingFolder = PR_FALSE;
   return nsMsgDBFolder::OnStopRunningUrl(aUrl, aExitCode);
 }
 
@@ -3390,6 +3380,7 @@ NS_IMETHODIMP
 nsMsgLocalMailFolder::NotifyCompactCompleted()
 {
   (void) RefreshSizeOnDisk();
+  (void) CloseDBIfFolderNotOpen();
   nsCOMPtr <nsIAtom> compactCompletedAtom;
   compactCompletedAtom = do_GetAtom("CompactCompleted");
   NotifyFolderEvent(compactCompletedAtom);

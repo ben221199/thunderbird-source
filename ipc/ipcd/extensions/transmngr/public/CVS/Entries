@@ -1,6 +1,6 @@
-/.cvsignore/1.2/Fri Nov  7 13:50:25 2003//TTHUNDERBIRD_0_4_BRANCH
-/Makefile.in/1.2/Fri Nov  7 13:50:25 2003//TTHUNDERBIRD_0_4_BRANCH
-/ipcITransactionObserver.idl/1.2/Fri Nov  7 13:50:25 2003//TTHUNDERBIRD_0_4_BRANCH
-/ipcITransactionService.idl/1.2/Fri Nov  7 13:50:25 2003//TTHUNDERBIRD_0_4_BRANCH
-/tmITransactionService.idl/1.2/Fri Nov  7 13:50:25 2003//TTHUNDERBIRD_0_4_BRANCH
+/.cvsignore/1.2/Fri Nov  7 13:50:25 2003//TTHUNDERBIRD_0_5_RELEASE
+/Makefile.in/1.2/Fri Nov  7 13:50:25 2003//TTHUNDERBIRD_0_5_RELEASE
+/ipcITransactionObserver.idl/1.2/Fri Nov  7 13:50:25 2003//TTHUNDERBIRD_0_5_RELEASE
+/ipcITransactionService.idl/1.2/Fri Nov  7 13:50:25 2003//TTHUNDERBIRD_0_5_RELEASE
+/tmITransactionService.idl/1.2/Fri Nov  7 13:50:25 2003//TTHUNDERBIRD_0_5_RELEASE
 D

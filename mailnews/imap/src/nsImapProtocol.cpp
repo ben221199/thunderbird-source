@@ -74,6 +74,7 @@
 #include "nsReadableUtils.h"
 #include "nsIPipe.h"
 #include "nsIMsgFolder.h"
+#include "nsMsgMessageFlags.h"
 #include "nsImapStringBundle.h"
 #include "nsICopyMsgStreamListener.h"
 #include "nsTextFormatter.h"
@@ -2263,7 +2264,7 @@ void nsImapProtocol::ProcessSelectedStateURL()
               (m_imapAction == nsIImapUrl::nsImapOnlineMove) &&
               !GetServerStateParser().ServerIsAOLServer())
             {
-              Store(messageIdString, "+FLAGS (\\Deleted)",
+              Store(messageIdString, "+FLAGS (\\Deleted \\Seen)",
                 bMessageIdsAreUids); 
               PRBool storeSuccessful = GetServerStateParser().LastCommandSuccessful();
               
@@ -2306,7 +2307,7 @@ void nsImapProtocol::ProcessSelectedStateURL()
               if (GetServerStateParser().LastCommandSuccessful() &&
                 (m_imapAction == nsIImapUrl::nsImapOnlineToOfflineMove))
               {
-                Store(messageIdString, "+FLAGS (\\Deleted)",bMessageIdsAreUids); 
+                Store(messageIdString, "+FLAGS (\\Deleted \\Seen)",bMessageIdsAreUids); 
                 if (GetServerStateParser().LastCommandSuccessful())
                   copyStatus = ImapOnlineCopyStateType::kSuccessfulDelete;
                 else
@@ -4436,6 +4437,11 @@ nsImapProtocol::PercentProgressUpdateEvent(PRUnichar *message, PRInt32 currentPr
   m_lastPercent = percent;
   m_lastProgressTime = nowMS;
 
+  // set our max progress as the content length on the mock channel
+  if (m_mockChannel)
+      m_mockChannel->SetContentLength(maxProgress);
+      
+
   if (m_imapMiscellaneousSink)
       m_imapMiscellaneousSink->PercentProgress(this, &aProgressInfo);
 }
@@ -4898,6 +4904,8 @@ void nsImapProtocol::OnAppendMsgFromFile()
         flagsToSet &= ~kImapMsgSeenFlag;
       if (msgFlags & MSG_FLAG_MDN_REPORT_SENT)
         flagsToSet |= kImapMsgMDNSentFlag;
+      if (msgFlags & MSG_FLAG_LABELS)
+        flagsToSet |= (msgFlags & MSG_FLAG_LABELS) >> 16;
       UploadMessageFromFile(fileSpec, mailboxName, flagsToSet);
       PR_Free( mailboxName );
     }
@@ -4969,6 +4977,7 @@ void nsImapProtocol::UploadMessageFromFile (nsIFileSpec* fileSpec,
         dataBuffer[readCount] = 0;
         rv = SendData(dataBuffer);
         totalSize -= readCount;
+        PercentProgressUpdateEvent(nsnull, fileSize - totalSize, fileSize);
         rv = fileSpec->Eof(&eof);
       }
     }
@@ -5453,9 +5462,13 @@ void nsImapProtocol::OnStatusForFolder(const char *mailboxName)
   if (NS_SUCCEEDED(rv))
       ParseIMAPandCheckForNewMail();
 
+  if (GetServerStateParser().LastCommandSuccessful())
+  {
   nsImapMailboxSpec *new_spec = GetServerStateParser().CreateCurrentMailboxSpec(mailboxName);
   if (new_spec && m_imapMailFolderSink)
     m_imapMailFolderSink->UpdateImapMailboxStatus(this, new_spec);
+  NS_IF_RELEASE(new_spec);
+  }
 }
 
 
@@ -7032,8 +7045,10 @@ PRBool nsImapProtocol::TryToLogon()
             break;
          }
 
-        // try to use CRAM before we fall back to plain or auth login....
-        if (GetServerStateParser().GetCapabilityFlag() & kHasCRAMCapability)
+        // Use CRAM only if secure auth is enabled. This is for servers that
+        // say they support CRAM but are so badly broken that trying it causes
+        // all subsequent login attempts to fail (bug 231303, bug 227560)
+        if (m_useSecAuth && GetServerStateParser().GetCapabilityFlag() & kHasCRAMCapability)
         {
           AuthLogin (userName, password, kHasCRAMCapability);
           logonTries++;
@@ -7330,6 +7345,7 @@ nsImapMockChannel::nsImapMockChannel()
   mChannelClosed = PR_FALSE;
   mReadingFromCache = PR_FALSE;
   mTryingToReadPart = PR_FALSE;
+  mContentLength = -1;
 }
 
 nsImapMockChannel::~nsImapMockChannel()
@@ -7929,15 +7945,15 @@ NS_IMETHODIMP nsImapMockChannel::SetContentCharset(const nsACString &aContentCha
 
 NS_IMETHODIMP nsImapMockChannel::GetContentLength(PRInt32 * aContentLength)
 {
-  *aContentLength = -1;
+  *aContentLength = mContentLength;
   return NS_OK;
 }
 
 NS_IMETHODIMP
 nsImapMockChannel::SetContentLength(PRInt32 aContentLength)
 {
-    NS_NOTREACHED("nsImapMockChannel::SetContentLength");
-    return NS_ERROR_NOT_IMPLEMENTED;
+    mContentLength = aContentLength;
+    return NS_OK;
 }
 
 NS_IMETHODIMP nsImapMockChannel::GetOwner(nsISupports * *aPrincipal)

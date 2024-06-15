@@ -264,7 +264,7 @@
       </menupopup>
    </menu>
    
-    <menu id="toolsMenu"
+    <menu id="tasksMenu"
          label="&toolsMenu.label;"
          accesskey="&toolsMenu.accesskey;" >                                                                                       
       <menupopup id="taskPopup">
@@ -301,9 +301,7 @@
          <menuitem id="calendar-about-menu-item"
                    label="&calendar.about.label;"
                    accesskey="&calendar.about.accesskey;"
-                   oncommand="window.openDialog('chrome://calendar/content/about.xul',
-		                                'About',
-						'modal,centerscreen,chrome,width=500,resizable=yes');"/>
+                   oncommand="displayCalendarVersion();"/>
       </menupopup>
    </menu>      
 </menubar>

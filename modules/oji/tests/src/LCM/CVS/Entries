@@ -1,10 +1,10 @@
-/InitLiveConnectClasses.cpp/1.1/Wed May  3 01:03:48 2000//TTHUNDERBIRD_0_4_BRANCH
-/IsLiveConnectEnabled.cpp/1.1/Wed May  3 01:03:48 2000//TTHUNDERBIRD_0_4_BRANCH
-/LiveConnectManagerTests.h/1.1/Wed May  3 01:03:48 2000//TTHUNDERBIRD_0_4_BRANCH
-/Makefile/1.1/Wed May  3 01:03:48 2000//TTHUNDERBIRD_0_4_BRANCH
-/Makefile.win/1.1/Wed May  3 01:03:48 2000//TTHUNDERBIRD_0_4_BRANCH
-/ShutdownLiveConnect.cpp/1.1/Wed May  3 01:03:48 2000//TTHUNDERBIRD_0_4_BRANCH
-/StartupLiveConnect.cpp/1.1/Wed May  3 01:03:49 2000//TTHUNDERBIRD_0_4_BRANCH
-/WrapJavaObject.cpp/1.1/Wed May  3 01:03:49 2000//TTHUNDERBIRD_0_4_BRANCH
-/get_lcm.cpp/1.1/Wed May  3 01:03:49 2000//TTHUNDERBIRD_0_4_BRANCH
+/InitLiveConnectClasses.cpp/1.1/Wed May  3 01:03:48 2000//TTHUNDERBIRD_0_5_RELEASE
+/IsLiveConnectEnabled.cpp/1.1/Wed May  3 01:03:48 2000//TTHUNDERBIRD_0_5_RELEASE
+/LiveConnectManagerTests.h/1.1/Wed May  3 01:03:48 2000//TTHUNDERBIRD_0_5_RELEASE
+/Makefile/1.1/Wed May  3 01:03:48 2000//TTHUNDERBIRD_0_5_RELEASE
+/Makefile.win/1.1/Wed May  3 01:03:48 2000//TTHUNDERBIRD_0_5_RELEASE
+/ShutdownLiveConnect.cpp/1.1/Wed May  3 01:03:48 2000//TTHUNDERBIRD_0_5_RELEASE
+/StartupLiveConnect.cpp/1.1/Wed May  3 01:03:49 2000//TTHUNDERBIRD_0_5_RELEASE
+/WrapJavaObject.cpp/1.1/Wed May  3 01:03:49 2000//TTHUNDERBIRD_0_5_RELEASE
+/get_lcm.cpp/1.1/Wed May  3 01:03:49 2000//TTHUNDERBIRD_0_5_RELEASE
 D

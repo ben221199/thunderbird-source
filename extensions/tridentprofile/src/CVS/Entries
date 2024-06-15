@@ -1,8 +1,8 @@
-/Makefile.in/1.2/Thu Oct 30 03:00:56 2003//TTHUNDERBIRD_0_4_BRANCH
-/nsModule.cpp/1.1/Fri Jan 10 04:09:58 2003//TTHUNDERBIRD_0_4_BRANCH
-/nsTridentPreferences.h/1.2/Thu Jan 16 07:57:33 2003//TTHUNDERBIRD_0_4_BRANCH
-/nsTridentPreferencesWin.cpp/1.7/Thu Oct 30 17:43:46 2003//TTHUNDERBIRD_0_4_BRANCH
-/nsTridentPreferencesWin.h/1.2/Thu Jan 16 07:57:34 2003//TTHUNDERBIRD_0_4_BRANCH
-/nsTridentProfileMigrator.cpp/1.2/Thu Jan 16 07:57:34 2003//TTHUNDERBIRD_0_4_BRANCH
-/nsTridentProfileMigrator.h/1.1/Fri Jan 10 04:10:02 2003//TTHUNDERBIRD_0_4_BRANCH
+/Makefile.in/1.2/Thu Oct 30 03:00:56 2003//TTHUNDERBIRD_0_5_RELEASE
+/nsModule.cpp/1.1/Fri Jan 10 04:09:58 2003//TTHUNDERBIRD_0_5_RELEASE
+/nsTridentPreferences.h/1.2/Thu Jan 16 07:57:33 2003//TTHUNDERBIRD_0_5_RELEASE
+/nsTridentPreferencesWin.cpp/1.7/Thu Oct 30 17:43:46 2003//TTHUNDERBIRD_0_5_RELEASE
+/nsTridentPreferencesWin.h/1.2/Thu Jan 16 07:57:34 2003//TTHUNDERBIRD_0_5_RELEASE
+/nsTridentProfileMigrator.cpp/1.2/Thu Jan 16 07:57:34 2003//TTHUNDERBIRD_0_5_RELEASE
+/nsTridentProfileMigrator.h/1.1/Fri Jan 10 04:10:02 2003//TTHUNDERBIRD_0_5_RELEASE
 D

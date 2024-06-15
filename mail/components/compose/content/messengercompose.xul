@@ -154,11 +154,11 @@
 
 <keyset id="tasksKeys">
   <!-- File Menu -->
-  #ifdef XP_MACOSX
-    <key id="key_newMessage" key="&newMessage.key;" modifiers="accel,shift"/>
-  #else
-    <key id="key_newMessage" key="&newMessage.key;" modifiers="accel"/>
-  #endif
+#ifdef XP_MACOSX
+  <key id="key_newMessage" key="&newMessage.key;" modifiers="accel,shift"/>
+#else
+  <key id="key_newMessage" key="&newMessage.key;" modifiers="accel"/>
+#endif
   <key id="key_close" key="&closeCmd.key;" modifiers="accel"/>
   <key id="key_save" key="&saveCmd.key;" command="cmd_saveDefault" modifiers="accel"/>
   <key id="key_send" keycode="&sendCmd.keycode;" observes="cmd_sendWithCheck" modifiers="accel"/>
@@ -182,7 +182,12 @@
   <key keycode="&findPrevCmd.key2;"  command="cmd_findPrev" modifiers="shift"/>
   
   <!-- Options Menu -->
-  <key id="key_checkspelling" key="&checkSpellingCmd.key;" command="cmd_spelling"  modifiers="accel"/>
+#ifdef XP_UNIX
+  <key id="key_checkspelling" key="&checkSpellingCmd.key;" command="cmd_spelling" modifiers="accel, shift"/>
+#else
+  <key id="key_checkspelling" key="&checkSpellingCmd.key;" command="cmd_spelling" modifiers="accel"/>
+#endif
+
 #ifdef XP_WIN
   <key keycode="&checkSpellingCmd.key2;" command="cmd_spelling"/>
 #endif
@@ -380,13 +385,13 @@
               <menuitem type="radio" name="output_format" label="&bothFormatCmd.label;" accesskey="&bothFormatCmd.accesskey;" id="format_both"/>
             </menupopup>
           </menu>
-          <menu id="priorityMenu" label="&priorityMenu.label;" accesskey="&priorityMenu.accesskey;" oncommand="PriorityMenuSelect(event.target);">
+          <menu id="priorityMenu" label="&priorityMenu.label;" accesskey="&priorityMenu.accesskey;" onpopupshowing="updatePriorityMenu();" oncommand="PriorityMenuSelect(event.target);">
             <menupopup>
-              <menuitem type="radio" name="priority" label="&lowestPriorityCmd.label;" accesskey="&lowestPriorityCmd.accesskey;" id="priority_lowest"/>
-              <menuitem type="radio" name="priority" label="&lowPriorityCmd.label;" accesskey="&lowPriorityCmd.accesskey;" id="priority_low"/>
-              <menuitem type="radio" name="priority" label="&normalPriorityCmd.label;" accesskey="&normalPriorityCmd.accesskey;" id="priority_normal" checked="true"/>
-              <menuitem type="radio" name="priority" label="&highPriorityCmd.label;" accesskey="&highPriorityCmd.accesskey;" id="priority_high"/>
-              <menuitem type="radio" name="priority" label="&highestPriorityCmd.label;" accesskey="&highestPriorityCmd.accesskey;" id="priotity_highest"/>
+              <menuitem type="radio" name="priority" label="&highestPriorityCmd.label;" accesskey="&highestPriorityCmd.accesskey;" value="highest" id="priority_highest"/>
+              <menuitem type="radio" name="priority" label="&highPriorityCmd.label;" accesskey="&highPriorityCmd.accesskey;" value="high" id="priority_high"/>
+              <menuitem type="radio" name="priority" label="&normalPriorityCmd.label;" accesskey="&normalPriorityCmd.accesskey;" value="normal" id="priority_normal" checked="true"/>
+              <menuitem type="radio" name="priority" label="&lowPriorityCmd.label;" accesskey="&lowPriorityCmd.accesskey;" value="low" id="priority_low"/>
+              <menuitem type="radio" name="priority" label="&lowestPriorityCmd.label;" accesskey="&lowestPriorityCmd.accesskey;" value="lowest"  id="priority_lowest"/>              
             </menupopup>
           </menu>
           <menu id="fccMenu" label="&fileCarbonCopyCmd.label;" 
@@ -484,8 +489,8 @@
       
       <menu label="&helpMenu.label;" accesskey="&helpMenu.accesskey;">
         <menupopup id="menu_HelpPopup">
-          <menuitem accesskey="&releaseCmd.accesskey;" label="&releaseCmd.label;" oncommand="loadThrobberUrl('mailnews.release_notes.url');"/>
-          <menuitem accesskey="&hintsAndTips.accesskey;" label="&hintsAndTips.label;" oncommand="loadThrobberUrl('mailnews.hints_and_tips.url');"/>
+          <menuitem id="releaseNotes" accesskey="&releaseCmd.accesskey;" label="&releaseCmd.label;" oncommand="loadThrobberUrl('mailnews.release_notes.url');"/>
+          <menuitem id="hintsAndTips" accesskey="&hintsAndTips.accesskey;" label="&hintsAndTips.label;" oncommand="loadThrobberUrl('mailnews.hints_and_tips.url');"/>
           <menuseparator id="menu_HelpAboutSeparator"/>
           <menuitem id="aboutName" accesskey="&aboutCmd.accesskey;"
                     label="&aboutCmd.label;"
@@ -517,7 +522,10 @@
     <toolbarbutton class="toolbarbutton-1" type="menu-button"
                id="button-attach" label="&attachButton.label;" 
                tooltiptext="&attachButton.tooltip;" 
-               command="cmd_attachFile">
+               command="cmd_attachFile"
+               ondragover="nsDragAndDrop.dragOver(event, envelopeDragObserver);"
+               ondragdrop="nsDragAndDrop.drop(event, envelopeDragObserver);"
+               ondragexit="nsDragAndDrop.dragExit(event, envelopeDragObserver);">
          <menupopup>
             <menuitem label="&attachFileCmd.label;" accesskey="&attachFileCmd.accesskey;" command="cmd_attachFile"/>
             <menuitem label="&attachPageCmd.label;" accesskey="&attachPageCmd.accesskey;" command="cmd_attachPage"/>
@@ -546,6 +554,7 @@
                id="quoteButton" label="&quoteButton.label;" 
                tooltiptext="&quoteButton.tooltip;" 
                command="cmd_quoteMessage"/>
+
     <toolbarbutton id="cut-button" class="toolbarbutton-1"
                    label="&cutCmd.label;"
                    command="cmd_cut"
@@ -559,11 +568,25 @@
                    command="cmd_paste"
                    tooltiptext="&pasteButton.tooltip;"/>
 
+    <toolbaritem id="priority-button" align="center" pack="center">
+      <label value="&priorityButton.label;"/>
+      <menulist id="priorityMenu-button" value="normal" oncommand="PriorityMenuSelect(event.target);">
+        <menupopup>
+          <menuitem name="priority" label="&highestPriorityCmd.label;" value="highest"  id="list_priotity_highest"/>
+          <menuitem name="priority" label="&highPriorityCmd.label;"    value="high"     id="list_priority_high"/>
+          <menuitem name="priority" label="&normalPriorityCmd.label;"  value="normal"   id="list_priority_normal"/>
+          <menuitem name="priority" label="&lowPriorityCmd.label;"     value="low"      id="list_priority_low"/>
+          <menuitem name="priority" label="&lowestPriorityCmd.label;"  value="lowest"   id="list_priority_lowest"/>
+        </menupopup>
+      </menulist>
+    </toolbaritem>
+
     <toolbaritem id="throbber-box" align="center" pack="center">
       <button id="navigator-throbber" oncommand="loadThrobberUrl('compose.throbber.url')" tooltiptext="&throbber.tooltip;">
           <observes element="broadcaster_throbber" attribute="busy"/>
       </button>
     </toolbaritem>
+
   </toolbarpalette>
 
   <toolbar id="composeToolbar" class="toolbar-primary chromeclass-toolbar"
@@ -630,7 +653,7 @@
               </listcell>
               <listcell class="addressingWidgetCell">
                 <textbox id="addressCol2#1" class="plain textbox-addressingWidget uri-element"
-                         type="autocomplete" flex="1"
+                         type="autocomplete" flex="1" 
                          searchSessions="addrbook" timeout="300" maxrows="4" 
                          autoFill="true" autoFillAfterMatch="true" forceComplete="true"
                          minResultsForPopup="3" ignoreBlurWhileSearching="true"

@@ -42,12 +42,21 @@
 const kObserverServiceProgID = "@mozilla.org/observer-service;1";
 const NC_NS = "http://home.netscape.com/NC-rdf#";
 const PREF_BDM_CLOSEWHENDONE = "browser.download.manager.closeWhenDone";
+const PREF_BDM_ALERTONEXEOPEN = "browser.download.manager.alertOnEXEOpen";
 
 var gDownloadManager  = null;
 var gDownloadListener = null;
 var gDownloadsView    = null;
 var gUserInterfered   = false;
 var gActiveDownloads  = [];
+
+// This variable exists because for XPInstalls, we don't want to close the 
+// download manager until the XPInstallManager sends the DIALOG_CLOSE status
+// message. Setting this variable to false when the downloads window is 
+// opened by the xpinstall manager prevents the window from being closed after
+// each download completes (because xpinstall downloads are done sequentially, 
+// not concurrently) 
+var gCanAutoClose     = true;
 
 ///////////////////////////////////////////////////////////////////////////////
 // Utility Functions 
@@ -157,7 +166,8 @@ function autoClose(aDownload)
     var pref = Components.classes["@mozilla.org/preferences-service;1"]
                         .getService(Components.interfaces.nsIPrefBranch);
     var autoClose = pref.getBoolPref(PREF_BDM_CLOSEWHENDONE)
-    if (autoClose && (!window.opener || window.opener.location.href == window.location.href))
+    if (autoClose && (!window.opener || window.opener.location.href == window.location.href) &&
+        gCanAutoClose)
       gCloseDownloadManager();
   }
 }
@@ -172,23 +182,38 @@ function gCloseDownloadManager()
 var gDownloadObserver = {
   observe: function (aSubject, aTopic, aState) 
   {
-    var dl = aSubject.QueryInterface(Components.interfaces.nsIDownload);
     switch (aTopic) {
     case "dl-done":
+      var dl = aSubject.QueryInterface(Components.interfaces.nsIDownload);
       downloadCompleted(dl);
       
       autoClose(dl);      
       break;
     case "dl-failed":
     case "dl-cancel":
+      var dl = aSubject.QueryInterface(Components.interfaces.nsIDownload);
       downloadCompleted(dl);
       break;
     case "dl-start":
       // Add this download to the percentage average tally
+      var dl = aSubject.QueryInterface(Components.interfaces.nsIDownload);
       gActiveDownloads.push(dl);
-      
       break;
-      
+    case "xpinstall-download-started":
+      var windowArgs = aSubject.QueryInterface(Components.interfaces.nsISupportsArray);
+      var params = windowArgs.QueryElementAt(0, Components.interfaces.nsISupportsInterfacePointer);
+      params = params.data.QueryInterface(Components.interfaces.nsIDialogParamBlock);
+      var installObserver = windowArgs.QueryElementAt(1, Components.interfaces.nsISupportsInterfacePointer);
+      installObserver = installObserver.data.QueryInterface(Components.interfaces.nsIObserver);
+      XPInstallDownloadManager.addDownloads(params, installObserver);
+      break;  
+    case "xpinstall-dialog-close":
+      if ("gDownloadManager" in window) {
+        var mgr = gDownloadManager.QueryInterface(Components.interfaces.nsIXPInstallManagerUI);
+        gCanAutoClose = mgr.hasActiveXPIOperations;
+        autoClose();
+      }
+      break;          
     }
   }
 };
@@ -245,6 +270,7 @@ function onDownloadShow(aEvent)
 
   if (f.exists()) {
 #ifdef XP_UNIX
+#ifndef XP_MACOSX
     // on unix, open a browser window rooted at the parent
     var parent = f.parent;
     if (parent) {
@@ -253,6 +279,10 @@ function onDownloadShow(aEvent)
       var browserURL = pref.getCharPref("browser.chromeURL");                          
       window.openDialog(browserURL, "_blank", "chrome,all,dialog=no", parent.path);
     }
+#else
+    // MacOS X identifies as Unix.
+    f.reveal();
+#endif
 #else
     f.reveal();
 #endif
@@ -289,6 +319,33 @@ function onDownloadOpen(aEvent)
 
       if (f.exists()) {
         // XXXben security check!  
+        if (f.isExecutable()) {
+          var dontAsk = false;
+          var pref = Components.classes["@mozilla.org/preferences-service;1"]
+                              .getService(Components.interfaces.nsIPrefBranch);
+          try {
+            dontAsk = !pref.getBoolPref(PREF_BDM_ALERTONEXEOPEN);
+          }
+          catch (e) { }
+          
+          if (!dontAsk) {
+            var strings = document.getElementById("downloadStrings");
+            var name = aEvent.target.getAttribute("target");
+            var message = strings.getFormattedString("fileExecutableSecurityWarning", [name, name]);
+
+            var title = strings.getString("fileExecutableSecurityWarningTitle");
+            var dontAsk = strings.getString("fileExecutableSecurityWarningDontAsk");
+
+            var promptSvc = Components.classes["@mozilla.org/embedcomp/prompt-service;1"].getService(Components.interfaces.nsIPromptService);
+            var checkbox = { value: false };
+            var open = promptSvc.confirmCheck(window, title, message, dontAsk, checkbox);
+            
+            if (!open) 
+              return;
+            else
+              pref.setBoolPref(PREF_BDM_ALERTONEXEOPEN, !checkbox.value);              
+          }        
+        }
         f.launch();
       }
       else {
@@ -417,7 +474,21 @@ function Startup()
   observerService.addObserver(gDownloadObserver, "dl-done",   false);
   observerService.addObserver(gDownloadObserver, "dl-cancel", false);
   observerService.addObserver(gDownloadObserver, "dl-failed", false);  
-  observerService.addObserver(gDownloadObserver, "dl-start", false);  
+  observerService.addObserver(gDownloadObserver, "dl-start",  false);  
+  observerService.addObserver(gDownloadObserver, "xpinstall-download-started", false);  
+  observerService.addObserver(gDownloadObserver, "xpinstall-dialog-close",     false);
+  
+  // Now look and see if we're being opened by XPInstall
+  if ("arguments" in window) {
+    try {
+      var params = window.arguments[0].QueryInterface(Components.interfaces.nsIDialogParamBlock);
+      var installObserver = window.arguments[1].QueryInterface(Components.interfaces.nsIObserver);
+      XPInstallDownloadManager.addDownloads(params, installObserver);
+      var mgr = gDownloadManager.QueryInterface(Components.interfaces.nsIXPInstallManagerUI);
+      gCanAutoClose = mgr.hasActiveXPIOperations;
+    }
+    catch (e) { }
+  }
 
   // This is for the "Clean Up" button, which requires there to be
   // non-active downloads before it can be enabled. 
@@ -443,6 +514,59 @@ function Shutdown()
   observerService.removeObserver(gDownloadObserver, "dl-cancel");
   observerService.removeObserver(gDownloadObserver, "dl-failed");  
   observerService.removeObserver(gDownloadObserver, "dl-start");  
+  observerService.removeObserver(gDownloadObserver, "xpinstall-download-started");  
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// XPInstall
+
+var XPInstallDownloadManager = {
+  addDownloads: function (aParams, aObserver)
+  {
+    var numXPInstallItems = aParams.GetInt(1);
+    
+    var fileLocator = Components.classes["@mozilla.org/file/directory_service;1"].getService(Components.interfaces.nsIProperties);
+    var tempDir = fileLocator.get("TmpD", Components.interfaces.nsIFile);
+
+    var mimeService = Components.classes["@mozilla.org/uriloader/external-helper-app-service;1"].getService(Components.interfaces.nsIMIMEService);
+    
+    var xpinstallManager = gDownloadManager.QueryInterface(Components.interfaces.nsIXPInstallManagerUI);
+
+    var xpiString = "";
+    for (var i = 0; i < numXPInstallItems;) {
+      // Pretty Name
+      var displayName = aParams.GetString(i++);
+      
+      // URI
+      var uri = Components.classes["@mozilla.org/network/standard-url;1"].createInstance(Components.interfaces.nsIURI);
+      uri.spec = aParams.GetString(i++);
+      
+      var iconURL = aParams.GetString(i++);
+      
+      // Local File Target
+      var url = uri.QueryInterface(Components.interfaces.nsIURL);
+      var localTarget = tempDir.clone();
+      localTarget.append(url.fileName);
+      
+      xpiString += localTarget.path + ",";
+      
+      // MIME Info
+      var mimeInfo = mimeService.getFromTypeAndExtension(null, url.fileExtension);
+      
+      if (!iconURL) 
+        iconURL = "chrome://mozapps/skin/xpinstall/xpinstallItemGeneric.png";
+      
+      var download = gDownloadManager.addDownload(Components.interfaces.nsIXPInstallManagerUI.DOWNLOAD_TYPE_INSTALL, 
+                                                  uri, localTarget, displayName, iconURL, mimeInfo, 0, null);
+      
+      // Advance the enumerator
+      var certName = aParams.GetString(i++);
+    }
+
+    var observerService = Components.classes[kObserverServiceProgID]
+                                    .getService(Components.interfaces.nsIObserverService);
+    observerService.notifyObservers(xpinstallManager.xpiProgress, "xpinstall-progress", "open");  
+  }
 }
 
 ///////////////////////////////////////////////////////////////////////////////

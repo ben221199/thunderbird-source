@@ -404,10 +404,22 @@
       <field name="securityUI">
         null
       </field>
+      
+      <field name="userTypedValue">
+        null
+      </field>
 
       <field name="mFormFillAttached">
         false
       </field>
+      
+      <field name="focusedWindow">
+        null
+      </field>
+
+      <field name="focusedElement">
+        null
+      </field>      
 
       <constructor>
         <![CDATA[

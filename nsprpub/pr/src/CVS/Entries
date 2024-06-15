@@ -1,17 +1,8 @@
-/.cvsignore/1.3/Mon May 14 22:10:58 2001//TTHUNDERBIRD_0_4_BRANCH
-/Makefile.in/1.25.2.12/Tue Sep 16 02:00:38 2003//TTHUNDERBIRD_0_4_BRANCH
-/nspr.def/1.3.2.10/Thu Sep 11 17:25:03 2003//TTHUNDERBIRD_0_4_BRANCH
-/nspr.rc/3.10/Tue Jun 20 21:25:46 2000//TTHUNDERBIRD_0_4_BRANCH
-/nspr_symvec.opt/1.1.2.5/Thu Sep 11 17:25:03 2003//TTHUNDERBIRD_0_4_BRANCH
-/os2extra.def/1.1.2.1/Tue Sep 16 02:00:38 2003//TTHUNDERBIRD_0_4_BRANCH
-/prvrsion.c/3.13.2.1/Thu Mar 14 23:20:38 2002//TTHUNDERBIRD_0_4_BRANCH
-D/bthreads////
-D/cplus////
-D/io////
-D/linking////
-D/malloc////
-D/md////
-D/memory////
-D/misc////
-D/pthreads////
-D/threads////
+/.cvsignore/1.3/Mon May 14 22:10:58 2001//TTHUNDERBIRD_0_5_RELEASE
+/Makefile.in/1.25.2.12/Tue Sep 16 02:00:38 2003//TTHUNDERBIRD_0_5_RELEASE
+/nspr.def/1.3.2.10/Thu Sep 11 17:25:03 2003//TTHUNDERBIRD_0_5_RELEASE
+/nspr.rc/3.10/Tue Jun 20 21:25:46 2000//TTHUNDERBIRD_0_5_RELEASE
+/nspr_symvec.opt/1.1.2.5/Thu Sep 11 17:25:03 2003//TTHUNDERBIRD_0_5_RELEASE
+/os2extra.def/1.1.2.1/Tue Sep 16 02:00:38 2003//TTHUNDERBIRD_0_5_RELEASE
+/prvrsion.c/3.13.2.1/Thu Mar 14 23:20:38 2002//TTHUNDERBIRD_0_5_RELEASE
+D

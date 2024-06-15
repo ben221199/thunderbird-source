@@ -1401,14 +1401,14 @@ static nsresult DumpVersion(char *appname)
 }
 
 /* Temporary hack until quicklaunch is removed for real.
- * This prevents firebird from getting into a broken
+ * This prevents firebird and thunderbird from getting into a broken
  * state from which you can't quit.
  */
 static nsresult DumpTurbo(char *appname)
 {
   nsresult rv = NS_OK;
 
-  printf("Quick Launch is not supported in Mozilla Firebird.");
+  printf("Quick Launch is not supported.");
 
   return rv;
 }
@@ -1490,7 +1490,7 @@ static PRBool HandleDumpArguments(int argc, char* argv[])
       DumpVersion(argv[0]);
       return PR_TRUE;
     }
-#ifdef MOZ_PHOENIX
+#ifdef MOZ_XUL_APP
 	if ((PL_strcasecmp(argv[i], "/turbo") == 0)
 		|| (PL_strcasecmp(argv[i], "-turbo") == 0)
 		|| (PL_strcasecmp(argv[i], "/server") == 0)
@@ -1591,6 +1591,33 @@ int main(int argc, char* argv[])
 #ifdef NS_TRACE_MALLOC
   argc = NS_TraceMallocStartupArgs(argc, argv);
 #endif
+
+#ifdef MOZ_XUL_APP
+  // Check for -register, which registers chrome and then exits immediately.
+  for (int i = 0; i < argc; ++i) {
+    if (!strcmp(argv[i], "-register")) {
+      {
+        nsCOMPtr<nsIDirectoryServiceProvider> provider;
+        provider = new nsXREDirProvider(aAppData.GetProductName());
+        NS_ENSURE_TRUE(provider, 1);
+
+        nsresult rv = NS_InitXPCOM2(nsnull, nsnull, provider);
+        NS_ENSURE_SUCCESS(rv, 1);
+      }
+
+      nsCOMPtr<nsIChromeRegistry> chromeReg = do_GetService("@mozilla.org/chrome/chrome-registry;1");
+      NS_ENSURE_TRUE(chromeReg, 1);
+
+      chromeReg->CheckForNewChrome();
+      chromeReg = 0;
+#ifdef XPCOM_GLUE
+      GRE_Shutdown();
+#else
+      NS_ShutdownXPCOM(nsnull);
+#endif
+      return 0;
+    }
+  }
 
 #if defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_GTK2)
   // Initialize GTK+1/2 here for splash
@@ -1694,24 +1721,6 @@ int main(int argc, char* argv[])
     return remoterv;
   }
 #endif
-
-#ifdef MOZ_XUL_APP
-  // Check for -register, which registers chrome and then exits immediately.
-  for (int i = 0; i < argc; ++i) {
-    if (!strcmp(argv[i], "-register")) {
-      nsCOMPtr<nsIChromeRegistry> chromeReg = do_GetService("@mozilla.org/chrome/chrome-registry;1");
-      if (chromeReg) {
-        chromeReg->CheckForNewChrome();
-        chromeReg = 0;
-#ifdef XPCOM_GLUE
-        GRE_Shutdown();
-#else
-        NS_ShutdownXPCOM(nsnull);
-#endif
-        return 0;
-      }
-    }
-  }
 
   nsresult mainResult = main1(argc, argv, nativeApp ? (nsISupports*)nativeApp : (nsISupports*)splash, aAppData);
 #else

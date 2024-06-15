@@ -348,6 +348,21 @@ nsPasswordManager::AddUser(const nsACString& aHost,
                            const nsAString& aUser,
                            const nsAString& aPassword)
 {
+  // First check for an existing entry for this host + user
+  if (!aHost.IsEmpty()) {
+    SignonHashEntry *hashEnt;
+    if (mSignonTable.Get(aHost, &hashEnt)) {
+      nsString empty;
+      SignonDataEntry *entry = nsnull;
+      FindPasswordEntryInternal(hashEnt->head, aUser, empty, empty, &entry);
+      if (entry) {
+        // Just change the password
+        EncryptDataUCS2(aPassword, entry->passValue);
+        return NS_OK;
+      }
+    }
+  }
+
   SignonDataEntry* entry = new SignonDataEntry();
   EncryptDataUCS2(aUser, entry->userValue);
   EncryptDataUCS2(aPassword, entry->passValue);
@@ -830,6 +845,12 @@ nsPasswordManager::Notify(nsIContent* aFormNode,
 
       passFields.ObjectAt(0)->GetValue(passValue);
       passFields.ObjectAt(0)->GetName(passFieldName);
+
+      // If username and password are both empty, there is no reason
+      // to store this login.
+
+      if (userValue.IsEmpty() && passValue.IsEmpty())
+        return NS_OK;
 
       SignonHashEntry* hashEnt;
 
@@ -1443,7 +1464,9 @@ void
 nsPasswordManager::WriteSignonFile()
 {
   nsCOMPtr<nsIOutputStream> fileStream;
-  NS_NewLocalFileOutputStream(getter_AddRefs(fileStream), mSignonFile);
+  NS_NewLocalFileOutputStream(getter_AddRefs(fileStream), mSignonFile, -1,
+                              0600, 0);
+
   if (!fileStream)
     return;
 

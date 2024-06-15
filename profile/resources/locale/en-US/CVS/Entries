@@ -1,9 +1,9 @@
-/confirmMigration.dtd/1.6/Thu Nov 22 02:28:33 2001//TTHUNDERBIRD_0_4_BRANCH
-/createProfileWizard.dtd/1.10/Thu Nov  6 13:33:43 2003//TTHUNDERBIRD_0_4_BRANCH
-/migrateAllProfile.dtd/1.1/Tue Sep 28 20:35:46 1999//TTHUNDERBIRD_0_4_BRANCH
-/migration.properties/1.7/Tue Nov 18 09:16:08 2003//TTHUNDERBIRD_0_4_BRANCH
-/profileManager.properties/1.20/Thu Nov  6 13:33:43 2003//TTHUNDERBIRD_0_4_BRANCH
-/profileManagerMigrateAll.dtd/1.1/Tue Sep 28 21:28:54 1999//TTHUNDERBIRD_0_4_BRANCH
-/profileSelection.dtd/1.15/Sun Feb 23 00:14:31 2003//TTHUNDERBIRD_0_4_BRANCH
-/selectLang.dtd/1.2/Wed May 23 02:19:56 2001//TTHUNDERBIRD_0_4_BRANCH
+/confirmMigration.dtd/1.6/Thu Nov 22 02:28:33 2001//TTHUNDERBIRD_0_5_RELEASE
+/createProfileWizard.dtd/1.10/Thu Nov  6 13:33:43 2003//TTHUNDERBIRD_0_5_RELEASE
+/migrateAllProfile.dtd/1.1/Tue Sep 28 20:35:46 1999//TTHUNDERBIRD_0_5_RELEASE
+/migration.properties/1.7/Tue Nov 18 09:16:08 2003//TTHUNDERBIRD_0_5_RELEASE
+/profileManager.properties/1.20/Thu Nov  6 13:33:43 2003//TTHUNDERBIRD_0_5_RELEASE
+/profileManagerMigrateAll.dtd/1.1/Tue Sep 28 21:28:54 1999//TTHUNDERBIRD_0_5_RELEASE
+/profileSelection.dtd/1.15/Sun Feb 23 00:14:31 2003//TTHUNDERBIRD_0_5_RELEASE
+/selectLang.dtd/1.2/Wed May 23 02:19:56 2001//TTHUNDERBIRD_0_5_RELEASE
 D

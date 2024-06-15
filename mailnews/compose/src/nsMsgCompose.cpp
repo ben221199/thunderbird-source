@@ -22,7 +22,7 @@
  * Contributor(s):
  *     Jean-Francois Ducarroz <ducarroz@netscape.com>
  *     Ben Bucksch <mozilla@bucksch.org>
- *     Håkan Waara <hwaara@chello.se>
+ *     HÃ¥kan Waara <hwaara@chello.se>
  *     Pierre Phaneuf <pp@ludusdesign.com>
  *
  * Alternatively, the contents of this file may be used under the terms of
@@ -116,6 +116,8 @@
 #include "nsIMarkupDocumentViewer.h"
 #include "nsIMsgMdnGenerator.h"
 #include "plbase64.h"
+#include "nsIUTF8ConverterService.h"
+#include "nsUConvCID.h"
 
 // Defines....
 static NS_DEFINE_CID(kDateTimeFormatCID, NS_DATETIMEFORMAT_CID);
@@ -3601,45 +3603,53 @@ nsresult nsMsgCompose::NotifyStateListeners(TStateListenerNotification aNotifica
   return NS_OK;
 }
 
-nsresult nsMsgCompose::AttachmentPrettyName(const char* url, PRUnichar** _retval)
+nsresult nsMsgCompose::AttachmentPrettyName(const char* url, const char* charset, nsAString& _retval)
 {
-  nsCAutoString unescapeURL(url);
-  nsUnescape(NS_CONST_CAST(char*, unescapeURL.get()));
-  if (unescapeURL.IsEmpty())
-  {
-    nsAutoString unicodeUrl;
-    unicodeUrl.AssignWithConversion(url);
+  nsresult rv;
 
-    *_retval = ToNewUnicode(unicodeUrl);
+  nsCOMPtr<nsIUTF8ConverterService> utf8Cvt (do_GetService(NS_UTF8CONVERTERSERVICE_CONTRACTID));
+
+  NS_ENSURE_TRUE(utf8Cvt, NS_ERROR_UNEXPECTED);
+ 
+  if (PL_strncasestr(url, "file:", 5)) 
+  {
+     nsFileURL fileUrl(url);
+     nsFileSpec fileSpec(fileUrl);
+     char* leafName = fileSpec.GetLeafName();
+     NS_ENSURE_TRUE(leafName && *leafName, NS_ERROR_UNEXPECTED);
+
+    nsCAutoString utf8Name;
+    rv = utf8Cvt->ConvertStringToUTF8(nsDependentCString(leafName), 
+         nsMsgI18NFileSystemCharset(), PR_FALSE, utf8Name);
+    if (NS_FAILED(rv))
+    {
+       rv = utf8Cvt->ConvertStringToUTF8(nsDependentCString(leafName), 
+            (!charset || !*charset) ? "UTF-8" : charset, PR_FALSE, utf8Name);
+      if (NS_FAILED(rv)) {
+        NS_WARNING("filename conversion failed.");
+        // this is rather lame, but maybe better than nothing.
+        utf8Name = leafName;   
+      }
+    }
+    
+    CopyUTF8toUTF16(utf8Name, _retval);
+    nsCRT::free(leafName);
     return NS_OK;
   }
   
-  if (PL_strncasestr(unescapeURL.get(), "file:", 5))
+  nsCAutoString unescapedURL;
+  rv = utf8Cvt->ConvertURISpecToUTF8(nsDependentCString(url), 
+    (!charset || !*charset) ? "UTF-8" : charset, unescapedURL);
+  if (NS_FAILED(rv))
   {
-    nsFileURL fileUrl(url);
-    nsFileSpec fileSpec(fileUrl);
-    char * leafName = fileSpec.GetLeafName();
-    if (leafName && *leafName)
-    {
-#ifdef MOZ_UNICODE
-        /* file URL is now in UTF-8 */
-        *_retval = ToNewUnicode(NS_ConvertUTF8toUCS2(leafName));
-#else
-        nsAutoString tempStr;
-        nsresult rv = ConvertToUnicode(nsMsgI18NFileSystemCharset(), leafName, tempStr);
-        if (NS_FAILED(rv))
-          tempStr.AssignWithConversion(leafName);
-      *_retval = ToNewUnicode(tempStr);
-#endif /* MOZ_UNICODE */
-      nsCRT::free(leafName);
-      return NS_OK;
-    }
+    NS_WARNING("URL unescaping/charset conversion failed.");
+    unescapedURL = url;
   }
+  
+  if (PL_strncasestr(unescapedURL.get(), "http:", 5))
+    unescapedURL.Cut(0, 7);
 
-  if (PL_strncasestr(unescapeURL.get(), "http:", 5))
-    unescapeURL.Cut(0, 7);
-
-  *_retval = ToNewUnicode(unescapeURL);
+  CopyUTF8toUTF16(unescapedURL, _retval);
   return NS_OK;
 }
 
@@ -3677,58 +3687,56 @@ nsresult nsMsgCompose::GetABDirectories(const nsACString& dirUri, nsISupportsArr
   if (!searchSubDirectory)
       return rv;
   
-  nsCOMPtr<nsIEnumerator> subDirectories;
+  nsCOMPtr<nsISimpleEnumerator> subDirectories;
   if (NS_SUCCEEDED(directory->GetChildNodes(getter_AddRefs(subDirectories))) && subDirectories)
   {
     nsCOMPtr<nsISupports> item;
-    if (NS_SUCCEEDED(subDirectories->First()))
+    PRBool hasMore;
+    while (NS_SUCCEEDED(rv = subDirectories->HasMoreElements(&hasMore)) && hasMore)
     {
-      do
+      if (NS_SUCCEEDED(subDirectories->GetNext(getter_AddRefs(item))))
       {
-        if (NS_SUCCEEDED(subDirectories->CurrentItem(getter_AddRefs(item))))
+        directory = do_QueryInterface(item, &rv);
+        if (NS_SUCCEEDED(rv))
         {
-          directory = do_QueryInterface(item, &rv);
-          if (NS_SUCCEEDED(rv))
+          PRBool bIsMailList;
+
+          if (NS_SUCCEEDED(directory->GetIsMailList(&bIsMailList)) && bIsMailList)
+            continue;
+
+          nsCOMPtr<nsIRDFResource> source(do_QueryInterface(directory));
+    
+          nsXPIDLCString uri;
+          // rv = directory->GetDirUri(getter_Copies(uri));
+          rv = source->GetValue(getter_Copies(uri));
+          NS_ENSURE_SUCCESS(rv, rv);
+
+          PRInt32 pos;
+          if (nsCRT::strcmp((const char *)uri, kPersonalAddressbookUri) == 0)
+            pos = 0;
+          else
           {
-            PRBool bIsMailList;
+            PRUint32 count = 0;
+            directoriesArray->Count(&count);
 
-            if (NS_SUCCEEDED(directory->GetIsMailList(&bIsMailList)) && bIsMailList)
-              continue;
-
-      nsCOMPtr<nsIRDFResource> source(do_QueryInterface(directory));
-      
-            nsXPIDLCString uri;
-            // rv = directory->GetDirUri(getter_Copies(uri));
-            rv = source->GetValue(getter_Copies(uri));
-            NS_ENSURE_SUCCESS(rv, rv);
-
-            PRInt32 pos;
-            if (nsCRT::strcmp((const char *)uri, kPersonalAddressbookUri) == 0)
-              pos = 0;
+            if (PL_strcmp((const char *)uri, kCollectedAddressbookUri) == 0)
+            {
+              collectedAddressbookFound = PR_TRUE;
+              pos = count;
+            }
             else
             {
-              PRUint32 count = 0;
-              directoriesArray->Count(&count);
-
-              if (PL_strcmp((const char *)uri, kCollectedAddressbookUri) == 0)
-              {
-                collectedAddressbookFound = PR_TRUE;
-                pos = count;
-              }
+              if (collectedAddressbookFound && count > 1)
+                pos = count - 1;
               else
-              {
-                if (collectedAddressbookFound && count > 1)
-                  pos = count - 1;
-                else
-                  pos = count;
-              }
+                pos = count;
             }
-
-            directoriesArray->InsertElementAt(directory, pos);
-            rv = GetABDirectories(uri, directoriesArray, PR_TRUE);
           }
+
+          directoriesArray->InsertElementAt(directory, pos);
+          rv = GetABDirectories(uri, directoriesArray, PR_TRUE);
         }
-      } while (NS_SUCCEEDED(subDirectories->Next()));
+      }
     }
   }
   return rv;
@@ -3739,45 +3747,43 @@ nsresult nsMsgCompose::BuildMailListArray(nsIAddrDatabase* database, nsIAbDirect
   nsresult rv;
 
   nsCOMPtr<nsIAbDirectory> directory;
-  nsCOMPtr<nsIEnumerator> subDirectories;
+  nsCOMPtr<nsISimpleEnumerator> subDirectories;
 
   if (NS_SUCCEEDED(parentDir->GetChildNodes(getter_AddRefs(subDirectories))) && subDirectories)
   {
     nsCOMPtr<nsISupports> item;
-    if (NS_SUCCEEDED(subDirectories->First()))
+    PRBool hasMore;
+    while (NS_SUCCEEDED(rv = subDirectories->HasMoreElements(&hasMore)) && hasMore)
     {
-      do
+      if (NS_SUCCEEDED(subDirectories->GetNext(getter_AddRefs(item))))
       {
-        if (NS_SUCCEEDED(subDirectories->CurrentItem(getter_AddRefs(item))))
+        directory = do_QueryInterface(item, &rv);
+        if (NS_SUCCEEDED(rv))
         {
-          directory = do_QueryInterface(item, &rv);
-          if (NS_SUCCEEDED(rv))
+          PRBool bIsMailList;
+
+          if (NS_SUCCEEDED(directory->GetIsMailList(&bIsMailList)) && bIsMailList)
           {
-            PRBool bIsMailList;
+            nsXPIDLString listName;
+            nsXPIDLString listDescription;
 
-            if (NS_SUCCEEDED(directory->GetIsMailList(&bIsMailList)) && bIsMailList)
-            {
-              nsXPIDLString listName;
-              nsXPIDLString listDescription;
+            directory->GetDirName(getter_Copies(listName));
+            directory->GetDescription(getter_Copies(listDescription));
 
-              directory->GetDirName(getter_Copies(listName));
-              directory->GetDescription(getter_Copies(listDescription));
+            nsMsgMailList* mailList = new nsMsgMailList(nsAutoString((const PRUnichar*)listName),
+                  nsAutoString((const PRUnichar*)listDescription), directory);
+            if (!mailList)
+              return NS_ERROR_OUT_OF_MEMORY;
+            NS_ADDREF(mailList);
 
-              nsMsgMailList* mailList = new nsMsgMailList(nsAutoString((const PRUnichar*)listName),
-                    nsAutoString((const PRUnichar*)listDescription), directory);
-              if (!mailList)
-                return NS_ERROR_OUT_OF_MEMORY;
-              NS_ADDREF(mailList);
+            rv = array->AppendElement(mailList);
+            if (NS_FAILED(rv))
+              return rv;
 
-              rv = array->AppendElement(mailList);
-              if (NS_FAILED(rv))
-                return rv;
-
-              NS_RELEASE(mailList);
-            }
+            NS_RELEASE(mailList);
           }
         }
-      } while (NS_SUCCEEDED(subDirectories->Next()));
+      }
     }
   }
   return rv;
@@ -4257,6 +4263,9 @@ nsresult nsMsgCompose::TagConvertible(nsIDOMNode *node,  PRInt32 *_retval)
                  !color.Equals(NS_LITERAL_STRING("#FFFFFF"), nsCaseInsensitiveStringComparator())) {
           *_retval = nsIMsgCompConvertible::Altering;
         }
+		else if (NS_SUCCEEDED(domElement->HasAttribute(NS_LITERAL_STRING("dir"), &hasAttribute))
+            && hasAttribute)  // dir=rtl attributes should not downconvert
+          *_retval = nsIMsgCompConvertible::No; 
 
         //ignore special color setting for link, vlink and alink at this point.
       }
@@ -4527,6 +4536,9 @@ nsresult nsMsgCompose::SetBodyAttributes(nsString& attributes)
       {
         /* we found the end of an attribute name */
         attributeName.Assign(start, data - start);
+
+		// strip any leading or trailing white space from the attribute name.
+		attributeName.CompressWhitespace();
         start = data + 1;
         if (start < end && *start == '\"')
         {
@@ -4543,13 +4555,8 @@ nsresult nsMsgCompose::SetBodyAttributes(nsString& attributes)
       else
       {
         if (delimiter =='\"')
-        {
-          /* we found the closing double-quote of an attribute value,
-             let's find now the real attribute delimiter */
-          delimiter = ' ';
-        }
-        else
-        {
+          data ++;
+ 
           /* we found the end of an attribute value */
           attributeValue.Assign(start, data - start);
           rv = SetBodyAttribute(m_editor, rootElement, attributeName, attributeValue);
@@ -4560,7 +4567,6 @@ nsresult nsMsgCompose::SetBodyAttributes(nsString& attributes)
           attributeName.Truncate();
           attributeValue.Truncate();
           delimiter = '=';
-        }
       }
     }
 

@@ -62,7 +62,7 @@
                        "emailCollectionOutgoing", "localDirectoriesList",
                                               
                        // general settings
-                       "markAsRead", "markAsReadDelay",
+                       "markAsRead", "markAsReadDelay", "showFolderPaneColumns",
                                               
                        // connection
                        "networkProxyType",
@@ -130,6 +130,9 @@
         <textbox  id="markAsReadDelay" size="2" preftype="int" prefstring="mailnews.mark_message_read.delay.interval"/>
         <label value="&markAsReadEnd.label;"/>
       </hbox>
+      <hbox align="center" pack="start">
+        <checkbox id="showFolderPaneColumns" label="&showFolderColumns.label;" prefstring="mail.showFolderPaneColumns"/>
+      </hbox> 
     </expander>
 
     <!-- Return Receipts -->

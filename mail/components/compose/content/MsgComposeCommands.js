@@ -1264,6 +1264,11 @@ function ComposeStartup(recycled, aParams)
           document.getElementById("insertMenu").setAttribute("hidden", true);
           document.getElementById("menu_showFormatToolbar").setAttribute("hidden", true);
         }
+        else //if (gMsgCompose.composeHTML) 
+        {
+           var fontsList = document.getElementById("FontFacePopup");
+           initLocalFontFaceMenu(fontsList);
+        }
         // Do setup common to Message Composer and Web Composer
         EditorSharedStartup();   
       }
@@ -1317,6 +1322,9 @@ function ComposeStartup(recycled, aParams)
           onFontColorChange();
           onBackgroundColorChange();
         }
+
+        // reset the priorty field for recycled windows
+        updatePriorityToolbarButton('normal');
       } 
       else 
       {
@@ -1409,6 +1417,18 @@ function ComposeLoad()
 
   AddMessageComposeOfflineObserver();
   AddDirectoryServerObserver(true);
+
+  try {
+    // XXX: We used to set commentColumn on the initial auto complete column after the document has loaded 
+    // inside of setupAutocomplete. But this happens too late for the first widget and it was never showing
+    // the comment field. Try to set it before the document finishes loading:
+    if (sPrefs.getIntPref("mail.autoComplete.commentColumn"))             
+      document.getElementById('addressCol2#1').showCommentColumn = true;
+  } 
+  catch (ex) { 
+    // do nothing...
+  }
+
 
   if (gLogComposePerformance)
     sMsgComposeService.TimeStamp("Start initializing the compose window (ComposeLoad)", false);
@@ -1594,10 +1614,6 @@ function GenericSendMessage( msgType )
       msgCompFields.subject = subject;
       Attachments2CompFields(msgCompFields);
 
-      var event = document.createEvent('Events');
-      event.initEvent('compose-send-message', false, true);
-      document.getElementById("msgcomposeWindow").dispatchEvent(event);
-
       if (msgType == nsIMsgCompDeliverMode.Now || msgType == nsIMsgCompDeliverMode.Later)
       {
         //Do we need to check the spelling?
@@ -1694,12 +1710,20 @@ function GenericSendMessage( msgType )
           var dlgText = sComposeMsgsBundle.getString("12553");  // NS_ERROR_MSG_MULTILINGUAL_SEND
           if (!gPromptService.confirm(window, dlgTitle, dlgText))
             return;
+          fallbackCharset.value = "UTF-8";
         }
         if (fallbackCharset && 
             fallbackCharset.value && fallbackCharset.value != "")
           gMsgCompose.SetDocumentCharset(fallbackCharset.value);
       }
       try {
+
+        // just before we try to send the message, fire off the compose-send-message event for listeners
+        // such as smime so they can do any pre-security work such as fetching certificates before sending
+        var event = document.createEvent('Events');
+        event.initEvent('compose-send-message', false, true);
+        document.getElementById("msgcomposeWindow").dispatchEvent(event);
+
         gWindowLocked = true;
         disableEditableFields();
         updateComposeItems();
@@ -1831,20 +1855,38 @@ function MessageFcc(menuItem)
   }
 }
 
+function updatePriorityMenu()
+{
+  if (gMsgCompose)
+  {
+    var msgCompFields = gMsgCompose.compFields;
+    if (msgCompFields && msgCompFields.priority)
+    {
+      var priorityMenu = document.getElementById('priorityMenu' ); 
+      priorityMenu.getElementsByAttribute( "checked", 'true' )[0].removeAttribute('checked');
+      priorityMenu.getElementsByAttribute( "value", msgCompFields.priority )[0].setAttribute('checked', 'true');
+    }
+
+  }
+}
+
+function updatePriorityToolbarButton(newPriorityValue)
+{
+  var prioritymenu = document.getElementById('priorityMenu-button');
+  if (prioritymenu)
+    prioritymenu.value = newPriorityValue;
+}
+
 function PriorityMenuSelect(target)
 {
   if (gMsgCompose)
   {
     var msgCompFields = gMsgCompose.compFields;
     if (msgCompFields)
-      switch (target.getAttribute('id'))
-      {
-        case "priority_lowest":  msgCompFields.priority = "lowest";   break;
-        case "priority_low":     msgCompFields.priority = "low";      break;
-        case "priority_normal":  msgCompFields.priority = "normal";   break;
-        case "priority_high":    msgCompFields.priority = "high";     break;
-        case "priotity_highest": msgCompFields.priority = "highest";  break;
-      }
+      msgCompFields.priority = target.getAttribute('value');
+
+    // keep priority toolbar button in synch with possible changes via the menu item
+    updatePriorityToolbarButton(target.getAttribute('value'));
   }
 }
 
@@ -2216,7 +2258,7 @@ function AddAttachment(attachment)
     var item = document.createElement("listitem");
 
     if (!attachment.name)
-      attachment.name = gMsgCompose.AttachmentPrettyName(attachment.url);
+      attachment.name = gMsgCompose.AttachmentPrettyName(attachment.url, attachment.urlCharset);
 
     // for security reasons, don't allow *-message:// uris to leak out
     // we don't want to reveal the .slt path (for mailbox://), or the username or hostname
@@ -2588,9 +2630,8 @@ function setupAutocomplete()
       // honor it as well
       //
       try {
-          if (sPrefs.getIntPref("mail.autoComplete.commentColumn")) {
-              document.getElementById('addressCol2#1').showCommentColumn =
-                  true;
+          if (sPrefs.getIntPref("mail.autoComplete.commentColumn")) {              
+              document.getElementById('addressCol2#1').showCommentColumn = true;
           }
       } catch (ex) {
           // if we can't get this pref, then don't show the columns (which is
@@ -2730,12 +2771,15 @@ var envelopeDragObserver = {
 
   onDragOver: function (aEvent, aFlavour, aDragSession)
     {
+      if (aFlavour.contentType != "text/x-moz-address")
+      {
       // make sure the attachment box is visible during drag over
       var attachmentBox = document.getElementById("attachments-box");
       if (attachmentBox.hidden)
       {
         attachmentBox.hidden = false;
         document.getElementById("attachmentbucket-sizer").hidden=false;
+        }
       }
     },
 

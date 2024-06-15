@@ -1,19 +1,19 @@
-/.cvsignore/1.2/Tue Feb  2 01:47:18 1999//TTHUNDERBIRD_0_4_BRANCH
-/Makefile.in/1.33/Thu Oct 17 06:45:50 2002//TTHUNDERBIRD_0_4_BRANCH
-/langGroups.properties/1.6/Thu Sep 11 12:00:47 2003//TTHUNDERBIRD_0_4_BRANCH
-/language.properties/1.12/Wed Dec  3 06:07:12 2003//TTHUNDERBIRD_0_4_BRANCH
-/nsCollation.cpp/1.36/Sun Sep  7 22:24:02 2003//TTHUNDERBIRD_0_4_BRANCH
-/nsCollation.h/1.17/Thu Jul 24 20:31:24 2003//TTHUNDERBIRD_0_4_BRANCH
-/nsFontPackageService.cpp/1.13/Sun Sep  7 22:24:03 2003//TTHUNDERBIRD_0_4_BRANCH
-/nsFontPackageService.h/1.5/Sat Feb 16 01:39:52 2002//TTHUNDERBIRD_0_4_BRANCH
-/nsLanguageAtomService.cpp/1.24/Thu Oct 30 05:04:40 2003//TTHUNDERBIRD_0_4_BRANCH
-/nsLanguageAtomService.h/1.10/Wed Jun 11 18:14:42 2003//TTHUNDERBIRD_0_4_BRANCH
-/nsLocale.cpp/1.24/Thu Oct 30 05:04:40 2003//TTHUNDERBIRD_0_4_BRANCH
-/nsLocale.h/1.13/Thu Oct 30 05:04:40 2003//TTHUNDERBIRD_0_4_BRANCH
-/nsLocaleConstructors.h/1.9/Tue Oct  7 20:39:24 2003//TTHUNDERBIRD_0_4_BRANCH
-/nsLocaleService.cpp/1.54/Wed Nov  5 21:12:10 2003//TTHUNDERBIRD_0_4_BRANCH
-/nsScriptableDateFormat.cpp/1.22/Thu Oct 30 05:04:40 2003//TTHUNDERBIRD_0_4_BRANCH
-/win32.order/1.4/Thu Apr  5 05:57:54 2001//TTHUNDERBIRD_0_4_BRANCH
+/.cvsignore/1.2/Tue Feb  2 01:47:18 1999//TTHUNDERBIRD_0_5_RELEASE
+/Makefile.in/1.33/Thu Oct 17 06:45:50 2002//TTHUNDERBIRD_0_5_RELEASE
+/langGroups.properties/1.6/Thu Sep 11 12:00:47 2003//TTHUNDERBIRD_0_5_RELEASE
+/language.properties/1.12/Wed Dec  3 06:07:12 2003//TTHUNDERBIRD_0_5_RELEASE
+/nsCollation.cpp/1.36/Sun Sep  7 22:24:02 2003//TTHUNDERBIRD_0_5_RELEASE
+/nsCollation.h/1.17/Thu Jul 24 20:31:24 2003//TTHUNDERBIRD_0_5_RELEASE
+/nsFontPackageService.cpp/1.13/Sun Sep  7 22:24:03 2003//TTHUNDERBIRD_0_5_RELEASE
+/nsFontPackageService.h/1.5/Sat Feb 16 01:39:52 2002//TTHUNDERBIRD_0_5_RELEASE
+/nsLanguageAtomService.cpp/1.24/Thu Oct 30 05:04:40 2003//TTHUNDERBIRD_0_5_RELEASE
+/nsLanguageAtomService.h/1.10/Wed Jun 11 18:14:42 2003//TTHUNDERBIRD_0_5_RELEASE
+/nsLocale.cpp/1.24/Thu Oct 30 05:04:40 2003//TTHUNDERBIRD_0_5_RELEASE
+/nsLocale.h/1.13/Thu Oct 30 05:04:40 2003//TTHUNDERBIRD_0_5_RELEASE
+/nsLocaleConstructors.h/1.9/Tue Oct  7 20:39:24 2003//TTHUNDERBIRD_0_5_RELEASE
+/nsLocaleService.cpp/1.54/Wed Nov  5 21:12:10 2003//TTHUNDERBIRD_0_5_RELEASE
+/nsScriptableDateFormat.cpp/1.22/Thu Oct 30 05:04:40 2003//TTHUNDERBIRD_0_5_RELEASE
+/win32.order/1.4/Thu Apr  5 05:57:54 2001//TTHUNDERBIRD_0_5_RELEASE
 D/mac////
 D/os2////
 D/unix////

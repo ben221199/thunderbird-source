@@ -1,7 +1,7 @@
-/.cvsignore/1.2/Fri Nov  7 13:50:20 2003//TTHUNDERBIRD_0_4_BRANCH
-/Makefile.in/1.2/Fri Nov  7 13:50:22 2003//TTHUNDERBIRD_0_4_BRANCH
-/ipcLockProtocol.cpp/1.2/Fri Nov  7 13:50:22 2003//TTHUNDERBIRD_0_4_BRANCH
-/ipcLockProtocol.h/1.2/Fri Nov  7 13:50:22 2003//TTHUNDERBIRD_0_4_BRANCH
-/ipcLockService.cpp/1.2/Fri Nov  7 13:50:22 2003//TTHUNDERBIRD_0_4_BRANCH
-/ipcLockService.h/1.2/Fri Nov  7 13:50:22 2003//TTHUNDERBIRD_0_4_BRANCH
+/.cvsignore/1.2/Fri Nov  7 13:50:20 2003//TTHUNDERBIRD_0_5_RELEASE
+/Makefile.in/1.2/Fri Nov  7 13:50:22 2003//TTHUNDERBIRD_0_5_RELEASE
+/ipcLockProtocol.cpp/1.2/Fri Nov  7 13:50:22 2003//TTHUNDERBIRD_0_5_RELEASE
+/ipcLockProtocol.h/1.2/Fri Nov  7 13:50:22 2003//TTHUNDERBIRD_0_5_RELEASE
+/ipcLockService.cpp/1.2/Fri Nov  7 13:50:22 2003//TTHUNDERBIRD_0_5_RELEASE
+/ipcLockService.h/1.2/Fri Nov  7 13:50:22 2003//TTHUNDERBIRD_0_5_RELEASE
 D/module////

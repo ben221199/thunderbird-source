@@ -1,5 +1,5 @@
-/.cvsignore/1.1/Tue Mar 26 15:42:00 2002//TTHUNDERBIRD_0_4_BRANCH
-/Makefile.in/1.2/Sun Mar 10 05:25:17 2002//TTHUNDERBIRD_0_4_BRANCH
-/nsIDownloadManager.idl/1.22/Fri Nov  7 12:27:21 2003//TTHUNDERBIRD_0_4_BRANCH
-/nsIDownloadProgressListener.idl/1.7/Thu May 16 20:52:21 2002//TTHUNDERBIRD_0_4_BRANCH
+/.cvsignore/1.1/Tue Mar 26 15:42:00 2002//TTHUNDERBIRD_0_5_RELEASE
+/Makefile.in/1.2/Sun Mar 10 05:25:17 2002//TTHUNDERBIRD_0_5_RELEASE
+/nsIDownloadManager.idl/1.22/Fri Nov  7 12:27:21 2003//TTHUNDERBIRD_0_5_RELEASE
+/nsIDownloadProgressListener.idl/1.7/Thu May 16 20:52:21 2002//TTHUNDERBIRD_0_5_RELEASE
 D

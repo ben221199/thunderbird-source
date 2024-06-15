@@ -74,6 +74,7 @@
 #include "nsIRDFService.h"
 #include "nsTextFormatter.h"
 #include "nsCPasswordManager.h"
+#include "nsMsgDBCID.h"
 
 #include <time.h>
 
@@ -89,6 +90,7 @@ static PRTime gtimeOfLastPurgeCheck;    //variable to know when to check for pur
 
 static NS_DEFINE_CID(kRDFServiceCID, NS_RDFSERVICE_CID);
 static NS_DEFINE_CID(kCollationFactoryCID, NS_COLLATIONFACTORY_CID);
+static NS_DEFINE_CID(kCMailDB, NS_MAILDB_CID);
 
 nsIAtom* nsMsgDBFolder::mFolderLoadedAtom=nsnull;
 nsIAtom* nsMsgDBFolder::mDeleteOrMoveMsgCompletedAtom=nsnull;
@@ -249,6 +251,13 @@ NS_IMETHODIMP nsMsgDBFolder::ForceDBClosed()
     {
         mDatabase->ForceClosed();
         mDatabase = nsnull;
+    }
+    else
+    {
+      nsCOMPtr<nsIMsgDatabase> mailDBFactory;
+      nsresult rv = nsComponentManager::CreateInstance(kCMailDB, nsnull, NS_GET_IID(nsIMsgDatabase), (void **) getter_AddRefs(mailDBFactory));
+      if (NS_SUCCEEDED(rv) && mailDBFactory)
+        mailDBFactory->ForceFolderDBClosed(this);
     }
     return NS_OK;
 }
@@ -510,7 +519,7 @@ nsresult nsMsgDBFolder::ReadDBFolderInfo(PRBool force)
         }
         
         folderInfo->GetNumMessages(&mNumTotalMessages);
-        folderInfo->GetNumNewMessages(&mNumUnreadMessages);
+        folderInfo->GetNumUnreadMessages(&mNumUnreadMessages);
         folderInfo->GetExpungedBytes((PRInt32 *)&mExpungedBytes);
         
         nsXPIDLCString utf8Name;
@@ -1026,8 +1035,8 @@ NS_IMETHODIMP nsMsgDBFolder::ReadFromFolderCacheElem(nsIMsgFolderCacheElement *e
     mFlags |= MSG_FOLDER_FLAG_ELIDED;
   }
 
-	element->GetInt32Property("totalMsgs", &mNumTotalMessages);
-	element->GetInt32Property("totalUnreadMsgs", &mNumUnreadMessages);
+  element->GetInt32Property("totalMsgs", &mNumTotalMessages);
+  element->GetInt32Property("totalUnreadMsgs", &mNumUnreadMessages);
   element->GetInt32Property("pendingUnreadMsgs", &mNumPendingUnreadMessages);
   element->GetInt32Property("pendingMsgs", &mNumPendingTotalMessages);
   element->GetInt32Property("expungedBytes", (PRInt32 *) &mExpungedBytes);
@@ -1211,8 +1220,6 @@ nsMsgDBFolder::MarkAllMessagesRead(void)
     EnableNotifications(allMessageCountNotifications, PR_FALSE, PR_TRUE /*dbBatching*/);
     rv = mDatabase->MarkAllRead(nsnull);
     EnableNotifications(allMessageCountNotifications, PR_TRUE, PR_TRUE /*dbBatching*/);
-    mDatabase->SetSummaryValid(PR_TRUE);
-    mDatabase->Commit(nsMsgDBCommitType::kLargeCommit);
   }
   return rv;
 }
@@ -1435,7 +1442,7 @@ nsresult nsMsgDBFolder::CompactOfflineStore(nsIMsgWindow *inWindow)
   nsresult rv;
   nsCOMPtr <nsIMsgFolderCompactor> folderCompactor =  do_CreateInstance(NS_MSGOFFLINESTORECOMPACTOR_CONTRACTID, &rv);
   if (NS_SUCCEEDED(rv) && folderCompactor)
-      rv = folderCompactor->Compact(this, inWindow);
+      rv = folderCompactor->Compact(this, PR_TRUE, inWindow);
   return rv;
 }
 
@@ -1566,7 +1573,7 @@ nsMsgDBFolder::CompactAllOfflineStores(nsIMsgWindow *aWindow, nsISupportsArray *
   folderCompactor = do_CreateInstance(NS_MSGOFFLINESTORECOMPACTOR_CONTRACTID, &rv);
 
   if (NS_SUCCEEDED(rv) && folderCompactor)
-    rv = folderCompactor->CompactAll(aOfflineFolderArray, aWindow, PR_FALSE, nsnull);
+    rv = folderCompactor->CompactAll(nsnull, aWindow, PR_TRUE, aOfflineFolderArray);
   return rv;
 }
 
@@ -3154,6 +3161,7 @@ void nsMsgDBFolder::ChangeNumPendingUnread(PRInt32 delta)
     PRInt32 oldUnreadMessages = mNumUnreadMessages + mNumPendingUnreadMessages;
     mNumPendingUnreadMessages += delta;
     PRInt32 newUnreadMessages = mNumUnreadMessages + mNumPendingUnreadMessages;
+    NS_ASSERTION(newUnreadMessages >= 0, "shouldn't have negative unread message count");
     nsCOMPtr<nsIMsgDatabase> db;
     nsCOMPtr<nsIDBFolderInfo> folderInfo;
     nsresult rv = GetDBFolderInfoAndDB(getter_AddRefs(folderInfo), getter_AddRefs(db));
@@ -4387,6 +4395,21 @@ NS_IMETHODIMP nsMsgDBFolder::NotifyCompactCompleted()
 {
   NS_ASSERTION(PR_FALSE, "should be overridden by child class");
   return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+nsresult nsMsgDBFolder::CloseDBIfFolderNotOpen()
+{
+  nsresult rv;
+  nsCOMPtr<nsIMsgMailSession> session = 
+           do_GetService(NS_MSGMAILSESSION_CONTRACTID, &rv); 
+  if (NS_SUCCEEDED(rv) && session) // don't use NS_ENSURE_SUCCESS here - we need to release semaphore below
+  {
+    PRBool folderOpen;
+    session->IsFolderOpenInWindow(this, &folderOpen);
+    if (!folderOpen && ! (mFlags & (MSG_FOLDER_FLAG_TRASH | MSG_FOLDER_FLAG_INBOX)))
+      SetMsgDatabase(nsnull);
+  }
+  return rv;
 }
 
 NS_IMETHODIMP nsMsgDBFolder::SetSortOrder(PRInt32 order)

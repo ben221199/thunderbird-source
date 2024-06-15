@@ -38,6 +38,7 @@
 // SYNTAX HINTS:  dashes are delimiters.  Use underscores instead.
 //  The first character after a period must be alphabetic.
 
+pref("editor.singleLine.pasteNewlines", 4);
 pref("startup.homepage_override_url","chrome://navigator-region/locale/region.properties");
 pref("browser.chromeURL","chrome://navigator/content/navigator.xul");
 pref("browser.hiddenWindowChromeURL", "chrome://messenger/content/hiddenWindow.xul");
@@ -49,7 +50,7 @@ pref("keyword.enabled", false);
 pref("general.useragent.locale", "chrome://navigator/locale/navigator.properties");
 pref("general.useragent.contentlocale", "chrome://navigator-region/locale/region.properties");
 pref("general.useragent.vendor", "Thunderbird");
-pref("general.useragent.vendorSub", "0.4");
+pref("general.useragent.vendorSub", "0.5");
 
 pref("general.startup.browser",             false);
 pref("general.startup.mail",                false);
@@ -60,6 +61,8 @@ pref("general.startup.addressbook",         false);
 
 pref("general.open_location.last_url",      "");
 pref("general.open_location.last_window_choice", 0);
+
+pref("general.config.obscure_value", 0); // for MCD .cfg files
 
 pref("backups.number_of_prefs_copies", 1);
 
@@ -739,6 +742,13 @@ pref("mousewheel.withaltkey.sysnumlines",false);
 
 pref("profile.confirm_automigration",true);
 pref("profile.allow_automigration", false);   // setting to false bypasses automigration in the profile code
+
+// profile.migration_behavior determines how the profiles root is set
+// 0 - use NS_APP_USER_PROFILES_ROOT_DIR
+// 1 - create one based on the NS4.x profile root
+// 2 - use, if not empty, profile.migration_directory otherwise same as 0
+pref("profile.migration_behavior",0);
+pref("profile.migration_directory", "");
 
 // the amount of time (in seconds) that must elapse
 // before we think your mozilla profile is defunct

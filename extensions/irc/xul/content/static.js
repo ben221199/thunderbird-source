@@ -34,7 +34,7 @@
  *  Samuel Sieb, samuel@sieb.net, MIRC color codes, munger menu, and various
  */
 
-const __cz_version   = "0.9.47";
+const __cz_version   = "0.9.52A";
 const __cz_condition = "green";
 
 var warn;
@@ -624,33 +624,40 @@ function mircChangeColor (colorInfo, containerTag, data)
     var fgColor = ary[1];
     if (fgColor > 16)
         fgColor &= 16;
+
     switch (fgColor.length)
     {
         case 0:
             delete data.currFgColor;
             delete data.currBgColor;
             return;
+
         case 1:
             data.currFgColor = "0" + fgColor;
             break;
+
         case 2:
             data.currFgColor = fgColor;
             break;
     }
+
     if (fgColor == 1)
         delete data.currFgColor;
-    if (arrayHasElementAt(ary, 4))
+    if (arrayHasElementAt(ary, 3))
     {
         var bgColor = ary[3];
         if (bgColor > 16)
             bgColor &= 16;
+
         if (bgColor.length == 1)
             data.currBgColor = "0" + bgColor;
         else
             data.currBgColor = bgColor;
+
         if (bgColor == 0)
             delete data.currBgColor;
     }
+
     data.hasColorInfo = true;
 }
 
@@ -1162,7 +1169,7 @@ function parseIRCURL (url)
 
     /* split url into <host>/<everything-else> pieces */
     var ary = url.match (/^irc:\/\/([^\/\s]+)?(\/.*)?\s*$/i);
-    if (!ary)
+    if (!ary || !ary[1])
     {
         dd ("parseIRCURL: initial split failed");
         return null;
@@ -3154,6 +3161,7 @@ function usr_graphres()
         rdf.Assert (this.rdfRes, rdf.resHost, rdf.litUnk);
         rdf.Assert (this.rdfRes, rdf.resSortName, rdf.litUnk);
         rdf.Assert (this.rdfRes, rdf.resOp, rdf.litUnk);
+        rdf.Assert (this.rdfRes, rdf.resHalfOp, rdf.litUnk);
         rdf.Assert (this.rdfRes, rdf.resVoice, rdf.litUnk);
         this.updateGraphResource();
     }
@@ -3191,16 +3199,20 @@ function usr_updres()
     var sortname;
 
     if (this.isOp)
-        sortname = "o-";
+        sortname = "a-";
+    else if (this.isHalfOp)
+        sortname = "b-";
     else if (this.isVoice)
-        sortname = "v-";
+        sortname = "c-";
     else
-        sortname = "x-";
+        sortname = "d-";
     
     sortname += this.nick;
     rdf.Change (this.rdfRes, rdf.resSortName, rdf.GetLiteral(sortname));
     rdf.Change (this.rdfRes, rdf.resOp, 
                 this.isOp ? rdf.litTrue : rdf.litFalse);
+    rdf.Change (this.rdfRes, rdf.resHalfOp, 
+                this.isHalfOp ? rdf.litTrue : rdf.litFalse);
     rdf.Change (this.rdfRes, rdf.resVoice,
                 this.isVoice ? rdf.litTrue : rdf.litFalse);
 }

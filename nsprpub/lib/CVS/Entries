@@ -1,7 +1,3 @@
-/.cvsignore/1.2/Sat May 12 01:02:30 2001//TTHUNDERBIRD_0_4_BRANCH
-/Makefile.in/1.8/Mon Jan 22 06:35:59 2001//TTHUNDERBIRD_0_4_BRANCH
-D/ds////
-D/libc////
-D/msgc////
-D/prstreams////
-D/tests////
+/.cvsignore/1.2/Sat May 12 01:02:30 2001//TTHUNDERBIRD_0_5_RELEASE
+/Makefile.in/1.8/Mon Jan 22 06:35:59 2001//TTHUNDERBIRD_0_5_RELEASE
+D

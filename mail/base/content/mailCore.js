@@ -119,13 +119,31 @@ function openOptionsDialog(containerID, paneURL, itemID)
   const kWindowMediatorContractID = "@mozilla.org/appshell/window-mediator;1";
   const kWindowMediatorIID = Components.interfaces.nsIWindowMediator;
   const kWindowMediator = Components.classes[kWindowMediatorContractID].getService(kWindowMediatorIID);
-  var lastPrefWindow = kWindowMediator.getMostRecentWindow("mozilla:preferences");
+  var lastPrefWindow = kWindowMediator.getMostRecentWindow("Mail:Options");
   
   if (lastPrefWindow)
     lastPrefWindow.focus();
   else 
     openDialog("chrome://communicator/content/pref/pref.xul","PrefWindow", 
-               "chrome,titlebar,resizable=yes", paneURL, containerID, itemID);
+               "chrome,titlebar,resizable,modal", paneURL, containerID, itemID);
+}
+
+function SetBusyCursor(window, enable)
+{
+    // setCursor() is only available for chrome windows.
+    // However one of our frames is the start page which 
+    // is a non-chrome window, so check if this window has a
+    // setCursor method
+    if ("setCursor" in window) {
+        if (enable)
+            window.setCursor("wait");
+        else
+            window.setCursor("auto");
+    }
+
+	var numFrames = window.frames.length;
+	for(var i = 0; i < numFrames; i++)
+		SetBusyCursor(window.frames[i], enable);
 }
 
 // Macintosh window menu functions

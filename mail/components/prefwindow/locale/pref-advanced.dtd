@@ -17,6 +17,7 @@
 <!ENTITY generalSettings.label         "General Settings">
 <!ENTITY markAsRead.label              "Mark message read after displaying for">
 <!ENTITY markAsReadEnd.label           "second(s).">
+<!ENTITY showFolderColumns.label       "Show expanded columns in the folder pane.">
 
 <!-- Return Receipts -->
 <!ENTITY receiptSettings.label         "Return Receipts">

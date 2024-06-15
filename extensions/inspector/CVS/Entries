@@ -1,6 +1,6 @@
-/.cvsignore/1.1/Wed Apr  4 10:02:36 2001//TTHUNDERBIRD_0_4_BRANCH
-/Makefile.in/1.8/Sat Aug 16 00:41:29 2003//TTHUNDERBIRD_0_4_BRANCH
-/jar.mn/1.7/Tue Jun 24 04:44:55 2003//TTHUNDERBIRD_0_4_BRANCH
+/.cvsignore/1.1/Wed Apr  4 10:02:36 2001//TTHUNDERBIRD_0_5_RELEASE
+/Makefile.in/1.8/Sat Aug 16 00:41:29 2003//TTHUNDERBIRD_0_5_RELEASE
+/jar.mn/1.7/Tue Jun 24 04:44:55 2003//TTHUNDERBIRD_0_5_RELEASE
 D/base////
 D/build////
 D/resources////

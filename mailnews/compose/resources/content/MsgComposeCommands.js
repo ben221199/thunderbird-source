@@ -1654,6 +1654,7 @@ function GenericSendMessage( msgType )
           var dlgText = sComposeMsgsBundle.getString("12553");  // NS_ERROR_MSG_MULTILINGUAL_SEND
           if (!gPromptService.confirm(window, dlgTitle, dlgText))
             return;
+          fallbackCharset.value = "UTF-8";
         }
         if (fallbackCharset && 
             fallbackCharset.value && fallbackCharset.value != "")
@@ -2171,7 +2172,7 @@ function AddAttachment(attachment)
     var item = document.createElement("listitem");
 
     if (!attachment.name)
-      attachment.name = gMsgCompose.AttachmentPrettyName(attachment.url);
+      attachment.name = gMsgCompose.AttachmentPrettyName(attachment.url, attachment.urlCharset);
 
     // for security reasons, don't allow *-message:// uris to leak out
     // we don't want to reveal the .slt path (for mailbox://), or the username or hostname

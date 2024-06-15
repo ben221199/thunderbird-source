@@ -1,0 +1,2 @@
+export MOZ_THUNDERBIRD=1
+mk_add_options MOZ_THUNDERBIRD=1

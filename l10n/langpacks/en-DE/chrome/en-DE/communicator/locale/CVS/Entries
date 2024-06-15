@@ -1,13 +1,13 @@
-/PSMTaskMenu.dtd/1.1.1.1/Thu Jul 20 00:58:59 2000//TTHUNDERBIRD_0_4_BRANCH
-/openLocation.dtd/1.1/Fri Feb 23 03:02:32 2001//TTHUNDERBIRD_0_4_BRANCH
-/openLocation.properties/1.1/Fri Feb 23 03:02:34 2001//TTHUNDERBIRD_0_4_BRANCH
-/security.properties/1.1.1.1/Thu Jul 20 00:58:59 2000//TTHUNDERBIRD_0_4_BRANCH
-/securityOverlay.dtd/1.1.1.1/Thu Jul 20 00:58:59 2000//TTHUNDERBIRD_0_4_BRANCH
-/taskbar.rdf/1.1.1.1/Thu Jul 20 00:58:59 2000//TTHUNDERBIRD_0_4_BRANCH
-/taskbarOverlay.dtd/1.1.1.1/Thu Jul 20 00:58:59 2000//TTHUNDERBIRD_0_4_BRANCH
-/tasksOverlay.dtd/1.1.1.1/Thu Jul 20 00:58:59 2000//TTHUNDERBIRD_0_4_BRANCH
-/utilityOverlay.dtd/1.2/Wed Mar 21 02:35:09 2001//TTHUNDERBIRD_0_4_BRANCH
-/utilityOverlay.properties/1.1.1.1/Thu Jul 20 00:59:00 2000//TTHUNDERBIRD_0_4_BRANCH
+/PSMTaskMenu.dtd/1.1.1.1/Thu Jul 20 00:58:59 2000//TTHUNDERBIRD_0_5_RELEASE
+/openLocation.dtd/1.1/Fri Feb 23 03:02:32 2001//TTHUNDERBIRD_0_5_RELEASE
+/openLocation.properties/1.1/Fri Feb 23 03:02:34 2001//TTHUNDERBIRD_0_5_RELEASE
+/security.properties/1.1.1.1/Thu Jul 20 00:58:59 2000//TTHUNDERBIRD_0_5_RELEASE
+/securityOverlay.dtd/1.1.1.1/Thu Jul 20 00:58:59 2000//TTHUNDERBIRD_0_5_RELEASE
+/taskbar.rdf/1.1.1.1/Thu Jul 20 00:58:59 2000//TTHUNDERBIRD_0_5_RELEASE
+/taskbarOverlay.dtd/1.1.1.1/Thu Jul 20 00:58:59 2000//TTHUNDERBIRD_0_5_RELEASE
+/tasksOverlay.dtd/1.1.1.1/Thu Jul 20 00:58:59 2000//TTHUNDERBIRD_0_5_RELEASE
+/utilityOverlay.dtd/1.2/Wed Mar 21 02:35:09 2001//TTHUNDERBIRD_0_5_RELEASE
+/utilityOverlay.properties/1.1.1.1/Thu Jul 20 00:59:00 2000//TTHUNDERBIRD_0_5_RELEASE
 D/bookmarks////
 D/directory////
 D/history////

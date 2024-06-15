@@ -696,11 +696,16 @@ function UpdateMailPaneConfig(aMsgWindowInitialized) {
   gCurrentPaneConfig = paneConfig; 
 }
 
-const MailPaneConfigObserver = {
+const MailPrefObserver = {
   observe: function(subject, topic, prefName) {
     // verify that we're changing the mail pane config pref
     if (topic == "nsPref:changed")
-      UpdateMailPaneConfig(true);
+    {
+      if (prefName == "mail.pane_config.dynamic")
+        UpdateMailPaneConfig(true);
+      else if (prefName == "mail.showFolderPaneColumns")
+        UpdateFolderColumnVisibility();
+    }
   }
 };
 
@@ -717,7 +722,9 @@ function OnLoadMessenger()
 function delayedOnLoadMessenger()
 {
   pref.QueryInterface(Components.interfaces.nsIPrefBranchInternal);
-  pref.addObserver("mail.pane_config.dynamic", MailPaneConfigObserver, false);
+  pref.addObserver("mail.pane_config.dynamic", MailPrefObserver, false);
+  pref.addObserver("mail.showFolderPaneColumns", MailPrefObserver, false);
+
   AddMailOfflineObserver();
   CreateMailWindowGlobals();
   verifyAccounts(null);
@@ -752,6 +759,29 @@ function delayedOnLoadMessenger()
     gSearchEmailAddress = null;
   }
 
+  if (this.CheckForUnsentMessages != undefined && CheckForUnsentMessages())
+  {
+    var ioService = Components.classes["@mozilla.org/network/io-service;1"].getService(Components.interfaces.nsIIOService);
+    if (!ioService.offline) 
+    {
+      InitPrompts();
+      InitServices();
+
+      if (gPromptService) 
+      {
+        var buttonPressed = gPromptService.confirmEx(window, 
+                            gOfflinePromptsBundle.getString('sendMessagesOfflineWindowTitle'), 
+                            gOfflinePromptsBundle.getString('sendMessagesLabel'),
+                            gPromptService.BUTTON_TITLE_IS_STRING * (gPromptService.BUTTON_POS_0 + 
+                              gPromptService.BUTTON_POS_1),
+                            gOfflinePromptsBundle.getString('sendMessagesSendButtonLabel'),
+                            gOfflinePromptsBundle.getString('sendMessagesNoSendButtonLabel'),
+                            null, null, {value:0});
+        if (buttonPressed == 0) 
+          SendUnsentMessages();
+      }
+    }
+  }
   setTimeout("loadStartFolder(gStartFolderUri);", 0);
 
   // FIX ME - later we will be able to use onload from the overlay
@@ -776,7 +806,8 @@ function OnUnloadMessenger()
 {
   accountManager.removeIncomingServerListener(gThreePaneIncomingServerListener);
   pref.QueryInterface(Components.interfaces.nsIPrefBranchInternal);
-  pref.removeObserver("mail.pane_config.dynamic", MailPaneConfigObserver);
+  pref.removeObserver("mail.pane_config.dynamic", MailPrefObserver);
+  pref.removeObserver("mail.showFolderPaneColumns", MailPrefObserver);
 
   // FIX ME - later we will be able to use onload from the overlay
   OnUnloadMsgHeaderPane();
@@ -869,6 +900,11 @@ function loadStartFolder(initialUri)
         }
 
         var startFolder = startFolderResource.QueryInterface(Components.interfaces.nsIMsgFolder);
+
+        // it is possible we were given an initial uri and we need to subscribe or try to add
+        // the folder. i.e. the user just clicked on a news folder they aren't subscribed to from a browser
+        // the news url comes in here.   
+
         SelectFolder(startFolder.URI);        
 
         // only do this on startup, when we pass in null
@@ -890,8 +926,15 @@ function loadStartFolder(initialUri)
     }
     catch(ex)
     {
-        dump(ex);
-        dump('Exception in LoadStartFolder caused by no default account.  We know about this\n');
+
+      if (initialUri)
+      {
+        messenger.loadURL(window, initialUri);
+        return;
+      }
+
+      dump(ex);
+      dump('Exception in LoadStartFolder caused by no default account.  We know about this\n');
     }
 
     MsgGetMessagesForAllServers(defaultServer);
@@ -947,8 +990,45 @@ function OnFolderUnreadColAttrModified(event)
     }
 }
 
+function UpdateFolderColumnVisibility()
+{
+    var folderNameCol = document.getElementById("folderNameCol");
+    var showColumns = pref.getBoolPref("mail.showFolderPaneColumns");
+    var folderUnreadCol = document.getElementById("folderUnreadCol"); 
+    var folderColumnLabel = document.getElementById("folderColumnLabel");
+    if (!showColumns)
+    {
+      var folderTotalCol = document.getElementById("folderTotalCol");
+      var folderSizeCol = document.getElementById("folderSizeCol");
+      folderUnreadCol.setAttribute("hidden", "true");
+      folderTotalCol.setAttribute("hidden", "true");
+      folderSizeCol.setAttribute("hidden", "true");
+      folderNameCol.removeAttribute("label");
+    }
+    else
+    {
+      folderNameCol.setAttribute("label", folderColumnLabel.value);
+    }
+
+    folderNameCol.setAttribute("hideheader", showColumns ? "false" : "true");
+    var folderPaneHeader = document.getElementById("folderPaneHeader");
+    folderPaneHeader.setAttribute("hidden", showColumns ? "true" : "false");
+    var folderTree = document.getElementById("folderTree");
+    folderTree.setAttribute("hidecolumnpicker", showColumns ? "false" : "true");
+    var hidden = folderUnreadCol.getAttribute("hidden");
+    if (hidden != "true")
+    {
+        var folderNameCell = document.getElementById("folderNameCell");
+        folderNameCell.setAttribute("label", "?folderTreeSimpleName");
+    }
+} 
+
 function OnLoadFolderPane()
 {
+    UpdateFolderColumnVisibility();
+    var folderUnreadCol = document.getElementById("folderUnreadCol");
+    folderUnreadCol.addEventListener("DOMAttrModified", OnFolderUnreadColAttrModified, false);
+
     //Add folderDataSource and accountManagerDataSource to folderPane
     accountManagerDataSource = accountManagerDataSource.QueryInterface(Components.interfaces.nsIRDFDataSource);
     folderDataSource = folderDataSource.QueryInterface(Components.interfaces.nsIRDFDataSource);
@@ -1495,24 +1575,6 @@ function ReloadWithAllParts()
 function ReloadMessage()
 {
   gDBView.reloadMessage();
-}
-
-function SetBusyCursor(window, enable)
-{
-    // setCursor() is only available for chrome windows.
-    // However one of our frames is the start page which 
-    // is a non-chrome window, so check if this window has a
-    // setCursor method
-    if ("setCursor" in window) {
-        if (enable)
-            window.setCursor("wait");
-        else
-            window.setCursor("auto");
-    }
-
-	var numFrames = window.frames.length;
-	for(var i = 0; i < numFrames; i++)
-		SetBusyCursor(window.frames[i], enable);
 }
 
 function GetDBView()

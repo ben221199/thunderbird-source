@@ -1,7 +1,4 @@
-/.cvsignore/1.2/Tue Mar 23 20:30:06 1999//TTHUNDERBIRD_0_4_BRANCH
-/Makefile.in/1.29/Sat Nov 15 00:11:11 2003//TTHUNDERBIRD_0_4_BRANCH
-/TestXPC.cpp/1.71/Sat Nov 15 00:11:11 2003//TTHUNDERBIRD_0_4_BRANCH
-D/components////
-D/idispatch////
-D/idl////
-D/js////
+/.cvsignore/1.2/Tue Mar 23 20:30:06 1999//TTHUNDERBIRD_0_5_RELEASE
+/Makefile.in/1.29/Sat Nov 15 00:11:11 2003//TTHUNDERBIRD_0_5_RELEASE
+/TestXPC.cpp/1.71/Sat Nov 15 00:11:11 2003//TTHUNDERBIRD_0_5_RELEASE
+D

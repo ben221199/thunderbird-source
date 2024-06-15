@@ -1,6 +1,6 @@
-/.cvsignore/1.1/Sat Dec  5 09:02:00 1998//TTHUNDERBIRD_0_4_BRANCH
-/Makefile.in/1.7/Sat Aug 16 00:41:41 2003//TTHUNDERBIRD_0_4_BRANCH
-/gfx-config.h.in/1.1/Tue Apr 22 16:24:59 2003//TTHUNDERBIRD_0_4_BRANCH
+/.cvsignore/1.1/Sat Dec  5 09:02:00 1998//TTHUNDERBIRD_0_5_RELEASE
+/Makefile.in/1.7/Sat Aug 16 00:41:41 2003//TTHUNDERBIRD_0_5_RELEASE
+/gfx-config.h.in/1.1/Tue Apr 22 16:24:59 2003//TTHUNDERBIRD_0_5_RELEASE
 D/idl////
 D/public////
 D/src////

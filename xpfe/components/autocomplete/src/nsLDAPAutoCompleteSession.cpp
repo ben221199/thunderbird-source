@@ -116,6 +116,8 @@ nsLDAPAutoCompleteSession::OnStartLookup(const PRUnichar *searchString,
     if (searchString[0] == 0 ||
         nsDependentString(searchString).FindChar(PRUnichar('@'), 0) != 
         kNotFound || 
+        nsDependentString(searchString).FindChar(PRUnichar(','), 0) != 
+        kNotFound || 
         ( !IS_CJK_CHAR_FOR_LDAP(searchString[0]) ?
           mMinStringLength && nsCRT::strlen(searchString) < mMinStringLength :
           mCjkMinStringLength && nsCRT::strlen(searchString) < 
@@ -907,7 +909,7 @@ nsLDAPAutoCompleteSession::StartLDAPSearch()
     // no need to AND in an empty search term, so leave prefix and suffix empty
     //
     nsCAutoString prefix, suffix;
-    if (!urlFilter.Equals(NS_LITERAL_CSTRING("(objectclass=*)"))) {
+    if (urlFilter.Length() && !urlFilter.Equals(NS_LITERAL_CSTRING("(objectclass=*)"))) {
 
         // if urlFilter isn't parenthesized, we need to add in parens so that
         // the filter works as a term to &

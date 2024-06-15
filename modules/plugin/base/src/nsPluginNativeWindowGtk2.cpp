@@ -69,6 +69,8 @@ private:
   PRBool    CanGetValueFromPlugin(nsCOMPtr<nsIPluginInstance> &aPluginInstance);
 };
 
+static gboolean plug_removed_cb   (GtkWidget *widget, gpointer data);
+
 nsPluginNativeWindowGtk2::nsPluginNativeWindowGtk2() : nsPluginNativeWindow()
 {
   // initialize the struct fields
@@ -148,6 +150,13 @@ nsresult nsPluginNativeWindowGtk2::CreateXEmbedWindow() {
     //attach the socket to the container widget
     gtk_widget_set_parent_window(mGtkSocket, win);
 
+    // Make sure to handle the plug_removed signal.  If we don't the
+    // socket will automatically be destroyed when the plug is
+    // removed, which means we're destroying it more than once.
+    // SYNTAX ERROR.
+    g_signal_connect(mGtkSocket, "plug_removed",
+                     G_CALLBACK(plug_removed_cb), NULL);
+
     gpointer user_data = NULL;
     gdk_window_get_user_data(win, &user_data);
 
@@ -184,13 +193,13 @@ PRBool nsPluginNativeWindowGtk2::CanGetValueFromPlugin(nsCOMPtr<nsIPluginInstanc
 #ifdef OJI
   if(aPluginInstance) {
     nsresult rv;
-    nsIPluginInstancePeer *aPeer;
+    nsCOMPtr<nsIPluginInstancePeer> peer;
 
-    rv = aPluginInstance->GetPeer(&aPeer);
-    if (NS_SUCCEEDED(rv) && aPeer) {
+    rv = aPluginInstance->GetPeer(getter_AddRefs(peer));
+    if (NS_SUCCEEDED(rv) && peer) {
       const char *aMimeType = nsnull;
 
-      aPeer->GetMIMEType((nsMIMEType*)&aMimeType);
+      peer->GetMIMEType((nsMIMEType*)&aMimeType);
       if (aMimeType &&
           (PL_strncasecmp(aMimeType, "application/x-java-vm", 21) == 0 ||
            PL_strncasecmp(aMimeType, "application/x-java-applet", 25) == 0)) {
@@ -218,6 +227,11 @@ PRBool nsPluginNativeWindowGtk2::CanGetValueFromPlugin(nsCOMPtr<nsIPluginInstanc
               if (PL_strcasecmp(jpiDescription + 92, "1.5") < 0)
                 return PR_FALSE;
             }
+            if (PL_strncasecmp(jpiDescription, "IBM Java(TM) Plug-in", 20) == 0) {
+              // Java Plugin support Xembed from JRE 1.5
+              if (PL_strcasecmp(jpiDescription + 27, "1.5") < 0)
+                return PR_FALSE;
+            }
           }
         }
       }
@@ -227,3 +241,13 @@ PRBool nsPluginNativeWindowGtk2::CanGetValueFromPlugin(nsCOMPtr<nsIPluginInstanc
 
   return PR_TRUE;
 }
+
+/* static */
+gboolean
+plug_removed_cb (GtkWidget *widget, gpointer data)
+{
+  // Gee, thanks for the info!
+  return TRUE;
+}
+
+
