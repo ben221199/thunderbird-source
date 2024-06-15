@@ -1,6 +1,6 @@
-/.cvsignore/1.1/Thu Feb  3 00:58:36 2000//TAVIARY_1_0_1_20050124_BRANCH
-/Makefile.in/1.14/Wed Jan  7 13:36:21 2004//TAVIARY_1_0_1_20050124_BRANCH
-/embed.pkg/1.2/Wed Jan  7 01:21:21 2004//TAVIARY_1_0_1_20050124_BRANCH
+/.cvsignore/1.1/Thu Feb  3 00:58:36 2000//TTHUNDERBIRD_1_0_7_RELEASE
+/Makefile.in/1.14/Wed Jan  7 13:36:21 2004//TTHUNDERBIRD_1_0_7_RELEASE
+/embed.pkg/1.2/Wed Jan  7 01:21:21 2004//TTHUNDERBIRD_1_0_7_RELEASE
 D/base////
 D/browser////
 D/componentlib////

@@ -35,7 +35,7 @@
 #define CKFWM_H
 
 #ifdef DEBUG
-static const char CKFWM_CVS_ID[] = "@(#) $RCSfile: ckfwm.h,v $ $Revision: 1.2.130.1 $ $Date: 2004/10/15 21:13:51 $ $Name: AVIARY_1_0_1_20050124_BRANCH $";
+static const char CKFWM_CVS_ID[] = "@(#) $RCSfile: ckfwm.h,v $ $Revision: 1.2.130.1 $ $Date: 2004/10/15 21:13:51 $ $Name: THUNDERBIRD_1_0_7_RELEASE $";
 #endif /* DEBUG */
 
 /*

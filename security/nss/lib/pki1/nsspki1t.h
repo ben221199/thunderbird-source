@@ -35,7 +35,7 @@
 #define NSSPKI1T_H
 
 #ifdef DEBUG
-static const char NSSPKI1T_CVS_ID[] = "@(#) $RCSfile: nsspki1t.h,v $ $Revision: 1.1 $ $Date: 2000/03/31 19:16:21 $ $Name: AVIARY_1_0_1_20050124_BRANCH $";
+static const char NSSPKI1T_CVS_ID[] = "@(#) $RCSfile: nsspki1t.h,v $ $Revision: 1.1 $ $Date: 2000/03/31 19:16:21 $ $Name: THUNDERBIRD_1_0_7_RELEASE $";
 #endif /* DEBUG */
 
 /*

@@ -32,7 +32,7 @@
  * GPL.
  */
 #ifdef DEBUG
-static const char CVS_ID[] = "@(#) $RCSfile: certdata.c,v $ $Revision: 1.27.22.1.2.1 $ $Date: 2005/03/14 22:37:33 $ $Name: AVIARY_1_0_1_20050124_BRANCH $""; @(#) $RCSfile: certdata.c,v $ $Revision: 1.27.22.1.2.1 $ $Date: 2005/03/14 22:37:33 $ $Name: AVIARY_1_0_1_20050124_BRANCH $";
+static const char CVS_ID[] = "@(#) $RCSfile: certdata.c,v $ $Revision: 1.27.22.1.2.1 $ $Date: 2005/03/14 22:37:33 $ $Name: THUNDERBIRD_1_0_7_RELEASE $""; @(#) $RCSfile: certdata.c,v $ $Revision: 1.27.22.1.2.1 $ $Date: 2005/03/14 22:37:33 $ $Name: THUNDERBIRD_1_0_7_RELEASE $";
 #endif /* DEBUG */
 
 #ifndef BUILTINS_H
@@ -580,7 +580,7 @@ static const NSSItem nss_builtins_items_0 [] = {
   { (void *)&ck_false, (PRUint32)sizeof(CK_BBOOL) },
   { (void *)"CVS ID", (PRUint32)7 },
   { (void *)"NSS", (PRUint32)4 },
-  { (void *)"@(#) $RCSfile: certdata.c,v $ $Revision: 1.27.22.1.2.1 $ $Date: 2005/03/14 22:37:33 $ $Name: AVIARY_1_0_1_20050124_BRANCH $""; @(#) $RCSfile: certdata.c,v $ $Revision: 1.27.22.1.2.1 $ $Date: 2005/03/14 22:37:33 $ $Name: AVIARY_1_0_1_20050124_BRANCH $", (PRUint32)212 }
+  { (void *)"@(#) $RCSfile: certdata.c,v $ $Revision: 1.27.22.1.2.1 $ $Date: 2005/03/14 22:37:33 $ $Name: THUNDERBIRD_1_0_7_RELEASE $""; @(#) $RCSfile: certdata.c,v $ $Revision: 1.27.22.1.2.1 $ $Date: 2005/03/14 22:37:33 $ $Name: THUNDERBIRD_1_0_7_RELEASE $", (PRUint32)212 }
 };
 #endif /* DEBUG */
 static const NSSItem nss_builtins_items_1 [] = {

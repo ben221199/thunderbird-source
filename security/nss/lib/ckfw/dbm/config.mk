@@ -30,7 +30,7 @@
 # may use your version of this file under either the MPL or the
 # GPL.
 #
-CONFIG_CVS_ID = "@(#) $RCSfile: config.mk,v $ $Revision: 1.1 $ $Date: 2000/05/15 20:39:54 $ $Name: AVIARY_1_0_1_20050124_BRANCH $"
+CONFIG_CVS_ID = "@(#) $RCSfile: config.mk,v $ $Revision: 1.1 $ $Date: 2000/05/15 20:39:54 $ $Name: THUNDERBIRD_1_0_7_RELEASE $"
 
 ifdef BUILD_IDG
 DEFINES += -DNSSDEBUG

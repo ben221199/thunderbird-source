@@ -30,7 +30,7 @@
 # may use your version of this file under either the MPL or the
 # GPL.
 #
-CVS_ID "@(#) $RCSfile: certdata.txt,v $ $Revision: 1.28.22.1.2.1 $ $Date: 2005/03/14 22:37:33 $ $Name: AVIARY_1_0_1_20050124_BRANCH $"
+CVS_ID "@(#) $RCSfile: certdata.txt,v $ $Revision: 1.28.22.1.2.1 $ $Date: 2005/03/14 22:37:33 $ $Name: THUNDERBIRD_1_0_7_RELEASE $"
 
 #
 # certdata.txt

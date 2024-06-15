@@ -1,6 +1,6 @@
-/.cvsignore/1.1/Sat Dec  5 09:06:52 1998//TAVIARY_1_0_1_20050124_BRANCH
-/Makefile.in/1.31/Wed Jan  7 13:36:53 2004//TAVIARY_1_0_1_20050124_BRANCH
-/widget.pkg/1.2/Wed Jan  7 01:22:17 2004//TAVIARY_1_0_1_20050124_BRANCH
+/.cvsignore/1.1/Sat Dec  5 09:06:52 1998//TTHUNDERBIRD_1_0_7_RELEASE
+/Makefile.in/1.31/Wed Jan  7 13:36:53 2004//TTHUNDERBIRD_1_0_7_RELEASE
+/widget.pkg/1.2/Wed Jan  7 01:22:17 2004//TTHUNDERBIRD_1_0_7_RELEASE
 D/beos////
 D/build////
 D/cocoa////

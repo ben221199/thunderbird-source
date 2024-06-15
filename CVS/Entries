@@ -1,6 +1,6 @@
+/client.mk/1.205.2.2.6.8.12.1.2.3.10.1/Fri Sep 30 00:20:34 2005//TTHUNDERBIRD_1_0_7_RELEASE
 D/mail////
 D/build////
-/client.mk/1.205.2.2.6.8.12.1.2.3/Wed Jul 13 21:10:21 2005//TAVIARY_1_0_1_20050124_BRANCH
 D/nsprpub////
 D/security////
 D/directory////
@@ -13,16 +13,16 @@ D/toolkit////
 D/chrome////
 D/editor////
 D/extensions////
-/.cvsignore/1.10/Thu Aug 22 01:14:34 2002//TAVIARY_1_0_1_20050124_BRANCH
+/.cvsignore/1.10/Thu Aug 22 01:14:34 2002//TTHUNDERBIRD_1_0_7_RELEASE
 D/README////
-/README.txt/1.7/Sat Mar 13 06:25:28 2004//TAVIARY_1_0_1_20050124_BRANCH
-/client.mak/3.124/Fri Sep 20 09:15:50 2002//TAVIARY_1_0_1_20050124_BRANCH
-/configure/1.1304.2.5.2.16/Sun Oct 31 07:17:58 2004//TAVIARY_1_0_1_20050124_BRANCH
-/configure.in/1.1335.2.6.2.18/Sun Oct 31 07:17:58 2004//TAVIARY_1_0_1_20050124_BRANCH
-/allmakefiles.sh/1.485.2.2.4.19/Fri Sep 10 08:11:24 2004//TAVIARY_1_0_1_20050124_BRANCH
-/Makefile.in/1.248.2.3.4.6/Tue Sep 14 20:59:40 2004//TAVIARY_1_0_1_20050124_BRANCH
-/makefile.win/3.118/Sat Aug 10 02:45:56 2002//TAVIARY_1_0_1_20050124_BRANCH
-/aclocal.m4/1.13.70.1/Thu May 13 21:57:46 2004//TAVIARY_1_0_1_20050124_BRANCH
+/README.txt/1.7/Sat Mar 13 06:25:28 2004//TTHUNDERBIRD_1_0_7_RELEASE
+/client.mak/3.124/Fri Sep 20 09:15:50 2002//TTHUNDERBIRD_1_0_7_RELEASE
+/configure/1.1304.2.5.2.16/Sun Oct 31 07:17:58 2004//TTHUNDERBIRD_1_0_7_RELEASE
+/configure.in/1.1335.2.6.2.18/Sun Oct 31 07:17:58 2004//TTHUNDERBIRD_1_0_7_RELEASE
+/allmakefiles.sh/1.485.2.2.4.19/Fri Sep 10 08:11:24 2004//TTHUNDERBIRD_1_0_7_RELEASE
+/Makefile.in/1.248.2.3.4.6/Tue Sep 14 20:59:40 2004//TTHUNDERBIRD_1_0_7_RELEASE
+/makefile.win/3.118/Sat Aug 10 02:45:56 2002//TTHUNDERBIRD_1_0_7_RELEASE
+/aclocal.m4/1.13.70.1/Thu May 13 21:57:46 2004//TTHUNDERBIRD_1_0_7_RELEASE
 D/caps////
 D/config////
 D/dbm////
@@ -35,7 +35,7 @@ D/jpeg////
 D/js////
 D/lib////
 D/netwerk////
-/nglayout.mk/1.34/Sun Dec 29 00:13:37 2002//TAVIARY_1_0_1_20050124_BRANCH
+/nglayout.mk/1.34/Sun Dec 29 00:13:37 2002//TTHUNDERBIRD_1_0_7_RELEASE
 D/plugin////
 D/profile////
 D/rdf////
@@ -44,8 +44,8 @@ D/tools////
 D/uriloader////
 D/xpcom////
 D/xpinstall////
-/LEGAL/3.3/Tue Jul  6 23:00:05 1999//TAVIARY_1_0_1_20050124_BRANCH
-/LICENSE/3.2/Wed Oct  6 02:14:51 1999//TAVIARY_1_0_1_20050124_BRANCH
+/LEGAL/3.3/Tue Jul  6 23:00:05 1999//TTHUNDERBIRD_1_0_7_RELEASE
+/LICENSE/3.2/Wed Oct  6 02:14:51 1999//TTHUNDERBIRD_1_0_7_RELEASE
 D/content////
 D/dom////
 D/gfx////

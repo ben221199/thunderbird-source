@@ -36,7 +36,7 @@
 #define OIDDATA_H
 
 #ifdef DEBUG
-static const char OIDDATA_CVS_ID[] = "@(#) $RCSfile: oiddata.h,v $ $Revision: 1.1 $ $Date: 2002/01/04 05:22:07 $ $Name: AVIARY_1_0_1_20050124_BRANCH $ ; @(#) $RCSfile: oiddata.h,v $ $Revision: 1.1 $ $Date: 2002/01/04 05:22:07 $ $Name: AVIARY_1_0_1_20050124_BRANCH $";
+static const char OIDDATA_CVS_ID[] = "@(#) $RCSfile: oiddata.h,v $ $Revision: 1.1 $ $Date: 2002/01/04 05:22:07 $ $Name: THUNDERBIRD_1_0_7_RELEASE $ ; @(#) $RCSfile: oiddata.h,v $ $Revision: 1.1 $ $Date: 2002/01/04 05:22:07 $ $Name: THUNDERBIRD_1_0_7_RELEASE $";
 #endif /* DEBUG */
 
 #ifndef NSSPKI1T_H
